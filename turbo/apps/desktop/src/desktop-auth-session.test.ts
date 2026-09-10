@@ -9,7 +9,10 @@ import {
 } from "vitest";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
-import { DesktopAuthSession } from "./desktop-auth-session";
+import {
+  DesktopAuthSession,
+  type DesktopAuthRefreshEvent,
+} from "./desktop-auth-session";
 import { resolveDesktopConfig } from "./config";
 import {
   buildDesktopAuthConsumeUrl,
@@ -37,12 +40,19 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function createSession(onChange?: (session: DesktopAuthSession) => void) {
+function createSession(
+  onChange?: (session: DesktopAuthSession) => void,
+  onBackgroundRefresh?: (
+    event: DesktopAuthRefreshEvent,
+    session: DesktopAuthSession,
+  ) => void,
+) {
   const config = resolveDesktopConfig();
   const windows: DesktopAuthWindowRequest[] = [];
   const replies: Promise<string | null>[] = [];
   const completed: string[] = [];
   const changes: (string | null)[] = [];
+  const refreshes: DesktopAuthRefreshEvent[] = [];
   const session = new DesktopAuthSession({
     apiBaseUrl: api,
 
@@ -64,12 +74,16 @@ function createSession(onChange?: (session: DesktopAuthSession) => void) {
     onAuthCompleted: () => {
       completed.push("completed");
     },
+    onBackgroundRefresh: (event) => {
+      refreshes.push(event);
+      onBackgroundRefresh?.(event, session);
+    },
   });
-  return { session, windows, replies, completed, changes };
+  return { session, windows, replies, completed, changes, refreshes };
 }
 
 function identityHandlers(
-  options: { orgId?: string; observed?: string[] } = {},
+  options: { userId?: string; orgId?: string; observed?: string[] } = {},
 ) {
   server.use(
     http.get(`${api}/api/auth/me`, ({ request }) => {
@@ -77,7 +91,7 @@ function identityHandlers(
       options.observed?.push(`me:${token}`);
       expect(request.headers.get("cookie")).toBeNull();
       return HttpResponse.json({
-        userId: token,
+        userId: options.userId ?? token,
         email: "app@example.test",
         orgId: "app-org",
       });
@@ -201,7 +215,7 @@ describe("Okou App session authority", () => {
 
   it("does one bounded App refresh after 401 without a cookie-only retry", async () => {
     const { session, replies, windows } = createSession();
-    identityHandlers();
+    identityHandlers({ userId: "same-user" });
     replies.push(Promise.resolve("expired"), Promise.resolve("fresh"));
     await session.getToken();
     const tokens: (string | null)[] = [];
@@ -222,11 +236,182 @@ describe("Okou App session authority", () => {
     expect(windows).toHaveLength(2);
   });
 
+  it("publishes a verified background identity before notifying recovery and subscribers", async () => {
+    identityHandlers({ userId: "same-user" });
+    const observed: string[] = [];
+    const reads: ReturnType<DesktopAuthSession["getAuthState"]>[] = [];
+    const { session, replies, refreshes, completed } = createSession(
+      (current) => {
+        if (current.getAuthority()) {
+          expect(current.getCachedToken()).not.toBeNull();
+          observed.push(`change:${current.getCachedToken()}`);
+        }
+      },
+      (event, current) => {
+        if (event.phase === "completed") {
+          expect(current.getAuthority()).not.toBeNull();
+          observed.push(`completed:${current.getCachedToken()}`);
+          reads.push(current.getAuthState());
+        }
+      },
+    );
+    replies.push(Promise.resolve("old"));
+    await session.getToken();
+    await Promise.all(reads);
+    const previousAuthority = session.getAuthority();
+    const previousSignal = refreshes[0]?.signal;
+    const reply = deferred<string | null>();
+    replies.push(reply.promise);
+    const refresh = session.getToken({ forceRefresh: true });
+    expect(session.getAuthority()).toBeNull();
+    expect(session.getCachedToken()).toBeNull();
+    expect(previousSignal?.aborted).toBe(true);
+    expect(refreshes.map((event) => event.phase)).toEqual([
+      "started",
+      "completed",
+      "started",
+    ]);
+    reply.resolve("fresh");
+    expect(await refresh).toBe("fresh");
+    await Promise.all(reads);
+    expect(refreshes[3]).toMatchObject({
+      phase: "completed",
+      identity: "same",
+      signal: refreshes[2]?.signal,
+    });
+    expect(session.getAuthority()).not.toBe(previousAuthority);
+    expect(observed).toEqual([
+      "completed:old",
+      "change:old",
+      "completed:fresh",
+      "change:fresh",
+    ]);
+    expect(completed).toEqual([]);
+  });
+
+  it.each(["user", "organization"] as const)(
+    "does not replay a request after a hidden refresh changes the %s",
+    async (changed) => {
+      const { session, replies, refreshes } = createSession();
+      const requests: (string | null)[] = [];
+      const identity = (request: Request) => {
+        const fresh = request.headers.get("authorization") === "Bearer fresh";
+        return {
+          userId: fresh && changed === "user" ? "new-user" : "old-user",
+          orgId: fresh && changed === "organization" ? "new-org" : "old-org",
+        };
+      };
+      server.use(
+        http.get(`${api}/api/auth/me`, ({ request }) =>
+          HttpResponse.json({
+            ...identity(request),
+            email: "app@example.test",
+          }),
+        ),
+        http.get(`${api}/api/org`, ({ request }) =>
+          HttpResponse.json({ id: identity(request).orgId, name: "Workspace" }),
+        ),
+        http.post(`${api}/api/protected`, ({ request }) => {
+          requests.push(request.headers.get("authorization"));
+          return new HttpResponse(null, { status: 401 });
+        }),
+      );
+      replies.push(Promise.resolve("old"), Promise.resolve("fresh"));
+      const response = await session.fetchWithSessionAuth(
+        new URL(`${api}/api/protected`),
+        { method: "POST", body: JSON.stringify({ action: "test" }) },
+      );
+      expect(response.status).toBe(401);
+      expect(requests).toEqual(["Bearer old"]);
+      expect(session.getCachedToken()).toBe("fresh");
+      expect(refreshes.at(-1)).toMatchObject({
+        phase: "completed",
+        identity: "changed",
+      });
+    },
+  );
+
+  it("remembers the verified identity after an unsuccessful status read withdraws authority", async () => {
+    identityHandlers({ userId: "old-user" });
+    const { session, replies, refreshes } = createSession();
+    replies.push(Promise.resolve("old"));
+    await session.getToken();
+    server.use(
+      http.get(
+        `${api}/api/auth/me`,
+        () => new HttpResponse(null, { status: 503 }),
+      ),
+    );
+    await expect(session.getAuthState()).rejects.toThrow(
+      "Desktop auth status failed: 503",
+    );
+    expect(session.getAuthority()).toBeNull();
+    identityHandlers({ userId: "new-user" });
+    replies.push(Promise.resolve("fresh"));
+    expect(await session.getToken({ forceRefresh: true })).toBe("fresh");
+    expect(refreshes.at(-1)).toMatchObject({
+      phase: "completed",
+      identity: "changed",
+    });
+  });
+
+  it("shares the current refresh while an older concurrent 401 is cancelled", async () => {
+    identityHandlers({ userId: "same-user" });
+    const { session, replies, windows, refreshes } = createSession();
+    replies.push(Promise.resolve("old"));
+    await session.getToken();
+    const bothEntered = deferred<void>();
+    const firstResponse = deferred<void>();
+    const secondResponse = deferred<void>();
+    const fresh = deferred<string | null>();
+    replies.push(fresh.promise);
+    let oldRequests = 0;
+    server.use(
+      http.get(`${api}/api/protected`, async ({ request }) => {
+        if (request.headers.get("authorization") === "Bearer fresh")
+          return new HttpResponse(null, { status: 200 });
+        oldRequests++;
+        if (oldRequests === 2) bothEntered.resolve();
+        await (oldRequests === 1
+          ? firstResponse.promise
+          : secondResponse.promise);
+        return new HttpResponse(null, { status: 401 });
+      }),
+    );
+    const first = session.fetchWithSessionAuth(new URL(`${api}/api/protected`));
+    const second = session.fetchWithSessionAuth(
+      new URL(`${api}/api/protected`),
+    );
+    const cancelled = expect(second).rejects.toThrow();
+    try {
+      await bothEntered.promise;
+      firstResponse.resolve();
+      await vi.waitFor(() => expect(windows).toHaveLength(2));
+      const joined = session.getToken({ forceRefresh: true });
+      fresh.resolve("fresh");
+      expect(await joined).toBe("fresh");
+      expect((await first).status).toBe(200);
+      secondResponse.resolve();
+      await cancelled;
+      expect(windows).toHaveLength(2);
+      expect(refreshes.map((event) => event.phase)).toEqual([
+        "started",
+        "completed",
+        "started",
+        "completed",
+      ]);
+    } finally {
+      firstResponse.resolve();
+      secondResponse.resolve();
+      fresh.resolve(null);
+    }
+  });
+
   it.each([null, "rejected"])(
     "clears rejected credentials when refresh delivers %s",
     async (refreshed) => {
       const { session, replies, windows } = createSession();
-      identityHandlers();
+      identityHandlers({ userId: "same-user" });
       replies.push(Promise.resolve("expired"), Promise.resolve(refreshed));
       await session.getToken();
       let count = 0;
@@ -247,7 +432,7 @@ describe("Okou App session authority", () => {
   );
 
   it("notifies subscribers of a failed App refresh and waits for explicit sign-in", async () => {
-    const { session, replies, windows, changes } = createSession();
+    const { session, replies, windows, changes, refreshes } = createSession();
     identityHandlers();
     replies.push(Promise.resolve("expired"), Promise.resolve(null));
     await session.getToken();
@@ -261,7 +446,13 @@ describe("Okou App session authority", () => {
       (await session.fetchWithSessionAuth(new URL(`${api}/api/protected`)))
         .status,
     ).toBe(401);
-    expect(changes).toEqual([null, null, "expired", null, null]);
+    expect(changes).toEqual([null, "expired", null, null]);
+    expect(refreshes.map((event) => event.phase)).toEqual([
+      "started",
+      "completed",
+      "started",
+      "failed",
+    ]);
     expect(session.getAuthority()).toBeNull();
     expect(await session.getAuthState()).toEqual(signedOut);
     expect(await session.getToken({ forceRefresh: true })).toBeNull();
@@ -303,7 +494,7 @@ describe("Okou App session authority", () => {
   });
 
   it("coalesces refreshes and recognizes a new delivery even if the token bytes are identical", async () => {
-    const { session, replies, windows, completed } = createSession();
+    const { session, replies, windows, completed, refreshes } = createSession();
     identityHandlers();
     const reply = deferred<string | null>();
     replies.push(reply.promise);
@@ -315,6 +506,14 @@ describe("Okou App session authority", () => {
     expect(await session.getToken({ forceRefresh: true })).toBe("same");
     expect(windows).toHaveLength(2);
     expect(completed).toEqual([]);
+    expect(refreshes[1]).toMatchObject({
+      phase: "completed",
+      identity: "initial",
+    });
+    expect(refreshes[3]).toMatchObject({
+      phase: "completed",
+      identity: "same",
+    });
     replies.push(Promise.resolve(null));
     expect(await session.getToken({ forceRefresh: true })).toBeNull();
     expect(session.getCachedToken()).toBeNull();

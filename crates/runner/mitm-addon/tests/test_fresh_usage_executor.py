@@ -1,7 +1,7 @@
 """Tests for the fresh usage executor fixture lifecycle."""
 
 from collections.abc import Callable
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Executor, Future
 from typing import Any
 from unittest.mock import Mock, patch
 
@@ -45,7 +45,7 @@ class _RecordingExecutor:
 
 def test_fresh_usage_executor_restores_and_shuts_down_after_flush_failure(tmp_path):
     original = usage.webhook.usage_executor
-    executors: list[ThreadPoolExecutor] = []
+    executors: list[Executor] = []
     enqueue = Mock(side_effect=RuntimeError("flush failed"))
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
 
@@ -77,7 +77,7 @@ def test_fresh_usage_executor_restores_and_shuts_down_after_flush_failure(tmp_pa
 def test_fresh_usage_executor_uses_owned_executor_when_global_changes(tmp_path, mitm_ctx):
     original = usage.webhook.usage_executor
     replacement = _RecordingExecutor()
-    executors: list[ThreadPoolExecutor] = []
+    executors: list[Executor] = []
     server = UsageWebhookServer()
 
     with (

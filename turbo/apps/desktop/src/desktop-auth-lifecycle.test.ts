@@ -121,6 +121,7 @@ async function desktop(selectedDriver: ComputerUseDriverId) {
       windows.push(request);
       return await (replies.shift()?.promise ?? Promise.resolve(null));
     },
+    onBackgroundRefresh: (event) => runtime.handleBackgroundAuthRefresh(event),
     onChange: () => {
       notifications++;
       // Bound only the old-code reproduction. Production has no depth cap.
@@ -132,11 +133,7 @@ async function desktop(selectedDriver: ComputerUseDriverId) {
       const authority = session.getAuthority();
       if (authority !== lastAuthority) {
         lastAuthority = authority;
-        if (
-          selection.requestedDriver().id === "cua" ||
-          driver.selectedDriver.id === "cua"
-        )
-          own(runtime.stopForAuthChange());
+        own(runtime.stopForAuthChange());
       }
       tray.refreshAuth();
       developer.requestRefresh();
@@ -185,6 +182,7 @@ async function desktop(selectedDriver: ComputerUseDriverId) {
     }),
     nativeBlockReason: (selected) => selection.blockReason(selected),
     getAuthState: () => own(session.getAuthState()),
+    getAuthAuthority: () => session.getAuthority(),
     setHostRuntimeOnline: () => {},
   });
   const preferences = new DesktopComputerUseDriverPreferences(() => file);
@@ -404,6 +402,17 @@ describe.each(["okou", "cua"] as const)(
       const release = deferred<void>();
       onTestFinished(() => release.resolve());
       server.use(
+        // Token rotation preserves the server-verified account and workspace.
+        http.get(`${api}/api/auth/me`, () =>
+          HttpResponse.json({
+            userId: "Bearer expired",
+            email: "fixture@example.test",
+            orgId: "org-Bearer expired",
+          }),
+        ),
+        http.get(`${api}/api/org`, () =>
+          HttpResponse.json({ id: "org-Bearer expired", name: "Workspace" }),
+        ),
         http.get(
           `${api}/api/protected`,
           ({ request }) =>

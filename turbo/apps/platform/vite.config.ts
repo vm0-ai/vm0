@@ -17,6 +17,7 @@ import {
   singleWorkerJavaScriptBundlePlugin,
 } from "./scripts/single-bundle.ts";
 import { workerDomGlobalsPlugin } from "./scripts/worker-dom-globals.ts";
+import { SENTRY_APPLICATION_KEY } from "./src/lib/sentry-application-key.ts";
 
 const APP_ASSET_BASE = "https://static.okou.io/okou-app/";
 const APP_GIT_COMMIT_SHA = process.env.OKOU_APP_GIT_COMMIT_SHA ?? "";
@@ -85,6 +86,7 @@ export default defineConfig(({ command }) => ({
     // Sentry source map upload (production builds only)
     process.env.SENTRY_AUTH_TOKEN &&
       sentryVitePlugin({
+        applicationKey: SENTRY_APPLICATION_KEY,
         org: process.env.SENTRY_ORG,
         project: process.env.SENTRY_PROJECT,
         authToken: process.env.SENTRY_AUTH_TOKEN,

@@ -889,6 +889,68 @@ describe("Managed Intro Video Agent", () => {
     },
   );
 
+  it.each([
+    {
+      name: "conflicting session",
+      data: { session_id: "another-session", video_id: VIDEO_ID },
+      notice: "different Video Agent session",
+    },
+    {
+      name: "malformed session",
+      data: { video_id: VIDEO_ID },
+      notice: "invalid Video Agent session",
+    },
+  ])(
+    "resumes video discovery after rejecting a $name response",
+    async ({ data, notice }) => {
+      const f = await fixture();
+      const provider = mockProvider();
+      const body = request();
+      expect((await submit(f, body)).status).toBe(202);
+      provider.sessionStatus = "completed";
+      provider.videoId = VIDEO_ID;
+      provider.videoStatus = "completed";
+      server.use(
+        http.get(
+          `${HEYGEN_CREATE_URL}/${SESSION_ID}`,
+          () => {
+            return HttpResponse.json({
+              data: { ...data, status: "completed" },
+            });
+          },
+          { once: true },
+        ),
+      );
+
+      await expect(status(f, body.requestId)).resolves.toMatchObject({
+        status: "running",
+        sessionId: SESSION_ID,
+        videoId: null,
+        notice: expect.stringContaining(notice),
+      });
+      expect(provider.videoRequests).toBe(0);
+      expect(provider.videoDownloads).toBe(0);
+      await expect(credits(f)).resolves.toBe(10_000);
+
+      const completed = await status(f, body.requestId);
+      expect(completed).toMatchObject({
+        status: "completed",
+        sessionId: SESSION_ID,
+        videoId: VIDEO_ID,
+        contentType: "video/mp4",
+        size: VIDEO_BYTES.byteLength,
+        creditsCharged: 610,
+      });
+      expect(completed.url).toBeDefined();
+      expect(completed.url).not.toBe(VIDEO_URL);
+      await expect(status(f, body.requestId)).resolves.toStrictEqual(completed);
+      expect(provider.submissions).toHaveLength(1);
+      expect(provider.videoRequests).toBe(1);
+      expect(provider.videoDownloads).toBe(1);
+      await expect(credits(f)).resolves.toBe(9390);
+    },
+  );
+
   it("keeps a conflicting video response blocked until its identity matches", async () => {
     const f = await fixture();
     const provider = mockProvider();

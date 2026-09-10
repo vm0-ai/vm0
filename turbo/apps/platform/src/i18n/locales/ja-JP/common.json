@@ -598,8 +598,6 @@
       "category": "テンプレートカテゴリ",
       "chooseVoice": "{{title}}の音声を選択",
       "creativeVideo": "クリエイティブ動画",
-      "explainerUnavailable": "この動画テンプレートは現在利用できません。削除してメッセージを送信してください。",
-      "explainerVideo": "解説動画",
       "filters": {
         "age": "年齢",
         "all": "すべて",
@@ -621,6 +619,8 @@
       "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} 枚",
       "importedSlides_other": "{{count}} 枚",
+      "introVideo": "イントロ動画",
+      "introVideoUnavailable": "この動画テンプレートは現在利用できません。削除してメッセージを送信してください。",
       "multiAccent": "マルチアクセント",
       "needPro": "Pro が必要",
       "nextSlide": "次のスライドをプレビューする",
@@ -2026,20 +2026,6 @@
       },
       "runCancelled": "考えの途中で一時停止しました。いつでも元に戻してください。"
     },
-    "explainerVideo": {
-      "autoVoiceDescription": "コンテンツに合う音声を選びます。",
-      "avatarVoice": "アバターの音声",
-      "changeAvatar": "アバターを変更",
-      "chooseStyle": "スタイルを選択",
-      "chooseStyleAndVoice": "スタイルと音声を選択してください。",
-      "noMatches": "見つかりませんでした。検索条件やカテゴリを変更してください。",
-      "ready": "準備ができました。チャットにコンテンツを追加してください。",
-      "searchAvatars": "アバターを検索",
-      "searchStyles": "スタイルを検索",
-      "settings": "解説動画の設定",
-      "style": "スタイル",
-      "useSelection": "この設定を使用"
-    },
     "feedback": {
       "emailDraftDescription": "メールの下書き (メールの下書き ID: {{id}})",
       "partHeading": "返信のこの部分に関するフィードバック:",
@@ -2083,6 +2069,20 @@
       },
       "footer": {
         "cancel": "キャンセル"
+      },
+      "picker": {
+        "autoVoiceDescription": "コンテンツに合う音声を選びます。",
+        "avatarVoice": "アバターの音声",
+        "changeAvatar": "アバターを変更",
+        "chooseStyle": "スタイルを選択",
+        "chooseStyleAndVoice": "スタイルと音声を選択してください。",
+        "noMatches": "見つかりませんでした。検索条件やカテゴリを変更してください。",
+        "ready": "準備ができました。チャットにコンテンツを追加してください。",
+        "searchAvatars": "アバターを検索",
+        "searchStyles": "スタイルを検索",
+        "settings": "イントロ動画の設定",
+        "style": "スタイル",
+        "useSelection": "この設定を使用"
       },
       "style": {
         "auto": "Okou におまかせ",

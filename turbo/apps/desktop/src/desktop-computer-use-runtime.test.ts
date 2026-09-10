@@ -1,4 +1,5 @@
 import { ComputerUseDriverController } from "./computer-use-driver";
+import { ComputerUseRuntimeController } from "./computer-use-runtime-controller";
 import { createComputerUseNativeBackend } from "./computer-use-native";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
@@ -21,9 +22,12 @@ const startUrl = `${api}/api/computer-use/hosts/start`;
 const permissions = { accessibility: true, screenRecording: true };
 const server = setupServer();
 const runtimes: ComputerUseHostRuntime[] = [];
+const controllers: ComputerUseRuntimeController[] = [];
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(async () => {
+  for (const controller of controllers.splice(0))
+    await controller.stopForQuit();
   for (const runtime of runtimes.splice(0)) await runtime.stop();
   server.resetHandlers();
 });
@@ -42,6 +46,9 @@ function createDesktop() {
   const windows: DesktopAuthWindowRequest[] = [];
   const replies: Promise<string | null>[] = [];
   const requests: Request[] = [];
+  const cleanup: Promise<void>[] = [];
+  let controller: ComputerUseRuntimeController | null = null;
+  let lastAuthority: object | null = null;
   const addClientHeaders = createDesktopClientHeaderInjector({
     clientVersion: "1.2.3",
   });
@@ -56,6 +63,15 @@ function createDesktop() {
       windows.push(request);
       return await (replies.shift() ?? Promise.resolve(null));
     },
+    onChange: () => {
+      const authority = authSession.getAuthority();
+      if (lastAuthority !== authority) {
+        lastAuthority = authority;
+        if (controller) cleanup.push(controller.stopForAuthChange());
+      }
+    },
+    onBackgroundRefresh: (event) =>
+      controller?.handleBackgroundAuthRefresh(event),
   });
   server.use(
     http.all(`${api}/*`, ({ request }) => {
@@ -78,6 +94,7 @@ function createDesktop() {
   );
   function createRuntime(
     options: {
+      refreshRegistrationAuth?: boolean;
       platformUrl?: URL;
       getPermissions?: () => Promise<ComputerUsePermissionState>;
     } = {},
@@ -86,6 +103,7 @@ function createDesktop() {
     // the runtime and auth session real so an alternate request policy fails.
     const runtime = createDesktopComputerUseHostRuntime(
       {
+        refreshRegistrationAuth: options.refreshRegistrationAuth,
         platformUrl: options.platformUrl ?? config.platformUrl,
         installationId: "00000000-0000-4000-8000-000000000001",
         hostName: "test-host",
@@ -112,6 +130,20 @@ function createDesktop() {
     replies,
     requests,
     createRuntime,
+    createController: () => {
+      controller = new ComputerUseRuntimeController({
+        createRuntime,
+        refreshPermissions: async () => permissions,
+        getAuthState: () => authSession.getAuthState(),
+        getAuthAuthority: () => authSession.getAuthority(),
+        setHostRuntimeOnline: () => {},
+      });
+      controllers.push(controller);
+      return controller;
+    },
+    settleCleanup: async () => {
+      while (cleanup.length) await Promise.all(cleanup.splice(0));
+    },
   };
 }
 
@@ -165,6 +197,7 @@ describe("production Okou Computer Use session wiring", () => {
     "bounds a 401 refresh delivering %s without a cookie request or probe bypass",
     async (refreshed) => {
       const desktop = createDesktop();
+      const controller = desktop.createController();
       desktop.replies.push(
         Promise.resolve("expired"),
         Promise.resolve(refreshed),
@@ -172,6 +205,16 @@ describe("production Okou Computer Use session wiring", () => {
       await desktop.authSession.getToken();
       const starts: Request[] = [];
       server.use(
+        http.get(`${api}/api/auth/me`, ({ request }) => {
+          desktop.requests.push(request);
+          return request.headers.get("authorization") === "Bearer rejected"
+            ? new HttpResponse(null, { status: 401 })
+            : HttpResponse.json({
+                userId: "app-user",
+                email: "app@example.test",
+                orgId: "app-org",
+              });
+        }),
         http.post(startUrl, ({ request }) => {
           starts.push(request);
           return request.headers.get("authorization") === "Bearer fresh"
@@ -179,16 +222,19 @@ describe("production Okou Computer Use session wiring", () => {
             : new HttpResponse(null, { status: 401 });
         }),
       );
-      const runtime = desktop.createRuntime();
-      await runtime.start();
-      expect(runtime.getState().status).toBe(
-        refreshed === "fresh" ? "online" : "unauthenticated",
-      );
+      await controller.start();
+      await expect
+        .poll(() => controller.getHostState().status)
+        .toBe(refreshed === "fresh" ? "online" : "offline");
+      expect(await desktop.authSession.getAuthState()).toMatchObject({
+        status: refreshed === "fresh" ? "signed_in" : "signed_out",
+      });
+      await desktop.settleCleanup();
       expect(
         starts.map((request) => request.headers.get("authorization")),
       ).toEqual(
-        refreshed
-          ? ["Bearer expired", `Bearer ${refreshed}`]
+        refreshed === "fresh"
+          ? ["Bearer expired", "Bearer fresh"]
           : ["Bearer expired"],
       );
       for (const request of [...desktop.requests, ...starts])
@@ -204,6 +250,67 @@ describe("production Okou Computer Use session wiring", () => {
       ]);
     },
   );
+
+  it("bounds automatic recovery when host registration rejects a newly validated bearer", async () => {
+    const desktop = createDesktop();
+    const controller = desktop.createController();
+    const unexpectedRefresh = deferred<string | null>();
+    // A third window is held only to bound the old-code reproduction. Both
+    // supplied bearers pass the real identity validation HTTP contract.
+    desktop.replies.push(
+      Promise.resolve("expired"),
+      Promise.resolve("fresh"),
+      unexpectedRefresh.promise,
+    );
+    await desktop.authSession.getToken();
+    const starts: Request[] = [];
+    server.use(
+      http.post(startUrl, ({ request }) => {
+        starts.push(request);
+        return request.headers.get("authorization") === "Bearer retry"
+          ? hostStarted()
+          : new HttpResponse(null, { status: 401 });
+      }),
+    );
+    try {
+      await controller.start();
+      await expect
+        .poll(() => ({
+          status: controller.getHostState().status,
+          authWindows: desktop.windows.length,
+        }))
+        .toEqual({ status: "error", authWindows: 2 });
+      expect(
+        starts.map((request) => request.headers.get("authorization")),
+      ).toEqual(["Bearer expired", "Bearer fresh"]);
+      expect(controller.getHostState().hostId).toBeNull();
+
+      // Only an explicit Start may spend a new refresh budget after failure.
+      unexpectedRefresh.resolve("retry");
+      await controller.start({ userInitiated: true });
+      await expect.poll(() => controller.getHostState().status).toBe("online");
+      expect(desktop.windows).toHaveLength(3);
+      expect(
+        starts.map((request) => request.headers.get("authorization")),
+      ).toEqual([
+        "Bearer expired",
+        "Bearer fresh",
+        "Bearer fresh",
+        "Bearer retry",
+      ]);
+      expect(await desktop.authSession.getAuthState()).toMatchObject({
+        status: "signed_in",
+      });
+      expect(controller.getHostState().hostId).toBe("host-1");
+      for (const request of [...desktop.requests, ...starts])
+        expectAppRequest(request);
+    } finally {
+      desktop.authSession.signOut();
+      unexpectedRefresh.resolve(null);
+      await controller.stopForQuit();
+      await desktop.settleCleanup();
+    }
+  });
 
   it("refuses redirects from host registration without exposing credentials to the target", async () => {
     const desktop = createDesktop();

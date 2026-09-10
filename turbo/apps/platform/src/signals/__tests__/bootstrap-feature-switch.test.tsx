@@ -28,9 +28,9 @@ async function openTemplates() {
   await screen.findByRole("dialog");
 }
 
-function explainerTab() {
+function introVideoTab() {
   return queryAllByRoleFast("tab").find((tab) => {
-    return tab.textContent?.trim() === "Explainer video";
+    return tab.textContent?.trim() === "Intro video";
   });
 }
 
@@ -49,7 +49,7 @@ test("A signed-in workspace receives its enabled features", async () => {
   await screen.findByRole("textbox", { name: "Message" });
   await openTemplates();
   await waitFor(() => {
-    expect(explainerTab()).toBeVisible();
+    expect(introVideoTab()).toBeVisible();
   });
 });
 
@@ -83,13 +83,13 @@ async function setupModelPickerRolloutPage(args: {
   });
 
   await screen.findByRole("textbox", { name: "Message" });
-  // The explainer tab is visible only after the workspace feature response
+  // The intro video tab is visible only after the workspace feature response
   // has been applied, so it marks the end of feature hydration.
   const user = userEvent.setup({ delay: null });
   await user.click(await screen.findByLabelText("Template"));
   await screen.findByRole("dialog");
   await waitFor(() => {
-    expect(explainerTab()).toBeVisible();
+    expect(introVideoTab()).toBeVisible();
   });
   await user.keyboard("{Escape}");
   await waitFor(() => {
@@ -242,7 +242,7 @@ test("A feature response is discarded after identity changes", async () => {
   });
   await screen.findByRole("textbox", { name: "Message" });
   await openTemplates();
-  expect(explainerTab()).toBeUndefined();
+  expect(introVideoTab()).toBeUndefined();
   await requestStarted.promise;
 
   mockClerkSessionTransitioning(true);
@@ -250,7 +250,7 @@ test("A feature response is discarded after identity changes", async () => {
   releaseResponse.resolve(undefined);
   mockClerkSessionTransitioning(false);
 
-  expect(explainerTab()).toBeUndefined();
+  expect(introVideoTab()).toBeUndefined();
 });
 
 test("The same identity can finish feature loading through an auth refresh", async () => {
@@ -277,13 +277,13 @@ test("The same identity can finish feature loading through an auth refresh", asy
   });
   await screen.findByRole("textbox", { name: "Message" });
   await openTemplates();
-  expect(explainerTab()).toBeUndefined();
+  expect(introVideoTab()).toBeUndefined();
   await requestStarted.promise;
 
   emitMockedClerkEvent();
   releaseResponse.resolve(undefined);
 
   await waitFor(() => {
-    expect(explainerTab()).toBeVisible();
+    expect(introVideoTab()).toBeVisible();
   });
 });

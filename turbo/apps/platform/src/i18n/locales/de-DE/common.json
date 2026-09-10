@@ -599,8 +599,6 @@
       "category": "Vorlagenkategorie",
       "chooseVoice": "Stimme für {{title}} auswählen",
       "creativeVideo": "Kreatives Video",
-      "explainerUnavailable": "Diese Videovorlage ist nicht mehr verfügbar. Entferne sie, um deine Nachricht zu senden.",
-      "explainerVideo": "Erklärvideo",
       "filters": {
         "age": "Alter",
         "all": "Alle",
@@ -622,6 +620,8 @@
       "importDeckHint": "(.pptx, .ppt, .pdf)",
       "importedSlides_one": "{{count}} Folie",
       "importedSlides_other": "{{count}} Folien",
+      "introVideo": "Intro-Video",
+      "introVideoUnavailable": "Diese Videovorlage ist nicht mehr verfügbar. Entferne sie, um deine Nachricht zu senden.",
       "multiAccent": "Multi-Akzent",
       "needPro": "Pro erforderlich",
       "nextSlide": "Vorschau der nächsten Folie",
@@ -2033,20 +2033,6 @@
       },
       "runCancelled": "Mitten im Gedanken pausiert – machen Sie jederzeit weiter."
     },
-    "explainerVideo": {
-      "autoVoiceDescription": "Finde eine Stimme, die zu deinem Inhalt passt.",
-      "avatarVoice": "Stimme des Avatars",
-      "changeAvatar": "Avatar ändern",
-      "chooseStyle": "Stil auswählen",
-      "chooseStyleAndVoice": "Wähle einen Stil und eine Stimme.",
-      "noMatches": "Keine Treffer. Versuche eine andere Suche oder Kategorie.",
-      "ready": "Bereit. Füge deinen Inhalt im Chat hinzu.",
-      "searchAvatars": "Avatare suchen",
-      "searchStyles": "Stile suchen",
-      "settings": "Einstellungen für Erklärvideos",
-      "style": "Stil",
-      "useSelection": "Auswahl verwenden"
-    },
     "feedback": {
       "emailDraftDescription": "ein E-Mail-Entwurf (E-Mail-Entwurfs-ID: {{id}})",
       "partHeading": "Feedback zu diesem Teil Ihrer Antwort:",
@@ -2090,6 +2076,20 @@
       },
       "footer": {
         "cancel": "Abbrechen"
+      },
+      "picker": {
+        "autoVoiceDescription": "Finde eine Stimme, die zu deinem Inhalt passt.",
+        "avatarVoice": "Stimme des Avatars",
+        "changeAvatar": "Avatar ändern",
+        "chooseStyle": "Stil auswählen",
+        "chooseStyleAndVoice": "Wähle einen Stil und eine Stimme.",
+        "noMatches": "Keine Treffer. Versuche eine andere Suche oder Kategorie.",
+        "ready": "Bereit. Füge deinen Inhalt im Chat hinzu.",
+        "searchAvatars": "Avatare suchen",
+        "searchStyles": "Stile suchen",
+        "settings": "Einstellungen für Intro-Videos",
+        "style": "Stil",
+        "useSelection": "Auswahl verwenden"
       },
       "style": {
         "auto": "Okou wählen lassen",

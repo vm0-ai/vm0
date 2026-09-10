@@ -7,6 +7,12 @@ import { and, asc, eq, getTableColumns, inArray, lte, sql } from "drizzle-orm";
 import { eventConsumerPayload$ } from "../../lib/event-consumer/route";
 import { logger } from "../../lib/log";
 import {
+  isForeignKeyViolation,
+  isLockNotAvailable,
+  isQueryCanceled,
+  safeSqlStateCode,
+} from "../../lib/pg-errors";
+import {
   ACTIVITY_RETENTION_MS,
   activityRevision,
   mergeActivity,
@@ -17,6 +23,47 @@ import { chatThreadOrganizationCondition } from "./chat-thread-organization.serv
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 
 const log = logger("api:run-activity");
+/** The snapshot row disappeared between the upsert and the locking read. */
+const SNAPSHOT_MISSING = "Activity snapshot missing after insert";
+/**
+ * Where the transaction stood when it failed. Finite and content-free. `begin`
+ * covers connection acquisition and the transaction's own timeout statements,
+ * which run before any of this command's work.
+ */
+type CaptureStage = "begin" | "admission" | "lock" | "persist" | "commit";
+/**
+ * Failure classes worth separating in production. `contended` and `run_missing`
+ * are expected outcomes of concurrent delivery, not defects; everything else
+ * keeps an actionable level and carries its SQLSTATE class code.
+ */
+type CaptureFailure =
+  | "contended"
+  | "run_missing"
+  | "interrupted"
+  | "snapshot_missing"
+  | "write_failed";
+
+function captureFailure(error: unknown): CaptureFailure {
+  if (isLockNotAvailable(error)) {
+    return "contended";
+  }
+  if (isForeignKeyViolation(error)) {
+    return "run_missing";
+  }
+  if (isQueryCanceled(error)) {
+    return "interrupted";
+  }
+  if (error instanceof Error && error.message === SNAPSHOT_MISSING) {
+    return "snapshot_missing";
+  }
+  return "write_failed";
+}
+
+/** Concurrent delivery for one run is normal; only real faults need a level. */
+function isExpectedFailure(failure: CaptureFailure): boolean {
+  return failure === "contended" || failure === "run_missing";
+}
+
 export const activityClock = sql`(statement_timestamp() AT TIME ZONE 'UTC')`;
 const activityExpiry = sql`${activityClock} + interval '24 hours'`;
 export type ActivityTx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -85,7 +132,7 @@ export async function lockActivitySnapshot(tx: ActivityTx, runId: string) {
     .where(eq(runActivitySnapshots.runId, runId))
     .for("update");
   if (!row) {
-    throw new Error("Activity snapshot missing after insert");
+    throw new Error(SNAPSHOT_MISSING);
   }
   return row;
 }
@@ -94,8 +141,10 @@ export const captureRunActivity$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const payload = get(eventConsumerPayload$);
     const db = set(writeDb$);
+    let stage: CaptureStage = "begin";
     const outcome = await settleIncludingAbort(
       activityTransaction(db, async (tx) => {
+        stage = "admission";
         const [run] = await tx
           .select({
             threadId: agentRuns.chatThreadId,
@@ -126,6 +175,7 @@ export const captureRunActivity$ = command(
           return "irrelevant";
         }
         signal.throwIfAborted();
+        stage = "lock";
         const row = await lockActivitySnapshot(tx, payload.runId);
         const expired = row.expiresAt <= row.clock;
         const entries = mergeActivity(
@@ -136,6 +186,7 @@ export const captureRunActivity$ = command(
         if (!expired && revision === row.activityRevision) {
           return "unchanged";
         }
+        stage = "persist";
         await tx
           .update(runActivitySnapshots)
           .set({
@@ -156,6 +207,7 @@ export const captureRunActivity$ = command(
               : {}),
           })
           .where(eq(runActivitySnapshots.runId, payload.runId));
+        stage = "commit";
         return "written";
       }),
     );
@@ -166,13 +218,26 @@ export const captureRunActivity$ = command(
     ) {
       return { status: 200 };
     }
+    if (outcome.ok) {
+      log.info("Activity snapshot capture", {
+        runId: payload.runId,
+        outcome: outcome.value,
+        eventCount: payload.events.length,
+      });
+      return { status: 200 };
+    }
     // Never attach a database error: driver messages can include bound evidence.
+    // The SQLSTATE class code and the stage carry no content and stay.
+    const failure = captureFailure(outcome.error);
+    const errorCode = safeSqlStateCode(outcome.error);
     const capture = {
       runId: payload.runId,
-      outcome: outcome.ok ? outcome.value : "write_failed",
+      outcome: failure,
       eventCount: payload.events.length,
+      stage,
+      ...(errorCode === undefined ? {} : { errorCode }),
     };
-    if (outcome.ok) {
+    if (isExpectedFailure(failure)) {
       log.info("Activity snapshot capture", capture);
     } else {
       log.warn("Activity snapshot capture", capture);
@@ -223,15 +288,20 @@ export const cleanupExpiredRunActivity$ = command(
       }),
     );
     signal.throwIfAborted();
-    const cleanup = {
-      outcome: outcome.ok ? "success" : "failed",
-      removed: outcome.ok ? outcome.value : 0,
-      retentionMs: ACTIVITY_RETENTION_MS,
-    };
     if (outcome.ok) {
-      log.info("Activity snapshot cleanup", cleanup);
-    } else {
-      log.warn("Activity snapshot cleanup", cleanup);
+      log.info("Activity snapshot cleanup", {
+        outcome: "success",
+        removed: outcome.value,
+        retentionMs: ACTIVITY_RETENTION_MS,
+      });
+      return;
     }
+    const errorCode = safeSqlStateCode(outcome.error);
+    log.warn("Activity snapshot cleanup", {
+      outcome: "failed",
+      removed: 0,
+      retentionMs: ACTIVITY_RETENTION_MS,
+      ...(errorCode === undefined ? {} : { errorCode }),
+    });
   },
 );
