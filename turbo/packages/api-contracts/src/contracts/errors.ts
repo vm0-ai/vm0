@@ -238,6 +238,14 @@ export const CHAT_RUN_TRANSIENT_ERROR_MESSAGE =
 export const CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE =
   "This run reached its execution time limit.";
 
+/**
+ * A provider content-safety rejection is deterministic for the same input, so
+ * this copy must not invite a retry. It names the actions the user can take
+ * without describing or attributing the rejected content.
+ */
+export const CHAT_RUN_CONTENT_POLICY_REJECTED_MESSAGE =
+  "The model provider rejected this request under its content safety policy. Retrying the same input will fail again. Try rephrasing the request, starting a new conversation, or switching to a different model.";
+
 const AGENT_EXECUTION_TIMEOUT_RUN_ERROR =
   /^Agent execution timed out after [1-9]\d* seconds$/u;
 
@@ -685,6 +693,7 @@ export function isGenericRunErrorForDisplay(errorMessage: string): boolean {
 }
 
 type StructuredRunErrorBehavior =
+  | "content-policy"
   | "credential"
   | "execution-timeout"
   | "generic"
@@ -712,11 +721,26 @@ const STRUCTURED_RUN_ERROR_BEHAVIOR: Record<
   provider_stream_timeout: "generic",
   provider_server_error: "generic",
   response_connection_lost: "generic",
-  safety_policy_refusal: "generic",
+  safety_policy_refusal: "content-policy",
   reconnect_required: "reconnect",
   unsupported_model: "passthrough",
   usage_limit: "passthrough",
 };
+
+function formatReconnectRunError(
+  recovery: ClaudeCodeCredentialRecovery | undefined,
+): string {
+  if (recovery?.modelProviderType === "codex-oauth-token") {
+    return CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE;
+  }
+  if (recovery?.modelProviderType === "claude-code-oauth-token") {
+    return (
+      formatClaudeCodeCredentialRecoveryMessage(recovery) ??
+      CHAT_RUN_TRANSIENT_ERROR_MESSAGE
+    );
+  }
+  return CHAT_RUN_TRANSIENT_ERROR_MESSAGE;
+}
 
 function formatStructuredRunError(params: {
   readonly failureReason: RunFailureReasonToken;
@@ -736,6 +760,9 @@ function formatStructuredRunError(params: {
     case "execution-timeout": {
       return CHAT_RUN_EXECUTION_TIMEOUT_MESSAGE;
     }
+    case "content-policy": {
+      return CHAT_RUN_CONTENT_POLICY_REJECTED_MESSAGE;
+    }
     case "insufficient-credits": {
       return "insufficient_credits";
     }
@@ -749,23 +776,7 @@ function formatStructuredRunError(params: {
       return recoveryMessage ?? CHAT_RUN_TRANSIENT_ERROR_MESSAGE;
     }
     case "reconnect": {
-      if (
-        params.claudeCodeCredentialRecovery?.modelProviderType ===
-        "codex-oauth-token"
-      ) {
-        return CODEX_OAUTH_RECONNECT_REQUIRED_MESSAGE;
-      }
-      if (
-        params.claudeCodeCredentialRecovery?.modelProviderType ===
-        "claude-code-oauth-token"
-      ) {
-        return (
-          formatClaudeCodeCredentialRecoveryMessage(
-            params.claudeCodeCredentialRecovery,
-          ) ?? CHAT_RUN_TRANSIENT_ERROR_MESSAGE
-        );
-      }
-      return CHAT_RUN_TRANSIENT_ERROR_MESSAGE;
+      return formatReconnectRunError(params.claudeCodeCredentialRecovery);
     }
     case "terms": {
       return withOptionalActionUrl(

@@ -54,6 +54,14 @@ async fn codex_app_server_classifies_supported_structured_errors()
             scenario: "runtime-turn-failed-unknown",
             expected_reason: None,
         },
+        StructuredErrorCase {
+            scenario: "runtime-turn-failed-content-policy-rejection",
+            expected_reason: Some(FailureReason::SafetyPolicyRefusal),
+        },
+        StructuredErrorCase {
+            scenario: "runtime-turn-failed-invalid-request-format",
+            expected_reason: None,
+        },
     ];
 
     for (index, case) in cases.iter().enumerate() {
