@@ -43,6 +43,10 @@ import { formatUsd } from "../../../../i18n/format.ts";
 const cardBorder = { border: "0.7px solid hsl(var(--gray-400))" } as const;
 
 const ROW_GRID = "grid grid-cols-[1fr_8rem_6rem_3rem] gap-x-6 items-center";
+const STATUS_BADGE = badgeVariants({
+  className:
+    "inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground",
+});
 
 function formatDate(unixTimestamp: number): string {
   return new Date(unixTimestamp * 1000).toLocaleDateString(currentLocale());
@@ -368,12 +372,7 @@ export function OrgInvoicesTab() {
                     {inv.number ?? inv.id}
                   </span>
                   {inv.status && (
-                    <span
-                      className={badgeVariants({
-                        className:
-                          "inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground",
-                      })}
-                    >
+                    <span className={STATUS_BADGE}>
                       <CircleCheck size={12} className="text-green-600" />
                       {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
                     </span>
