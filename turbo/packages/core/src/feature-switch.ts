@@ -45,6 +45,11 @@ export interface FeatureSwitchContext {
  * Registry of all feature switches
  */
 const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
+  [FeatureSwitchKey.WelcomeThread]: {
+    maintainer: "lancy@okou.ai",
+    description: "Manually create a welcome conversation with fixed examples",
+    enabled: false,
+  },
   [FeatureSwitchKey.ThreadActivitySummary]: {
     maintainer: "lancy@okou.ai",
     description:
