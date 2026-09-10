@@ -4039,7 +4039,6 @@
     },
     "apps/platform/src/views/okou-page/directed-shared.tsx": {
       "okou-app": 1,
-      "okou-nav": 1,
       "okou-viewport-shell": 1
     },
     "apps/platform/src/views/okou-page/ideation-page.tsx": {

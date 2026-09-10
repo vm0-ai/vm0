@@ -2,22 +2,18 @@ import type { ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
 import { Loader2 } from "lucide-react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { handleAccountAction$ } from "../../signals/okou-page/nav.ts";
 import { ProductBrandMark } from "../components/product-brand-mark.tsx";
 import { Link } from "../router/link.tsx";
 import { CreditPurchaseConfirmDialog } from "./components/org-manage/credit-purchase-confirm-dialog.tsx";
 import { SubscriptionPurchaseConfirmDialog } from "./components/org-manage/subscription-purchase-confirm-dialog.tsx";
 import { SettingsDialogMount } from "./components/settings/settings-dialog.tsx";
-import { AccountDropdown } from "./sidebar-account";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   colorTheme$,
   shellDocumentAttributesRef$,
 } from "../../signals/theme.ts";
-import { WorkspaceInset } from "./workspace-inset.tsx";
 
-export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
-  const onAccountAction = useSet(handleAccountAction$);
+export function StandaloneLayout({ children }: { children: ReactNode }) {
   const colorTheme = useGet(colorTheme$);
   const features = useGet(featureSwitch$);
   const gradientColorThemesEnabled =
@@ -27,20 +23,14 @@ export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
   return (
     <div
       ref={shellDocumentAttributesRef}
-      className="okou-app okou-viewport-shell flex w-full bg-background md:bg-sidebar"
+      className="okou-app okou-viewport-shell flex w-full flex-col bg-background"
       data-gradient-color-themes={gradientColorThemesEnabled || undefined}
       data-color-theme={gradientColorThemesEnabled ? colorTheme : undefined}
     >
       <SettingsDialogMount />
       <CreditPurchaseConfirmDialog />
       <SubscriptionPurchaseConfirmDialog />
-      <aside className="okou-nav hidden md:flex h-full w-[255px] shrink-0 flex-col bg-sidebar">
-        <div className="flex-1" />
-        <div className="p-2">
-          <AccountDropdown onAccountAction={onAccountAction} />
-        </div>
-      </aside>
-      <WorkspaceInset>{children}</WorkspaceInset>
+      {children}
     </div>
   );
 }
