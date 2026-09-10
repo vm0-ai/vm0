@@ -110,8 +110,11 @@ The `okou-card` selector and its consumers have been removed. This equivalent mi
 | Padding     | `px-2 py-0.5`                                      | One inset for every badge                                                                 |
 | Line height | `leading-snug`                                     | 1.375 of the badge's own font size, never an ancestor's                                   |
 | Layout      | `inline-flex items-center gap-1 align-middle`      | Icon and label share one row; `align-middle` applies where the badge is a real inline box |
+| Icon        | `[&>svg]:size-3`                                   | A direct child icon is 12px; call sites pass no size                                      |
 
 The badge owns geometry and nothing else. Typography and foreground stay with the caller, because a badge reads as secondary beside body text in one place and as the value itself in another; pass `text-xs font-medium text-muted-foreground` or let the badge inherit its context. Width constraints and flex behaviour (`max-w-full`, `break-all`, `min-w-0`, `shrink-0`) also stay with the caller.
+
+Tests scope badges through `data-slot="badge"`, which carries no styles. The icon rule and that slot follow shadcn's badge, which this package's components come from; the rest of shadcn's badge does not fit, because it bakes in `text-xs font-medium` that the diagnostic chips inherit from their row instead, and `whitespace-nowrap overflow-hidden` that would stop the long key/value chips from wrapping.
 
 Line height belongs to the badge because a font-size utility with an arbitrary value carries no paired line height. A badge that declared only `text-[11px]` therefore took its box from whatever `line-height` an ancestor happened to set: the same badge measured 22px, 26px, or 34px tall across four ancestors. It reuses the page-surface border tokens rather than declaring badge-specific aliases, so one hairline decision keeps one owner.
 

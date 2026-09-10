@@ -1114,7 +1114,6 @@ function MemberRow({
       <div>
         <Badge className="text-xs font-medium text-muted-foreground">
           <ShieldCheck
-            size={12}
             className={
               member.role === "admin"
                 ? "text-blue-500"
@@ -1513,7 +1512,7 @@ function PendingInvitationRow({
       )}
       <div>
         <Badge className="text-xs font-medium text-muted-foreground">
-          <Clock size={12} className="text-amber-500" />
+          <Clock className="text-amber-500" />
           {t(($) => {
             return $.settings.workspace.members.pending;
           })}
@@ -1671,7 +1670,7 @@ function MembershipRequestRow({
       )}
       <div>
         <Badge className="text-xs font-medium text-muted-foreground">
-          <UserPlus size={12} className="text-blue-500" />
+          <UserPlus className="text-blue-500" />
           {t(($) => {
             return $.settings.workspace.members.membershipRequest.role;
           })}

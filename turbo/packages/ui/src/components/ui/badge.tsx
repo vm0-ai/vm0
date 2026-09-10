@@ -17,9 +17,15 @@ import { cn } from "../../lib/utils";
  *
  * Typography and foreground stay with the caller, because a badge reads as
  * secondary beside body text in one place and as the value itself in another.
+ *
+ * The icon rule and the slot follow shadcn's badge, which this package's
+ * components come from. The rest of shadcn's badge does not fit: it bakes in
+ * `text-xs font-medium`, which the diagnostic chips inherit from their row
+ * instead, and `whitespace-nowrap overflow-hidden`, which would stop the long
+ * key/value chips from wrapping.
  */
 const badgeClassName =
-  "inline-flex items-center gap-1 rounded-md border-(length:--border-width-surface) border-solid border-surface-border bg-gray-0 px-2 py-0.5 align-middle leading-snug";
+  "inline-flex items-center gap-1 rounded-md border-(length:--border-width-surface) border-solid border-surface-border bg-gray-0 px-2 py-0.5 align-middle leading-snug [&>svg]:size-3";
 
 export type BadgeProps = useRender.ComponentProps<"span">;
 
@@ -27,7 +33,11 @@ export type BadgeProps = useRender.ComponentProps<"span">;
 export function Badge({ className, render, ref, ...props }: BadgeProps) {
   return useRender({
     defaultTagName: "span",
-    props: { ...props, className: cn(badgeClassName, className) },
+    props: {
+      "data-slot": "badge",
+      ...props,
+      className: cn(badgeClassName, className),
+    },
     ref,
     render,
     state: {},

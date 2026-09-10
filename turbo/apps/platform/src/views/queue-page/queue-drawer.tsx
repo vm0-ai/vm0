@@ -300,7 +300,7 @@ function UpgradeCard({
           {upgrade.targetLabel}
         </h3>
         <Badge className="text-xs font-medium text-muted-foreground">
-          <Crown size={12} className="text-amber-500" />
+          <Crown className="text-amber-500" />
           {t(($) => {
             return $.queue.upgrade.recommended;
           })}
@@ -497,7 +497,7 @@ function ConcurrencyPurchaseCard({
           })}
         </h3>
         <Badge className="text-xs font-medium text-muted-foreground">
-          <Crown size={12} className="text-amber-500" />
+          <Crown className="text-amber-500" />
           {t(($) => {
             return $.queue.purchase.addOn;
           })}

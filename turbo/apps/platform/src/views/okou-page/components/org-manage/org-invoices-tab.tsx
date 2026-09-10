@@ -371,7 +371,7 @@ export function OrgInvoicesTab() {
                   </span>
                   {inv.status && (
                     <Badge className="text-xs font-medium text-muted-foreground">
-                      <CircleCheck size={12} className="text-green-600" />
+                      <CircleCheck className="text-green-600" />
                       {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
                     </Badge>
                   )}
