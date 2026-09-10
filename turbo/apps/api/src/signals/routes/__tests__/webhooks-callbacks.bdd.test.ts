@@ -2442,10 +2442,17 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
         memory,
       };
     });
+    const networkLogs = [
+      {
+        timestamp: nowDate().toISOString(),
+        host: "telemetry-batch.example.test",
+      },
+    ];
     const body = {
       runId,
       systemLog: "synthetic system event",
       metrics,
+      networkLogs,
       sandboxOperations: [
         {
           ts: nowDate().toISOString(),
@@ -2470,6 +2477,11 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
         log: body.systemLog,
       }),
     ]);
+    expect(ingested.get("sandbox-telemetry-network")).toStrictEqual(
+      networkLogs.map(({ timestamp, ...networkLog }) => {
+        return { _time: timestamp, runId, userId: actor.userId, ...networkLog };
+      }),
+    );
     await flushWaitUntilForTest();
     expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
       "vm0-sandbox-op-log-dev",
@@ -2511,8 +2523,22 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     expect(ingested.get("sandbox-telemetry-system")).toStrictEqual([
       expect.objectContaining({ runId, log: body.systemLog }),
     ]);
+    expect(ingested.get("sandbox-telemetry-network")).toStrictEqual(
+      networkLogs.map(({ timestamp, ...networkLog }) => {
+        return { _time: timestamp, runId, userId: actor.userId, ...networkLog };
+      }),
+    );
     await flushWaitUntilForTest();
-    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalled();
+    expect(context.mocks.axiom.sdkIngest).toHaveBeenCalledWith(
+      "vm0-sandbox-op-log-dev",
+      [
+        expect.objectContaining({
+          run_id: runId,
+          op_type: "cli",
+          success: true,
+        }),
+      ],
+    );
   });
 
   it("keeps dedicated OOM evidence strict so an unusable payload is never acknowledged", async () => {

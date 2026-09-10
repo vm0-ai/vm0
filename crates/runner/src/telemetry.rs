@@ -11,7 +11,7 @@ use tokio::task::JoinHandle;
 use tracing::warn;
 
 use crate::duration::duration_ms;
-use crate::error::RunnerError;
+use crate::error::{ApiFailureKind, RunnerError};
 use crate::http::HttpClient;
 use crate::ids::RunId;
 use crate::resource_budget::ResourceBudget;
@@ -48,6 +48,29 @@ enum OomEvidenceUploadFailure {
 }
 
 impl OomEvidenceUploadFailure {
+    fn from_request_error(error: &RunnerError) -> Self {
+        match error {
+            RunnerError::ApiTransport(error) => Self::from_api_failure_kind(error.failure_kind),
+            _ => Self::Transport,
+        }
+    }
+
+    fn from_api_failure_kind(failure_kind: ApiFailureKind) -> Self {
+        if failure_kind == ApiFailureKind::Timeout {
+            Self::Timeout
+        } else {
+            Self::Transport
+        }
+    }
+
+    fn from_response_body_error(error: &reqwest::Error) -> Self {
+        if error.is_timeout() {
+            Self::Timeout
+        } else {
+            Self::Transport
+        }
+    }
+
     fn reason(self) -> &'static str {
         match self {
             Self::Timeout => "timeout",
@@ -458,7 +481,7 @@ impl JobTelemetry {
                 .await
             {
                 Ok(response) => response,
-                Err(_) => return Err(OomEvidenceUploadFailure::Transport),
+                Err(error) => return Err(OomEvidenceUploadFailure::from_request_error(&error)),
             };
             let status = response.status();
             if !status.is_success() {
@@ -474,13 +497,19 @@ impl JobTelemetry {
                         bytes.extend_from_slice(&chunk);
                     }
                     Ok(None) => break,
-                    Err(_) => return Err(OomEvidenceUploadFailure::Transport),
+                    Err(error) => {
+                        return Err(OomEvidenceUploadFailure::from_response_body_error(&error));
+                    }
                 }
             }
             let Ok(body) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
                 return Err(OomEvidenceUploadFailure::InvalidBody);
             };
-            if body.get("oomEvidenceVersion").and_then(serde_json::Value::as_u64) != Some(1) {
+            if body
+                .get("oomEvidenceVersion")
+                .and_then(serde_json::Value::as_u64)
+                != Some(1)
+            {
                 return Err(OomEvidenceUploadFailure::MissingAck);
             }
             Ok(())
@@ -901,6 +930,25 @@ mod tests {
             encoded_size: 16 * 1024,
             download_source: Some(ResumeSessionHistoryDownloadSource::ConfiguredPublicEndpoint),
         })
+    }
+
+    fn oom_evidence_for_test() -> guest_contracts::oom_evidence::OomEvidence {
+        serde_json::from_str(include_str!(
+            "../../guest-contracts/tests/fixtures/oom-evidence-v1.json"
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn oom_evidence_upload_failure_keeps_timeout_distinct_from_transport() {
+        assert_eq!(
+            OomEvidenceUploadFailure::from_api_failure_kind(crate::error::ApiFailureKind::Timeout,),
+            OomEvidenceUploadFailure::Timeout
+        );
+        assert_eq!(
+            OomEvidenceUploadFailure::from_api_failure_kind(crate::error::ApiFailureKind::Request,),
+            OomEvidenceUploadFailure::Transport
+        );
     }
 
     #[test]
@@ -1448,6 +1496,50 @@ mod tests {
         assert!(request.contains(r#""action_type":"storage_cache_background_fill_filled""#));
         assert!(request.contains(r#""duration_ms":42"#));
         assert!(request.contains(r#""success":true"#));
+    }
+
+    #[tokio::test]
+    async fn oom_evidence_upload_logs_http_status_without_sensitive_data() {
+        const RESPONSE_BODY_SECRET: &str = "oom-evidence-response-secret";
+        const SANDBOX_ID: &str = "oom-evidence-sandbox-secret";
+        let server = RawHttpTestServer::spawn(vec![RawHttpAction::Respond(json_response(
+            "400 Bad Request",
+            r#"{"error":"oom-evidence-response-secret"}"#,
+        ))])
+        .await;
+        let evidence = oom_evidence_for_test();
+        let telemetry = JobTelemetry::new(
+            http_client_for_api_url(&server.url()),
+            RunId::nil(),
+            "oom-evidence-token-secret".to_string(),
+            None,
+        );
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+
+        telemetry
+            .upload_oom_evidence(&evidence, SANDBOX_ID)
+            .with_subscriber(subscriber)
+            .await;
+        server.assert_finished().await;
+
+        let event = captured
+            .entries()
+            .into_iter()
+            .find(|event| {
+                event.fields.get("message").is_some_and(|message| {
+                    message == "guest oom evidence upload unacknowledged; host evidence retained"
+                })
+            })
+            .expect("oom evidence upload failure should be logged");
+        assert_eq!(event.level, Level::WARN);
+        assert_eq!(event.fields["reason"], "http_status");
+        assert_eq!(event.fields["http_status"], "Some(400)");
+        let event_debug = format!("{event:#?}");
+        assert!(!event_debug.contains(RESPONSE_BODY_SECRET));
+        assert!(!event_debug.contains(SANDBOX_ID));
+        assert!(!event_debug.contains("oom-evidence-token-secret"));
+        assert!(!event_debug.contains(&evidence.operation_id));
     }
 
     #[tokio::test]
