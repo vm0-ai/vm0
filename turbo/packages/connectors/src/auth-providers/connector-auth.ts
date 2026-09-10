@@ -1075,7 +1075,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
   refreshProviderEntry("procountor", "api-token", procountorProvider),
   externalCodeRefreshProviderEntry("playstation", "api", playstationProvider),
   authCodeRefreshProviderEntry("quickbooks", "oauth", quickbooksProvider),
-  refreshProviderEntry("ramp", "api-token", rampProvider),
+  authCodeRefreshTokenRevokeProviderEntry("ramp", "oauth", rampProvider),
   refreshProviderEntry("reckon", "oauth-refresh-token", reckonProvider),
   authCodeRefreshProviderEntry("reddit", "oauth", redditProvider),
   authCodeRefreshProviderEntry("sentry", "oauth", sentryProvider),

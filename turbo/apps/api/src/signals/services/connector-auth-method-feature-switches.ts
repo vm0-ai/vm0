@@ -32,7 +32,7 @@ const FEATURE_SWITCH_BY_AUTH_METHOD = Object.freeze<
   "netsuite\0api-token": FeatureSwitchKey.NetSuiteConnector,
   "paypal\0api-token": FeatureSwitchKey.PayPalConnector,
   "posthog\0oauth": FeatureSwitchKey.PosthogConnector,
-  "ramp\0api-token": FeatureSwitchKey.RampConnector,
+  "ramp\0oauth": FeatureSwitchKey.RampConnector,
   "reddit\0oauth": FeatureSwitchKey.RedditConnector,
   "spotify\0oauth": FeatureSwitchKey.SpotifyConnector,
   "stripe\0oauth": FeatureSwitchKey.StripeMarketplaceOAuthConnector,
