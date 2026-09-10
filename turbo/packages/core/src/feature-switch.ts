@@ -330,7 +330,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.IntroVideo]: {
     maintainer: "bingjie@okou.ai",
     description:
-      "Enable explainer videos with style, avatar, and voice selection in the template picker.",
+      "Enable intro videos with style, avatar, and voice selection in the template picker.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

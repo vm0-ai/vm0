@@ -17,6 +17,7 @@ members = [
     "guest-state-restore",
     "guest-write-file",
     "guest-workspace-mount",
+    "linux-mountinfo",
     "nbd-cow",
     "runner",
     "sandbox",
@@ -53,6 +54,7 @@ codex-mock = { path = "codex-mock" }
 guest-state-restore = { path = "guest-state-restore" }
 guest-write-file = { path = "guest-write-file" }
 guest-workspace-mount = { path = "guest-workspace-mount" }
+linux-mountinfo = { path = "linux-mountinfo" }
 nbd-cow = { path = "nbd-cow" }
 sandbox = { path = "sandbox" }
 sandbox-firecracker = { path = "sandbox-firecracker" }

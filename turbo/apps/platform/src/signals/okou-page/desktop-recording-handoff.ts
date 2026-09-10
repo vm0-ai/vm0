@@ -124,7 +124,7 @@ export const applyDesktopRecordingHandoff$ = command(
       // The normal composer owns the recording and synchronized clicks file.
       set(
         draft.setInput$,
-        "Create a polished explainer video from this desktop screen recording.",
+        "Create a polished intro video from this desktop screen recording.",
       );
     }
     set(updateSearchParams$, withoutHandoffParams(params));

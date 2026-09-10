@@ -141,7 +141,7 @@ test("Share selected message groups as a public conversation snapshot", async ()
   expect(within(answerGroup).getByRole("checkbox")).toBeChecked();
 });
 
-test("A folded multi-message answer counts as one shared selection", async () => {
+test("A folded multi-message answer shares only its visible message", async () => {
   const createRequests: string[][] = [];
   mockChatLifecycle(context, {
     threadId: THREAD_ID,
@@ -201,7 +201,7 @@ test("A folded multi-message answer counts as one shared selection", async () =>
 
   click(requiredButtonNamed("Share"));
   await screen.findByRole("textbox", { name: "Shared conversation link" });
-  expect(createRequests).toStrictEqual([[...GROUPED_ANSWER_EVENT_IDS]]);
+  expect(createRequests).toStrictEqual([[GROUPED_ANSWER_EVENT_IDS.at(-1)]]);
 });
 
 test("An oversized message group cannot be added to a shared snapshot", async () => {
