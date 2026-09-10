@@ -847,25 +847,15 @@ function discoveryCategoryCounts(
 }
 
 /**
- * The categories the filter offers. Category metadata describes the whole
- * catalog, so it survives a category-scoped response; grouping the returned
- * connectors is what a response without metadata leaves to work with.
+ * The categories the filter offers. They come from the catalog's own category
+ * list rather than from the connectors that came back, because inside a
+ * category the response holds only that category and a filter offering
+ * nothing else is a dead end.
  */
 function categoryFilterSections(
   categoryMetadata: PublicConnectorCatalogCategoryMetadata | undefined,
-  connectors: readonly PlatformConnectorCatalogStatusItem[],
-  otherCategoryLabel: string,
 ): ConnectorCategorySection<PlatformConnectorCatalogStatusItem>[] {
-  if (!categoryMetadata) {
-    return groupConnectorsByCategory(
-      connectors,
-      categoryMetadata,
-      otherCategoryLabel,
-    ).flatMap((group) => {
-      return group.sections;
-    });
-  }
-  return categoryMetadata.categories.map((category) => {
+  return (categoryMetadata?.categories ?? []).map((category) => {
     return {
       category: category.id,
       label: category.label,
@@ -901,7 +891,6 @@ interface ConnectorsBrowseModel {
  */
 function buildConnectorsBrowseModel({
   catalogItems,
-  allConnectors,
   categoryMetadata,
   categoryCounts,
   otherCategoryLabel,
@@ -914,7 +903,6 @@ function buildConnectorsBrowseModel({
   remoteAccessLabel,
 }: {
   readonly catalogItems: readonly PlatformConnectorCatalogStatusItem[];
-  readonly allConnectors: readonly PlatformConnectorCatalogStatusItem[];
   readonly categoryMetadata: PublicConnectorCatalogCategoryMetadata | undefined;
   readonly categoryCounts: Readonly<Record<string, number>> | undefined;
   readonly otherCategoryLabel: string;
@@ -955,11 +943,7 @@ function buildConnectorsBrowseModel({
   // The filter lists the catalog's categories, not the ones the current
   // response happens to contain: inside a category the response holds only
   // that category, and a filter that offers nothing else is a dead end.
-  const chipSections = categoryFilterSections(
-    categoryMetadata,
-    allConnectors,
-    otherCategoryLabel,
-  );
+  const chipSections = categoryFilterSections(categoryMetadata);
   if (sshAvailable) {
     chipSections.push({
       category: REMOTE_ACCESS_CATEGORY,
@@ -1568,7 +1552,6 @@ export function ConnectorsPage() {
   );
   const browse = buildConnectorsBrowseModel({
     catalogItems: filteredConnectors,
-    allConnectors,
     categoryMetadata,
     categoryCounts: discoveryCategoryCounts(catalogStatusLoadable),
     otherCategoryLabel,
