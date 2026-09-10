@@ -199,8 +199,9 @@ def _enqueue_during_shutdown_join(url: str) -> None:
 
     def on_outcome(outcome: usage.webhook.WebhookDeliveryOutcome) -> None:
         outcomes.append(("A", outcome))
-        assert joining.wait(timeout=5)
-        assert usage.webhook.enqueue_webhook_delivery(
+        shutdown_started = joining.wait(timeout=5)
+        assert shutdown_started
+        admitted = usage.webhook.enqueue_webhook_delivery(
             url,
             "tok",
             {"runId": "B", "events": []},
@@ -208,11 +209,13 @@ def _enqueue_during_shutdown_join(url: str) -> None:
             "usage_event",
             lambda value: outcomes.append(("B", value)),
         )
+        assert admitted
 
     with patch.object(threading.Thread, "join", observe_join):
-        assert usage.webhook.enqueue_webhook_delivery(
+        admitted = usage.webhook.enqueue_webhook_delivery(
             url, "tok", {"runId": "A", "events": []}, "", "usage_event", on_outcome
         )
+        assert admitted
         usage.webhook.shutdown_delivery_executor(wait=True)
     assert outcomes == [("A", "success"), ("B", "success")]
     assert usage.webhook.pending_delivery_payload_count_for_tests() == 0
