@@ -1,3 +1,4 @@
+import { compatibleGoogleAdsAttribution } from "@okouai/core/google-ads-attribution";
 import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
@@ -802,7 +803,9 @@ function checkoutSessionMetadata(args: {
     tier: args.tier,
     priceId: args.priceId,
   };
-  for (const [key, value] of Object.entries(args.adAttribution ?? {})) {
+  for (const [key, value] of Object.entries(
+    compatibleGoogleAdsAttribution(args.adAttribution ?? {}),
+  )) {
     if (value) {
       metadata[key] = value;
     }
@@ -827,11 +830,11 @@ function subscriptionWillCancel(subscription: StripeSubscription): boolean {
 function definedAttribution(
   attribution: Readonly<Record<string, string | undefined>> | undefined,
 ): Record<string, string> | undefined {
-  const entries = Object.entries(attribution ?? {}).filter(
-    (entry): entry is [string, string] => {
-      return entry[1] !== undefined;
-    },
-  );
+  const entries = Object.entries(
+    compatibleGoogleAdsAttribution(attribution ?? {}),
+  ).filter((entry): entry is [string, string] => {
+    return entry[1] !== undefined;
+  });
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 

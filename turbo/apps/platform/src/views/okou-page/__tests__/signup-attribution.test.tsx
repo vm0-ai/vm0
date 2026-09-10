@@ -308,9 +308,14 @@ test("A temporary attribution failure does not block Platform", async () => {
   ).resolves.toBeInTheDocument();
 });
 
-test.each(["url", "cookie"])(
-  "Okou campaign IDs from the %s reach signup in the stable API fields",
-  async (source) => {
+test.each([
+  { source: "url", brand: "okou" },
+  { source: "cookie", brand: "okou" },
+  { source: "url", brand: "vm0" },
+  { source: "cookie", brand: "vm0" },
+])(
+  "$brand campaign IDs from the $source reach signup in the stable API fields",
+  async ({ source, brand }) => {
     mockNow(NOW, context.signal);
     let recordedAttribution: AdAttributionMetadata | undefined;
     context.mocks.api(
@@ -320,8 +325,7 @@ test.each(["url", "cookie"])(
         return respond(200, { recorded: true });
       },
     );
-    const attribution =
-      "gclid=original-click&okou_campaign_id=24220469665&okou_ad_group_id=123456";
+    const attribution = `gclid=original-click&${brand}_campaign_id=24220469665&${brand}_ad_group_id=123456`;
     if (source === "cookie") {
       context.mocks.browser.cookie(
         `vm0_attribution=${encodeURIComponent(attribution)}`,
@@ -345,6 +349,8 @@ test.each(["url", "cookie"])(
       vm0_campaign_id: "24220469665",
       vm0_ad_group_id: "123456",
     });
+    expect(recordedAttribution).not.toHaveProperty("okou_campaign_id");
+    expect(recordedAttribution).not.toHaveProperty("okou_ad_group_id");
   },
 );
 
