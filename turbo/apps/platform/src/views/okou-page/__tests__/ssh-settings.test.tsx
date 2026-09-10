@@ -223,7 +223,7 @@ test("Connection warnings explain the failure and recover through notifications 
           ...base,
           learnedHostKey: {
             algorithm: "ssh-ed25519",
-            fingerprint: "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            fingerprint: "SHA256://////////////////////////////////////////8",
           },
         },
       ],

@@ -56,8 +56,11 @@ async fn credential_and_host_identity_failures_report_only_structured_codes() {
         match reason {
             "unsupported_credential" => credential["privateKey"] = json!("secret-invalid-key"),
             "host_key_mismatch" => {
-                credential["learnedHostKey"]["fingerprint"] =
-                    json!("SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+                credential["learnedHostKey"]["fingerprint"] = json!(
+                    super::harness::key(russh::keys::Algorithm::Ed25519)
+                        .fingerprint(russh::keys::HashAlg::Sha256)
+                        .to_string()
+                )
             }
             "authentication_failed" => {
                 credential["privateKey"] = json!(
