@@ -4,7 +4,11 @@ import {
   readVoiceDraftRecording,
   type VoiceDraftSegment,
 } from "../external/voice-draft-store.ts";
-import { createChildAbortController, createDeferredPromise } from "../utils.ts";
+import {
+  createChildAbortController,
+  createDeferredPromise,
+  setLoop,
+} from "../utils.ts";
 import { nextVoiceDraftSegment } from "./voice-draft-audio.ts";
 import { VOICE_DRAFT_PCM_SAMPLE_RATE } from "./voice-draft-pcm.ts";
 import { createVoiceDraftSegmentResult } from "./voice-draft-transcription-segment.ts";
@@ -321,24 +325,30 @@ export function createVoiceDraftTranscriptionSignals(
   // This observer starts newly appended computeds and owns their background
   // lifetime. Request ordering is entirely expressed by predecessor dependencies.
   const watch$ = command(async ({ get, set }, signal: AbortSignal) => {
-    while (!signal.aborted) {
-      const wake = createDeferredPromise<void>(signal);
-      set(wake$, wake);
-      const notified = Promise.allSettled([wake.promise]);
-      if (get(segments$).length > 0) {
-        const [outcome] = await Promise.allSettled([get(result$)]);
-        signal.throwIfAborted();
-        if (outcome?.status === "fulfilled") {
-          if (outcome.value) {
-            set(refreshAudioInputQuota$);
-          } else {
-            await set(openAudioInputQuotaRecovery$, signal);
+    await setLoop(
+      async (loopSignal) => {
+        const wake = createDeferredPromise<void>(loopSignal);
+        set(wake$, wake);
+        const notified = Promise.allSettled([wake.promise]);
+        if (get(segments$).length > 0) {
+          const [outcome] = await Promise.allSettled([get(result$)]);
+          loopSignal.throwIfAborted();
+          if (outcome?.status === "fulfilled") {
+            if (outcome.value) {
+              set(refreshAudioInputQuota$);
+            } else {
+              await set(openAudioInputQuotaRecovery$, loopSignal);
+            }
           }
         }
-      }
-      await notified;
-      signal.throwIfAborted();
-    }
+        await notified;
+        loopSignal.throwIfAborted();
+        return false;
+      },
+      0,
+      signal,
+      { retryTransientErrors: false },
+    );
   });
   return { initialize$, append$, transcribe$, watch$, cancel$ };
 }
