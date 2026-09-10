@@ -56,7 +56,10 @@ import {
 
 const log = logger("api:activity-summary");
 const ATTEMPT_INTERVAL_MS = 15_000;
-const CLAIM_MS = 12_000;
+// The lease must outlive one whole generation attempt. A completion that lands
+// after its own claim expired cannot write the shared cooldown, which silently
+// shortens the next attempt back to the plain attempt interval.
+const CLAIM_MS = 15_000;
 const FAILURE_COOLDOWN_MS = 60_000;
 const MAX_COOLDOWN_MS = 300_000;
 const SUMMARY_DEADLINE_MS = 10_000;
@@ -315,6 +318,53 @@ async function claimSummary(db: Db, identity: ActivityRunIdentity) {
   });
 }
 
+/**
+ * Completion outcomes an operator cannot act on. The response stays truthful,
+ * the caller keeps its last usable phrase, and the shared cooldown or the
+ * attempt interval bounds recovery. Persistent provider failures and
+ * contract/configuration defects stay at warn.
+ */
+function expectedOutcome(outcome: string): boolean {
+  return (
+    outcome === "success" || outcome === "timeout" || outcome === "cancelled"
+  );
+}
+
+/**
+ * The content-free record of one generation attempt. The caller reads `outcome`
+ * to pick a level and `cooldownMs` to write the next attempt, so the diagnostic
+ * and the stored backoff can never disagree. No prompt, phrase, provider body
+ * or driver message is ever attached.
+ */
+function completionRecord(
+  started: number,
+  phrase: string | null,
+  abandoned: boolean,
+  deadlineReached: boolean,
+  failure: unknown,
+) {
+  const request =
+    failure instanceof OpenRouterRequestError ? failure : undefined;
+  const cooldown = Math.min(
+    MAX_COOLDOWN_MS,
+    Math.max(FAILURE_COOLDOWN_MS, request?.retryAfterMs ?? 0),
+  );
+  return {
+    outcome: phrase
+      ? "success"
+      : abandoned
+        ? "cancelled"
+        : deadlineReached
+          ? "timeout"
+          : request
+            ? "provider_failure"
+            : "invalid_or_unconfigured",
+    durationMs: Math.round(performance.now() - started),
+    cooldownMs: phrase || abandoned ? 0 : cooldown,
+    ...(request ? { providerStatus: request.status } : {}),
+  };
+}
+
 async function generateSummary(
   db: Db,
   identity: ActivityRunIdentity,
@@ -357,33 +407,32 @@ async function generateSummary(
   const phrases = result.ok ? activityPhrases(result.value) : null;
   // The text column stores the bounded batch as one plain-text line per message.
   const phrase = phrases?.join("\n") ?? null;
-  const retryAfterMs =
-    !result.ok && result.error instanceof OpenRouterRequestError
-      ? result.error.retryAfterMs
-      : undefined;
-  const cooldown = Math.min(
-    MAX_COOLDOWN_MS,
-    Math.max(FAILURE_COOLDOWN_MS, retryAfterMs ?? 0),
-  );
+  // The request signal ends this request's whole lifetime — today the API
+  // instance stopping. That is not a failed generation, so it is classified
+  // ahead of the deadline it may have raced.
+  const abandoned = !phrase && signal.aborted;
   const completion = {
     runId: identity.runId,
-    outcome: phrase
-      ? "success"
-      : deadline.aborted
-        ? "timeout"
-        : !result.ok && result.error instanceof OpenRouterRequestError
-          ? "provider_failure"
-          : "invalid_or_unconfigured",
-    durationMs: Math.round(performance.now() - started),
-    cooldownMs: phrase ? 0 : cooldown,
-    ...(!result.ok && result.error instanceof OpenRouterRequestError
-      ? { providerStatus: result.error.status }
-      : {}),
+    ...completionRecord(
+      started,
+      phrase,
+      abandoned,
+      deadline.aborted,
+      result.ok ? null : result.error,
+    ),
   };
-  if (phrase) {
+  if (expectedOutcome(completion.outcome)) {
     log.info("Activity summary completion", completion);
   } else {
     log.warn("Activity summary completion", completion);
+  }
+  // An abandoned attempt must not spend the shared cooldown on the next
+  // viewer's behalf. Its lease expires like any owner that stopped reporting,
+  // and the attempt interval written at claim time still bounds the next
+  // provider call. A phrase that finished first is still stored: this request
+  // is over, but the work is done and the next viewer should read it.
+  if (abandoned) {
+    signal.throwIfAborted();
   }
   const enabled = await activityEnabled(db, identity.orgId, identity.userId);
   if (!enabled) {
@@ -405,7 +454,7 @@ async function generateSummary(
               summarizedAt: activityClock,
             }
           : {
-              nextAttemptAt: sql`${activityClock} + ${cooldown} * interval '1 millisecond'`,
+              nextAttemptAt: sql`${activityClock} + ${completion.cooldownMs} * interval '1 millisecond'`,
             }),
       })
       .where(
