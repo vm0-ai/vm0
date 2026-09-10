@@ -87,7 +87,6 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_pre_create_agent_materialize_bootstrap_context"
   | "api_dispatch_pre_create_agent_resolve_firewall_metadata"
   | "api_dispatch_pre_create_agent_resolve_thread_session"
-  | "api_dispatch_pre_create_agent_resolve_paused_thread_goal"
   | "api_dispatch_pre_create_agent_web_chat_resolve_session_prompt_context"
   | "api_dispatch_pre_create_agent_build_create_run_args"
   | "api_dispatch_pre_create_agent_web_chat_prepare_normal_send"
