@@ -12,7 +12,7 @@ import {
   updateSshConnectionRequestSchema,
   SSH_PRIVATE_KEY_MAX_LENGTH,
 } from "@okouai/api-contracts/contracts/ssh-connections";
-import { clerk$, currentClerkIdentity$, currentOrgInfo$ } from "./auth.ts";
+import { clerk$, currentOrgInfo$, user$ } from "./auth.ts";
 import { readClerkToken } from "./clerk-token.ts";
 import { featureSwitch$ } from "./external/feature-switch.ts";
 import { apiClient$ } from "./api-client.ts";
@@ -103,34 +103,34 @@ export const sshIdentity$ = computed(async (get) => {
   if (!enabled) {
     return null;
   }
-  const identity = await get(currentClerkIdentity$);
-  return identity
-    ? `${identity.orgId}:${identity.userId}:${identity.sessionId}`
-    : null;
+  // User changes invalidate SSH state; global org switching reloads the page.
+  // Background token/profile updates must not reset credential forms.
+  const [user, clerk] = await Promise.all([get(user$), get(clerk$)]);
+  const org = clerk.organization;
+  return org && user ? `${org.id}:${user.id}` : null;
 });
 const reload$ = state(0);
 const sshClients$ = computed(async (get) => {
   const identity = await get(sshIdentity$);
   const clerk = await get(clerk$);
-  const sessionId = clerk.session?.id;
   const createClient = get(apiClient$);
-  const assertIdentity = () => {
+  const assertIdentity = (sessionId: string | undefined) => {
     if (
       !identity ||
       !sessionId ||
       sessionId !== clerk.session?.id ||
-      identity !==
-        `${clerk.organization?.id}:${clerk.user?.id}:${clerk.session?.id}`
+      identity !== `${clerk.organization?.id}:${clerk.user?.id}`
     ) {
       throw new DOMException("SSH owner changed", "AbortError");
     }
   };
   const options = {
     getToken: async (signal: AbortSignal) => {
-      assertIdentity();
+      const sessionId = clerk.session?.id;
+      assertIdentity(sessionId);
       const token = await readClerkToken(clerk, signal);
       signal.throwIfAborted();
-      assertIdentity();
+      assertIdentity(sessionId);
       return token;
     },
   };

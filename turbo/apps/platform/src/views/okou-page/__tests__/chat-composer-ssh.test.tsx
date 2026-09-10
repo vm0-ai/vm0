@@ -152,56 +152,74 @@ test("Switching Agents does not retain the previous Agent's enabled SSH icon", a
   expect(within(otherTrigger).queryByRole("img", { name: "SSH" })).toBeNull();
 });
 
-test.each(["workspace", "user"])(
-  "Changing %s clears retained SSH presentation while the new owner loads",
-  async (changedIdentity) => {
-    installComposerConnectorFixture();
-    const clerk = context.mocks.clerk();
-    const nextOwner = context.mocks.deferred<void>();
-    let changing = false;
-    context.mocks.api(sshConnectionsContract.summary, async ({ respond }) => {
-      if (changing) {
-        await nextOwner.promise;
-      }
-      return respond(200, { configuredCount: 1 });
+test("Changing user clears retained SSH presentation while the new owner loads", async () => {
+  installComposerConnectorFixture();
+  const clerk = context.mocks.clerk();
+  const nextOwner = context.mocks.deferred<void>();
+  let changing = false;
+  context.mocks.api(sshConnectionsContract.summary, async ({ respond }) => {
+    if (changing) {
+      await nextOwner.promise;
+    }
+    return respond(200, { configuredCount: 1 });
+  });
+  context.mocks.api(agentSshAccessContract.get, ({ respond }) => {
+    return respond(200, { enabled: !changing });
+  });
+  await setupPage({
+    context,
+    path: `/agents/${SCOUT_AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.SshAccess]: true },
+  });
+  const trigger = await findFastControl("button", "Connectors");
+  await within(trigger).findByRole("img", { name: "SSH" });
+  changing = true;
+  act(() => {
+    clerk.user(
+      { id: "other-ssh-user", fullName: "Other user" },
+      { token: "other-user-token" },
+    );
+    clerk.stateChanged();
+  });
+  await waitFor(() => {
+    expect(screen.queryByRole("img", { name: "SSH" })).toBeNull();
+  });
+  nextOwner.resolve();
+  const nextTrigger = await findFastControl("button", "Connectors");
+  click(nextTrigger);
+  await screen.findByLabelText("Add SSH");
+  expect(within(nextTrigger).queryByRole("img", { name: "SSH" })).toBeNull();
+});
+
+test("Changing workspace reloads the chat page before using the new SSH owner", async () => {
+  installComposerConnectorFixture();
+  context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
+    return respond(200, { configuredCount: 1 });
+  });
+  context.mocks.api(agentSshAccessContract.get, ({ respond }) => {
+    return respond(200, { enabled: true });
+  });
+  await setupPage({
+    context,
+    path: `/agents/${SCOUT_AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.SshAccess]: true },
+  });
+  const trigger = await findFastControl("button", "Connectors");
+  await within(trigger).findByRole("img", { name: "SSH" });
+
+  const clerk = context.mocks.clerk();
+  act(() => {
+    clerk.organization({
+      activeOrg: { id: "org_ssh_other", name: "Other workspace" },
+      memberships: [{ id: "org_ssh_other" }],
     });
-    context.mocks.api(agentSshAccessContract.get, ({ respond }) => {
-      return respond(200, { enabled: !changing });
-    });
-    await setupPage({
-      context,
-      path: `/agents/${SCOUT_AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.SshAccess]: true },
-    });
-    const trigger = await findFastControl("button", "Connectors");
-    await within(trigger).findByRole("img", { name: "SSH" });
-    changing = true;
-    act(() => {
-      if (changedIdentity === "workspace") {
-        clerk.organization({
-          activeOrg: { id: "org_ssh_other", name: "Other workspace" },
-          memberships: [{ id: "org_ssh_other" }],
-        });
-      } else {
-        clerk.user(
-          { id: "other-ssh-user", fullName: "Other user" },
-          {
-            token: "other-user-token",
-          },
-        );
-      }
-      clerk.stateChanged();
-    });
-    await waitFor(() => {
-      expect(screen.queryByRole("img", { name: "SSH" })).toBeNull();
-    });
-    nextOwner.resolve();
-    const nextTrigger = await findFastControl("button", "Connectors");
-    click(nextTrigger);
-    await screen.findByLabelText("Add SSH");
-    expect(within(nextTrigger).queryByRole("img", { name: "SSH" })).toBeNull();
-  },
-);
+    clerk.stateChanged();
+  });
+
+  await waitFor(() => {
+    expect(window.location.pathname).toBe("/");
+  });
+});
 
 test.each([SCOUT_AGENT_ID, OTHER_AGENT_ID])(
   "Chat SSH uses the composer Agent %s, not another Agent's grant",
