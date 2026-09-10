@@ -1,10 +1,13 @@
 import {
+  act,
   screen,
   waitFor,
   waitForElementToBeRemoved,
   within,
 } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
+import { HttpResponse } from "msw";
 
 import {
   agentInstructionsContract,
@@ -1009,7 +1012,7 @@ test.each(["copy", "delete"])(
     expect(within(dialog).getByRole("combobox")).toBeDisabled();
     copyResponse.resolve();
 
-    await screen.findByText(
+    await expect(within(dialog).findByRole("alert")).resolves.toHaveTextContent(
       failure === "copy" ? "Copy failed" : "Delete failed",
     );
     await waitFor(() => {
@@ -1024,6 +1027,7 @@ test.each(["copy", "delete"])(
     click(screen.getByText("Delete agent"));
     const reopened = await screen.findByRole("dialog");
     expect(within(reopened).getByText("Delete agent")).toBeEnabled();
+    expect(within(reopened).queryByRole("alert")).not.toBeInTheDocument();
     const select = within(reopened).getByRole("combobox");
     expect(select).toHaveTextContent("Delete with agent");
     click(select);
@@ -1034,3 +1038,344 @@ test.each(["copy", "delete"])(
     await screen.findByText("Agent deleted");
   },
 );
+
+function linkTo(path: string): HTMLElement {
+  const link = queryAllByRoleFast("link").find((candidate) => {
+    return candidate.getAttribute("href") === path;
+  });
+  if (!link) {
+    throw new Error(`Link to ${path} not found`);
+  }
+  return link;
+}
+
+async function chooseWorkflowCopy(
+  dialog: HTMLElement,
+  title = "Daily research",
+) {
+  const user = userEvent.setup({ delay: null });
+  await user.click(
+    within(dialog).getByRole("combobox", { name: `Handle workflow ${title}` }),
+  );
+  await user.click(await screen.findByRole("option", { name: "Copy to Zero" }));
+}
+
+function dialogBackdrop(): HTMLElement {
+  const backdrop = document.querySelector('[data-slot="dialog-overlay"]');
+  if (!(backdrop instanceof HTMLElement)) {
+    throw new Error("Dialog backdrop not found");
+  }
+  return backdrop;
+}
+
+test.each(["Cancel", "Close", "Escape", "backdrop"])(
+  "Discard cancelled agent workflow choices after closing with %s",
+  async (dismissal) => {
+    prepareAgentProfile();
+    prepareDeleteWorkflow();
+    const user = userEvent.setup({ delay: null });
+    await setupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+    await findAgentNameInput();
+    click(screen.getByText("Delete agent"));
+    const dialog = await screen.findByRole("dialog");
+    await within(dialog).findByRole("combobox");
+    await chooseWorkflowCopy(dialog);
+
+    if (dismissal === "Escape") {
+      await user.keyboard("{Escape}");
+    } else if (dismissal === "backdrop") {
+      await user.click(dialogBackdrop());
+    } else if (dismissal === "Close") {
+      click(within(dialog).getByLabelText("Close"));
+    } else {
+      click(within(dialog).getByText("Cancel"));
+    }
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    click(screen.getByText("Delete agent"));
+    const reopened = await screen.findByRole("dialog");
+    expect(within(reopened).getByRole("combobox")).toHaveTextContent(
+      "Delete with agent",
+    );
+    expect(within(reopened).getByText("Delete agent")).toBeEnabled();
+  },
+);
+
+test.each([false, true])(
+  "Retry unfinished rescues without duplicating completed workflows (reopen: %s)",
+  async (reopen) => {
+    prepareAgentProfile();
+    const first = prepareDeleteWorkflow();
+    const second: WorkflowSummary = {
+      ...first,
+      id: "d0000000-0000-4000-a000-000000000203",
+      name: "weekly-research",
+      displayName: "Weekly research",
+    };
+    let workflows = [first, second];
+    let allowSecondCopy = false;
+    context.mocks.api(
+      workflowsCollectionContract.list,
+      ({ query, respond }) => {
+        return respond(
+          200,
+          workflows.filter((workflow) => {
+            return !query.agentId || workflow.agentId === query.agentId;
+          }),
+        );
+      },
+    );
+    context.mocks.api(
+      workflowsDetailContract.copy,
+      ({ params, body, respond }) => {
+        if (params.workflowId === second.id && !allowSecondCopy) {
+          return respond(403, {
+            error: { code: "FORBIDDEN", message: "Second copy failed" },
+          });
+        }
+        const source = params.workflowId === first.id ? first : second;
+        if (
+          workflows.some((workflow) => {
+            return (
+              workflow.agentId === body.toAgentId &&
+              workflow.name === source.name
+            );
+          })
+        ) {
+          return respond(409, {
+            error: {
+              code: "CONFLICT",
+              message: "A workflow with this name already exists",
+            },
+          });
+        }
+        const copied: WorkflowSummary = {
+          ...source,
+          id: crypto.randomUUID(),
+          agentId: body.toAgentId,
+          agentName: "zero",
+          agentDisplayName: "Zero",
+        };
+        workflows.push(copied);
+        return respond(201, copied);
+      },
+    );
+    context.mocks.api(agentsByIdContract.delete, ({ params, respond }) => {
+      workflows = workflows.filter((workflow) => {
+        return workflow.agentId !== params.id;
+      });
+      return respond(204);
+    });
+
+    await setupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+    await findAgentNameInput();
+    click(screen.getByText("Delete agent"));
+    let dialog = await screen.findByRole("dialog");
+    await within(dialog).findByText("Weekly research");
+    await chooseWorkflowCopy(dialog);
+    await chooseWorkflowCopy(dialog, "Weekly research");
+    click(within(dialog).getByText("Delete agent"));
+    await expect(within(dialog).findByRole("alert")).resolves.toHaveTextContent(
+      "Second copy failed",
+    );
+    expect(within(dialog).getByText("Delete agent")).toBeEnabled();
+    expect(screen.getByDisplayValue("Research Agent")).toBeInTheDocument();
+
+    if (reopen) {
+      const closed = waitForElementToBeRemoved(dialog);
+      click(within(dialog).getByText("Cancel"));
+      await closed;
+      click(screen.getByText("Delete agent"));
+      dialog = await screen.findByRole("dialog");
+    }
+    for (const select of within(dialog).getAllByRole("combobox")) {
+      expect(select).toHaveTextContent(
+        reopen ? "Delete with agent" : "Copy to Zero",
+      );
+    }
+    if (reopen) {
+      await chooseWorkflowCopy(dialog);
+      await chooseWorkflowCopy(dialog, "Weekly research");
+    }
+    allowSecondCopy = true;
+    click(within(dialog).getByText("Delete agent"));
+    await screen.findByText("Agent deleted");
+    await waitFor(() => {
+      expect(linkTo("/workflows")).toBeInTheDocument();
+    });
+    click(linkTo("/workflows"));
+    await screen.findByText("Weekly research");
+    expect(screen.getAllByText("Daily research")).toHaveLength(1);
+    expect(screen.getAllByText("Weekly research")).toHaveLength(1);
+  },
+);
+
+test.each(["copy", "delete"])(
+  "Keep a new agent confirmation isolated from a previous pending %s",
+  async (pendingOperation) => {
+    prepareAgentProfile();
+    const firstWorkflow = prepareDeleteWorkflow();
+    const secondAgentId = "a0000000-0000-4000-a000-000000000021";
+    const secondWorkflow: WorkflowSummary = {
+      ...firstWorkflow,
+      id: "d0000000-0000-4000-a000-000000000203",
+      agentId: secondAgentId,
+      name: "weekly-research",
+      displayName: "Weekly research",
+    };
+    const agents = [
+      copyTarget(DEFAULT_AGENT_ID, "Zero"),
+      copyTarget(AGENT_ID, "Research Agent"),
+      copyTarget(secondAgentId, "Second Agent"),
+    ];
+    context.mocks.data.agents(agents);
+    context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
+      const agent = agents.find((candidate) => {
+        return candidate.agentId === params.id;
+      });
+      if (!agent) {
+        throw new Error("Unknown fixture agent");
+      }
+      return respond(200, agent);
+    });
+    context.mocks.api(
+      workflowsCollectionContract.list,
+      ({ query, respond }) => {
+        return respond(
+          200,
+          [firstWorkflow, secondWorkflow].filter((workflow) => {
+            return workflow.agentId === query.agentId;
+          }),
+        );
+      },
+    );
+    const previousResponse = context.mocks.deferred<void>();
+    const previousResponded = context.mocks.deferred<void>();
+    const currentResponse = context.mocks.deferred<void>();
+    context.mocks.api(
+      workflowsDetailContract.copy,
+      async ({ params, respond }) => {
+        if (params.workflowId === secondWorkflow.id) {
+          await currentResponse.promise;
+          return respond(403, {
+            error: { code: "FORBIDDEN", message: "Second agent copy failed" },
+          });
+        }
+        if (pendingOperation === "copy") {
+          await previousResponse.promise;
+          previousResponded.resolve();
+        }
+        return respond(201, {
+          ...firstWorkflow,
+          id: crypto.randomUUID(),
+          agentId: DEFAULT_AGENT_ID,
+        });
+      },
+    );
+    context.mocks.api(agentsByIdContract.delete, async ({ respond }) => {
+      await previousResponse.promise;
+      previousResponded.resolve();
+      return respond(204);
+    });
+
+    await setupPage({ context, path: "/agents" });
+    await waitFor(() => {
+      return expect(linkTo(`/agents/${AGENT_ID}`)).toBeInTheDocument();
+    });
+    click(linkTo(`/agents/${AGENT_ID}`));
+    await screen.findByRole("heading", { name: "Research Agent" });
+    click(tabByText("Profile"));
+    await findAgentNameInput();
+    click(screen.getByText("Delete agent"));
+    const firstDialog = await screen.findByRole("dialog");
+    await within(firstDialog).findByRole("combobox");
+    await chooseWorkflowCopy(firstDialog);
+    const user = userEvent.setup({ delay: null });
+    await user.click(within(firstDialog).getByText("Delete agent"));
+    const pendingLabel = pendingOperation === "copy" ? "Copying…" : "Deleting…";
+    await within(firstDialog).findByText(pendingLabel);
+    await user.keyboard("{Escape}");
+    await user.click(dialogBackdrop());
+    expect(within(firstDialog).getByText(pendingLabel)).toBeDisabled();
+    expect(within(firstDialog).queryByText("Cancel")).not.toBeInTheDocument();
+    expect(
+      within(firstDialog).queryByLabelText("Close"),
+    ).not.toBeInTheDocument();
+
+    // Browser history can leave the route even though popup dismissal is blocked.
+    act(() => {
+      return window.history.back();
+    });
+    await waitFor(() => {
+      return expect(linkTo(`/agents/${secondAgentId}`)).toBeInTheDocument();
+    });
+    click(linkTo(`/agents/${secondAgentId}`));
+    await screen.findByRole("heading", { name: "Second Agent" });
+    click(tabByText("Profile"));
+    await screen.findByDisplayValue("Second Agent");
+    click(screen.getByText("Delete agent"));
+    const currentDialog = await screen.findByRole("dialog");
+    const select = await within(currentDialog).findByRole("combobox");
+    expect(select).toHaveTextContent("Delete with agent");
+    expect(within(currentDialog).getByText("Delete agent")).toBeEnabled();
+    await chooseWorkflowCopy(currentDialog, "Weekly research");
+    click(within(currentDialog).getByText("Delete agent"));
+    await within(currentDialog).findByText("Copying…");
+
+    previousResponse.resolve();
+    await previousResponded.promise;
+    await user.keyboard("{Escape}");
+    expect(within(currentDialog).getByText("Copying…")).toBeDisabled();
+    expect(within(currentDialog).getByRole("combobox")).toHaveTextContent(
+      "Copy to Zero",
+    );
+    currentResponse.resolve();
+    await expect(
+      within(currentDialog).findByRole("alert"),
+    ).resolves.toHaveTextContent("Second agent copy failed");
+    expect(within(currentDialog).getByText("Delete agent")).toBeEnabled();
+    click(within(currentDialog).getByText("Cancel"));
+    await waitFor(() => {
+      return expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(screen.getByDisplayValue("Second Agent")).toBeInTheDocument();
+  },
+);
+
+test("Recover from a workflow rescue network failure with visible feedback", async () => {
+  prepareAgentProfile();
+  const workflow = prepareDeleteWorkflow();
+  let offline = true;
+  context.mocks.http.post("*/api/workflows/:workflowId/copy", () => {
+    return offline
+      ? HttpResponse.error()
+      : HttpResponse.json(
+          {
+            ...workflow,
+            id: crypto.randomUUID(),
+            agentId: DEFAULT_AGENT_ID,
+          },
+          { status: 201 },
+        );
+  });
+  context.mocks.api(agentsByIdContract.delete, ({ respond }) => {
+    return respond(204);
+  });
+
+  await setupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+  await findAgentNameInput();
+  click(screen.getByText("Delete agent"));
+  const dialog = await screen.findByRole("dialog");
+  await within(dialog).findByRole("combobox");
+  await chooseWorkflowCopy(dialog);
+  click(within(dialog).getByText("Delete agent"));
+  await expect(within(dialog).findByRole("alert")).resolves.toHaveTextContent(
+    "Request failed",
+  );
+  expect(within(dialog).getByText("Delete agent")).toBeEnabled();
+  expect(within(dialog).getByText("Cancel")).toBeEnabled();
+  offline = false;
+  click(within(dialog).getByText("Delete agent"));
+  await screen.findByText("Agent deleted");
+});

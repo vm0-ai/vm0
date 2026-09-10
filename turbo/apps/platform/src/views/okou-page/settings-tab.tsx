@@ -593,6 +593,7 @@ export function SettingsTab({
 
         {!isDefaultAgent && onDelete && (
           <AgentDeleteDialog
+            agentId={agentId}
             resolvedAgentName={presentedAgentName}
             onDelete={onDelete}
             deleteWorkflows={deleteWorkflows}

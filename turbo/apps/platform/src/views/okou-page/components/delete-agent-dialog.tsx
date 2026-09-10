@@ -1,5 +1,4 @@
 import { useGet, useSet } from "ccstate-react";
-import { useLoadableSet } from "ccstate-react/experimental";
 import {
   surfaceVariants,
   Button,
@@ -21,14 +20,15 @@ import {
 } from "@okouai/ui";
 import { AlertTriangle, Trash } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { isNetworkRequestError } from "../../../lib/network-error.ts";
 import { pageSignal$ } from "../../../signals/page-signal.ts";
 import { reloadAgents$ } from "../../../signals/agent.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
 import {
   deleteAgent$,
-  agentDeleteCopyChoices$,
+  agentDeleteSession$,
   setAgentDeleteCopyChoices$,
-  agentDeleteCopying$,
+  setAgentDeleteDialogOpen$,
 } from "../../../signals/okou-page/settings/settings-tab.ts";
 
 export interface AgentDeleteWorkflow {
@@ -275,6 +275,7 @@ function AgentDeleteSimpleView({
 }
 
 interface AgentDeleteDialogProps {
+  agentId: string;
   /** Agent name shown in the confirmation copy. */
   resolvedAgentName: string;
   /** Callback to delete the agent. */
@@ -290,7 +291,24 @@ interface AgentDeleteDialogProps {
   ) => Promise<void>;
 }
 
+function AgentDeleteError({ error }: { error: unknown }) {
+  const { t } = useTranslation("common");
+  if (error === null) {
+    return null;
+  }
+  return (
+    <p role="alert" className="px-6 pb-6 text-sm text-destructive">
+      {error instanceof Error && !isNetworkRequestError(error)
+        ? error.message
+        : t(($) => {
+            return $.global.errors.requestFailed;
+          })}
+    </p>
+  );
+}
+
 export function AgentDeleteDialog({
+  agentId,
   resolvedAgentName,
   onDelete,
   deleteWorkflows = [],
@@ -300,38 +318,38 @@ export function AgentDeleteDialog({
   const { t } = useTranslation("agents");
   const pageSignal = useGet(pageSignal$);
 
-  const [deleteLoadable, deleteAgentFn] = useLoadableSet(deleteAgent$);
-  const deleting = deleteLoadable.state === "loading";
-
-  // Delete reconcile: each bound workflow maps to a Select value that is either
-  // DELETE_WITH_AGENT (default) or a target agent id to copy it onto first.
-  const copyChoices = useGet(agentDeleteCopyChoices$);
-  const setCopyChoices = useSet(setAgentDeleteCopyChoices$);
-  const copying = useGet(agentDeleteCopying$);
+  const deleteAgentFn = useSet(deleteAgent$);
+  const currentSession = useGet(agentDeleteSession$);
+  const session =
+    currentSession?.agentId === agentId && currentSession.owner === pageSignal
+      ? currentSession
+      : null;
+  const setOpen = useSet(setAgentDeleteDialogOpen$);
+  const updateCopyChoices = useSet(setAgentDeleteCopyChoices$);
+  const copyChoices = session?.choices ?? {};
+  const copying = session?.phase === "copying";
+  const deleting = session?.phase === "deleting";
+  const setCopyChoices = (choices: Record<string, string>) => {
+    if (session) {
+      updateCopyChoices(session.id, choices);
+    }
+  };
   const canReconcile =
     deleteWorkflows.length > 0 && onCopyWorkflowBeforeDelete !== undefined;
 
   const handleDelete = () => {
-    // Scope rescues to this agent's workflows so stale choices from a
-    // previously opened delete dialog never trigger an unrelated copy.
-    const currentWorkflowIds = new Set(
-      deleteWorkflows.map((workflow) => {
-        return workflow.id;
-      }),
-    );
-    const rescues = Object.entries(copyChoices).filter(
-      ([workflowId, target]) => {
-        return (
-          target !== DELETE_WITH_AGENT && currentWorkflowIds.has(workflowId)
-        );
-      },
-    );
+    if (!session) {
+      return;
+    }
     detach(
       deleteAgentFn(
         {
+          sessionId: session.id,
           deleteFn: onDelete,
           copyWorkflow: onCopyWorkflowBeforeDelete,
-          rescues,
+          workflowIds: deleteWorkflows.map((workflow) => {
+            return workflow.id;
+          }),
         },
         pageSignal,
       ),
@@ -357,9 +375,10 @@ export function AgentDeleteDialog({
           </div>
           <div className="flex w-full shrink-0 justify-end sm:w-auto">
             <Dialog
-              onOpenChange={(open) => {
-                if (open && !deleting && !copying) {
-                  setCopyChoices({});
+              open={session?.open ?? false}
+              onOpenChange={(open, eventDetails) => {
+                if (!setOpen(agentId, open, pageSignal)) {
+                  eventDetails.cancel();
                 }
               }}
             >
@@ -376,6 +395,7 @@ export function AgentDeleteDialog({
                 </Button>
               </DialogTrigger>
               <DialogContent
+                showCloseButton={!deleting && !copying}
                 closeLabel={t(($) => {
                   return $.actions.close;
                 })}
@@ -401,6 +421,7 @@ export function AgentDeleteDialog({
                     onDelete={handleDelete}
                   />
                 )}
+                <AgentDeleteError error={session?.error ?? null} />
               </DialogContent>
             </Dialog>
           </div>
