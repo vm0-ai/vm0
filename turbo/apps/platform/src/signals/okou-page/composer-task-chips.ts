@@ -15,7 +15,7 @@ export function createComposerTaskChipsSignals(create: ComposerCreateSignals) {
   });
   const internalGeneralTask$ = state<"workflow" | "website" | null>("workflow");
   const task$ = computed((get): ComposerTask | null => {
-    if (!get(enabled$) || get(create.choosing$)) {
+    if (!get(enabled$)) {
       return null;
     }
     return get(create.mode$) ?? get(internalGeneralTask$);

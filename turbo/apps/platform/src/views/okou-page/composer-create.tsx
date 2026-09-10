@@ -1,5 +1,5 @@
 import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
-import type { KeyboardEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
@@ -49,122 +49,19 @@ const CREATE_MODE_ICON_CLASS = {
   image: "text-artifact-image",
 } satisfies Record<ComposerCreateMode, string>;
 
-function handleCreateTypeNavigation(event: KeyboardEvent<HTMLDivElement>) {
-  if (
-    ![
-      "ArrowLeft",
-      "ArrowRight",
-      "ArrowUp",
-      "ArrowDown",
-      "Home",
-      "End",
-    ].includes(event.key)
-  ) {
-    return;
-  }
-  const buttons = Array.from(
-    event.currentTarget.querySelectorAll<HTMLButtonElement>("button"),
-  );
-  const index = buttons.findIndex((button) => {
-    return button === event.target;
-  });
-  if (index === -1) {
-    return;
-  }
-  event.preventDefault();
-  const next =
-    event.key === "Home"
-      ? 0
-      : event.key === "End"
-        ? buttons.length - 1
-        : (index +
-            (["ArrowRight", "ArrowDown"].includes(event.key) ? 1 : -1) +
-            buttons.length) %
-          buttons.length;
-  buttons[next]?.focus();
-}
-
 export function ComposerCreateControls({
   signals,
 }: {
   readonly signals: ComposerSignals;
 }) {
-  const { t } = useTranslation();
-  const choosing = useGet(signals.create.choosing$);
   const mode = useGet(signals.create.mode$);
-  const setMode = useSet(signals.create.setMode$);
-  if (!choosing && !mode) {
+  if (!mode) {
     return withChatScrollLayout(null);
   }
   return withChatScrollLayout(
-    <div
-      className="@container/create-controls"
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && choosing) {
-          event.preventDefault();
-          setMode(null);
-        }
-      }}
-    >
+    <div className="@container/create-controls">
       <div className="flex min-h-11 min-w-0 items-center gap-1 px-2 pb-3 @max-[350px]/create-controls:px-3">
-        {choosing ? (
-          <>
-            <div
-              className="flex min-w-0 items-center gap-2 @max-[380px]/create-controls:gap-0.5"
-              role="group"
-              aria-label={t(($) => {
-                return $.chat.composer.create.chooseType;
-              })}
-              onKeyDown={handleCreateTypeNavigation}
-            >
-              {signals.create.modes.map((type, index) => {
-                const Icon = COMPOSER_CREATE_ICONS[type];
-                return (
-                  <Button
-                    key={type}
-                    type="button"
-                    variant="quiet"
-                    size="sm"
-                    className={cn(
-                      "gap-2 px-2 font-normal @max-[350px]/create-controls:gap-1 @max-[350px]/create-controls:px-1 @max-[350px]/create-controls:text-xs @max-[350px]/create-controls:[&_svg]:size-3.5",
-                      CREATE_CONTROL_FOCUS,
-                    )}
-                    autoFocus={index === 0}
-                    onClick={() => {
-                      setMode(type);
-                    }}
-                  >
-                    <Icon
-                      className={CREATE_MODE_ICON_CLASS[type]}
-                      aria-hidden
-                    />
-                    {composerCreateModeName(type)}
-                  </Button>
-                );
-              })}
-            </div>
-            <span
-              className="mx-1 h-3.5 w-px shrink-0 bg-gray-300 @max-[380px]/create-controls:hidden"
-              aria-hidden
-            />
-            <Button
-              type="button"
-              variant="quiet"
-              size="icon-sm"
-              className={cn("shrink-0 text-gray-600", CREATE_CONTROL_FOCUS)}
-              aria-label={t(($) => {
-                return $.chat.composer.create.exit;
-              })}
-              onClick={() => {
-                setMode(null);
-              }}
-            >
-              <X size={16} aria-hidden />
-            </Button>
-          </>
-        ) : mode ? (
-          <ComposerCreateChip signals={signals} mode={mode} />
-        ) : null}
+        <ComposerCreateChip signals={signals} mode={mode} />
       </div>
     </div>,
   );

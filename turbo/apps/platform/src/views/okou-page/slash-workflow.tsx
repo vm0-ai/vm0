@@ -7,7 +7,6 @@ import {
   FileText,
   Image,
   Presentation,
-  Sparkles,
   Video,
 } from "lucide-react";
 import { cn, PopoverContent } from "@okouai/ui";
@@ -20,12 +19,11 @@ import type {
 } from "../../signals/okou-page/workflow-composer-domain.ts";
 
 import {
-  composerCreateCommandLabel,
-  type ComposerCreateCommand,
+  composerCreateModeLabel,
+  type ComposerCreateMode,
 } from "../../signals/okou-page/composer-create.ts";
 
 export const COMPOSER_CREATE_ICONS = {
-  choose: Sparkles,
   image: Image,
   video: Video,
   presentation: Presentation,
@@ -82,11 +80,10 @@ function SlashCreateGroup({
   selectedIndex,
   onSelect,
 }: {
-  readonly modes: readonly ComposerCreateCommand[];
+  readonly modes: readonly ComposerCreateMode[];
   readonly selectedIndex: number;
-  readonly onSelect: (mode: ComposerCreateCommand) => void;
+  readonly onSelect: (mode: ComposerCreateMode) => void;
 }) {
-  const { t } = useTranslation();
   if (modes.length === 0) {
     return null;
   }
@@ -99,7 +96,7 @@ function SlashCreateGroup({
             key={mode}
             id={slashWorkflowOptionId(mode)}
             type="button"
-            aria-label={composerCreateCommandLabel(mode)}
+            aria-label={composerCreateModeLabel(mode)}
             className={cn(
               "flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm transition-colors",
               index === selectedIndex ? "bg-accent" : "hover:bg-state-hover",
@@ -112,17 +109,9 @@ function SlashCreateGroup({
             }}
           >
             <Icon size={16} aria-hidden />
-            <span className="min-w-0 flex-1">
-              <span className="block">{composerCreateCommandLabel(mode)}</span>
-              {mode === "choose" && (
-                <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
-                  {t(($) => {
-                    return $.chat.composer.create.description;
-                  })}
-                </span>
-              )}
+            <span className="min-w-0 flex-1 truncate">
+              {composerCreateModeLabel(mode)}
             </span>
-            {mode === "choose" && <ChevronRight size={16} aria-hidden />}
           </button>
         );
       })}
@@ -173,8 +162,8 @@ export function SlashWorkflowMenu({
 }: {
   readonly anchor?: ComponentProps<typeof PopoverContent>["anchor"];
   readonly workflows: readonly ComposerSlashWorkflowMatch[];
-  readonly createModes: readonly ComposerCreateCommand[];
-  readonly onSelectCreate: (mode: ComposerCreateCommand) => void;
+  readonly createModes: readonly ComposerCreateMode[];
+  readonly onSelectCreate: (mode: ComposerCreateMode) => void;
   readonly loading: boolean;
   readonly selectedIndex: number;
   readonly showWorkflowsPageLink: boolean;
@@ -192,7 +181,7 @@ export function SlashWorkflowMenu({
       // Keep focus in the TipTap editor: the menu's keyboard navigation is
       // handled there, so the popover must never steal focus when it opens.
       initialFocus={false}
-      // The selected command owns focus, including the Create type chooser.
+      // The selected command owns focus.
       finalFocus={false}
       className="flex h-[min(16rem,var(--available-height))] w-[300px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0 md:h-[min(20rem,var(--available-height))]"
       data-testid="slash-workflow-menu"

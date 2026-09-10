@@ -19,18 +19,6 @@ export const PRESENTATION_SLIDE_COUNTS = [
 export type PresentationSlideCount = (typeof PRESENTATION_SLIDE_COUNTS)[number];
 
 export type ComposerCreateMode = (typeof COMPOSER_CREATE_MODES)[number];
-export type ComposerCreateCommand = ComposerCreateMode | "choose";
-
-export function composerCreateCommandLabel(
-  mode: ComposerCreateCommand,
-): string {
-  if (mode === "choose") {
-    return i18n.t(($) => {
-      return $.chat.composer.create.title;
-    });
-  }
-  return composerCreateModeLabel(mode);
-}
 
 export function composerCreateModeLabel(mode: ComposerCreateMode): string {
   switch (mode) {
@@ -102,7 +90,7 @@ export function createComposerCreateSignals(
       (mode !== "image" || media.image) && (mode !== "video" || media.video)
     );
   });
-  const internalMode$ = state<ComposerCreateCommand | null>(null);
+  const internalMode$ = state<ComposerCreateMode | null>(null);
   const internalPresentationSlideCount$ = state<PresentationSlideCount>("8-12");
   const presentationSlideCount$ = computed((get) => {
     return get(internalPresentationSlideCount$);
@@ -120,57 +108,46 @@ export function createComposerCreateSignals(
     );
   });
   const mode$ = computed((get) => {
-    const mode = get(internalMode$);
-    return get(enabled$) && mode !== "choose" ? mode : null;
+    return get(enabled$) ? get(internalMode$) : null;
   });
-  const choosing$ = computed((get) => {
-    return get(enabled$) && get(internalMode$) === "choose";
+  const setMode$ = command(({ get, set }, mode: ComposerCreateMode | null) => {
+    if (!get(enabled$)) {
+      return;
+    }
+    set(internalMode$, mode);
+    set(composer.closeSuggestionMenu$);
+    set(ui.model.setModelPickerOpen$, false);
+    set(
+      ui.model.setMediaModelCategory$,
+      mode === "image" || mode === "video" ? mode : null,
+    );
+    set(ui.videoOptions.setVideoOptionsOpen$, false);
+    if (mode !== "video") {
+      set(ui.videoOptions.setVideoRunOptions$, {});
+    }
+    if (mode !== "presentation") {
+      set(internalPresentationSlideCount$, "8-12");
+    }
+    set(composer.focus$);
   });
-  const setMode$ = command(
-    ({ get, set }, mode: ComposerCreateCommand | null) => {
-      if (!get(enabled$)) {
-        return;
-      }
-      set(internalMode$, mode);
-      set(composer.closeSuggestionMenu$);
-      set(ui.model.setModelPickerOpen$, false);
-      set(
-        ui.model.setMediaModelCategory$,
-        mode === "image" || mode === "video" ? mode : null,
-      );
-      set(ui.videoOptions.setVideoOptionsOpen$, false);
-      if (mode !== "video") {
-        set(ui.videoOptions.setVideoRunOptions$, {});
-      }
-      if (mode !== "presentation") {
-        set(internalPresentationSlideCount$, "8-12");
-      }
-      if (mode !== "choose") {
-        set(composer.focus$);
-      }
-    },
-  );
-  const selectCommand$ = command(
-    ({ get, set }, mode: ComposerCreateCommand) => {
-      if (!get(enabled$)) {
-        return;
-      }
-      const range = get(composer.activeSlashRange$);
-      if (range) {
-        const head = composer.editor.state.selection.head;
-        composer.editor.commands.deleteRange({
-          from: head - (range.end - range.start),
-          to: head,
-        });
-      }
-      set(setMode$, mode);
-    },
-  );
+  const selectCommand$ = command(({ get, set }, mode: ComposerCreateMode) => {
+    if (!get(enabled$)) {
+      return;
+    }
+    const range = get(composer.activeSlashRange$);
+    if (range) {
+      const head = composer.editor.state.selection.head;
+      composer.editor.commands.deleteRange({
+        from: head - (range.end - range.start),
+        to: head,
+      });
+    }
+    set(setMode$, mode);
+  });
   return {
     enabled$,
     modes,
     mode$,
-    choosing$,
     setMode$,
     selectCommand$,
     presentationSlideCount$,

@@ -106,23 +106,21 @@ test("Choose a video through the consolidated Create entry with the keyboard and
   const user = userEvent.setup({ delay: null });
   await fill(editor, "A train crossing the mountains /create");
   const menu = await screen.findByTestId("slash-workflow-menu");
-  expect(button("Create", menu)).toBeInTheDocument();
-  await user.keyboard("{Enter}");
-  const types = await screen.findByRole("group", { name: "Choose a type" });
+  // The menu answers the query in one level: the three types are listed here
+  // rather than behind a Create entry that opens a second row of buttons.
   expect(
-    queryAllByRoleFast("button", types).map((item) => {
+    queryAllByRoleFast("button", menu).map((item) => {
       return item.textContent?.trim();
     }),
-  ).toStrictEqual(["Presentation", "Video", "Image"]);
-  expect(button("Presentation", types)).toHaveFocus();
-  expect(button("Send")).toBeDisabled();
-  await user.keyboard("{ArrowRight}{Enter}");
+  ).toStrictEqual(["Create presentation", "Create video", "Create image"]);
+  await user.keyboard("{ArrowDown}{Enter}");
   await waitFor(() => {
     expect(screen.getByTestId("composer-create-mode")).toHaveTextContent(
       "Create video",
     );
   });
-  expect(types).not.toBeInTheDocument();
+  expect(screen.queryByRole("group", { name: "Choose a type" })).toBeNull();
+  expect(screen.queryByTestId("slash-workflow-menu")).toBeNull();
   expect(editor).toHaveTextContent("A train crossing the mountains");
   expect(editor).not.toHaveTextContent("/create");
   expect(submissions).toHaveLength(0);
@@ -535,7 +533,7 @@ test("Presentation adds another template when the draft already has one", async 
   });
 });
 
-test("The slash menu exposes one Create entry that opens the image style flow", async () => {
+test("The slash menu opens the image style flow in one step", async () => {
   setupModels();
   const editor = await setupComposer();
   const user = userEvent.setup({ delay: null });
@@ -543,13 +541,15 @@ test("The slash menu exposes one Create entry that opens the image style flow", 
   await user.keyboard("/");
   const menu = await screen.findByTestId("slash-workflow-menu");
   expect(
-    queryAllByRoleFast("button", menu).filter((item) => {
-      return item.getAttribute("aria-label")?.startsWith("Create");
-    }),
-  ).toHaveLength(1);
-  click(button("Create", menu));
-  const types = await screen.findByRole("group", { name: "Choose a type" });
-  click(button("Image", types));
+    queryAllByRoleFast("button", menu)
+      .map((item) => {
+        return item.getAttribute("aria-label");
+      })
+      .filter((label) => {
+        return label?.startsWith("Create");
+      }),
+  ).toStrictEqual(["Create presentation", "Create video", "Create image"]);
+  click(button("Create image", menu));
   await waitFor(() => {
     expect(screen.getByTestId("composer-create-mode")).toHaveTextContent(
       "Create image",
@@ -585,30 +585,24 @@ test("Canceling and switching Create preserve slash text and template references
   await user.click(editor);
   await user.paste("Our launch /create");
   const menu = await screen.findByTestId("slash-workflow-menu");
-  click(button("Create", menu));
-  const chooser = await screen.findByRole("group", {
-    name: "Choose a type",
-  });
-  await user.click(editor);
-  await user.keyboard("{Enter}");
-  expect(chooser).toBeInTheDocument();
-  expect(button("Send")).toBeDisabled();
-  expect(submissions).toHaveLength(0);
+  // Dismissing the menu leaves the draft exactly as it was: no create mode, the
+  // typed slash text still in the editor, and the template reference untouched.
   await user.keyboard("{Escape}");
   await waitFor(() => {
-    expect(chooser).not.toBeInTheDocument();
+    expect(menu).not.toBeInTheDocument();
   });
-  expect(editor).toHaveTextContent("Our launch");
+  expect(screen.queryByTestId("composer-create-mode")).toBeNull();
+  expect(submissions).toHaveLength(0);
+  expect(editor).toHaveTextContent("Our launch /create");
   expect(composerInlineTemplates()).toHaveLength(1);
 
+  await user.click(editor);
   await user.paste(" /create");
   const reopened = await screen.findByTestId("slash-workflow-menu");
-  click(button("Create", reopened));
-  const types = await screen.findByRole("group", { name: "Choose a type" });
-  click(button("Presentation", types));
+  click(button("Create presentation", reopened));
   const chip = await screen.findByTestId("composer-create-mode");
   expect(chip).toHaveTextContent("Create presentation");
-  expect(types).not.toBeInTheDocument();
+  expect(reopened).not.toBeInTheDocument();
   await user.paste(" /notes");
   click(screen.getByRole("combobox", { name: "Choose a type" }));
   click(await screen.findByRole("option", { name: "Image" }));
@@ -616,14 +610,16 @@ test("Canceling and switching Create preserve slash text and template references
     expect(chip).toHaveTextContent("Create image");
     expect(editor).toHaveFocus();
   });
-  expect(editor).toHaveTextContent("Our launch /notes");
+  expect(editor).toHaveTextContent("Our launch");
+  expect(editor).toHaveTextContent("/notes");
   expect(composerInlineTemplates()).toHaveLength(1);
   click(button("Exit create mode", chip));
   await waitFor(() => {
     expect(chip).not.toBeInTheDocument();
   });
   expect(editor).toHaveFocus();
-  expect(editor).toHaveTextContent("Our launch /notes");
+  expect(editor).toHaveTextContent("Our launch");
+  expect(editor).toHaveTextContent("/notes");
   expect(composerInlineTemplates()).toHaveLength(1);
   click(button("Send"));
   await waitFor(() => {
