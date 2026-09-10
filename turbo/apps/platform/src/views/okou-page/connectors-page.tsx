@@ -846,6 +846,36 @@ function discoveryCategoryCounts(
     : undefined;
 }
 
+/**
+ * The categories the filter offers. Category metadata describes the whole
+ * catalog, so it survives a category-scoped response; grouping the returned
+ * connectors is what a response without metadata leaves to work with.
+ */
+function categoryFilterSections(
+  categoryMetadata: PublicConnectorCatalogCategoryMetadata | undefined,
+  connectors: readonly PlatformConnectorCatalogStatusItem[],
+  otherCategoryLabel: string,
+): ConnectorCategorySection<PlatformConnectorCatalogStatusItem>[] {
+  if (!categoryMetadata) {
+    return groupConnectorsByCategory(
+      connectors,
+      categoryMetadata,
+      otherCategoryLabel,
+    ).flatMap((group) => {
+      return group.sections;
+    });
+  }
+  return categoryMetadata.categories.map((category) => {
+    return {
+      category: category.id,
+      label: category.label,
+      menuLabel: category.menuLabel,
+      groupId: category.groupId,
+      connectors: [],
+    };
+  });
+}
+
 interface ConnectorsBrowseModel {
   readonly showShelves: boolean;
   /**
@@ -922,7 +952,14 @@ function buildConnectorsBrowseModel({
     // The page's card grid is three wide, so six is two whole rows.
     previewSize: 6,
   });
-  const chipSections = sectionsOf(allConnectors);
+  // The filter lists the catalog's categories, not the ones the current
+  // response happens to contain: inside a category the response holds only
+  // that category, and a filter that offers nothing else is a dead end.
+  const chipSections = categoryFilterSections(
+    categoryMetadata,
+    allConnectors,
+    otherCategoryLabel,
+  );
   if (sshAvailable) {
     chipSections.push({
       category: REMOTE_ACCESS_CATEGORY,

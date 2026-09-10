@@ -554,3 +554,53 @@ test("Browse the catalog as shelves, then enter a category and come back", async
     screen.getByTestId("connector-shelf-communication-collaboration"),
   ).toBeInTheDocument();
 });
+
+test("Keep every category in the filter while one of them is open", async () => {
+  mockConnectors(context, []);
+  mockPublicConnectorStatus(
+    context,
+    shelfCatalog(),
+    {
+      categories: [
+        {
+          id: "communication-collaboration",
+          label: "Communication and Collaboration",
+          menuLabel: "Communication",
+          groupId: null,
+        },
+        {
+          id: "ai-voice-audio",
+          label: "Voice / Audio",
+          menuLabel: "Voice and Audio",
+          groupId: null,
+        },
+      ],
+      groups: [],
+    },
+    { "communication-collaboration": 327, "ai-voice-audio": 50 },
+  );
+  await setupPage({
+    context,
+    path: "/connectors?category=communication-collaboration",
+    featureSwitches: { [FeatureSwitchKey.ConnectorDirectory]: true },
+  });
+
+  await waitFor(() => {
+    expect(getConnectorCard("Zendesk")).toBeInTheDocument();
+  });
+
+  // Inside a category the response carries only that category. The filter
+  // describes the catalog, not the response, or it becomes a dead end: the
+  // only way back out would be the breadcrumb.
+  await click(screen.getByLabelText("Filter connectors"));
+  const menu = await screen.findByRole("menu");
+  const options = queryAllByRoleFast("menuitem", menu).map((item) => {
+    return item.textContent;
+  });
+  expect(options).toContain("All");
+  expect(
+    options.some((option) => {
+      return option?.startsWith("Voice");
+    }),
+  ).toBeTruthy();
+});
