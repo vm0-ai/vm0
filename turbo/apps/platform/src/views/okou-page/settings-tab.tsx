@@ -80,7 +80,7 @@ interface SettingsTabProps {
     Promise<void>,
     [
       {
-        displayName: string;
+        displayName?: string;
         sound: string;
         description: string;
         avatarUrl?: string | null;
@@ -90,7 +90,7 @@ interface SettingsTabProps {
     ]
   >;
   inputId?: string;
-  /** Whether this is the default agent (cannot be deleted). */
+  /** Authoritative identity; undefined keeps protected controls read-only. */
   isDefaultAgent?: boolean;
   /** Callback to delete the agent. */
   onDelete?: () => Promise<void>;
@@ -102,12 +102,12 @@ function AvatarSettingsControl({
   alt,
   onConfirm,
 }: {
-  isDefaultAgent: boolean;
+  isDefaultAgent: boolean | undefined;
   avatarUrl: string | null;
   alt: string;
   onConfirm: (config: AvatarSvgConfig, signal: AbortSignal) => Promise<void>;
 }) {
-  if (isDefaultAgent) {
+  if (isDefaultAgent !== false) {
     return (
       <AvatarFromUrl
         avatarUrl={avatarUrl}
@@ -174,7 +174,10 @@ function AvatarEditButton({
   );
 }
 
-function resolveAgentName(name: string, isDefaultAgent: boolean): string {
+function resolveAgentName(
+  name: string,
+  isDefaultAgent: boolean | undefined,
+): string {
   if (isDefaultAgent) {
     return DEFAULT_AGENT_DISPLAY_NAME;
   }
@@ -183,9 +186,9 @@ function resolveAgentName(name: string, isDefaultAgent: boolean): string {
 
 function omitForDefaultAgent<T>(
   value: T,
-  isDefaultAgent: boolean,
+  isDefaultAgent: boolean | undefined,
 ): T | undefined {
-  if (isDefaultAgent) {
+  if (isDefaultAgent !== false) {
     return undefined;
   }
   return value;
@@ -200,13 +203,13 @@ function AgentNameControl({
   onChange,
 }: {
   name: string;
-  isDefaultAgent: boolean;
+  isDefaultAgent: boolean | undefined;
   inputId: string;
   label: string;
   placeholder: string;
   onChange: (name: string) => void;
 }) {
-  if (isDefaultAgent) {
+  if (isDefaultAgent !== false) {
     return (
       <p className="flex h-9 items-center text-sm text-foreground">{name}</p>
     );
@@ -226,6 +229,51 @@ function AgentNameControl({
   );
 }
 
+function DefaultAgentVisibility({
+  isDefaultAgent,
+  visibility,
+}: {
+  isDefaultAgent: boolean | undefined;
+  visibility: "public" | "private";
+}) {
+  const { t } = useTranslation("agents");
+  if (isDefaultAgent !== true) {
+    return null;
+  }
+  return (
+    <InlineSettingsRow
+      label={t(($) => {
+        return $.list.create.visibilityLabel;
+      })}
+      description={t(($) => {
+        return $.profile.fields.visibility.defaultDescription;
+      })}
+    >
+      <p className="text-sm text-foreground">
+        {visibility === "public"
+          ? t(($) => {
+              return $.list.tabs.public;
+            })
+          : t(($) => {
+              return $.list.tabs.private;
+            })}
+      </p>
+    </InlineSettingsRow>
+  );
+}
+
+function willDemoteAgentVisibility(
+  canChangeVisibility: boolean,
+  initialVisibility: "public" | "private",
+  visibility: "public" | "private",
+) {
+  return (
+    canChangeVisibility &&
+    initialVisibility === "public" &&
+    visibility === "private"
+  );
+}
+
 export function SettingsTab({
   agentId,
   displayName: resolvedAgentName,
@@ -236,7 +284,7 @@ export function SettingsTab({
   canEditVisibility = true,
   updateSettings$,
   inputId = "okou-agent-name",
-  isDefaultAgent = false,
+  isDefaultAgent,
   onDelete,
   deleteWorkflows = [],
   deleteCopyTargets = [],
@@ -286,8 +334,12 @@ export function SettingsTab({
 
   const demoteConfirmOpen = useGet(agentDemoteConfirmOpen$);
   const setDemoteConfirmOpen = useSet(setAgentDemoteConfirmOpen$);
-  const willDemoteVisibility =
-    initialVisibility === "public" && visibility === "private";
+  const canChangeVisibility = canEditVisibility && isDefaultAgent === false;
+  const willDemoteVisibility = willDemoteAgentVisibility(
+    canChangeVisibility,
+    initialVisibility,
+    visibility,
+  );
   const toneCopy = {
     professional: {
       label: t(($) => {
@@ -355,11 +407,11 @@ export function SettingsTab({
       (async () => {
         await triggerUpdateSettings(
           {
-            displayName: agentName,
+            displayName: omitForDefaultAgent(agentName, isDefaultAgent),
             description: desc,
             sound: tone,
-            avatarUrl,
-            ...(canEditVisibility ? { visibility } : {}),
+            avatarUrl: omitForDefaultAgent(avatarUrl, isDefaultAgent),
+            ...(canChangeVisibility ? { visibility } : {}),
           },
           pageSignal,
         );
@@ -413,11 +465,14 @@ export function SettingsTab({
                       });
                       await triggerUpdateSettings(
                         {
-                          displayName: agentName,
+                          displayName: omitForDefaultAgent(
+                            agentName,
+                            isDefaultAgent,
+                          ),
                           description: desc,
                           sound: tone,
                           avatarUrl: newAvatarUrl,
-                          ...(canEditVisibility ? { visibility } : {}),
+                          ...(canChangeVisibility ? { visibility } : {}),
                         },
                         signal,
                       );
@@ -565,7 +620,11 @@ export function SettingsTab({
                 </div>
               </div>
             </InlineSettingsRow>
-            {canEditVisibility && (
+            <DefaultAgentVisibility
+              isDefaultAgent={isDefaultAgent}
+              visibility={initialVisibility}
+            />
+            {canChangeVisibility && (
               <InlineSettingsRow
                 label={t(($) => {
                   return $.profile.fields.visibility.label;
@@ -591,7 +650,7 @@ export function SettingsTab({
           </CardContent>
         </Card>
 
-        {!isDefaultAgent && onDelete && (
+        {isDefaultAgent === false && onDelete && (
           <AgentDeleteDialog
             resolvedAgentName={presentedAgentName}
             onDelete={onDelete}
@@ -619,7 +678,10 @@ export function SettingsTab({
         />
       )}
 
-      <Dialog open={demoteConfirmOpen} onOpenChange={setDemoteConfirmOpen}>
+      <Dialog
+        open={isDefaultAgent === false && demoteConfirmOpen}
+        onOpenChange={setDemoteConfirmOpen}
+      >
         <DialogContent
           closeLabel={t(($) => {
             return $.actions.close;

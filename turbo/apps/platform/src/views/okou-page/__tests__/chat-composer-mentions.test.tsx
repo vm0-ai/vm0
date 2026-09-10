@@ -39,6 +39,7 @@ function agent(
   visibility: "public" | "private" = "public",
 ): AgentResponse {
   return {
+    isDefaultAgent: false,
     agentId,
     ownerId: "mention-owner",
     displayName,

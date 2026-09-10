@@ -851,6 +851,7 @@ function otherAgentWorkflow(): WorkflowDetailResponse {
 
 function agent(id: string, displayName: string): AgentResponse {
   return {
+    isDefaultAgent: false,
     agentId: id,
     ownerId: CURRENT_USER_ID,
     displayName,
@@ -893,6 +894,7 @@ function mockAgentPageApis(): void {
     const displayName =
       params.id === OTHER_AGENT_ID ? "Support Bot" : "Research Bot";
     return respond(200, {
+      isDefaultAgent: false,
       agentId: params.id,
       ownerId: CURRENT_USER_ID,
       description: "Finds and summarizes information",

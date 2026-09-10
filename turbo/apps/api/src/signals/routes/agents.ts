@@ -10,10 +10,8 @@ import {
   type AgentVisibility,
 } from "@okouai/api-contracts/contracts/agents";
 import { userConnectorsContract } from "@okouai/api-contracts/contracts/user-connectors";
-import {
-  DEFAULT_AGENT_AVATAR_URL,
-  randomAvatarUrl,
-} from "@okouai/core/agent-avatar";
+import { randomAvatarUrl } from "@okouai/core/agent-avatar";
+import { agentIdentityUpdateError } from "@okouai/core/agent-protection";
 import { agents } from "@okouai/db/schema/agent";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 
@@ -35,7 +33,6 @@ import {
   visibleJoinedAgentCondition,
 } from "../services/agent-data.service";
 import { connectorActionResolver } from "../services/connector-action-resolver.service";
-import { DEFAULT_AGENT_DISPLAY_NAME } from "../services/default-agent-profile";
 import {
   lockCanonicalAgentMutation,
   lockCanonicalAgentPublicLimit,
@@ -133,21 +130,6 @@ function buildAgentUpsertConflictSet(body: AgentUpdateBody, updatedAt: Date) {
     selectedModel: null,
     preferPersonalProvider: false,
     ...(body.visibility !== undefined && { visibility: body.visibility }),
-  };
-}
-
-function normalizeDefaultAgentProfile(
-  body: AgentUpdateBody,
-  existing: ExistingAgentForUpdate,
-): AgentUpdateBody {
-  if (existing.id !== existing.defaultAgentId) {
-    return body;
-  }
-
-  return {
-    ...body,
-    displayName: DEFAULT_AGENT_DISPLAY_NAME,
-    avatarUrl: DEFAULT_AGENT_AVATAR_URL,
   };
 }
 
@@ -541,7 +523,7 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     if (!existing) {
       return { response: agentNotFound(params.id) };
     }
-    const updateBody = normalizeDefaultAgentProfile(body.data, existing);
+    const updateBody = body.data;
 
     const permissionError = requireAgentConfigurationPermission(
       existing,
@@ -549,6 +531,16 @@ const updateAgentInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
     if (permissionError) {
       return { response: permissionError };
+    }
+
+    const identityError = agentIdentityUpdateError(
+      existing.id === existing.defaultAgentId,
+      updateBody,
+    );
+    if (identityError) {
+      return {
+        response: { status: 400 as const, body: { error: identityError } },
+      };
     }
 
     const nextVisibility = updateBody.visibility ?? existing.visibility;
@@ -625,7 +617,7 @@ const updateAgentMetadataInner$ = command(
       if (!existing) {
         return { response: agentNotFound(params.id) };
       }
-      const updateBody = normalizeDefaultAgentProfile(body.data, existing);
+      const updateBody = body.data;
 
       const permissionError = requireAgentPermission(
         existing.owner,
@@ -637,6 +629,16 @@ const updateAgentMetadataInner$ = command(
       );
       if (permissionError) {
         return { response: permissionError };
+      }
+
+      const identityError = agentIdentityUpdateError(
+        existing.id === existing.defaultAgentId,
+        updateBody,
+      );
+      if (identityError) {
+        return {
+          response: { status: 400 as const, body: { error: identityError } },
+        };
       }
 
       if (updateBody.visibility !== undefined) {

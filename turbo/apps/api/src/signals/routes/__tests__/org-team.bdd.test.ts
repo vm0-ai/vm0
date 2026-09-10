@@ -1,3 +1,4 @@
+import { seedLegacyMissingDefaultAgentFixture } from "../../../test-fixtures/legacy-default-agent";
 import { randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
@@ -1133,7 +1134,7 @@ describe("ORG-01/AGENT-02: agent listing and default-agent recovery", () => {
 
     // Deleting the default agent clears the FK, then onboarding status lazily
     // restores a usable org default for admins.
-    await api.deleteAgent(admin, defaultAgentId);
+    await seedLegacyMissingDefaultAgentFixture(defaultAgentId);
     const restored = await api.readOnboardingStatus(admin);
     expect(restored.defaultAgentId).toBeTruthy();
     expect(restored.defaultAgentId).not.toBe(defaultAgentId);

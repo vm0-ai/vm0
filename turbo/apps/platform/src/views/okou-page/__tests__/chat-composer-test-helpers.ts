@@ -262,6 +262,7 @@ export function mockAgent(options?: {
   context.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
     const isOtherAgent = params.id === OTHER_AGENT_ID;
     return respond(200, {
+      isDefaultAgent: false,
       agentId: params.id,
       ownerId: "test-user-123",
       displayName: isOtherAgent ? "Other Agent" : "Scout",
