@@ -80,8 +80,8 @@ if grep -Fq 'claude-sonnet-4-6' "$REAL_CLAUDE_TEST"; then
 fi
 grep -Fq 'OKOU_MITM_RUNNER_TOKEN' "$BUILT_IN_FALLBACK_TEST" ||
   fail "built-in fallback E2E must require trusted failure authentication"
-grep -Fq 'startVideoOnboardingCheckout' "$RUNNER_TOKEN" ||
-  fail "real runner accounts must upgrade through public paid onboarding"
+grep -Fq 'createRunnerCheckout' "$RUNNER_TOKEN" ||
+  fail "paid runner accounts must use the public checkout API"
 grep -Fq 'fillStripeCheckout' "$RUNNER_TOKEN" ||
   fail "real runner accounts must complete the public Stripe checkout"
 if [[ "$(grep -Fc 'upgradeToPro: true' "$RUNNER_TOKEN")" -ne 3 ]]; then
@@ -711,13 +711,13 @@ unless generation_cleanup_step &&
     generation_cleanup_step["if"] ==
       "steps.cleanup-scope.outputs.scope == 'generation'" &&
     generation_cleanup_step.fetch("run").end_with?(
-      "runner-account.ts cleanup-generation",
+      "runner-account.ts cleanup-recorded-generation",
     )
   raise "incomplete preparation must reconcile only the current generation"
 end
 unless run_cleanup_step &&
     run_cleanup_step["if"] == "steps.cleanup-scope.outputs.scope == 'run'" &&
-    run_cleanup_step.fetch("run").end_with?("runner-account.ts cleanup-run")
+    run_cleanup_step.fetch("run").end_with?("runner-account.ts cleanup-recorded-run")
   raise "successful runner work must reconcile the exact workflow run"
 end
 %w[
