@@ -3,6 +3,7 @@ import chalk from "chalk";
 
 import { generateWebIntroVideoPresenter } from "../lib/api/domains/web";
 import { withErrorHandler } from "../lib/command/with-error-handler";
+import { createArtifactPresentation } from "./shared/artifact-return";
 
 interface IntroVideoPresenterCommandOptions {
   readonly avatarId: string;
@@ -29,8 +30,13 @@ async function runIntroVideoPresenterCommand(
     audioUrl: options.audioUrl,
     ...(options.videoName ? { videoName: options.videoName } : {}),
   });
+  const presentation = createArtifactPresentation(
+    result.filename,
+    result.url,
+    "This result is a presenter clip that can be used in subsequent video composition.",
+  );
   if (options.json) {
-    console.log(JSON.stringify(result));
+    console.log(JSON.stringify({ ...result, ...presentation.json }));
     return;
   }
   console.log(chalk.green(`✓ Intro Video presenter generated: ${result.url}`));
@@ -38,6 +44,7 @@ async function runIntroVideoPresenterCommand(
   console.log(chalk.dim(`  Duration: ${result.durationSeconds}s`));
   console.log(chalk.dim(`  Avatar: ${result.avatarId}`));
   console.log(chalk.dim(`  Credits charged: ${result.creditsCharged}`));
+  console.log(`\n${presentation.text}`);
 }
 
 export const introVideoPresenterCommand = new Command()

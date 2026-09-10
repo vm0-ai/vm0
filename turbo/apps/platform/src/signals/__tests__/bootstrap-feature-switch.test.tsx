@@ -41,9 +41,6 @@ test("A signed-in workspace receives its enabled features", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    cachedFeatureSwitches: {
-      [FeatureSwitchKey.IntroVideo]: false,
-    },
     featureSwitches: {
       [FeatureSwitchKey.IntroVideo]: true,
     },
@@ -82,10 +79,6 @@ async function setupModelPickerRolloutPage(args: {
         activeOrg: { id: CUSTOMER_ORG_ID, name: "Customer" },
         memberships: [{ id: CUSTOMER_ORG_ID }],
       },
-    },
-    cachedFeatureSwitches: {
-      [FeatureSwitchKey.ModelPickerMenu]: false,
-      [FeatureSwitchKey.IntroVideo]: false,
     },
   });
 
@@ -246,9 +239,6 @@ test("A feature response is discarded after identity changes", async () => {
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    cachedFeatureSwitches: {
-      [FeatureSwitchKey.IntroVideo]: false,
-    },
   });
   await screen.findByRole("textbox", { name: "Message" });
   await openTemplates();
@@ -284,9 +274,6 @@ test("The same identity can finish feature loading through an auth refresh", asy
   await setupPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
-    cachedFeatureSwitches: {
-      [FeatureSwitchKey.IntroVideo]: false,
-    },
   });
   await screen.findByRole("textbox", { name: "Message" });
   await openTemplates();

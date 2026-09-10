@@ -52,6 +52,12 @@ interface SharedDatabaseQueryTelemetry {
   readonly template: string;
 }
 
+interface SharedWorkerFailureTelemetry {
+  readonly event_name: "shared_worker.failure";
+  readonly phase: "error-event";
+  readonly script_path: string;
+}
+
 interface HttpRequestTelemetry {
   readonly event_name: "http.request";
   readonly method: HttpMethod;
@@ -64,6 +70,7 @@ export type ClientTelemetryOperation =
   | IndexedDbTransactionCreateTelemetry
   | IndexedDbTransactionTelemetry
   | SharedDatabaseQueryTelemetry
+  | SharedWorkerFailureTelemetry
   | HttpRequestTelemetry;
 
 function runtimeName(): "shared_worker" | "window" {
@@ -71,6 +78,9 @@ function runtimeName(): "shared_worker" | "window" {
 }
 
 function scopeName(operation: ClientTelemetryOperation): string {
+  if (operation.event_name === "shared_worker.failure") {
+    return "okou-app/shared-worker";
+  }
   if (
     operation.event_name === "indexeddb.open" ||
     operation.event_name === "indexeddb.transaction.create" ||
@@ -100,6 +110,9 @@ function statusCode(
 }
 
 function operationName(operation: ClientTelemetryOperation): string {
+  if (operation.event_name === "shared_worker.failure") {
+    return operation.event_name;
+  }
   if (operation.event_name === "http.request") {
     return `${operation.method} ${operation.route}`;
   }
@@ -115,6 +128,12 @@ function operationName(operation: ClientTelemetryOperation): string {
 function operationAttributes(
   operation: ClientTelemetryOperation,
 ): ClientTelemetryAttributes {
+  if (operation.event_name === "shared_worker.failure") {
+    return {
+      "okou.shared_worker.failure.phase": operation.phase,
+      "okou.shared_worker.script_path": operation.script_path,
+    };
+  }
   if (operation.event_name === "indexeddb.open") {
     return {
       "db.namespace": operation.database,
@@ -237,6 +256,13 @@ export function recordClientTelemetry(
         : { "status.code": resolvedStatusCode }),
     },
   ]);
+}
+
+export async function flushClientTelemetry(): Promise<void> {
+  const config = resolvePlatformClientTelemetryConfig();
+  if (config.token) {
+    await telemetryClient(config.token).flush();
+  }
 }
 
 export async function observeClientOperation<TResult>(

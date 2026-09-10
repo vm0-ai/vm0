@@ -162,6 +162,13 @@
       "when": 1788952383847,
       "tag": "1100_relax_computer_use_host_client_product",
       "breakpoints": true
+    },
+    {
+      "idx": 1101,
+      "version": "7",
+      "when": 1788961849484,
+      "tag": "1101_zippy_daimon_hellstrom",
+      "breakpoints": true
     }
   ]
 }

@@ -4,6 +4,11 @@ import { command, state } from "ccstate";
 import sharedDatabaseWorkerAssetUrl from "virtual:shared-database-worker";
 
 import { CONNECTION_DIAGNOSTICS_PARAM } from "../lib/connection-diagnostics-param.ts";
+import {
+  flushClientTelemetry,
+  recordClientTelemetry,
+  startClientTelemetryMeasurement,
+} from "../lib/client-telemetry.ts";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import { VERCEL_PROTECTION_BYPASS_NAME } from "../lib/preview-bypass-name.ts";
 import type {
@@ -18,6 +23,8 @@ import type {
 import { MessagePortSharedDatabaseBridge } from "../shared-database/message-port-client.ts";
 import type { SharedDatabaseWorkerUnavailableReason } from "../shared-database/protocol.ts";
 import { SingleConnectionSharedDatabaseBridge } from "../shared-database/single-connection-client.ts";
+import { SharedDatabaseWorkerLoadError } from "../shared-database/worker-load-error.ts";
+import { reportSharedWorkerFailure } from "./shared-worker-failure.ts";
 import { clerk$ } from "./auth.ts";
 import { featureSwitch$ } from "./external/feature-switch.ts";
 import { readClerkToken, waitForClerkSession } from "./clerk-token.ts";
@@ -34,7 +41,7 @@ import {
   reloadComputedFromWorker$,
   setSharedDatabaseConnectionStatus$,
 } from "./shared-database.ts";
-import { createDeferredPromise, onRejection } from "./utils.ts";
+import { createDeferredPromise, onDomEventFn, onRejection } from "./utils.ts";
 
 export interface SharedDatabaseBridgeHost {
   createBridge(
@@ -94,16 +101,32 @@ function createBrowserSharedDatabaseBridge(
     signal,
     getToken,
   );
+  let failureReported = false;
   worker.addEventListener(
     "error",
-    (event) => {
+    onDomEventFn(async (event: ErrorEvent) => {
+      // This page owns recovery; do not also propagate the native error.
+      event.preventDefault();
+      if (failureReported) {
+        return;
+      }
+      failureReported = true;
       const workerError: unknown = event.error;
-      portBridge.fail(
-        workerError instanceof Error
-          ? workerError
-          : new Error("Shared database worker failed to load"),
+      reportSharedWorkerFailure();
+      recordClientTelemetry(
+        startClientTelemetryMeasurement(),
+        {
+          event_name: "shared_worker.failure",
+          phase: "error-event",
+          // The full URL contains identity and preview credentials.
+          script_path: workerUrl.pathname,
+        },
+        "error",
       );
-    },
+      portBridge.fail(new SharedDatabaseWorkerLoadError(workerError));
+      // Begin sending before the user refreshes, without delaying recovery.
+      await flushClientTelemetry();
+    }),
     { signal },
   );
   return portBridge;

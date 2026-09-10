@@ -86,7 +86,10 @@ function menuButton(title: string) {
 
 function menuItem(title: string) {
   const item = queryAllByRoleFast("menuitem").find((element) => {
-    return element.textContent?.trim() === title;
+    return (
+      element.getAttribute("aria-label") === title ||
+      element.textContent?.trim() === title
+    );
   });
   if (!item) {
     throw new Error(`Missing menu item: ${title}`);
@@ -187,13 +190,7 @@ test("new pins receive a rank ahead of all existing pins", async () => {
     throw new Error("Missing thread menu");
   }
   click(menuButton);
-  const pinItem = queryAllByRoleFast("menuitem").find((item) => {
-    return item.textContent?.trim() === "Pin chat";
-  });
-  if (!pinItem) {
-    throw new Error("Missing pin menu item");
-  }
-  click(pinItem);
+  click(menuItem("Pin chat"));
   expect((await requested.promise)! < "a0").toBeTruthy();
   await waitFor(() => {
     return expect(sidebarThreadTitles()).toStrictEqual([

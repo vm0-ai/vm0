@@ -19,6 +19,7 @@ import {
 } from "../../lib/api/domains/social";
 import { ApiRequestError } from "../../lib/api/core/client-factory";
 import { getOkouToken } from "../../lib/okou-env";
+import { createArtifactPresentation } from "../shared/artifact-return";
 import {
   commentsIntent,
   downloadPlatform,
@@ -918,7 +919,9 @@ function downloadOutput(
     | SocialTarget
     | { readonly kind: "download"; readonly downloadId: string },
   request: SocialRequestMetadata,
-): SocialOutput {
+): SocialResultOutput &
+  Partial<ReturnType<typeof createArtifactPresentation>["json"]> {
+  const artifact = response.status === "completed" ? response.artifact : null;
   return {
     kind: "result",
     status: "complete",
@@ -927,6 +930,13 @@ function downloadOutput(
     target,
     request,
     data: response,
+    ...(artifact
+      ? createArtifactPresentation(
+          artifact.filename,
+          artifact.url,
+          "These forms reference the media file saved to Okou. The source post URL identifies the original social post.",
+        ).json
+      : {}),
     collection: null,
     billing: response.billing
       ? {

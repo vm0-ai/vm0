@@ -241,6 +241,9 @@ describe("okou web upload-file command", () => {
           "[data.bin](<https://presigned.example.com/csv-uuid/data.bin?sig=xyz>)",
         previewMarkdownBlock:
           "![data.bin](<https://presigned.example.com/csv-uuid/data.bin?sig=xyz>)",
+        artifactPresentationContext: expect.stringContaining(
+          "outside code fences",
+        ),
       });
     });
 

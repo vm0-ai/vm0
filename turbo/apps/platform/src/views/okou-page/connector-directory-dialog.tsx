@@ -1,4 +1,4 @@
-import { useLastLoadable } from "ccstate-react";
+import { useLastLoadable, useLoadable } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { ArrowRight, Plus, Search, TriangleAlert } from "lucide-react";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
@@ -19,6 +19,8 @@ import { Button, cn } from "@okouai/ui";
 import type { PublicConnectorCatalogCategoryMetadata } from "@okouai/api-contracts/contracts/connector-catalog";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import { connectorAccountSummaryByTarget$ } from "../../signals/okou-page/connector-accounts.ts";
+import { sshSummary$ } from "../../signals/ssh.ts";
+import { REMOTE_ACCESS_CATEGORY } from "../../signals/okou-page/settings/ssh-connector.ts";
 import type {
   ComposerConnectorUiState,
   ConnectorDirectoryTab,
@@ -41,6 +43,7 @@ import {
 } from "./components/settings/launch-connector-connect.ts";
 import { useConnectorAccountLabel } from "./components/settings/use-connector-account-label.ts";
 import { ConnectorDetailPanel } from "./connector-directory-detail.tsx";
+import { SshConnectorCard } from "./components/settings/ssh-connector-card.tsx";
 import {
   buildConnectorDirectoryModel,
   type ConnectorDirectoryModel,
@@ -340,6 +343,7 @@ function DirectoryCategoryChips({
 
 function DirectoryDiscoverPanel({
   model,
+  showSsh,
   renderCard,
   search,
   category,
@@ -347,6 +351,7 @@ function DirectoryDiscoverPanel({
   onCreateCustom,
 }: {
   readonly model: ConnectorDirectoryModel;
+  readonly showSsh: boolean;
   readonly renderCard: RenderConnectorCard;
   readonly search: string;
   readonly category: string | null;
@@ -369,7 +374,11 @@ function DirectoryDiscoverPanel({
         })}
       </DirectorySection>
     ) : null;
-  if (model.discover.length === 0 && model.matchedConnected.length === 0) {
+  if (
+    model.discover.length === 0 &&
+    model.matchedConnected.length === 0 &&
+    !showSsh
+  ) {
     return (
       <>
         {attention}
@@ -409,18 +418,19 @@ function DirectoryDiscoverPanel({
             })}
           </DirectorySection>
         )}
-        {model.discover.length > 0 && (
+        {(model.discover.length > 0 || showSsh) && (
           <DirectorySection
             title={t(
               ($) => {
                 return $.chat.connectors.directory.matchCount;
               },
-              { count: model.discover.length },
+              { count: model.discover.length + Number(showSsh) },
             )}
           >
             {model.discover.map((item) => {
               return renderCard(item, false);
             })}
+            {showSsh && <SshConnectorCard configuredCount={0} />}
           </DirectorySection>
         )}
       </>
@@ -447,6 +457,15 @@ function DirectoryDiscoverPanel({
         chips={model.shelfLayout.chips}
         onSelect={onSelectCategory}
       />
+      {showSsh && (
+        <DirectorySection
+          title={t(($) => {
+            return $.connectors.catalog.remoteAccess;
+          })}
+        >
+          <SshConnectorCard configuredCount={0} />
+        </DirectorySection>
+      )}
     </>
   );
 }
@@ -561,6 +580,7 @@ function DirectoryToolbar({
 
 function DirectoryBody({
   tab,
+  showSsh,
   loading,
   model,
   renderCard,
@@ -570,6 +590,7 @@ function DirectoryBody({
   onConnectCustom,
 }: {
   readonly tab: ConnectorDirectoryTab;
+  readonly showSsh: boolean;
   readonly loading: boolean;
   readonly model: ConnectorDirectoryModel;
   readonly renderCard: RenderConnectorCard;
@@ -585,6 +606,7 @@ function DirectoryBody({
     return (
       <DirectoryDiscoverPanel
         model={model}
+        showSsh={showSsh}
         renderCard={renderCard}
         search={search}
         category={category}
@@ -626,6 +648,29 @@ function DirectoryBrowseView({
   readonly onUpdateState: UpdateDirectoryState;
   readonly onConnectCustom: (connector: CustomConnectorResponse) => void;
 }) {
+  const { t } = useTranslation();
+  const summary = useLoadable(sshSummary$);
+  const sshAvailable =
+    summary.state === "hasData" && summary.data?.configuredCount === 0;
+  const showSsh =
+    sshAvailable &&
+    (category === null || category === REMOTE_ACCESS_CATEGORY) &&
+    "ssh".includes(search.trim().toLowerCase());
+  const remoteAccessLabel = t(($) => {
+    return $.connectors.catalog.remoteAccess;
+  });
+  const sections = sshAvailable
+    ? [
+        ...model.categorySections,
+        {
+          category: REMOTE_ACCESS_CATEGORY,
+          label: remoteAccessLabel,
+          menuLabel: remoteAccessLabel,
+          groupId: null,
+          connectors: [],
+        },
+      ]
+    : model.categorySections;
   return (
     <>
       <DirectoryToolbar
@@ -643,8 +688,12 @@ function DirectoryBrowseView({
       />
       {tab === "discover" && (
         <DirectoryCategoryChips
-          sections={model.categorySections}
-          categoryCounts={categoryCounts}
+          sections={sections}
+          categoryCounts={
+            sshAvailable
+              ? { ...categoryCounts, [REMOTE_ACCESS_CATEGORY]: 1 }
+              : categoryCounts
+          }
           selected={category}
           onSelect={(next) => {
             onUpdateState({
@@ -662,6 +711,7 @@ function DirectoryBrowseView({
       >
         <DirectoryBody
           tab={tab}
+          showSsh={showSsh}
           loading={loading}
           model={model}
           renderCard={renderCard}
@@ -745,7 +795,10 @@ function createDirectoryKeyDownHandler({
   readonly onUpdateState: UpdateDirectoryState;
 }) {
   return (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (inDetail) {
+    if (
+      inDetail ||
+      (event.target instanceof HTMLElement && event.target.closest("a, button"))
+    ) {
       return;
     }
     const next = nextDirectoryIndex(

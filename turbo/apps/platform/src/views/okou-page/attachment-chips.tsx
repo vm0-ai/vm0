@@ -84,10 +84,6 @@ import {
 } from "../../signals/okou-page/image-annotation.ts";
 import { composerImageAnnotationEnabled$ } from "../../signals/external/feature-switch.ts";
 import {
-  useResolvedAttachmentUrl,
-  useAttachmentMediaError,
-} from "./attachment-resource.ts";
-import {
   ArtifactActionSeparator,
   ArtifactDownloadMenu,
   ArtifactImageNavigationControls,
@@ -658,7 +654,6 @@ function ArtifactDialogImageStage({
             </div>
           ) : (
             <ZoomableArtifactImageCanvas
-              resourceDisplay={preview.display}
               key={resourceUrl}
               src={resourceUrl}
               alt={filename}
@@ -713,7 +708,7 @@ function ArtifactDialogImageBody({
   imageNavigation?: ArtifactImageNavigationActions;
   preview: Extract<AttachmentLightboxState, { kind: "image" }>;
 }) {
-  const resourceUrl = useResolvedAttachmentUrl(preview.url, preview.display);
+  const resourceUrl = useLastResolved(preview.resourceUrl$) ?? null;
   return (
     <ArtifactDialogImageStage
       filename={filename}
@@ -732,9 +727,8 @@ function ArtifactDialogVideoBody({
   preview: AttachmentLightboxState;
 }) {
   const { t } = useTranslation();
-  const resourceUrl = useResolvedAttachmentUrl(preview.url, preview.display);
+  const resourceUrl = useLastResolved(preview.resourceUrl$) ?? null;
 
-  const retryExpiredMedia = useAttachmentMediaError(preview.display);
   return (
     <ArtifactDialogStage centered>
       <div
@@ -743,7 +737,6 @@ function ArtifactDialogVideoBody({
       >
         {resourceUrl !== null && (
           <video
-            onError={retryExpiredMedia}
             src={resourceUrl}
             controls
             autoPlay
@@ -771,9 +764,8 @@ function ArtifactDialogAudioBody({
   preview: AttachmentLightboxState;
 }) {
   const { t } = useTranslation();
-  const resourceUrl = useResolvedAttachmentUrl(preview.url, preview.display);
+  const resourceUrl = useLastResolved(preview.resourceUrl$) ?? null;
 
-  const retryExpiredMedia = useAttachmentMediaError(preview.display);
   return (
     <ArtifactDialogStage centered>
       <div className="okou-chat-card flex w-full max-w-[520px] flex-col items-center gap-4 p-6">
@@ -785,7 +777,6 @@ function ArtifactDialogAudioBody({
         </p>
         {resourceUrl !== null && (
           <audio
-            onError={retryExpiredMedia}
             src={resourceUrl}
             controls
             autoPlay
@@ -813,7 +804,7 @@ function ArtifactDialogDocumentFrameBody({
   preview: AttachmentLightboxState;
 }) {
   const { t } = useTranslation();
-  const resourceUrl = useResolvedAttachmentUrl(preview.url, preview.display);
+  const resourceUrl = useLastResolved(preview.resourceUrl$) ?? null;
   // PDF Open Parameters: #navpanes=0 hides Chromium's built-in left rail so the
   // embedded preview shows just the page and toolbar by default.
   const src =
@@ -868,16 +859,19 @@ function ArtifactDialogOfficeDocumentBody({
   filename: string;
   preview: Extract<AttachmentLightboxState, { kind: "file" }>;
 }) {
+  const resourceUrl = useLastResolved(preview.resourceUrl$) ?? null;
+  const shareUrl = useLastResolved(preview.shareUrl$);
   return (
     <ArtifactDialogStage scrollable={false}>
       <div className="flex h-full min-h-0 w-full flex-1 overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm">
         <OfficeDocumentPreview
-          resourceDisplay={preview.display}
+          resourceUrl={
+            shareUrl === undefined ? null : (shareUrl ?? resourceUrl)
+          }
           filename={filename}
           focusKey={`${preview.url}:dialog`}
           focusOnMount={false}
           testId="artifact-dialog-body-office"
-          url={preview.url}
         />
       </div>
     </ArtifactDialogStage>
@@ -962,7 +956,7 @@ function ArtifactDialogHtmlBody({
 }) {
   const { t } = useTranslation();
   const fullscreen = useGet(lightboxDialogFullscreen$);
-  const src = useResolvedAttachmentUrl(preview.url, preview.display);
+  const src = useLastResolved(preview.resourceUrl$) ?? null;
   const isPresentationHtml = artifact?.artifactKind === "presentation-html";
 
   if (src === null) {
@@ -1220,6 +1214,7 @@ function ArtifactPreviewDialogActions({
   const toggleLightboxDialogFullscreen = useSet(
     toggleLightboxDialogFullscreen$,
   );
+  const shareUrl = useLastResolved(preview.shareUrl$);
   const showShare = preview.shareAvailable !== false;
   const showSplitView = preview.splitViewAvailable !== false;
   const closeLightboxImmediately = useSet(closeLightboxImmediately$);
@@ -1257,6 +1252,7 @@ function ArtifactPreviewDialogActions({
       )}
       {showShare && (
         <ArtifactShareButton
+          shareUrl={shareUrl}
           ariaLabel={t(($) => {
             return $.artifacts.actions.share;
           })}
@@ -1622,21 +1618,22 @@ export function PreviewableAudioAttachmentChip({
  * A restored attachment carries the canonical API URL, so the thumbnail needs
  * the same presigned exchange the sent message uses. Kept in its own component
  * so the surrounding button stays one DOM node across the pending-to-uploaded
- * transition, and the load key stays on the canonical URL, which is stable
- * across re-signing.
+ * transition. The canonical URL identifies the image load state.
  */
 function ComposerImagePreviewImage({
+  resourceUrl$,
   load,
   loaded,
   url,
 }: {
+  resourceUrl$: ChatAttachment["resourceUrl$"];
   load: ImageLoadSignals;
   loaded: boolean;
   url: string;
 }) {
   const markLoaded = useSet(load.loaded$);
   const markFailed = useSet(load.failed$);
-  const resolvedUrl = useResolvedAttachmentUrl(url);
+  const resolvedUrl = useLastResolved(resourceUrl$) ?? null;
 
   if (resolvedUrl === null) {
     return null;
@@ -1656,12 +1653,14 @@ function ComposerImagePreviewImage({
 }
 
 function ComposerImagePreviewButton({
+  resourceUrl$,
   filename,
   load,
   markCount,
   openImageLightbox,
   url,
 }: {
+  resourceUrl$: ChatAttachment["resourceUrl$"];
   filename: string;
   load: ImageLoadSignals;
   markCount: number;
@@ -1722,6 +1721,7 @@ function ComposerImagePreviewButton({
         </span>
       )}
       <ComposerImagePreviewImage
+        resourceUrl$={resourceUrl$}
         load={load}
         loaded={currentImageStatus === "loaded"}
         url={url}
@@ -1810,6 +1810,7 @@ function AttachmentChip({
     >
       {isImage ? (
         <ComposerImagePreviewButton
+          resourceUrl$={attachment.resourceUrl$}
           filename={attachment.filename}
           load={attachment.imageLoad}
           markCount={annotationMarkCount(annotations)}

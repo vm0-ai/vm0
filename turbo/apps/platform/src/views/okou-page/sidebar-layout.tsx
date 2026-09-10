@@ -55,10 +55,7 @@ import {
 } from "../../signals/theme.ts";
 import { SIDEBAR_DESKTOP_MEDIA_QUERY } from "./sidebar-breakpoint.ts";
 import { WorkspaceInset } from "./workspace-inset.tsx";
-import {
-  ChatThreadPinButton,
-  MobileChatThreadMoreMenu,
-} from "./chat-thread-header-actions.tsx";
+import { MobileChatThreadMoreMenu } from "./chat-thread-header-actions.tsx";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
@@ -262,7 +259,6 @@ function MobileChatThreadActions({ thread }: { thread: ChatPanelSignals }) {
   }
   return (
     <div className="flex shrink-0 items-center gap-0.5">
-      <ChatThreadPinButton thread={thread} mobile />
       <MobileShareButtonInner thread={thread} largeTarget />
       <MobileChatThreadMoreMenu thread={thread} />
     </div>

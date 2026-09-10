@@ -62,7 +62,41 @@ describe("internal Intro Video voice command", () => {
       "--json",
     ]);
 
-    expect(mockConsoleLog.mock.calls).toEqual([[JSON.stringify(VOICE_RESULT)]]);
+    expect(mockConsoleLog.mock.calls).toHaveLength(1);
+    expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toEqual({
+      ...VOICE_RESULT,
+      inlineMarkdownLink: `[${VOICE_RESULT.filename}](<${VOICE_RESULT.url}>)`,
+      previewMarkdownBlock: `![${VOICE_RESULT.filename}](<${VOICE_RESULT.url}>)`,
+      artifactPresentationContext: expect.stringContaining(
+        "outside code fences",
+      ),
+    });
+  });
+
+  it("prints preview forms with the narration audio context", async () => {
+    server.use(
+      http.post(GENERATE_URL, () => {
+        return HttpResponse.json(VOICE_RESULT);
+      }),
+    );
+    introVideoVoiceCommand.setOptionValue("json", false);
+    await introVideoVoiceCommand.parseAsync([
+      "node",
+      "okou",
+      "--voice-id",
+      VOICE_RESULT.voiceId,
+      "--text",
+      "Welcome to Okou",
+    ]);
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(
+      `[${VOICE_RESULT.filename}](<${VOICE_RESULT.url}>)`,
+    );
+    expect(stdout).toContain(
+      `\n\n![${VOICE_RESULT.filename}](<${VOICE_RESULT.url}>)\n\n`,
+    );
+    expect(stdout).toContain("narration audio");
+    expect(stdout).toContain("outside a code fence");
   });
 
   it("rejects malformed voice IDs before calling the API", async () => {

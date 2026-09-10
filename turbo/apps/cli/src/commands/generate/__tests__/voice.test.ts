@@ -91,6 +91,13 @@ describe("okou generate voice command", () => {
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(`Voice generated: ${VOICE_RESULT.url}`);
     expect(stdout).toContain(`File: ${VOICE_RESULT.filename}`);
+    expect(stdout).toContain(
+      `[${VOICE_RESULT.filename}](<${VOICE_RESULT.url}>)`,
+    );
+    expect(stdout).toContain(
+      `\n\n![${VOICE_RESULT.filename}](<${VOICE_RESULT.url}>)\n\n`,
+    );
+    expect(stdout).toContain("creates two user-facing references");
     expect(stdout).toContain("Duration: 3s");
     expect(stdout).toContain("Credits charged: 1");
   });
@@ -111,7 +118,15 @@ describe("okou generate voice command", () => {
       "--json",
     ]);
 
-    expect(mockConsoleLog.mock.calls).toEqual([[JSON.stringify(VOICE_RESULT)]]);
+    expect(mockConsoleLog.mock.calls).toHaveLength(1);
+    expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toEqual({
+      ...VOICE_RESULT,
+      inlineMarkdownLink: `[${VOICE_RESULT.filename}](<${VOICE_RESULT.url}>)`,
+      previewMarkdownBlock: `![${VOICE_RESULT.filename}](<${VOICE_RESULT.url}>)`,
+      artifactPresentationContext: expect.stringContaining(
+        "outside code fences",
+      ),
+    });
   });
 
   it.each([

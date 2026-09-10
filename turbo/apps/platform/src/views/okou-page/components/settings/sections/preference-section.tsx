@@ -1,17 +1,15 @@
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { Sun, Moon, Monitor, Palette } from "lucide-react";
-import { ChoiceButton } from "@okouai/ui";
+import { ToggleButton } from "@okouai/ui";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { featureSwitch$ } from "../../../../../signals/external/feature-switch.ts";
-import { pageSignal$ } from "../../../../../signals/page-signal.ts";
 import {
+  setTheme$,
   themePreference$,
   type ThemePreference,
-  updateThemePreference$,
 } from "../../../../../signals/theme.ts";
-import { detach, Reason } from "../../../../../signals/utils.ts";
 import { TimezoneSettings } from "../timezone-settings.tsx";
 import { MorningBriefSettings } from "../morning-brief-settings.tsx";
 import { EmailSubscriptionSettings } from "../email-subscription-settings.tsx";
@@ -36,11 +34,10 @@ function AppearanceBlock() {
   const prefLoadable = useLoadable(themePreference$);
   const current =
     prefLoadable.state === "hasData" ? prefLoadable.data : "system";
-  const updateTheme = useSet(updateThemePreference$);
-  const pageSignal = useGet(pageSignal$);
+  const updateTheme = useSet(setTheme$);
 
   const handleChange = (value: ThemePreference) => {
-    detach(updateTheme(value, pageSignal), Reason.DomCallback);
+    updateTheme(value);
   };
 
   return (
@@ -70,7 +67,7 @@ function AppearanceBlock() {
                       return $.settings.preferences.appearance.theme.system;
                     });
             return (
-              <ChoiceButton
+              <ToggleButton
                 key={value}
                 type="button"
                 selected={isActive}
@@ -80,7 +77,7 @@ function AppearanceBlock() {
               >
                 <Icon size={15} />
                 {label}
-              </ChoiceButton>
+              </ToggleButton>
             );
           })}
         </div>

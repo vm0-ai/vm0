@@ -292,7 +292,7 @@ export const detachedNavigateTo$ = command(
       replace?: boolean;
     },
   ) => {
-    // eslint-disable-next-line ccstate/no-detach-in-signals -- confirmed by ethan@vm0.ai
+    // eslint-disable-next-line ccstate/no-detach-in-signals -- rootSignal$ owns navigation after its event callback returns
     detach(
       set(
         navigate$,
@@ -370,7 +370,6 @@ export const setupAuthPageWrapper = (
       L.info("redirect unauthenticated user to app sign-in", {
         currentUrl: location.href,
         signInUrl: signInUrl.toString(),
-        domain: signInUrl.searchParams.get("domain"),
         redirectUrl: signInUrl.searchParams.get("redirect_url"),
       });
       window.location.href = signInUrl.toString();

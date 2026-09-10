@@ -18,8 +18,9 @@ import { readClerkToken } from "../clerk-token.ts";
 import { writeConnectionDiagnostic$ } from "../connection-diagnostics.ts";
 import { syncShellDocumentAttributes$ } from "../theme.ts";
 import {
-  featureSwitchCacheState$,
-  setFeatureSwitchLocalStorage$,
+  featureSwitchState$,
+  resetFeatureSwitchState$,
+  setFeatureSwitchState$,
 } from "./feature-switch-state.ts";
 import {
   completeOnLocalAbort,
@@ -109,7 +110,7 @@ function applySwitches(
 }
 
 export const featureSwitch$ = computed((get) => {
-  return get(featureSwitchCacheState$);
+  return get(featureSwitchState$);
 });
 
 const initialFeatureSwitchHydrationDeferred$ = computed((get) => {
@@ -119,7 +120,7 @@ const initialFeatureSwitchHydrationDeferred$ = computed((get) => {
 /**
  * Resolves after the first authoritative feature-switch read for this app
  * lifetime. Consumers that turn a switch into immutable parsed state await
- * this boundary so an older cache cannot permanently win the bootstrap race.
+ * this boundary instead of committing repository defaults permanently.
  */
 export const initialFeatureSwitchHydration$ = computed((get) => {
   return get(initialFeatureSwitchHydrationDeferred$).promise;
@@ -200,7 +201,7 @@ const hydrateFeatureSwitch$ = command(
     );
     applySwitches(combined, getEmailEnabledFeatureStates(identity.email));
     applySwitches(combined, result.body.switches);
-    set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
+    set(setFeatureSwitchState$, combined);
     set(syncShellDocumentAttributes$);
     set(writeConnectionDiagnostic$, {
       action: "set-enabled",
@@ -215,6 +216,8 @@ const refreshFeatureSwitchState$ = command(
     signal.throwIfAborted();
     const identity = readFeatureSwitchIdentity(clerk);
     if (!identity) {
+      set(resetFeatureSwitchState$);
+      set(syncShellDocumentAttributes$);
       set(writeConnectionDiagnostic$, {
         action: "set-enabled",
         enabled: false,

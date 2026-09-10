@@ -1,7 +1,7 @@
 import { rootSignal$ } from "./root-signal.ts";
 import { fetchResource } from "../lib/resource-fetch.ts";
 import { computed, type Computed } from "ccstate";
-import { pageAttachmentResourceUrlResolver$ } from "./attachment-resource-url.ts";
+import { createAttachmentResourceUrl$ } from "./attachment-resource-url.ts";
 
 export type TextPreviewKind = "markdown" | "text" | "json" | "csv";
 export type TextPreviewComputed = Computed<Promise<string>>;
@@ -73,14 +73,16 @@ export async function fetchPreviewText(
 
 export function createTextPreviewComputed(
   url: string,
-  resourceUrl$?: Computed<Promise<string>>,
+  resourceUrl$?: Computed<Promise<string | null>>,
 ): TextPreviewComputed {
+  const resolvedUrl$ = resourceUrl$ ?? createAttachmentResourceUrl$(url);
   return computed(async (get) => {
     // The canonical attachment URL needs an Authorization header this fetch
     // does not carry, so read the presigned object URL instead.
-    const resourceUrl = resourceUrl$
-      ? await get(resourceUrl$)
-      : (await get(get(pageAttachmentResourceUrlResolver$)(url))).resourceUrl;
+    const resourceUrl = await get(resolvedUrl$);
+    if (!resourceUrl) {
+      throw new Error("Attachment preview is unavailable");
+    }
     return fetchPreviewText(resourceUrl, get(rootSignal$));
   });
 }

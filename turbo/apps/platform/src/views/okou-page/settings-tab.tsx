@@ -9,7 +9,7 @@ import {
   Button,
   Card,
   CardContent,
-  ChoiceButton,
+  ToggleButton,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -522,7 +522,7 @@ export function SettingsTab({
                 >
                   {TONE_OPTIONS.map((opt) => {
                     return (
-                      <ChoiceButton
+                      <ToggleButton
                         key={opt}
                         layout="tile"
                         selected={tone === opt}
@@ -534,7 +534,7 @@ export function SettingsTab({
                         }}
                       >
                         {toneCopy[opt].label}
-                      </ChoiceButton>
+                      </ToggleButton>
                     );
                   })}
                 </div>

@@ -8,13 +8,14 @@ import {
   runAuthenticatedRealtime$,
   setupAuthenticatedBootstrapData$,
 } from "./authenticated-daemons.ts";
-import { initTheme$, syncThemePreferences$ } from "./theme.ts";
+import { initTheme$, syncColorThemePreference$ } from "./theme.ts";
 import { initializeAppVersion$ } from "./app-version.ts";
 import { initLocale$, syncLocalePreference$ } from "./locale.ts";
 import { setRootSignal$ } from "./root-signal.ts";
 import { setApiClientRuntime$ } from "./api-client-runtime.ts";
 import { readClerkToken } from "./clerk-token.ts";
 import { setupSharedDatabaseBridge$ } from "./shared-database-browser.ts";
+import { listenSharedWorkerFailure$ } from "./shared-worker-failure.ts";
 import { resolveApiBaseForTarget, resolveOAuthApiBase } from "./api-base.ts";
 import { getCapturedPreviewBypassForTarget } from "../lib/preview-bypass-cookie.ts";
 import {
@@ -39,6 +40,7 @@ import { setupGithubConnectPage$ } from "./okou-page/github-connect-page.ts";
 import { setupTeamsConnectPage$ } from "./okou-page/teams-connect-page.ts";
 import { setupTelegramConnectPage$ } from "./okou-page/telegram-connect-page.ts";
 import { setupTelegramSettingsPage$ } from "./okou-page/telegram-settings-page.ts";
+import { setupSshConnectorPage$ } from "./okou-page/ssh-connector-page.ts";
 import { setupFeishuSettingsPage$ } from "./okou-page/feishu-settings-page.ts";
 import { setupFeishuOAuthCallbackPage$ } from "./okou-page/feishu-oauth-callback-page.ts";
 import { setupActivityDetailPage$ } from "./activity-page/activity-detail-page-setup.ts";
@@ -82,6 +84,10 @@ import {
   setupSignInV2Page$,
   setupSignUpV2Page$,
 } from "./auth-v2-page-setup.ts";
+import {
+  setupSignInV1Page$,
+  setupSignUpV1Page$,
+} from "./auth-v1-page-setup.ts";
 import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupExportPage$ } from "./export-page/export-page-setup.ts";
@@ -220,6 +226,22 @@ const ROUTE_CONFIG = [
     path: ROUTES.signUpCatchAll,
     setup: setupPageWrapper(setupSignUpV2Page$),
   },
+  {
+    path: ROUTES.signInV1,
+    setup: setupPageWrapper(setupSignInV1Page$),
+  },
+  {
+    path: ROUTES.signInV1CatchAll,
+    setup: setupPageWrapper(setupSignInV1Page$),
+  },
+  {
+    path: ROUTES.signUpV1,
+    setup: setupPageWrapper(setupSignUpV1Page$),
+  },
+  {
+    path: ROUTES.signUpV1CatchAll,
+    setup: setupPageWrapper(setupSignUpV1Page$),
+  },
 
   // --- New routes ---
   {
@@ -293,6 +315,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.connectors,
     setup: setupAuthSidebarPageWrapper(setupConnectorsPage$),
+  },
+  {
+    path: ROUTES.connectorSsh,
+    setup: setupAuthSidebarPageWrapper(setupSshConnectorPage$),
   },
   {
     path: ROUTES.agentIdeas,
@@ -501,7 +527,7 @@ const setupRoutes$ = command(async ({ set }, signal: AbortSignal) => {
 const setupFeatureSwitches$ = command(async ({ set }, signal: AbortSignal) => {
   await set(reloadFeatureSwitch$, signal);
   await set(syncLocalePreference$, signal);
-  await set(syncThemePreferences$, signal);
+  await set(syncColorThemePreference$, signal);
 });
 
 function notificationChatThreadId(data: unknown): string | null {
@@ -547,7 +573,7 @@ const completeBootstrap$ = command(
     await set(initLocale$, signal);
     signal.throwIfAborted();
     set(markBootstrapLocaleInitCompleted$);
-    set(initTheme$);
+    set(initTheme$, signal);
 
     render();
 
@@ -617,16 +643,17 @@ export const bootstrap$ = command(
     set(initBootstrapSkeleton$);
     set(setupLoggers$);
 
-    // The cached effective switches already drive the first rendered frame.
-    // Install capture from that same snapshot before bootstrap starts the
-    // authenticated services, so their initial Clerk and Ably waits are kept
-    // even while remote feature-switch hydration is still pending.
+    // Feature switches start from repository defaults until the API responds.
+    // Install diagnostics before authenticated services so an enabled default
+    // can capture their initial Clerk and Ably waits.
     set(setupConnectionDiagnostics$, signal);
     set(writeConnectionDiagnostic$, {
       action: "set-enabled",
       enabled: get(featureSwitch$)[FeatureSwitchKey.OkouDebug] ?? false,
     });
 
+    // Keep failures that happen before the first React render observable.
+    set(listenSharedWorkerFailure$, signal);
     const sharedDatabaseDaemon = isDesktopAuthFlow()
       ? Promise.resolve()
       : set(setupSharedDatabaseBridge$, signal);

@@ -544,7 +544,6 @@ export function createComposerSignals(
     agentId$,
     {
       autoFocus: true,
-      singleLineOnMobile: options.singleLineOnMobile,
     },
     feedback,
   );

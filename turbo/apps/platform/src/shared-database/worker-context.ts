@@ -1,5 +1,6 @@
 import { command, state } from "ccstate";
 
+import { now } from "../lib/time.ts";
 import { logger } from "../signals/log.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
 import type {
@@ -45,14 +46,20 @@ const lastConnectionStatusState$ = state<SharedDatabaseConnectionStatus | null>(
 const connectionControllersState$ = state<
   ReadonlyMap<ConnectionId, AbortController>
 >(new Map());
-interface RegisteredConnection {
+interface ConnectionRegistration {
   readonly getToken: SharedDatabaseTokenProvider;
   readonly port: SharedDatabasePortLike;
+}
+
+interface RegisteredConnection extends ConnectionRegistration {
+  readonly heartbeatOrder: number | null;
+  readonly lastHeartbeatAt: number | null;
 }
 
 const connectionsState$ = state<
   ReadonlyMap<ConnectionId, RegisteredConnection>
 >(new Map());
+const lastHeartbeatOrderState$ = state(0);
 
 function deleteMapKey<TKey, TValue>(
   current: ReadonlyMap<TKey, TValue>,
@@ -102,7 +109,7 @@ export const registerConnection$ = command(
     { get, set },
     connectionId: ConnectionId,
     connectionController: AbortController,
-    connection: RegisteredConnection,
+    connection: ConnectionRegistration,
     connectionControllerSignal: AbortSignal,
   ): AbortSignal => {
     connectionControllerSignal.throwIfAborted();
@@ -122,7 +129,11 @@ export const registerConnection$ = command(
     );
     set(
       connectionsState$,
-      new Map(get(connectionsState$)).set(connectionId, connection),
+      new Map(get(connectionsState$)).set(connectionId, {
+        ...connection,
+        heartbeatOrder: null,
+        lastHeartbeatAt: null,
+      }),
     );
     signal.addEventListener(
       "abort",
@@ -141,12 +152,50 @@ export const registerConnection$ = command(
   },
 );
 
-export const requestTokenFromFirstConnection$ = command(
+export const recordConnectionHeartbeat$ = command(
+  ({ get, set }, connectionId: ConnectionId): void => {
+    const connection = get(connectionsState$).get(connectionId);
+    if (!connection) {
+      throw new Error("Shared database connection is not registered");
+    }
+    const heartbeatOrder = get(lastHeartbeatOrderState$) + 1;
+    set(lastHeartbeatOrderState$, heartbeatOrder);
+    set(
+      connectionsState$,
+      new Map(get(connectionsState$)).set(connectionId, {
+        ...connection,
+        heartbeatOrder,
+        lastHeartbeatAt: now(),
+      }),
+    );
+  },
+);
+
+export const requestTokenFromLatestConnection$ = command(
   async ({ get }, signal: AbortSignal): Promise<string | null> => {
     signal.throwIfAborted();
-    const connection = get(connectionsState$).values().next().value;
+    let connection: RegisteredConnection | undefined;
+    let lastHeartbeatAt = Number.NEGATIVE_INFINITY;
+    let lastHeartbeatOrder = Number.NEGATIVE_INFINITY;
+    for (const candidate of get(connectionsState$).values()) {
+      if (
+        candidate.lastHeartbeatAt === null ||
+        candidate.heartbeatOrder === null
+      ) {
+        continue;
+      }
+      if (
+        candidate.lastHeartbeatAt > lastHeartbeatAt ||
+        (candidate.lastHeartbeatAt === lastHeartbeatAt &&
+          candidate.heartbeatOrder > lastHeartbeatOrder)
+      ) {
+        connection = candidate;
+        lastHeartbeatAt = candidate.lastHeartbeatAt;
+        lastHeartbeatOrder = candidate.heartbeatOrder;
+      }
+    }
     if (!connection) {
-      throw new Error("Shared database token requires a registered tab");
+      throw new Error("Shared database token requires a tab heartbeat");
     }
     return await connection.getToken(signal);
   },

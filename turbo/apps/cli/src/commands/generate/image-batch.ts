@@ -12,15 +12,41 @@ import {
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { Command, InvalidArgumentError } from "commander";
+import { z } from "zod";
+import { artifactUrlSchema } from "@okouai/api-contracts/contracts/artifact-references";
 import { ApiRequestError } from "../../lib/api/core/client-factory";
 import { generateWebImage } from "../../lib/api/domains/web";
 import { withErrorHandler } from "../../lib/command/with-error-handler";
 import { generatedImageAsset } from "../shared/generated-image-asset";
+import {
+  ARTIFACT_PRESENTATION_CONTEXT,
+  createArtifactPresentation,
+} from "../shared/artifact-return";
 
 const MAX_CONCURRENCY = 3;
 const DEFAULT_SIZE = "816x816";
 const POLL_INTERVAL_MS = 500;
 const RETRY_DELAY_MS = 1_000;
+const BATCH_PRESENTATION_CONTEXT =
+  "asset identifies the material for authored HTML; local paths are relative to the batch directory and are only available inside the agent runtime. Use each item's stable artifact reference for chat. " +
+  ARTIFACT_PRESENTATION_CONTEXT;
+
+const imageBatchArtifactsSchema = z.object({
+  resultsPath: z.string(),
+  artifacts: z.array(
+    z.object({
+      assetId: z.string(),
+      asset: z.string(),
+      url: artifactUrlSchema,
+      inlineMarkdownLink: z.string(),
+      previewMarkdownBlock: z.string(),
+    }),
+  ),
+  artifactPresentationContext: z.string(),
+});
+type ImageBatchArtifact = z.infer<
+  typeof imageBatchArtifactsSchema
+>["artifacts"][number];
 
 interface ImageBatchJob {
   readonly id: string;
@@ -30,6 +56,11 @@ interface ImageBatchJob {
 
 interface ImageBatchWaitOptions {
   readonly timeout: number;
+  readonly json?: boolean;
+}
+
+function shellQuoteArg(value: string): string {
+  return `'${value.replaceAll("'", "'\"'\"'")}'`;
 }
 
 function isMissingPathError(error: unknown): boolean {
@@ -156,7 +187,7 @@ async function runBatch(
   stateDirectory: string,
 ): Promise<void> {
   const jobs = await readManifest(manifestPath);
-  const results: Array<string | undefined> = Array.from({
+  const results: Array<ImageBatchArtifact | undefined> = Array.from({
     length: jobs.length,
   });
   const failures: string[] = [];
@@ -172,11 +203,15 @@ async function runBatch(
       }
       try {
         const result = await generateOne(job);
-        results[index] = await generatedImageAsset(
-          result,
-          job.id,
-          stateDirectory,
-        );
+        const asset = await generatedImageAsset(result, job.id, stateDirectory);
+        const presentation = createArtifactPresentation(job.id, result.url);
+        results[index] = {
+          assetId: job.id,
+          asset,
+          url: result.url,
+          inlineMarkdownLink: presentation.json.inlineMarkdownLink,
+          previewMarkdownBlock: presentation.json.previewMarkdownBlock,
+        };
       } catch (error) {
         failures.push(`${job.id}: ${errorMessage(error)}`);
       }
@@ -192,16 +227,33 @@ async function runBatch(
     throw new Error(`Image batch failed: ${failures.join("; ")}`);
   }
 
-  const rows = jobs.map((job, index) => {
+  const artifacts = jobs.map((job, index) => {
     const result = results[index];
     if (result === undefined) {
       throw new Error(`Image batch job ${job.id} has no result`);
     }
-    return `${job.id}\t${result}`;
+    return result;
   });
+  const resultsPath = join(stateDirectory, "results.tsv");
   await writeAtomic(
-    join(stateDirectory, "results.tsv"),
-    `${rows.join("\n")}\n`,
+    resultsPath,
+    `${artifacts
+      .map((artifact) => {
+        return `${artifact.assetId}\t${artifact.asset}`;
+      })
+      .join("\n")}\n`,
+  );
+  await writeAtomic(
+    join(stateDirectory, "artifacts.json"),
+    JSON.stringify(
+      {
+        resultsPath,
+        artifacts,
+        artifactPresentationContext: BATCH_PRESENTATION_CONTEXT,
+      },
+      null,
+      2,
+    ) + "\n",
   );
 }
 
@@ -291,6 +343,38 @@ async function startBatch(
   }
   await logHandle.close();
   console.log(`Image batch started: ${stateDirectory}`);
+  console.log(
+    [
+      "The images are being generated in the background.",
+      "Wait for this batch before using its results:",
+      `okou generate image-batch wait ${shellQuoteArg(stateDirectory)}`,
+      "Continue authoring while it runs; reuse this batch instead of starting another one.",
+    ].join("\n"),
+  );
+}
+
+async function readBatchArtifacts(stateDirectory: string) {
+  try {
+    return imageBatchArtifactsSchema.parse(
+      JSON.parse(
+        await readFile(join(stateDirectory, "artifacts.json"), "utf8"),
+      ),
+    );
+  } catch (error) {
+    // Persisted batches created before presentation metadata still contain usable
+    // TSV assets. Retain until support for those stored batch directories is retired.
+    if (isMissingPathError(error)) return undefined;
+    throw error;
+  }
+}
+
+function missingBatchArtifactsContext(stateDirectory: string): string {
+  return [
+    "This batch has no artifact presentation metadata.",
+    `Local asset paths in results.tsv are relative to ${stateDirectory}.`,
+    "To present a selected local image in chat, upload it with okou web upload-file -f <selected-local-file>.",
+    "The upload result provides inline-link and rich-preview Markdown forms.",
+  ].join("\n");
 }
 
 function isProcessAlive(pid: number): boolean {
@@ -344,8 +428,34 @@ async function waitForBatch(
   }
   const resultsPath = join(stateDirectory, "results.tsv");
   const results = await readFile(resultsPath, "utf8");
+  const metadata = await readBatchArtifacts(stateDirectory);
+  if (options.json) {
+    console.log(
+      JSON.stringify(
+        metadata
+          ? { ...metadata, resultsPath }
+          : {
+              resultsPath,
+              artifactPresentationContext:
+                missingBatchArtifactsContext(stateDirectory),
+            },
+      ),
+    );
+    return;
+  }
   console.log(results.trimEnd());
   console.log(`Image batch joined: ${resultsPath}`);
+  console.log(
+    metadata
+      ? [
+          "",
+          "Artifact presentation context:",
+          `results.tsv lists assets for authored HTML. Resolve local paths against ${stateDirectory} and copy those files into the authored bundle.`,
+          `For chat presentation, read ${join(stateDirectory, "artifacts.json")}. Each image includes its stable artifact reference, inlineMarkdownLink, and previewMarkdownBlock.`,
+          metadata.artifactPresentationContext,
+        ].join("\n")
+      : `\n${missingBatchArtifactsContext(stateDirectory)}`,
+  );
 }
 
 const startCommand = new Command("start")
@@ -358,6 +468,7 @@ const waitCommand = new Command("wait")
   .description("Wait for an image batch and print its results")
   .argument("<state-dir>", "State directory returned by start")
   .option("--timeout <seconds>", "Maximum wait time", parseTimeout, 300)
+  .option("--json", "Print batch artifacts and presentation guidance as JSON")
   .action(withErrorHandler(waitForBatch));
 
 const runCommand = new Command("__run")
@@ -374,5 +485,5 @@ export const imageBatchCommand = new Command("image-batch")
   .addCommand(runCommand, { hidden: true })
   .addHelpText(
     "after",
-    `\nManifest format:\n  asset-id<TAB>raw prompt[<TAB>size]\n  Size is optional per image and defaults to ${DEFAULT_SIZE}; the image API validates it.\n\nResult format:\n  asset-id<TAB>image URL or relative asset path\n  Private images are downloaded to <state-dir>/assets/ and optimized as WebP without resizing. Requires ffmpeg with libwebp on PATH. Resolve relative paths against <state-dir>, then copy assets into the authored bundle. Never embed preview signatures in HTML.\n\nExamples:\n  okou generate image-batch start images.tsv .image-batch\n  okou generate image-batch wait .image-batch`,
+    `\nManifest format:\n  asset-id<TAB>raw prompt[<TAB>size]\n  Size is optional per image and defaults to ${DEFAULT_SIZE}; the image API validates it.\n\nResult format:\n  asset-id<TAB>image URL or relative asset path\n  results.tsv retains the asset index; artifacts.json adds stable chat references and Markdown forms.\n  Use wait --json for the presentation metadata as one JSON object.\n  Private images are downloaded to <state-dir>/assets/ and optimized as WebP without resizing. Requires ffmpeg with libwebp on PATH. Resolve relative paths against <state-dir>, then copy assets into the authored bundle. Never embed preview signatures in HTML.\n\nExamples:\n  okou generate image-batch start images.tsv .image-batch\n  okou generate image-batch wait .image-batch`,
   );

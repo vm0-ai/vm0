@@ -21,7 +21,7 @@ import {
 } from "./google-ads-conversion.ts";
 
 const GOOGLE_ADS_MILESTONE_STORAGE_KEY =
-  "vm0.googleAds.18407336975.conversionMilestones";
+  "googleAds.18407336975.conversionMilestones";
 
 const milestoneStorage = localStorageSignals(GOOGLE_ADS_MILESTONE_STORAGE_KEY);
 const bootstrappedUserIds$ = state<ReadonlySet<string>>(new Set());

@@ -29,6 +29,7 @@ import {
   type GlobalShortcutBindings,
 } from "../../lib/setup-global-shortcut.ts";
 import { COMPOSER_VOICE_INPUT_SHORTCUT } from "../../lib/composer-voice-input-shortcut.ts";
+import { GLOBAL_KEYBOARD_SHORTCUTS } from "../../lib/global-keyboard-shortcuts.ts";
 import { scrollToThread$ } from "./sidebar-chat-thread-scroll.ts";
 
 type ChatThreadPane = "main" | "side";
@@ -175,7 +176,7 @@ interface ChatPageShortcutActions {
   canToggleThreadPin: (event: KeyboardEvent) => boolean;
   clearEmoji: () => void | Promise<void>;
   openEmojiMenu: () => void | Promise<void>;
-  renameThread: () => void | Promise<void>;
+  renameThread: (event: KeyboardEvent) => void | Promise<void>;
   navigateNext: () => void | Promise<void>;
   navigatePrev: () => void | Promise<void>;
   scrollBottom: () => void | Promise<void>;
@@ -189,6 +190,16 @@ interface ChatPageShortcutSetup {
   doc: Document;
   focusedThread: () => ChatPanelSignals | null;
   navigateFocusedThread: (direction: "prev" | "next") => void | Promise<void>;
+}
+
+function menuThreadId(target: EventTarget | null): string | null {
+  if (!(target instanceof Element)) {
+    return null;
+  }
+  return (
+    target.closest<HTMLElement>("[data-chat-thread-menu-thread-id]")?.dataset
+      .chatThreadMenuThreadId ?? null
+  );
 }
 
 function setupChatPageGlobalShortcutListener(
@@ -262,13 +273,16 @@ const setupChatPageShortcutActions$ = command(
               await set(openFocusedThreadEmojiMenu$, { thread }, signal);
             }
           },
-          renameThread: async () => {
+          renameThread: async (event) => {
             const thread = focusedThread();
-            const threadId = thread?.threadId ?? get(currentChatThreadId$);
+            const threadId =
+              menuThreadId(event.target) ??
+              thread?.threadId ??
+              get(currentChatThreadId$);
             if (threadId) {
               const request = await set(
                 renameDialogRequestForThread$,
-                thread,
+                thread?.threadId === threadId ? thread : null,
                 threadId,
                 signal,
               );
@@ -317,12 +331,13 @@ const setupChatPageShortcutActions$ = command(
               return;
             }
             const thread = focusedThread();
-            if (thread) {
+            const threadId = menuThreadId(event.target) ?? thread?.threadId;
+            if (threadId) {
               await set(
-                get(thread.threadMeta$)?.pinnedAt
+                get(chatThreadMetaMap$).get(threadId)?.pinnedAt
                   ? unpinChatThread$
                   : pinChatThread$,
-                thread.threadId,
+                threadId,
                 signal,
               );
             }
@@ -409,7 +424,7 @@ function createChatPageShortcutBindings({
       allowInEditableTarget: true,
       run: openEmojiMenu,
     },
-    f2: {
+    [GLOBAL_KEYBOARD_SHORTCUTS.renameChat.binding]: {
       allowInEditableTarget: true,
       run: renameThread,
     },
@@ -421,7 +436,7 @@ function createChatPageShortcutBindings({
       allowInEditableTarget: true,
       run: navigateNext,
     },
-    "mod+shift+d": {
+    [GLOBAL_KEYBOARD_SHORTCUTS.toggleChatPin.binding]: {
       allowInEditableTarget: true,
       shouldHandle: canToggleThreadPin,
       run: toggleThreadPin,

@@ -1,6 +1,6 @@
 import { fetchResource } from "../lib/resource-fetch.ts";
 import { enUS } from "@clerk/localizations/en-US";
-import { command, state } from "ccstate";
+import { command, computed, state } from "ccstate";
 import deDEUrl from "./clerk-localizations/de-DE.json?url";
 import esESUrl from "./clerk-localizations/es-ES.json?url";
 import frFRUrl from "./clerk-localizations/fr-FR.json?url";
@@ -22,6 +22,10 @@ const L = logger("ClerkLocalization");
 const internalClerkLocalizations$ = state<ClerkLocalizationCache>(
   new Map([[DEFAULT_LOCALE, enUS]]),
 );
+
+export const clerkLocalizations$ = computed((get) => {
+  return get(internalClerkLocalizations$);
+});
 
 function clerkLocalizationUrl(locale: NonDefaultLocale): string {
   switch (locale) {
@@ -144,3 +148,10 @@ export const cacheClerkLocalization$ = command(
     set(internalClerkLocalizations$, next);
   },
 );
+
+export function clerkLocalizationForLocale(
+  localizations: ClerkLocalizationCache,
+  locale: SupportedLocale,
+): ClerkLocalization {
+  return localizations.get(locale) ?? enUS;
+}

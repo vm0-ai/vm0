@@ -104,21 +104,29 @@ describe("cancellation recovery timing contract", () => {
   });
 });
 
+/** Every claim body must advertise capabilities; the tests below vary the other fields. */
+const claimCapabilities = { piModelConfigGenerations: [1, 2, 3] };
+
 describe("runner claim attribution contract", () => {
   it("accepts an optional bounded runner hostname", () => {
-    const previousRequest = runnersJobClaimContract.claim.body.parse({});
+    const previousRequest = runnersJobClaimContract.claim.body.parse({
+      capabilities: claimCapabilities,
+    });
     expect(previousRequest).not.toHaveProperty("runnerHostname");
 
     expect(
       runnersJobClaimContract.claim.body.parse({
+        capabilities: claimCapabilities,
         runnerHostname: "prod-1.aws.vm3.ai",
       }),
     ).toMatchObject({ runnerHostname: "prod-1.aws.vm3.ai" });
 
     for (const runnerHostname of ["", "x".repeat(256)]) {
       expect(
-        runnersJobClaimContract.claim.body.safeParse({ runnerHostname })
-          .success,
+        runnersJobClaimContract.claim.body.safeParse({
+          capabilities: claimCapabilities,
+          runnerHostname,
+        }).success,
       ).toBe(false);
     }
   });
@@ -1975,15 +1983,21 @@ describe("runner resume session contract", () => {
 
 describe("runner claim request contract", () => {
   it("accepts omitted or complete runner identity", () => {
-    expect(runnersJobClaimContract.claim.body.parse({})).toEqual({});
     expect(
       runnersJobClaimContract.claim.body.parse({
+        capabilities: claimCapabilities,
+      }),
+    ).toEqual({ capabilities: claimCapabilities });
+    expect(
+      runnersJobClaimContract.claim.body.parse({
+        capabilities: claimCapabilities,
         runnerIdentity: {
           runnerId: "11111111-1111-4111-8111-111111111111",
           heartbeatGeneration: Number.MAX_SAFE_INTEGER,
         },
       }),
     ).toStrictEqual({
+      capabilities: claimCapabilities,
       runnerIdentity: {
         runnerId: "11111111-1111-4111-8111-111111111111",
         heartbeatGeneration: Number.MAX_SAFE_INTEGER,
@@ -2028,14 +2042,17 @@ describe("runner claim request contract", () => {
       { runnerId, heartbeatGeneration: 1, unexpected: true },
     ]) {
       expect(
-        runnersJobClaimContract.claim.body.safeParse({ runnerIdentity })
-          .success,
+        runnersJobClaimContract.claim.body.safeParse({
+          capabilities: claimCapabilities,
+          runnerIdentity,
+        }).success,
       ).toBe(false);
     }
   });
 
   it("accepts optional direct candidate timing telemetry", () => {
     const result = runnersJobClaimContract.claim.body.safeParse({
+      capabilities: claimCapabilities,
       telemetry: {
         discoverySource: "ably",
         jobDiscoveredToClaimRequestMs: 123,
@@ -2068,6 +2085,7 @@ describe("runner claim request contract", () => {
     ] as const) {
       expect(
         runnersJobClaimContract.claim.body.parse({
+          capabilities: claimCapabilities,
           telemetry: {
             runnerPreference,
             runnerPreferenceClaimState,
@@ -2088,6 +2106,7 @@ describe("runner claim request contract", () => {
 
     expect(
       runnersJobClaimContract.claim.body.parse({
+        capabilities: claimCapabilities,
         telemetry: {
           runnerPreference,
         },
@@ -2100,6 +2119,7 @@ describe("runner claim request contract", () => {
   it("keeps other claim telemetry when canonical preference is malformed", () => {
     expect(
       runnersJobClaimContract.claim.body.parse({
+        capabilities: claimCapabilities,
         telemetry: {
           discoverySource: "poll",
           runnerPreference: { kind: "futurePreference" },
@@ -2115,6 +2135,7 @@ describe("runner claim request contract", () => {
 
   it("discards malformed diagnostic telemetry", () => {
     const body = runnersJobClaimContract.claim.body.parse({
+      capabilities: claimCapabilities,
       telemetry: {
         pollReason: "future-reason",
         jobDiscoveredToClaimRequestMs: -1,

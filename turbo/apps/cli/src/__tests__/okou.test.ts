@@ -50,6 +50,7 @@ describe("Okou CLI program", () => {
       "agent",
       "connector",
       "mcp",
+      "ssh",
       "mail",
       "credit",
       "upgrade",
@@ -58,7 +59,6 @@ describe("Okou CLI program", () => {
       "chat",
       "resource",
       "workflow",
-      "goal",
       "slack",
       "feishu",
       "teams",
@@ -74,6 +74,7 @@ describe("Okou CLI program", () => {
       "video",
       "host",
       "presentation",
+      "presentation-template",
       "maps",
       "weather",
       "scrape",
@@ -130,6 +131,21 @@ describe("Okou CLI lazy command loading", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
   });
+
+  it.each([[], ["ssh:read"], ["ssh:write"]])(
+    "shows SSH only with an eligible Run capability: %j",
+    (...capabilities) => {
+      vi.stubEnv(
+        "OKOU_TOKEN",
+        capabilities.length ? buildOkouToken(capabilities) : "",
+      );
+      const cli = new Command("okou");
+      registerCommands(cli);
+      expect(cli.helpInformation().includes("ssh")).toBe(
+        capabilities.length > 0,
+      );
+    },
+  );
 
   it.each([
     {

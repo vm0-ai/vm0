@@ -3,6 +3,9 @@ import { cva } from "class-variance-authority";
 
 import { cn } from "../../lib/utils";
 
+const cardClassName =
+  "rounded-xl border border-border bg-card text-card-foreground overflow-hidden";
+
 /** Page surfaces preserve the host element's layout and native semantics. */
 const surfaceVariants = cva(
   "bg-card border-(length:--border-width-surface) border-solid border-surface-border shadow-surface transition-[background-color] duration-150 ease-surface",
@@ -29,16 +32,7 @@ const Card = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => {
-  return (
-    <div
-      ref={ref}
-      className={cn(
-        "rounded-xl border border-border bg-card text-card-foreground overflow-hidden",
-        className,
-      )}
-      {...props}
-    />
-  );
+  return <div ref={ref} className={cn(cardClassName, className)} {...props} />;
 });
 Card.displayName = "Card";
 
@@ -117,4 +111,5 @@ export {
   CardTitle,
   CardDescription,
   CardContent,
+  cardClassName,
 };

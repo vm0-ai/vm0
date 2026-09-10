@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/vm0-ai/vm0/compare/codex-mock-v0.10.32...codex-mock-v0.11.0) (2026-09-09)
+
+
+### Features
+
+* **guest-agent:** prepare native chat effort consumers ([#32999](https://github.com/vm0-ai/vm0/issues/32999)) ([4a1e9e1](https://github.com/vm0-ai/vm0/commit/4a1e9e1a7c67de3d47ef0de86601f26819003d71))
+
 ## [0.10.32](https://github.com/vm0-ai/vm0/compare/codex-mock-v0.10.31...codex-mock-v0.10.32) (2026-09-09)
 
 ## [0.10.31](https://github.com/vm0-ai/vm0/compare/codex-mock-v0.10.30...codex-mock-v0.10.31) (2026-09-09)

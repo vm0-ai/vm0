@@ -429,6 +429,7 @@ function buildIntegrationToolsPrompt(
 }
 
 function buildAgentToolsPrompt(args: {
+  readonly sshEnabled: boolean;
   readonly triggerSource: TriggerSource;
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly bankingEnabled: boolean;
@@ -440,6 +441,11 @@ function buildAgentToolsPrompt(args: {
     "# Agent Tools",
     `You have access to the Okou CLI. Run commands with: \`${okouCliCommand} <command>\``,
     "- Discover available commands: `okou --help`.",
+    ...(args.sshEnabled
+      ? [
+          "- SSH: use `okou ssh host list --json` for current connection IDs, then `okou ssh exec <connection-id> --command <command> --json`. List again after an unavailable or unknown ID; never invent IDs or replay an uncertain command. The owner must enable SSH access in Agent settings; the grant covers all of that owner's configured hosts. Agents cannot grant themselves access. Ask the owner to use a least-privilege remote SSH user. Configured does not mean connectivity tested. The first successful connection learns the server's host key (TOFU); an unexpected key requires owner verification and an explicit reset in SSH settings, never automatic acceptance. Credentials stay outside the sandbox. Inspect structured failure_reason and effects, not error text. If effects is unknown, a remote command may have run: never automatically retry. Inventory is live, but execution authority is cached for this Run and invalidated by notifications; a missed notification can leave stale authority until this Run ends. Ask the owner to end active Runs when immediate revocation is required.",
+        ]
+      : []),
     "- When an Okou CLI command prints a user-facing action URL, return that exact URL verbatim. Never rewrite, shorten, reconstruct, or omit any query parameters.",
     "- Capability questions: when the user asks what Okou can do, whether Okou can do a category of work, or compares Okou to another assistant, run `okou intro` first. Use its output to synthesize a concise answer in the user's language. Do not paste the intro verbatim.",
     "- Locate local agent-session files, search web chat messages, or inspect external services via connectors: `okou search --help`.",
@@ -566,6 +572,7 @@ function buildCurrentUserPrompt(userInfo: UserInfo): string {
 }
 
 function buildAppendSystemPrompt(args: {
+  readonly sshEnabled: boolean;
   readonly agent: AgentRunRecord;
   readonly userInfo: UserInfo;
   readonly triggerSource: TriggerSource;
@@ -580,6 +587,7 @@ function buildAppendSystemPrompt(args: {
     identity,
     buildExecutionTimeLimitPrompt(),
     buildAgentToolsPrompt({
+      sshEnabled: args.sshEnabled,
       triggerSource: args.triggerSource,
       cloudBrowserEnabled: args.cloudBrowserEnabled,
       bankingEnabled: args.bankingEnabled,
@@ -756,6 +764,7 @@ function agentRunOrigin(args: {
 }
 
 function createRunBody(args: {
+  readonly sshEnabled: boolean;
   readonly body: AgentRunCreateBody;
   readonly agent: AgentRunRecord;
   readonly userInfo: UserInfo;
@@ -770,6 +779,7 @@ function createRunBody(args: {
 }) {
   const triggerSource = args.triggerSource ?? "web";
   const baseAppendSystemPrompt = buildAppendSystemPrompt({
+    sshEnabled: args.sshEnabled,
     agent: args.agent,
     userInfo: args.userInfo,
     triggerSource,
@@ -969,6 +979,10 @@ function buildCreateAgentRunArgs(args: {
     userId: command.auth.userId,
     orgId: command.auth.orgId,
     body: createRunBody({
+      sshEnabled: isFeatureEnabled(
+        FeatureSwitchKey.SshAccess,
+        args.featureSwitchContext,
+      ),
       body: command.body,
       agent: args.agent,
       userInfo: { ...args.userInfo, ...command.userInfoExtras },

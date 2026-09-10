@@ -1,10 +1,7 @@
 import { command } from "ccstate";
-import {
-  downloadAttachmentUrl,
-  publicAttachmentUrl,
-} from "../views/okou-page/attachment-url.ts";
+import { downloadAttachmentUrl } from "../views/okou-page/attachment-url.ts";
 import { classifyChatAttachment } from "./chat-page/parse-body-blocks.ts";
-import { pageAttachmentResourceUrlResolver$ } from "./attachment-resource-url.ts";
+import { createAttachmentUrls$ } from "./attachment-resource-url.ts";
 
 type AttachmentDownload = {
   readonly filename: string;
@@ -17,14 +14,12 @@ type AttachmentDownload = {
  */
 export const downloadAttachment$ = command(
   async (
-    { get, set },
+    { get },
     attachment: AttachmentDownload,
     signal: AbortSignal,
   ): Promise<void> => {
-    const resolveResourceUrl = get(pageAttachmentResourceUrlResolver$);
     const { resourceUrl, shareUrl } = await get(
-      set(resolveResourceUrl.prepare$, publicAttachmentUrl(attachment.url))
-        .urls$,
+      createAttachmentUrls$(attachment.url),
     );
     signal.throwIfAborted();
     await downloadAttachmentUrl(

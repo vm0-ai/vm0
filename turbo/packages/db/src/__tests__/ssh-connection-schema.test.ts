@@ -78,26 +78,24 @@ describe("SSH connection schema", () => {
     );
   });
 
-  it("enforces Agent ownership for sparse SSH access", () => {
-    const agentConfig = getTableConfig(agents);
-    expect(
-      agentConfig.uniqueConstraints.map((constraint) => {
-        return constraint.name;
-      }),
-    ).toContain("idx_agents_id_org_owner");
-
+  it("keys sparse SSH access by user and cascades from the referenced Agent", () => {
     const accessConfig = getTableConfig(agentSshAccess);
     expect(accessConfig.primaryKeys[0]?.getName()).toBe(
       "agent_ssh_access_pkey",
     );
-    const ownerForeignKey = accessConfig.foreignKeys[0];
-    expect(ownerForeignKey?.getName()).toBe("agent_ssh_access_agent_owner_fk");
-    expect(ownerForeignKey?.onDelete).toBe("cascade");
-    expect(ownerForeignKey?.reference().foreignTable).toBe(agents);
     expect(
-      ownerForeignKey?.reference().columns.map((column) => {
+      accessConfig.primaryKeys[0]?.columns.map((column) => {
         return column.name;
       }),
-    ).toStrictEqual(["agent_id", "org_id", "user_id"]);
+    ).toStrictEqual(["org_id", "user_id", "agent_id"]);
+    const agentForeignKey = accessConfig.foreignKeys[0];
+    expect(agentForeignKey?.getName()).toBe("agent_ssh_access_agent_fk");
+    expect(agentForeignKey?.onDelete).toBe("cascade");
+    expect(agentForeignKey?.reference().foreignTable).toBe(agents);
+    expect(
+      agentForeignKey?.reference().columns.map((column) => {
+        return column.name;
+      }),
+    ).toStrictEqual(["agent_id"]);
   });
 });

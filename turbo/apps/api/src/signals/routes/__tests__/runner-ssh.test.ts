@@ -27,7 +27,6 @@ import { createRouteMocks } from "./helpers/route-test";
 
 const context = testContext();
 const mocks = createRouteMocks(context);
-const staffOrg = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const sessionHeaders = Object.freeze({ authorization: "Bearer clerk-session" });
 const runnerSecret = "a".repeat(64);
 const runnerHeaders = Object.freeze({
@@ -106,7 +105,10 @@ async function createRuntime(
 }
 
 async function fixture(runtimeOverrides: Partial<RuntimeBody> = {}) {
-  const owner = { orgId: staffOrg, userId: `user_ssh_jit_${randomUUID()}` };
+  const owner = {
+    orgId: `org_ssh_jit_${randomUUID()}`,
+    userId: `user_ssh_jit_${randomUUID()}`,
+  };
   await updateFeatureSwitchesForUser(context, owner, {
     [FeatureSwitchKey.SshAccess]: true,
   });
@@ -168,11 +170,15 @@ describe("SSH authority invalidation", () => {
         [200],
       );
       generation = changed.body.generation;
-      expect(context.mocks.ably.publish.mock.calls).toHaveLength(2);
+      expect(context.mocks.ably.publish.mock.calls).toHaveLength(3);
       expect(context.mocks.ably.publish.mock.calls).toStrictEqual(
-        expect.arrayContaining(expected),
+        expect.arrayContaining([
+          ["ssh:changed", { orgId: f.orgId }],
+          ...expected,
+        ]),
       );
       expect(context.mocks.ably.channelGet.mock.calls).toStrictEqual([
+        [`user:${f.userId}`],
         [`runner-group:${group}`],
         [`runner-group:${group}`],
       ]);
@@ -186,9 +192,12 @@ describe("SSH authority invalidation", () => {
       }),
       [200],
     );
-    expect(context.mocks.ably.publish.mock.calls).toHaveLength(2);
+    expect(context.mocks.ably.publish.mock.calls).toHaveLength(3);
     expect(context.mocks.ably.publish.mock.calls).toStrictEqual(
-      expect.arrayContaining(expected),
+      expect.arrayContaining([
+        ["ssh:changed", { orgId: f.orgId }],
+        ...expected,
+      ]),
     );
     context.mocks.ably.publish.mockClear();
     await accept(
@@ -198,9 +207,12 @@ describe("SSH authority invalidation", () => {
       }),
       [204],
     );
-    expect(context.mocks.ably.publish.mock.calls).toHaveLength(2);
+    expect(context.mocks.ably.publish.mock.calls).toHaveLength(3);
     expect(context.mocks.ably.publish.mock.calls).toStrictEqual(
-      expect.arrayContaining(expected),
+      expect.arrayContaining([
+        ["ssh:changed", { orgId: f.orgId }],
+        ...expected,
+      ]),
     );
     const listed = await accept(
       config().list({ headers: sessionHeaders }),
@@ -236,6 +248,7 @@ describe("SSH authority invalidation", () => {
       }),
     ]);
     expect(context.mocks.ably.publish.mock.calls).toStrictEqual([
+      ["ssh:changed", { orgId: f.orgId }],
       [
         "ssh-authority-invalidated",
         { runId: f.runId, connectionId: f.connectionId },
@@ -266,6 +279,7 @@ describe("SSH authority invalidation", () => {
         .sort(),
     ).toStrictEqual([200, 409]);
     expect(context.mocks.ably.publish.mock.calls).toStrictEqual([
+      ["ssh:changed", { orgId: f.orgId }],
       [
         "ssh-authority-invalidated",
         { runId: f.runId, connectionId: f.connectionId },
@@ -290,6 +304,7 @@ describe("SSH authority invalidation", () => {
       [200],
     );
     expect(context.mocks.ably.publish.mock.calls).toStrictEqual([
+      ["ssh:changed", { orgId: f.orgId }],
       ["ssh-authority-invalidated", { runId: f.runId, connectionId: null }],
     ]);
     await expect(resolve(f)).resolves.toStrictEqual({ outcome: "unavailable" });
@@ -360,30 +375,19 @@ beforeEach(() => {
 });
 
 describe("official Runner SSH authority", () => {
-  it("keeps the hard staff gate even with an enabled override and matching ownership", async () => {
+  it("allows an enabled ordinary owner and rechecks the switch on resolve and pin", async () => {
     const f = await fixture();
-    const owner = { ...f, orgId: `org_external_${randomUUID()}` };
-    await updateFeatureSwitchesForUser(context, owner, {
-      [FeatureSwitchKey.SshAccess]: true,
+    await expect(resolve(f)).resolves.toMatchObject({ outcome: "resolved" });
+    await expect(pin(f)).resolves.toMatchObject({ outcome: "pinned" });
+    expect((await list(f))[0]?.learnedHostKey).toStrictEqual(hostKey);
+    await updateFeatureSwitchesForUser(context, f, {
+      [FeatureSwitchKey.SshAccess]: false,
     });
-    await accept(
-      stateClient().action({
-        body: {
-          action: "move-connection-org",
-          orgId: f.orgId,
-          userId: f.userId,
-          connectionId: f.connectionId,
-          targetOrgId: owner.orgId,
-        },
-      }),
-      [200],
-    );
-    const runtime = await createRuntime(owner);
     const kms = useSecretKmsProbe();
-    await expect(resolve({ ...owner, ...runtime })).resolves.toStrictEqual({
+    await expect(resolve(f)).resolves.toStrictEqual({
       outcome: "unavailable",
     });
-    await expect(pin({ ...owner, ...runtime })).resolves.toStrictEqual({
+    await expect(pin(f)).resolves.toStrictEqual({
       outcome: "unavailable",
     });
     expect(kms.decryptCalls).toBe(0);
@@ -525,7 +529,7 @@ describe("official Runner SSH authority", () => {
       expect(r.status).toBe(401);
     }
     const authApi = createAuthOrgAgentsBddApi(context);
-    const actor = authApi.user({ orgId: staffOrg });
+    const actor = authApi.user();
     authApi.mockClerkOrg(actor);
     const pat = await authApi.createCliToken(actor);
     const rejected = await client().pin({
@@ -732,7 +736,11 @@ describe("official Runner SSH authority", () => {
   it("pins exactly once for concurrent equal observations and only accepts expected plus one", async () => {
     const f = await fixture();
     const kms = useSecretKmsProbe();
+    context.mocks.ably.publish.mockClear();
     const outcomes = await Promise.all([pin(f), pin(f), pin(f)]);
+    expect(context.mocks.ably.publish.mock.calls).toStrictEqual([
+      ["ssh:changed", { orgId: f.orgId }],
+    ]);
     expect(
       outcomes.filter((r) => {
         return r.outcome === "pinned";

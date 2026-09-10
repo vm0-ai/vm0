@@ -78,9 +78,43 @@ describe("internal Intro Video presenter command", () => {
         "--json",
       ]);
 
-      expect(mockConsoleLog.mock.calls).toEqual([[JSON.stringify(result)]]);
+      expect(mockConsoleLog.mock.calls).toHaveLength(1);
+      expect(JSON.parse(String(mockConsoleLog.mock.calls[0]?.[0]))).toEqual({
+        ...result,
+        inlineMarkdownLink: `[${result.filename}](<${result.url}>)`,
+        previewMarkdownBlock: `![${result.filename}](<${result.url}>)`,
+        artifactPresentationContext: expect.stringContaining(
+          "outside code fences",
+        ),
+      });
     },
   );
+
+  it("prints preview forms with the presenter clip context", async () => {
+    server.use(
+      http.post(GENERATE_URL, () => {
+        return HttpResponse.json(PRESENTER_RESULT);
+      }),
+    );
+    introVideoPresenterCommand.setOptionValue("json", false);
+    await introVideoPresenterCommand.parseAsync([
+      "node",
+      "okou",
+      "--avatar-id",
+      PRESENTER_RESULT.avatarId,
+      "--audio-url",
+      "https://example.com/voice.mp3",
+    ]);
+    const stdout = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(stdout).toContain(
+      `[${PRESENTER_RESULT.filename}](<${PRESENTER_RESULT.url}>)`,
+    );
+    expect(stdout).toContain(
+      `\n\n![${PRESENTER_RESULT.filename}](<${PRESENTER_RESULT.url}>)\n\n`,
+    );
+    expect(stdout).toContain("presenter clip");
+    expect(stdout).toContain("outside a code fence");
+  });
 
   it("rejects malformed avatar IDs before calling the API", async () => {
     const generate = vi.fn();

@@ -5,6 +5,7 @@ import {
   type IntroVideoAvatar,
 } from "@okouai/api-contracts/contracts/intro-video-presenter";
 import { webFilesContract } from "@okouai/api-contracts/contracts/web-files";
+import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -14,7 +15,9 @@ import {
   fill,
   queryAllByRoleFast,
   setupPage,
+  startPage,
 } from "../../../__tests__/page-helper.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   AGENT_ID,
   context,
@@ -137,6 +140,33 @@ test.each([
     ).toBeFalsy();
   },
 );
+
+test.each([
+  `/agents/${AGENT_ID}/chat?templatePicker=explainer`,
+  "/?templatePicker=explainer",
+])("Explainer deep links wait for feature hydration at %s", async (path) => {
+  installCatalogs();
+  context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
+  const featureResponse = createDeferredPromise<void>(context.signal);
+  context.mocks.api(
+    featureSwitchesContract.get,
+    async ({ respond, withSignal }) => {
+      await withSignal(featureResponse.promise);
+      return respond(200, {
+        switches: { [FeatureSwitchKey.IntroVideo]: true },
+        effectiveSwitches: { [FeatureSwitchKey.IntroVideo]: true },
+      });
+    },
+  );
+
+  const page = await startPage({ context, path });
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  featureResponse.resolve(undefined);
+  await page.ready;
+
+  const dialog = await screen.findByRole("dialog");
+  expect(control("Explainer video", dialog, "tab")).toBeVisible();
+});
 
 test("Expanded style tags combine with search and preserve the selected style", async () => {
   installCatalogs();

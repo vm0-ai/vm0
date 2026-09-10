@@ -2871,6 +2871,7 @@
       "newConnector": "新しいコネクタ",
       "noConnectorsAlt": "コネクターなし",
       "otherCategory": "その他",
+      "remoteAccess": "リモートアクセス",
       "search": "コネクターを検索",
       "shelf": {
         "moreCategories": "その他のカテゴリ",
@@ -5704,6 +5705,11 @@
       "action": "ホームに戻る",
       "description": "お探しのページは存在しません。",
       "title": "ページが見つかりません"
+    },
+    "workerFailure": {
+      "action": "リフレッシュ",
+      "description": "接続が中断されました。続行するにはページを再読み込みしてください。",
+      "title": "続行するには再読み込みしてください"
     }
   },
   "sharedThread": {
@@ -5715,6 +5721,55 @@
     "signIn": "ログイン",
     "signUp": "新規登録",
     "tryItYourself": "自分で試す"
+  },
+  "ssh": {
+    "accessDescription": "SSHホストを使用できるエージェントを選択してください。",
+    "accessHelp": "この Agent が、現在および今後設定するすべての SSH ホストでコマンドを実行できるようにします。コネクタの権限とは別の設定です。",
+    "add": "ホストを追加",
+    "cancel": "キャンセル",
+    "chooseFile": "ファイルを選択",
+    "choosePrivateKeyFile": "秘密鍵ファイルを選択",
+    "credentialsHelp": "認証情報は書き込み専用で、サンドボックスの外部に保持されます。鍵全体を貼り付けてください。空白はそのまま保持されます。送信時またはフォームを閉じたときに入力欄を消去します。",
+    "delete": "ホストを削除",
+    "deleteHelp": "このホストと保存された認証情報を削除しますか？Agent の最新の一覧に表示されなくなります。",
+    "description": "エージェントがリモートコマンドを実行できる SSH ホストを設定します。",
+    "displayName": "表示名",
+    "edit": "ホストを編集",
+    "editHelp": "これらの項目を編集しても認証情報は変更されません。エンドポイントを変更すると、記憶したホスト鍵が消去されます。",
+    "empty": "SSH ホストが設定されていません。ホストを追加すると、SSH アクセスを持つ Agent が利用できます。",
+    "errors": {
+      "agentUnavailable": "このエージェントは利用できなくなりました。別のエージェントを選択してください。",
+      "configurationChanged": "編集中にこのホストが変更されました。一覧は更新済みです。ホストを開き直し、現在の設定を確認してから保存してください。",
+      "duplicateEndpoint": "このアドレスとポートのSSHホストは既に存在します。既存のホストを編集するか、別のアドレスまたはポートを使用してください。",
+      "failed": "SSHの変更を保存できませんでした。再試行してください。",
+      "hostUnavailable": "このSSHホストは利用できなくなりました。ホスト一覧に戻り、既存のホストを選択してください。",
+      "invalidHost": "URLスキーム、パス、空白を含めずにホスト名またはIPアドレスを入力してください。",
+      "invalidInput": "一部のSSH設定が無効です。入力内容を確認して再試行してください。"
+    },
+    "fileReadError": "このファイルを読み込めませんでした。再度選択するか、秘密鍵を貼り付けてください。",
+    "fileReading": "秘密鍵ファイルを読み込み中…",
+    "fileSizeError": "空でない、64 KiB 以下の秘密鍵ファイルを選択してください。",
+    "fingerprint": "記憶したホスト鍵",
+    "host": "公開ホスト名または IP アドレス",
+    "label": "SSH",
+    "loadFailed": "SSH設定を読み込めませんでした。再試行してください。",
+    "loading": "SSH ホストを読み込み中…",
+    "loadingAccess": "エージェントのアクセスを読み込み中…",
+    "manage": "SSH ホストを管理",
+    "notLearned": "ホスト鍵はまだ記憶されていません",
+    "passphrase": "パスフレーズ（任意）",
+    "port": "ポート",
+    "privateKey": "秘密鍵",
+    "reset": "ホスト鍵をリセット",
+    "resetHelp": "新しいサーバーの識別情報を別の方法で確認してからリセットしてください。次の接続では新しいホスト鍵を信頼し、記憶します。",
+    "retry": "再試行",
+    "rotate": "認証情報を置き換え",
+    "save": "保存",
+    "summary_one": "{{count}} 台のホストを設定済み",
+    "summary_other": "{{count}} 台のホストを設定済み",
+    "title": "SSH ホスト",
+    "unavailable": "このアカウントでは SSH アクセスを利用できません。",
+    "username": "SSH ユーザー名"
   },
   "usage": {
     "displayNames": {

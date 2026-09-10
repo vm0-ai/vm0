@@ -2904,11 +2904,6 @@ describe("Feishu integration", () => {
 
   it("emits the final path and serves it", async () => {
     const fixture = await setupFeishuRunFixture();
-    // #28278 step 3 switched this producer: the URL the connect service hands
-    // the operator now carries the final path on the unchanged callback origin.
-    // Installation ids are UUIDs, so percent-encoding leaves the id verbatim.
-    // #31068 retired this route's branded compatibility row, so the branded
-    // forms this case used to replay alongside it are no longer registered.
     expect(fixture.callbackUrl).toBe(
       `${FEISHU_CALLBACK_ORIGIN}/api/webhooks/feishu/events/${fixture.installationId}`,
     );

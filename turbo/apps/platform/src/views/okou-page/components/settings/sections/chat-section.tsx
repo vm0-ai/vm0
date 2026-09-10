@@ -2,7 +2,7 @@ import { useGet, useLastResolved, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { Cpu, Globe, Keyboard, Loader2 } from "lucide-react";
-import { ChoiceButton } from "@okouai/ui";
+import { ToggleButton } from "@okouai/ui";
 import { Switch } from "@okouai/ui/components/ui/switch";
 import type { SendMode } from "@okouai/api-contracts/contracts/user-preferences";
 
@@ -163,7 +163,7 @@ export function SendModePreference() {
                   return $.settings.preferences.send.cmdEnter;
                 });
           return (
-            <ChoiceButton
+            <ToggleButton
               key={value}
               type="button"
               selected={isActive}
@@ -176,7 +176,7 @@ export function SendModePreference() {
                 <Loader2 size={14} className="animate-spin" />
               )}
               {label}
-            </ChoiceButton>
+            </ToggleButton>
           );
         })}
       </div>

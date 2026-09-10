@@ -1,8 +1,3 @@
-import type { AttachmentDisplay } from "../../signals/attachment-resource-url.ts";
-import {
-  useResolvedAttachmentUrl,
-  useAttachmentMediaError,
-} from "./attachment-resource.ts";
 import { withChatScrollLayout } from "../components/chat-scroll-layout.tsx";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
@@ -205,7 +200,7 @@ export function ChatImagePreviewLink({
 }
 
 type ChatVideoPreviewButtonProps = {
-  display?: AttachmentDisplay;
+  resourceUrl$: ArtifactSignals["resourceUrl$"];
   ariaLabel: string;
   buttonClassName: string;
   filename: string;
@@ -214,7 +209,6 @@ type ChatVideoPreviewButtonProps = {
   posterLoad: ImageLoadSignals;
   previewImagePending?: boolean;
   previewImageUrl?: string;
-  url: string;
   videoClassName: string;
 };
 
@@ -225,7 +219,7 @@ function videoPosterFrameUrl(url: string): string {
 }
 
 export function ChatVideoPreviewButton({
-  display,
+  resourceUrl$,
   ariaLabel,
   buttonClassName,
   filename,
@@ -234,17 +228,14 @@ export function ChatVideoPreviewButton({
   posterLoad,
   previewImagePending,
   previewImageUrl,
-  url,
   videoClassName,
 }: ChatVideoPreviewButtonProps) {
-  const videoUrl = useResolvedAttachmentUrl(url, display);
-  const retryExpiredMedia = useAttachmentMediaError(display);
+  const videoUrl = useLastResolved(resourceUrl$) ?? null;
   const posterVideoUrl =
     videoUrl === null ? undefined : videoPosterFrameUrl(videoUrl);
   const videoFallback = (
     <video
       src={posterVideoUrl}
-      onError={retryExpiredMedia}
       preload="metadata"
       muted
       playsInline
@@ -397,7 +388,7 @@ function ArtifactCardView({
   if (signals.kind === "video") {
     return withChatScrollLayout(
       <ChatVideoPreviewButton
-        display={signals.display}
+        resourceUrl$={signals.resourceUrl$}
         ariaLabel={t(
           ($) => {
             return $.chat.attachments.previewFile;
@@ -418,14 +409,13 @@ function ArtifactCardView({
         posterLoad={signals.previewImageLoad}
         previewImagePending={previewImagePending}
         previewImageUrl={previewImageUrl}
-        url={signals.url}
         videoClassName="h-full w-full object-contain"
       />,
     );
   }
   return withChatScrollLayout(
     <AttachmentPreview
-      resourceDisplay={signals.display}
+      resourceUrl$={signals.resourceUrl$}
       attachment={{
         filename: signals.kind === "html" && label ? label : signals.filename,
         url: signals.url,

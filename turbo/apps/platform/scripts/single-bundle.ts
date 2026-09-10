@@ -1,4 +1,5 @@
 import type { Plugin } from "vite";
+import { CLERK_UI_ASSET_PATTERN } from "./clerk-ui.ts";
 
 export const RAW_JAVASCRIPT_OUTPUT_LIMIT_BYTES = 8_500_000;
 
@@ -255,9 +256,23 @@ function mermaidLiteVendorViolations(
 export function applicationBundleViolations(
   outputs: readonly GeneratedOutput[],
 ): string[] {
-  const javaScriptOutputs = outputs.filter((output) => {
-    return output.fileName.endsWith(".js");
+  const uiAssets = outputs.filter((output) => {
+    return (
+      output.type === "asset" && CLERK_UI_ASSET_PATTERN.test(output.fileName)
+    );
   });
+  if (uiAssets.length !== 1) {
+    return ["Expected exactly one separately built Clerk UI asset"];
+  }
+  const javaScriptOutputs = outputs.filter((output) => {
+    return output.fileName.endsWith(".js") && !uiAssets.includes(output);
+  });
+  return eagerApplicationBundleViolations(javaScriptOutputs);
+}
+
+function eagerApplicationBundleViolations(
+  javaScriptOutputs: readonly GeneratedOutput[],
+): string[] {
   const applicationChunks = generatedChunks(javaScriptOutputs);
   const workerAssets = javaScriptOutputs.filter(
     (output): output is GeneratedAsset => {

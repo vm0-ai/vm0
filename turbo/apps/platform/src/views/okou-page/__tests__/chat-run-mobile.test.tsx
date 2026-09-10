@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen } from "@testing-library/react";
 import { expect, test } from "vitest";
 
 import { fill } from "../../../__tests__/page-helper.ts";
@@ -6,7 +6,6 @@ import {
   activeElementIsInside,
   chatComposerTextarea,
   chatScrollContainer,
-  mockThinkingTypewriterLayout,
   setScrollMetrics,
   setupPage,
 } from "./chat-lifecycle-test-helpers.ts";
@@ -81,14 +80,9 @@ function installScrollableActiveChat(): void {
   });
 }
 
-test("Keep streamed thinking lines readable", async () => {
-  const thinkingText = "ABCDEFGH should not wrap\nReady";
-  mockThinkingTypewriterLayout({
-    text: thinkingText,
-    labelWidth: 64,
-    parentWidth: 64,
-    graphemeWidth: 8,
-  });
+test("Show a complete thinking message before the carousel advances", async () => {
+  const thinkingText =
+    "Preparing the launch checklist\nReviewing the release evidence";
   installRunChat({
     activeRunIds: [ACTIVE_RUN_ID],
     chatEvents: [
@@ -110,18 +104,12 @@ test("Keep streamed thinking lines readable", async () => {
   await setupPage({ context, path: RUN_PATH });
 
   await readyChat();
-  const indicator = await screen.findByLabelText(
-    /ABCDEFGH should not wrap\s+Ready/u,
-  );
-  await waitFor(() => {
-    expect(indicator).toHaveTextContent("ABCDEF…");
-  });
-  expect(indicator).not.toHaveTextContent("should not wrap");
-
-  await waitFor(() => {
-    expect(indicator).toHaveTextContent("Ready");
-  });
-  expect(indicator).not.toHaveTextContent("GH should not wrap");
+  await expect(
+    screen.findByLabelText("Preparing the launch checklist"),
+  ).resolves.toBeVisible();
+  expect(
+    screen.queryByText("Reviewing the release evidence"),
+  ).not.toBeInTheDocument();
 });
 
 test("Keep mobile chat gestures predictable in the standalone app", async () => {

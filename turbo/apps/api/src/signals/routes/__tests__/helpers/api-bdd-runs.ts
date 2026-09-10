@@ -97,9 +97,16 @@ interface RunsListQuery {
   readonly until?: string;
   readonly limit?: number;
 }
-type RunnerJobClaimRequest = z.infer<
+type RunnerJobClaimRequestBody = z.infer<
   (typeof runnersJobClaimContract.claim)["body"]
 >;
+/** Test claims advertise every current Pi model-config generation unless a scenario narrows them. */
+function defaultClaimCapabilities(): RunnerJobClaimRequestBody["capabilities"] {
+  return { piModelConfigGenerations: [1, 2, 3] };
+}
+type RunnerJobClaimRequest = Omit<RunnerJobClaimRequestBody, "capabilities"> & {
+  readonly capabilities?: RunnerJobClaimRequestBody["capabilities"];
+};
 type RunnerModelProviderFailureRequest = z.infer<
   (typeof runnersModelProviderFailuresContract.report)["body"]
 >;
@@ -496,7 +503,11 @@ export function createRunsApi(
           headers: runnerHeaders(true),
           ...(extraHeaders ? { extraHeaders } : {}),
           params: { id: runId },
-          body: { runnerIdentity: defaultRunnerIdentity, ...body },
+          body: {
+            runnerIdentity: defaultRunnerIdentity,
+            capabilities: defaultClaimCapabilities(),
+            ...body,
+          },
         }),
         [200],
       );
@@ -730,7 +741,7 @@ export function createRunsApi(
       authorization: string | undefined,
       runId: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
-      body: z.infer<(typeof runnersJobClaimContract.claim)["body"]> = {},
+      body: RunnerJobClaimRequest = {},
       extraHeaders?: Readonly<Record<string, string>>,
     ) {
       return await accept(
@@ -738,7 +749,7 @@ export function createRunsApi(
           headers: authorization === undefined ? {} : { authorization },
           ...(extraHeaders ? { extraHeaders } : {}),
           params: { id: runId },
-          body,
+          body: { capabilities: defaultClaimCapabilities(), ...body },
         }),
         statuses,
       );
@@ -756,7 +767,7 @@ export function createRunsApi(
           headers: authorization === undefined ? {} : { authorization },
           ...(extraHeaders ? { extraHeaders } : {}),
           params: { id: runId },
-          body: body as RunnerJobClaimRequest,
+          body: body as RunnerJobClaimRequestBody,
         }),
         statuses,
       );
@@ -1311,7 +1322,11 @@ export function createRunsApi(
           headers: runnerHeaders(validAuth),
           ...(extraHeaders ? { extraHeaders } : {}),
           params: { id: runId },
-          body: { runnerIdentity: defaultRunnerIdentity, ...body },
+          body: {
+            runnerIdentity: defaultRunnerIdentity,
+            capabilities: defaultClaimCapabilities(),
+            ...body,
+          },
         }),
         statuses,
       );
@@ -1329,7 +1344,7 @@ export function createRunsApi(
           headers: runnerHeaders(validAuth),
           ...(extraHeaders ? { extraHeaders } : {}),
           params: { id: runId },
-          body: body as RunnerJobClaimRequest,
+          body: body as RunnerJobClaimRequestBody,
         }),
         statuses,
       );

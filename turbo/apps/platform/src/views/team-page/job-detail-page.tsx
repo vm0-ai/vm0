@@ -6,9 +6,14 @@ import {
   useLoadable,
   useLastLoadable,
   useLastResolved,
+  type Loadable,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
+import { AgentSshAccess } from "../okou-page/agent-ssh-access.tsx";
+import { SshLoadError } from "../okou-page/ssh-load-error.tsx";
+import type { ReactNode } from "react";
+import { currentAgentSshAccess$, sshIdentity$ } from "../../signals/ssh.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   FileText,
@@ -430,6 +435,8 @@ function NoConnectedConnectors() {
 }
 
 function ConnectedConnectorPermissions({
+  sshAccess,
+  status,
   filteredConnectors,
   authorizedSet,
   search,
@@ -441,6 +448,8 @@ function ConnectedConnectorPermissions({
   onToggle,
   onManage,
 }: {
+  sshAccess: { readonly agentId: string; readonly enabled: boolean } | null;
+  status: ReactNode;
   filteredConnectors: readonly PlatformConnectorCatalogStatusItem[];
   authorizedSet: ReadonlySet<string>;
   search: string;
@@ -453,7 +462,15 @@ function ConnectedConnectorPermissions({
   onManage: (connectorSlug: ConnectorSlug) => void;
 }) {
   const { t } = useTranslation("agents");
+  const { t: commonT } = useTranslation();
   const focusSearch = useSet(focusPermSearchRef$);
+  const showSsh =
+    sshAccess !== null &&
+    `ssh ${commonT(($) => {
+      return $.ssh.accessHelp;
+    })}`
+      .toLowerCase()
+      .includes(search.trim().toLowerCase());
   return (
     <>
       <div className={surfaceVariants()}>
@@ -526,38 +543,45 @@ function ConnectedConnectorPermissions({
             </Button>
           )}
         </div>
-        {filteredConnectors.length > 0 ? (
-          filteredConnectors.map((c, i) => {
-            return (
-              <ConnectorCard
-                key={c.slug}
-                variant="permission"
-                connector={c}
-                enabled={authorizedSet.has(c.slug)}
-                onToggle={onDomEventFn(async (checked) => {
-                  await onToggle(c.slug, checked);
-                })}
-                loading={savingConnectorSlug === c.slug}
-                showManage={
-                  canManagePermissions && c.permissionSummary.hasPermissions
-                }
-                onManage={() => {
-                  return onManage(c.slug);
-                }}
-                isLast={i === filteredConnectors.length - 1}
-              />
-            );
-          })
-        ) : (
-          <p className="px-5 py-4 text-sm text-muted-foreground">
-            {t(
-              ($) => {
-                return $.authorization.noResults;
-              },
-              { search },
-            )}
-          </p>
-        )}
+        {status ??
+          (filteredConnectors.length > 0 ? (
+            filteredConnectors.map((c, i) => {
+              return (
+                <ConnectorCard
+                  key={c.slug}
+                  variant="permission"
+                  connector={c}
+                  enabled={authorizedSet.has(c.slug)}
+                  onToggle={onDomEventFn(async (checked) => {
+                    await onToggle(c.slug, checked);
+                  })}
+                  loading={savingConnectorSlug === c.slug}
+                  showManage={
+                    canManagePermissions && c.permissionSummary.hasPermissions
+                  }
+                  onManage={() => {
+                    return onManage(c.slug);
+                  }}
+                  isLast={i === filteredConnectors.length - 1 && !showSsh}
+                />
+              );
+            })
+          ) : !showSsh ? (
+            <p className="px-5 py-4 text-sm text-muted-foreground">
+              {t(
+                ($) => {
+                  return $.authorization.noResults;
+                },
+                { search },
+              )}
+            </p>
+          ) : null)}
+        {showSsh && sshAccess ? (
+          <AgentSshAccess
+            agentId={sshAccess.agentId}
+            enabled={sshAccess.enabled}
+          />
+        ) : null}
       </div>
 
       <JobCustomConnectorsSection />
@@ -614,6 +638,24 @@ function AgentPermissionsDrawer({
 // Tab wrappers — resolve signals into shared component props
 // ---------------------------------------------------------------------------
 
+function sshAccessForAgent(
+  access: Loadable<{
+    readonly identity: string;
+    readonly agentId: string;
+    readonly enabled: boolean;
+  } | null>,
+  agentId: string,
+  identity: Loadable<string | null>,
+) {
+  return identity.state === "hasData" &&
+    identity.data !== null &&
+    access.state === "hasData" &&
+    access.data?.identity === identity.data &&
+    access.data.agentId === agentId
+    ? access.data
+    : null;
+}
+
 function JobPermissionsTab({
   agentId,
   displayName,
@@ -622,6 +664,9 @@ function JobPermissionsTab({
   displayName: string;
 }) {
   const { t } = useTranslation("agents");
+  const sshAccessLoadable = useLastLoadable(currentAgentSshAccess$);
+  const sshIdentity = useLoadable(sshIdentity$);
+  const sshAccess = sshAccessForAgent(sshAccessLoadable, agentId, sshIdentity);
   // Use useLastLoadable so the list keeps showing the previous data while the
   // signal refetches after a toggle/save or a permission-policy reload. This
   // prevents the entire list from flickering to the skeleton on each change
@@ -703,25 +748,32 @@ function JobPermissionsTab({
     setSavingConnectorSlug(null);
   };
 
-  if (
+  const status =
     catalogItemsLoadable.state !== "hasData" ||
     connectorsLoading ||
-    userGrantsLoadable.state === "loading"
-  ) {
-    return <PermissionListSkeleton />;
-  }
-
-  if (userGrantsLoadable.state === "hasError") {
-    return <PermissionGrantsError />;
+    userGrantsLoadable.state === "loading" ? (
+      <PermissionListSkeleton />
+    ) : userGrantsLoadable.state === "hasError" ? (
+      <PermissionGrantsError />
+    ) : null;
+  if (status && !sshAccess && sshAccessLoadable.state !== "hasError") {
+    return status;
   }
 
   return (
-    <div className="mx-auto max-w-[900px] flex flex-col gap-4">
-      {connectedConnectors.length === 0 ? (
-        <NoConnectedConnectors />
+    <div className="mx-auto w-full max-w-[900px] flex flex-col gap-4">
+      {connectedConnectors.length === 0 && !sshAccess ? (
+        sshAccessLoadable.state === "hasError" ? (
+          <SshLoadError />
+        ) : (
+          <NoConnectedConnectors />
+        )
       ) : (
         <>
+          {sshAccessLoadable.state === "hasError" && <SshLoadError />}
           <ConnectedConnectorPermissions
+            sshAccess={sshAccess}
+            status={status}
             filteredConnectors={filteredConnectors}
             authorizedSet={authorizedSet}
             search={search}

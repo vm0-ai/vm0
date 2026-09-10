@@ -2,10 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import {
-  SSH_CONNECTION_LIMIT,
-  sshConnectionsContract,
-} from "@okouai/api-contracts/contracts/ssh-connections";
+import { sshConnectionsContract } from "@okouai/api-contracts/contracts/ssh-connections";
 import { testSshConnectionStateContract } from "@okouai/api-contracts/contracts/test-ssh-connection-state";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
@@ -18,7 +15,6 @@ import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import { sshConnectionsRoutes } from "../ssh-connections";
 import { testSshConnectionStateRoutes } from "../test-ssh-connection-state";
 
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const context = testContext();
 const mocks = createRouteMocks(context);
 const authApi = createAuthOrgAgentsBddApi(context);
@@ -28,7 +24,7 @@ interface Actor {
   readonly userId: string;
 }
 
-function actor(prefix: string, orgId = STAFF_ORG_ID): Actor {
+function actor(prefix: string, orgId = `org_ssh_${randomUUID()}`): Actor {
   return { orgId, userId: `user_ssh_${prefix}_${randomUUID()}` };
 }
 
@@ -81,7 +77,36 @@ function createBody(
 }
 
 describe("SSH connection routes", () => {
-  it("requires an organization session and both rollout gates before parsing input", async () => {
+  it("notifies only the owner after every successful creation, even without visible Agents", async () => {
+    useSecretKmsProbe();
+    const owner = actor("browser-notice");
+    await enableSsh(owner);
+    for (const host of ["first.example.com", "second.example.com"]) {
+      context.mocks.ably.publish.mockClear();
+      context.mocks.ably.channelGet.mockClear();
+      await accept(
+        client().create({ headers: authHeaders(), body: createBody(host) }),
+        [201],
+      );
+      expect(context.mocks.ably.publish.mock.calls).toStrictEqual([
+        ["ssh:changed", { orgId: owner.orgId }],
+      ]);
+      expect(context.mocks.ably.channelGet.mock.calls).toStrictEqual([
+        [`user:${owner.userId}`],
+      ]);
+    }
+    context.mocks.ably.publish.mockClear();
+    const duplicate = await accept(
+      client().create({
+        headers: authHeaders(),
+        body: createBody("first.example.com"),
+      }),
+      [409],
+    );
+    expect(duplicate.body.error.code).toBe("SSH_ENDPOINT_CONFLICT");
+    expect(context.mocks.ably.publish.mock.calls).toStrictEqual([]);
+  });
+  it("requires an organization session and the feature flag before parsing input", async () => {
     const kms = useSecretKmsProbe();
     const unauthenticated = await accept(client().list({ headers: {} }), [401]);
     expect(unauthenticated.body.error.code).toBe("UNAUTHORIZED");
@@ -93,7 +118,7 @@ describe("SSH connection routes", () => {
     );
     expect(withoutOrg.body.error.code).toBe("UNAUTHORIZED");
 
-    const patActor = authApi.user({ orgId: STAFF_ORG_ID });
+    const patActor = authApi.user();
     authApi.mockClerkOrg(patActor);
     const pat = await authApi.createCliToken(patActor);
     const patResponse = await accept(
@@ -104,21 +129,8 @@ describe("SSH connection routes", () => {
     );
     expect(patResponse.body.error.code).toBe("FORBIDDEN");
 
-    const nonStaff = actor("nonstaff", `org_ssh_${randomUUID()}`);
-    await enableSsh(nonStaff);
-    const nonStaffResponse = await accept(
-      client().create({
-        headers: authHeaders(),
-        body: createBody("nonstaff.example.com"),
-      }),
-      [404],
-    );
-    expect(nonStaffResponse.body.error.message).toBe(
-      "SSH configuration is not available",
-    );
-
-    const staffWithoutSwitch = actor("disabled");
-    authenticate(staffWithoutSwitch);
+    const withoutSwitch = actor("disabled");
+    authenticate(withoutSwitch);
     const disabledResponse = await accept(
       client().create({
         headers: authHeaders(),
@@ -126,7 +138,10 @@ describe("SSH connection routes", () => {
       }),
       [404],
     );
-    expect(disabledResponse.body).toStrictEqual(nonStaffResponse.body);
+    expect(disabledResponse.body.error.message).toBe(
+      "SSH configuration is not available",
+    );
+    expect(disabledResponse.body.error.code).toBe("SSH_UNAVAILABLE");
 
     const rawResponse = await setupRawAppRequest({
       context,
@@ -199,7 +214,7 @@ describe("SSH connection routes", () => {
       client().summary({ headers: authHeaders() }),
       [200],
     );
-    expect(summary.body).toStrictEqual({ configuredCount: 1, limit: 64 });
+    expect(summary.body).toStrictEqual({ configuredCount: 1 });
     const listed = await accept(
       client().list({ headers: authHeaders() }),
       [200],
@@ -391,7 +406,7 @@ describe("SSH connection routes", () => {
         client().create({ headers: authHeaders(), body: createBody(host) }),
         [400],
       );
-      expect(response.body.error.code).toBe("BAD_REQUEST");
+      expect(response.body.error.code).toBe("SSH_INVALID_HOST");
     }
     expect(kms.generateDataKeyCalls).toBe(0);
 
@@ -512,7 +527,7 @@ describe("SSH connection routes", () => {
     );
     expect(kms.generateDataKeyCalls).toBe(1);
 
-    const other = actor("other");
+    const other = actor("other", owner.orgId);
     await enableSsh(other);
     const crossOwner = await accept(
       client().update({
@@ -535,7 +550,7 @@ describe("SSH connection routes", () => {
     expect(otherList.body.connections).toStrictEqual([]);
   });
 
-  it("serializes duplicate creates and the final quota slots", async () => {
+  it("serializes duplicate creates", async () => {
     useSecretKmsProbe();
     const duplicateOwner = actor("concurrent-duplicate");
     await enableSsh(duplicateOwner);
@@ -556,11 +571,14 @@ describe("SSH connection routes", () => {
         })
         .sort(),
     ).toStrictEqual([201, 409]);
+  });
 
-    const quotaOwner = actor("concurrent-quota");
-    await enableSsh(quotaOwner);
+  it("allows concurrent creates beyond 64 configured hosts", async () => {
+    useSecretKmsProbe();
+    const owner = actor("concurrent-above-64");
+    await enableSsh(owner);
     const seeded = await Promise.all(
-      Array.from({ length: SSH_CONNECTION_LIMIT - 1 }, (_, index) => {
+      Array.from({ length: 63 }, (_, index) => {
         return client().create({
           headers: authHeaders(),
           body: createBody(`seed-${index}.example.com`),
@@ -573,7 +591,7 @@ describe("SSH connection routes", () => {
       }),
     ).toBeTruthy();
 
-    const quotaResults = await Promise.all([
+    const results = await Promise.all([
       client().create({
         headers: authHeaders(),
         body: createBody("final-a.example.com"),
@@ -584,17 +602,26 @@ describe("SSH connection routes", () => {
       }),
     ]);
     expect(
-      quotaResults
+      results
         .map((result) => {
           return result.status;
         })
         .sort(),
-    ).toStrictEqual([201, 409]);
+    ).toStrictEqual([201, 201]);
     const summary = await accept(
       client().summary({ headers: authHeaders() }),
       [200],
     );
-    expect(summary.body.configuredCount).toBe(SSH_CONNECTION_LIMIT);
+    expect(summary.body).toStrictEqual({ configuredCount: 65 });
+    const list = await accept(client().list({ headers: authHeaders() }), [200]);
+    expect(list.body.connections).toHaveLength(65);
+    expect(
+      list.body.connections.map((connection) => {
+        return connection.host;
+      }),
+    ).toStrictEqual(
+      expect.arrayContaining(["final-a.example.com", "final-b.example.com"]),
+    );
   });
 
   it("leaves no visible row when KMS encryption fails", async () => {

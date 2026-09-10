@@ -249,7 +249,7 @@ async function run() {
       });
       let releaseSave: (() => void) | undefined;
       try {
-        // The shell's first paint prefers this cookie over localStorage.
+        // Theme bootstrap and runtime share this cookie.
         await context.clearCookies({ name: "__Secure-okou-theme" });
         await context.addCookies([
           {
@@ -260,13 +260,6 @@ async function run() {
             sameSite: "Lax",
           },
         ]);
-        await context.addInitScript(
-          ({ theme }) => {
-            localStorage.setItem("theme", theme);
-            localStorage.setItem("colorTheme", "blue-horizon");
-          },
-          { theme: item.theme },
-        );
         await seedPreviewBypassCookie(context, appOrigin);
         await seedPreviewBypassCookie(context, apiOrigin);
         const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
@@ -356,6 +349,26 @@ async function run() {
           "/api/onboarding/status": onboarding(),
           "/api/agents": [profile],
         }));
+        // The synthetic Agent has no user connectors or permission grants.
+        // These reads must share its fixture boundary after a preview DB reset.
+        await page.route(
+          (url) =>
+            url.origin === apiOrigin &&
+            (url.pathname ===
+              `/api/agents/${fixture.agentId}/user-connectors` ||
+              (url.pathname === "/api/user-permission-grants" &&
+                url.searchParams.get("agentId") === fixture.agentId)),
+          async (route) => {
+            assert.equal(route.request().method(), "GET");
+            await route.fulfill({
+              json: new URL(route.request().url()).pathname.endsWith(
+                "/user-connectors",
+              )
+                ? { enabledConnectorSlugs: [] }
+                : [],
+            });
+          },
+        );
         let savePending: Promise<void> | undefined;
         await page.route(
           (url) =>
@@ -477,6 +490,10 @@ async function run() {
                 behavior: "instant",
               }),
             );
+          }
+          // Check geometry against the same settled paint that is archived.
+          const bytes = await stableScreenshot(page);
+          if (item.isMobile) {
             const sample = page.getByText(
               caseFile.tones[selected].agentSample,
               { exact: true },
@@ -496,7 +513,6 @@ async function run() {
               );
             }
           }
-          const bytes = await stableScreenshot(page);
           await expectTone(selected);
           const observation = await observe(group);
           const pressed = await Promise.all(
