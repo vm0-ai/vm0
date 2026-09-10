@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   chatThreadImageModelContract,
@@ -975,4 +975,48 @@ test("Switch model type in the flyout without leaving the panel", async () => {
     throw new Error("Nano Banana 2 option not found");
   }
   expect(banana).toHaveAttribute("aria-selected", "true");
+});
+
+test("Hovering a model type opens its panel only once the pointer settles", async () => {
+  installModelEnvironment();
+  setDesktopViewport();
+  mockThread({
+    selectedModel: DEFAULT_RUN_MODEL,
+    selectedImageModel: null,
+  });
+
+  await setupPage({
+    context,
+    path: `/chats/${THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ModelPickerFlyout]: true },
+  });
+
+  const flyoutTrigger = await waitFor(() => {
+    const trigger = composerFor()
+      .querySelector('[data-slot="select-value"]')
+      ?.closest("button");
+    if (!(trigger instanceof HTMLElement)) {
+      throw new Error("Composer model picker not found");
+    }
+    return trigger;
+  });
+  click(flyoutTrigger);
+
+  const types = await screen.findByRole("tablist", { name: "Models" });
+  await screen.findByRole("listbox", { name: "Chat models" });
+  const imageType = queryAllByRoleFast("tab", types).find((tab) => {
+    return tab.textContent?.includes("Image");
+  });
+  if (!imageType) {
+    throw new Error("Image type row not found");
+  }
+
+  // A pointer that only crosses the row leaves the panel where it was: the
+  // swap is scheduled, not applied, so this frame still shows chat models.
+  fireEvent.mouseEnter(imageType);
+  expect(screen.getByRole("listbox", { name: "Chat models" })).toBeVisible();
+
+  // Resting on the row is what opens it.
+  await screen.findByRole("listbox", { name: "Image models" });
+  expect(imageType).toHaveAttribute("aria-selected", "true");
 });
