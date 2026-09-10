@@ -21910,6 +21910,8 @@ describe("CHAT-02: initial thinking indicator", () => {
           error: { code: 504, message: providerDetail },
         });
       },
+      outcome: "degraded",
+      reason: "upstream_timeout",
       warned: false,
     },
     {
@@ -21917,6 +21919,8 @@ describe("CHAT-02: initial thinking indicator", () => {
       thinkingResponse: () => {
         return new HttpResponse(providerDetail, { status: 429 });
       },
+      outcome: "degraded",
+      reason: "rate_limited",
       warned: false,
     },
     {
@@ -21924,6 +21928,8 @@ describe("CHAT-02: initial thinking indicator", () => {
       thinkingResponse: () => {
         return new HttpResponse(providerDetail, { status: 502 });
       },
+      outcome: "degraded",
+      reason: "provider_unavailable",
       warned: false,
     },
     // Negative control: an unsupported request is our defect, not the
@@ -21933,6 +21939,8 @@ describe("CHAT-02: initial thinking indicator", () => {
       thinkingResponse: () => {
         return new HttpResponse(providerDetail, { status: 400 });
       },
+      outcome: "error",
+      reason: "invalid_request",
       warned: true,
     },
     {
@@ -21940,10 +21948,12 @@ describe("CHAT-02: initial thinking indicator", () => {
       thinkingResponse: () => {
         return new HttpResponse(providerDetail, { status: 401 });
       },
+      outcome: "error",
+      reason: "auth",
       warned: true,
     },
-    // An exhausted token budget describes our own request rather than the
-    // provider's availability, so it stays outside the suppressed set.
+    // The shared boundary counts a token ceiling as expected degradation, but
+    // the optional marker remains absent because shortened copy is unusable.
     {
       name: "an exhausted token budget",
       thinkingResponse: () => {
@@ -21957,11 +21967,13 @@ describe("CHAT-02: initial thinking indicator", () => {
           ],
         });
       },
-      warned: true,
+      outcome: "degraded",
+      reason: "output_truncated",
+      warned: false,
     },
   ])(
     "omits opening copy and reports a defect only for $name",
-    async ({ thinkingResponse, warned }) => {
+    async ({ thinkingResponse, outcome, reason, warned }) => {
       const { actor, agentId } = await entitledChatActor();
       mockOptionalEnv("OPENROUTER_API_KEY", "thinking-classification-key");
       server.use(
@@ -21999,13 +22011,19 @@ describe("CHAT-02: initial thinking indicator", () => {
       ).toStrictEqual([]);
       expect((await api.readRun(actor, run.runId)).status).toBe("pending");
 
-      const warnings = context.mocks.axiomLogging.warn.mock.calls.filter(
-        ([message]) => {
-          return message === "Initial thinking generation failed";
-        },
-      );
+      const warnings = auxiliaryWarnings(context);
       expect(warnings).toHaveLength(warned ? 1 : 0);
       expect(JSON.stringify(warnings)).not.toContain(providerDetail);
+      expect(auxiliaryResults(context, "chat_initial_thinking")).toStrictEqual([
+        expect.objectContaining({
+          outcome,
+          reason,
+          run_id: run.runId,
+        }),
+      ]);
+      expect(
+        JSON.stringify(auxiliaryResults(context, "chat_initial_thinking")),
+      ).not.toContain(providerDetail);
       await cancelChatRun(actor, run.runId);
     },
   );
