@@ -163,6 +163,52 @@ function installSearchResources() {
   return { agent, workflow, artifact };
 }
 
+test("Limit empty search to 25 cached chats in sidebar order", async () => {
+  context.mocks.browser.matchMedia((query) => {
+    return (
+      query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
+    );
+  });
+  const threads = Array.from({ length: 26 }, (_, index) => {
+    return chatListThread(index + 1, `Chat ${index + 1}`, {
+      pinnedAt: index < 2 ? `2026-08-01T00:5${2 - index}:00.000Z` : null,
+    });
+  });
+  const remoteChatList = context.mocks.deferred<void>();
+  const workspace = installContinuityWorkspace(context, {
+    caseId: 77,
+    threads,
+    chatListRemoteGate: remoteChatList.promise,
+  });
+  await setupPage({
+    context,
+    path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
+    ...workspace.pageOptions,
+    featureSwitches,
+  });
+  const expectedTitles = [
+    "Chat 1",
+    "Chat 2",
+    ...Array.from({ length: 23 }, (_, index) => {
+      return `Chat ${26 - index}`;
+    }),
+  ];
+  const chatThreads = await screen.findByLabelText("Chat threads");
+  await within(chatThreads).findByText(expectedTitles[0]!);
+  expect(sidebarThreadTitles().slice(0, 3)).toStrictEqual(
+    expectedTitles.slice(0, 3),
+  );
+  click(fastButton("Hide chat list"));
+  await waitFor(() => {
+    expect(screen.queryByTestId("chat-list-column")).toBeNull();
+  });
+  const { dialog } = await openSearch();
+  await waitFor(() => {
+    expect(searchResultTitles(dialog)).toStrictEqual(expectedTitles);
+  });
+  expect(remoteChatList.settled()).toBeFalsy();
+});
+
 test.each([
   {
     caseId: 74,
@@ -191,7 +237,7 @@ test.each([
     firstHint: ["Ctrl+1"],
   },
 ])(
-  "Limit empty search to 25 current chats and open the ninth result on $platform",
+  "Number only the first nine search results and open the ninth on $platform",
   async ({ caseId, userAgent, modifiers, numberModifiers, firstHint }) => {
     context.mocks.browser.userAgent(userAgent);
     context.mocks.browser.matchMedia((query) => {
@@ -199,7 +245,8 @@ test.each([
         query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
       );
     });
-    const threads = Array.from({ length: 30 }, (_, index) => {
+    // Keep one result beyond the nine shortcuts; the 25-result cap is separate.
+    const threads = Array.from({ length: 10 }, (_, index) => {
       return chatListThread(index + 1, `Chat ${index + 1}`, {
         pinnedAt: index < 2 ? `2026-08-01T00:5${2 - index}:00.000Z` : null,
       });
@@ -219,8 +266,8 @@ test.each([
     const expectedTitles = [
       "Chat 1",
       "Chat 2",
-      ...Array.from({ length: 23 }, (_, index) => {
-        return `Chat ${30 - index}`;
+      ...Array.from({ length: 8 }, (_, index) => {
+        return `Chat ${10 - index}`;
       }),
     ];
     const chatThreads = await screen.findByLabelText("Chat threads");
@@ -252,6 +299,9 @@ test.each([
         },
       ),
     ).toStrictEqual(firstHint);
+    expect(
+      queryAllByRoleFast("option", dialog)[9]!.querySelector("kbd"),
+    ).toBeNull();
     fireEvent.keyUp(search, { key: modifiers.metaKey ? "Meta" : "Control" });
     await waitFor(() => {
       expect(numberedHints(dialog)).toStrictEqual([]);
@@ -271,7 +321,7 @@ test.each([
     });
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).toBeNull();
-      expect(pathname()).toBe(`/chats/${threads[23]!.id}`);
+      expect(pathname()).toBe(`/chats/${threads[3]!.id}`);
     });
     expect(screen.queryByTestId("chat-list-column")).toBeNull();
   },
