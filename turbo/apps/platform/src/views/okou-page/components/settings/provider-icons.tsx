@@ -50,7 +50,7 @@ export function ProviderIcon({
       alt=""
       className={cn(
         "shrink-0",
-        providerIconNeedsDarkInvert(type) && "okou-icon-mono",
+        providerIconNeedsDarkInvert(type) && "dark:invert",
       )}
     />
   );
