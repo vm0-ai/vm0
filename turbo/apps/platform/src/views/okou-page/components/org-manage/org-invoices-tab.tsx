@@ -22,6 +22,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  Badge,
 } from "@okouai/ui";
 import { Skeleton } from "@okouai/ui/components/ui/skeleton";
 import type { FormEvent } from "react";
@@ -369,10 +370,10 @@ export function OrgInvoicesTab() {
                     {inv.number ?? inv.id}
                   </span>
                   {inv.status && (
-                    <span className="inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground okou-badge">
+                    <Badge className="text-xs font-medium text-muted-foreground">
                       <CircleCheck size={12} className="text-green-600" />
                       {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
-                    </span>
+                    </Badge>
                   )}
                 </div>
                 <div className="text-left text-sm text-muted-foreground tabular-nums">

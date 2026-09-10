@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  Badge,
 } from "@okouai/ui";
 import {
   useGet,
@@ -60,13 +61,13 @@ function CooldownDiagnosticsSummary({
           })}
         </span>
         <span className="flex flex-wrap gap-1.5 font-mono text-[11px] text-foreground">
-          <span className="okou-badge rounded-md px-2 py-0.5">
+          <Badge>
             {t(($) => {
               return $.settings.preferences.debug.builtInModelCooldown
                 .globalActive;
             })}
             : {formatLocalizedNumber(diagnostics.activeCooldowns.length)}
-          </span>
+          </Badge>
         </span>
       </span>
       <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-muted-foreground group-open:hidden" />
