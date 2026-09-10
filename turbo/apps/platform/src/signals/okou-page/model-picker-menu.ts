@@ -125,6 +125,10 @@ export function createModelPickerMenuSignals() {
       signal.addEventListener("abort", () => {
         window.cancelAnimationFrame(frame);
         window.removeEventListener("resize", measure);
+        // The rail cancels a scheduled swap on mouseleave, but an unmounted row
+        // never sends one: closing the picker while the pointer rests on a row
+        // would otherwise swap the category of a menu that is already gone.
+        set(resetHoverIntent$);
       });
     }),
   );

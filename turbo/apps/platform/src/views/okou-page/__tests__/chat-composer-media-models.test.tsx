@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   chatThreadImageModelContract,
@@ -1013,7 +1013,9 @@ test("Hovering a model type opens its panel only once the pointer settles", asyn
 
   // A pointer that only crosses the row leaves the panel where it was: the
   // swap is scheduled, not applied, so this frame still shows chat models.
-  fireEvent.mouseEnter(imageType);
+  // `delay: null` keeps the pointer sequence instant, which keeps the
+  // assertion below well inside the dwell window.
+  await userEvent.setup({ delay: null }).hover(imageType);
   expect(screen.getByRole("listbox", { name: "Chat models" })).toBeVisible();
 
   // Resting on the row is what opens it.
