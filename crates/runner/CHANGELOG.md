@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.190.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.189.7...runner-rs-v0.190.0) (2026-09-10)
+
+
+### Features
+
+* **ssh:** surface host connection failures and recovery ([#33165](https://github.com/vm0-ai/vm0/issues/33165)) ([f56df60](https://github.com/vm0-ai/vm0/commit/f56df6068d35f5591020a5bb61fb4197cb6cd820))
+
+
+### Bug Fixes
+
+* **api:** keep sandbox telemetry batches alive and name oom upload failures ([#33287](https://github.com/vm0-ai/vm0/issues/33287)) ([ff65e65](https://github.com/vm0-ai/vm0/commit/ff65e65da0231a4fcad15645c041cdd57a3d7d46))
+* extend storage url lifetime and preserve download error details ([#33181](https://github.com/vm0-ai/vm0/issues/33181)) ([93ccb22](https://github.com/vm0-ai/vm0/commit/93ccb227278b0e384594abffea5d1244219164cf))
+* **guest-control:** classify oom metadata apart from terminal diagnostics ([#33238](https://github.com/vm0-ai/vm0/issues/33238)) ([7e0a677](https://github.com/vm0-ai/vm0/commit/7e0a67723010f1088d5365e8dcce1801217e772c))
+* **pi:** keep model failures actionable when an upstream returns a document ([#33249](https://github.com/vm0-ai/vm0/issues/33249)) ([76eb46f](https://github.com/vm0-ai/vm0/commit/76eb46f0b78b846fc5a1f3a8a3e6a18a2b327aab))
+* **runner:** create workspace metadata with private permissions ([#33284](https://github.com/vm0-ai/vm0/issues/33284)) ([dacc7f4](https://github.com/vm0-ai/vm0/commit/dacc7f47c4c8d071e4762cd4d149dfc18f4cbab5))
+* **runner:** ignore systemd comments before continuation handling ([#33201](https://github.com/vm0-ai/vm0/issues/33201)) ([10627c5](https://github.com/vm0-ai/vm0/commit/10627c5205c685d64c5302f7f5a6226175d561b2))
+* **runner:** preserve hostname label boundaries in catalog templates ([#33260](https://github.com/vm0-ai/vm0/issues/33260)) ([a01e4de](https://github.com/vm0-ai/vm0/commit/a01e4de47bc5da58d46bf9b30ad95a906bd92dc7))
+* **runner:** report the real termination reason for oom-killed agent runs ([#33240](https://github.com/vm0-ai/vm0/issues/33240)) ([f695c77](https://github.com/vm0-ai/vm0/commit/f695c77cd45566553f8b01d0c2f484909cebfc70))
+
+
+### Documentation
+
+* **python:** correct permanent delivery failure logging guidance ([#33270](https://github.com/vm0-ai/vm0/issues/33270)) ([496b660](https://github.com/vm0-ai/vm0/commit/496b660ca5408c2b64693ab936de68a61e674f40))
+
+
+### Refactoring
+
+* **python:** share payload-free thread-pool startup ([#33274](https://github.com/vm0-ai/vm0/issues/33274)) ([95e594f](https://github.com/vm0-ai/vm0/commit/95e594fa3ee9f6e14622a1814c8e0812b730cfb5))
+
 ## [0.189.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.189.6...runner-rs-v0.189.7) (2026-09-10)
 
 

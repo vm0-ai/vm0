@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.4.0...process-control-ipc-v0.4.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **rust:** bound guest tool placement connections under socket backpressure ([#33195](https://github.com/vm0-ai/vm0/issues/33195)) ([00de6d6](https://github.com/vm0-ai/vm0/commit/00de6d6572219d87a5664b9b79530cd4b426b187))
+
 ## [0.4.0](https://github.com/vm0-ai/vm0/compare/process-control-ipc-v0.3.11...process-control-ipc-v0.4.0) (2026-09-08)
 
 
