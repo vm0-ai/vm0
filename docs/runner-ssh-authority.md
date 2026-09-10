@@ -131,6 +131,9 @@ reopens that first-use window.
 winning Runner identity, plus `expectedGeneration`, UTC `observedAt` and nullable
 `failureReason`. The allowlist covers credential parsing, destination/network,
 host-key and authentication failures, plus pre-authentication protocol/timeouts.
+Waiting for the first-use host-key pin API is an authority phase, not target
+connection evidence; a deadline there preserves the command's `timed_out` result
+without creating a host warning.
 Null means host-key verification and SSH authentication succeeded, not command
 success. No command, output, peer diagnostic, credential or arbitrary error text
 is accepted. The strict guest/CLI outcome and inventory DTOs are unchanged.

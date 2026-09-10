@@ -133,6 +133,43 @@ async fn first_authentication_reports_the_generation_returned_by_tofu() {
 }
 
 #[tokio::test]
+async fn first_use_authority_timeout_does_not_report_a_target_connection_failure() {
+    let mut h = Harness::new(Reply::default()).await;
+    let dispatcher = h.take_dispatcher();
+    let _resolve = h.resolve(h.credential(false)).await;
+    let pin = h
+        .api
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path(format!("/api/runners/runs/{}/ssh/pin", h.run));
+            then.status(200)
+                .json_body(json!({"outcome":"pinned","generation":8}))
+                .delay(Duration::from_secs(10));
+        })
+        .await;
+    let report = h
+        .api
+        .mock_async(|when, then| {
+            when.method("POST")
+                .path(format!("/api/runners/runs/{}/ssh/observations", h.run));
+            then.status(200);
+        })
+        .await;
+    let frames = h
+        .raw(
+            json!({"version":1,"method":"ssh.exec","remaining_ms":2000,"params":params()})
+                .to_string(),
+        )
+        .await;
+    assert_eq!(super::terminal(&frames)["failure_reason"], "timed_out");
+    dispatcher.shutdown().await;
+    pin.assert_calls_async(1).await;
+    report.assert_calls_async(0).await;
+    assert_eq!(h.observed.auth.load(Ordering::SeqCst), 0);
+    assert!(h.observed.commands.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn report_failure_or_timeout_cannot_hold_the_guest_stream_or_replay_commands() {
     for (status, delay) in [
         (404, Duration::ZERO),
