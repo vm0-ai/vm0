@@ -505,7 +505,18 @@ reactivation, or continuation. It rejects pre-boundary targets before API or
 Runner artifact resolution and output publication, even if the rollback
 dashboard still lists those historical releases.
 
-Apply this floor only to the release/API target: the first compatible release
+S5 additionally requires **both** accepted consumer-removal commits:
+`2c231766e383b651867893852cfb47dcc78af0bd` (original S4) and
+`077a9a644986e13bed4750796f91e55c4a876aad` (ordinary-write repair).
+The first independently verified compatible release is
+`4a4881bf84cb1d79723fd38c83e00f2215bb1e31` (API **1.580.0**),
+[accepted in production](https://github.com/vm0-ai/vm0/issues/32653#issuecomment-5618238710).
+S1/S2/S3-only targets and original S4 without the repair fail before API or
+Runner artifact resolution or output publication. The S1 retirement floor and
+all unrelated reader, main ancestry, release-tag and artifact checks remain.
+This stronger resolver runs from current main before physical contraction ships.
+
+Apply these API floors only to the release/API target: the first compatible release
 retained an older Runner tag. All independent Runner ancestry, reader, host
 architecture, and release-asset checks still apply. The rollback workflow loads
 the resolver from current `main`, so merging the guard constrains future

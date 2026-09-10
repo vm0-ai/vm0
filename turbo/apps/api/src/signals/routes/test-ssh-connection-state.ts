@@ -11,7 +11,6 @@ import { agents } from "@okouai/db/schema/agent";
 import { agentRuns } from "@okouai/db/schema/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { chatThreads } from "@okouai/db/schema/chat-thread";
-import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { workflowAutomations, workflows } from "@okouai/db/schema/workflow";
 import { command } from "ccstate";
 import { and, eq, sql } from "drizzle-orm";
@@ -211,20 +210,6 @@ async function createRuntime(
         enabled: false,
       });
     }
-    let goalId: string | null = null;
-    if (body.triggerSource === "goal" && threadId) {
-      goalId = randomUUID();
-      await tx.insert(threadGoals).values({
-        id: goalId,
-        orgId: body.orgId,
-        ownerUserId: body.userId,
-        agentId,
-        chatThreadId: threadId,
-        status: "paused",
-        objective: "SSH runtime fixture",
-        objectiveBrief: "SSH runtime fixture",
-      });
-    }
     await tx.insert(agentRuns).values({
       id: runId,
       sessionId,
@@ -236,7 +221,6 @@ async function createRuntime(
       autonomyBudget: body.triggerSource === null ? null : 3,
       chatThreadId: body.chat ? threadId : null,
       workflowAutomationId,
-      goalId,
       runnerId: body.runnerId,
       runnerGroup: body.runnerGroup,
       runnerHeartbeatGeneration: body.heartbeatGeneration,

@@ -46,6 +46,14 @@ expired transition validator must be deleted.
   #32653; retain surviving history invariants in permanent reader coverage.
   See [the delivery and count-only acceptance guide](../../../docs/goal-retirement-archival.md).
 
+- `scripts/test-goal-schema-contraction.ts` protects S5's
+  `1105_prepare_goal_metadata_contraction` / `1106_contract_retired_goal_schema`
+  (#33285): resumable replay, exact preservation and snapshot coverage,
+  concurrent-writer/lock boundaries, atomic contraction and journal-gap retry,
+  plus the measured 4,162-Goal / 271,758-run cohort. Keep both Goal transition
+  validators until deployed S5 is independently accepted. Permanent metadata
+  SQL constraints and canonical history readers remain covered separately.
+
 - `scripts/test-pi-memory-checkpoint-settlement.ts` protects migration
   `1079_pi_memory_checkpoint_settlement` (#31937): real PostgreSQL checks exact
   live legacy grandfathering, valid sandbox leases, unsafe-shape rollback and
