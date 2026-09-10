@@ -29,12 +29,8 @@ import {
   agentDeleteSession$,
   setAgentDeleteCopyChoices$,
   setAgentDeleteDialogOpen$,
+  type AgentDeleteWorkflow,
 } from "../../../signals/okou-page/settings/settings-tab.ts";
-
-export interface AgentDeleteWorkflow {
-  readonly id: string;
-  readonly title: string;
-}
 
 export interface AgentDeleteCopyTarget {
   readonly id: string;
@@ -311,7 +307,7 @@ export function AgentDeleteDialog({
   agentId,
   resolvedAgentName,
   onDelete,
-  deleteWorkflows = [],
+  deleteWorkflows,
   deleteCopyTargets = [],
   onCopyWorkflowBeforeDelete,
 }: AgentDeleteDialogProps) {
@@ -327,15 +323,17 @@ export function AgentDeleteDialog({
   const setOpen = useSet(setAgentDeleteDialogOpen$);
   const updateCopyChoices = useSet(setAgentDeleteCopyChoices$);
   const copyChoices = session?.choices ?? {};
+  // Retain this confirmation's last known workflow rows if a refresh fails.
+  const workflows = deleteWorkflows ?? session?.workflows ?? [];
   const copying = session?.phase === "copying";
   const deleting = session?.phase === "deleting";
   const setCopyChoices = (choices: Record<string, string>) => {
     if (session) {
-      updateCopyChoices(session.id, choices);
+      updateCopyChoices(session.id, choices, workflows);
     }
   };
   const canReconcile =
-    deleteWorkflows.length > 0 && onCopyWorkflowBeforeDelete !== undefined;
+    workflows.length > 0 && onCopyWorkflowBeforeDelete !== undefined;
 
   const handleDelete = () => {
     if (!session) {
@@ -347,7 +345,7 @@ export function AgentDeleteDialog({
           sessionId: session.id,
           deleteFn: onDelete,
           copyWorkflow: onCopyWorkflowBeforeDelete,
-          workflowIds: deleteWorkflows.map((workflow) => {
+          workflowIds: workflows.map((workflow) => {
             return workflow.id;
           }),
         },
@@ -377,7 +375,13 @@ export function AgentDeleteDialog({
             <Dialog
               open={session?.open ?? false}
               onOpenChange={(open, eventDetails) => {
-                if (!setOpen(agentId, open, pageSignal)) {
+                if (
+                  !setOpen(
+                    { agentId, workflows: deleteWorkflows },
+                    open,
+                    pageSignal,
+                  )
+                ) {
                   eventDetails.cancel();
                 }
               }}
@@ -408,7 +412,7 @@ export function AgentDeleteDialog({
                     deleting={deleting}
                     copying={copying}
                     onDelete={handleDelete}
-                    deleteWorkflows={deleteWorkflows}
+                    deleteWorkflows={workflows}
                     deleteCopyTargets={deleteCopyTargets}
                     copyChoices={copyChoices}
                     setCopyChoices={setCopyChoices}

@@ -38,7 +38,6 @@ import type { Command } from "ccstate";
 import { InlineSettingsRow } from "./components/inline-settings-row.tsx";
 import {
   AgentDeleteDialog,
-  type AgentDeleteWorkflow,
   type AgentDeleteCopyTarget,
 } from "./components/delete-agent-dialog.tsx";
 import { toast } from "@okouai/ui/components/ui/sonner";
@@ -52,6 +51,7 @@ import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import { AvatarMaker } from "./avatar-maker.tsx";
 import { AvatarFromUrl } from "./sidebar-shared.tsx";
 import {
+  type AgentDeleteWorkflow,
   settingsFormDraft$,
   patchSettingsForm$,
   resetSettingsForm$,
@@ -238,7 +238,7 @@ export function SettingsTab({
   inputId = "okou-agent-name",
   isDefaultAgent = false,
   onDelete,
-  deleteWorkflows = [],
+  deleteWorkflows,
   deleteCopyTargets = [],
   onCopyWorkflowBeforeDelete,
 }: SettingsTabProps) {

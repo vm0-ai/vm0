@@ -1252,6 +1252,7 @@ test.each(["copy", "delete"])(
       },
     );
     const previousResponse = context.mocks.deferred<void>();
+    const previousStarted = context.mocks.deferred<void>();
     const previousResponded = context.mocks.deferred<void>();
     const currentResponse = context.mocks.deferred<void>();
     context.mocks.api(
@@ -1264,6 +1265,7 @@ test.each(["copy", "delete"])(
           });
         }
         if (pendingOperation === "copy") {
+          previousStarted.resolve();
           await previousResponse.promise;
           previousResponded.resolve();
         }
@@ -1275,6 +1277,7 @@ test.each(["copy", "delete"])(
       },
     );
     context.mocks.api(agentsByIdContract.delete, async ({ respond }) => {
+      previousStarted.resolve();
       await previousResponse.promise;
       previousResponded.resolve();
       return respond(204);
@@ -1296,6 +1299,7 @@ test.each(["copy", "delete"])(
     await user.click(within(firstDialog).getByText("Delete agent"));
     const pendingLabel = pendingOperation === "copy" ? "Copying…" : "Deleting…";
     await within(firstDialog).findByText(pendingLabel);
+    await previousStarted.promise;
     await user.keyboard("{Escape}");
     await user.click(dialogBackdrop());
     expect(within(firstDialog).getByText(pendingLabel)).toBeDisabled();
@@ -1385,14 +1389,20 @@ test("Keep the source agent when its workflow refresh fails after copying", asyn
   prepareAgentProfile();
   const workflow = prepareDeleteWorkflow();
   let copySucceeded = false;
+  let refreshRecovered = false;
   context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
-    return copySucceeded
+    return copySucceeded && !refreshRecovered
       ? respond(403, {
           error: { code: "FORBIDDEN", message: "Refresh failed" },
         })
       : respond(200, [workflow]);
   });
   context.mocks.api(workflowsDetailContract.copy, ({ respond }) => {
+    if (copySucceeded) {
+      return respond(409, {
+        error: { code: "CONFLICT", message: "The workflow was already copied" },
+      });
+    }
     copySucceeded = true;
     return respond(201, {
       ...workflow,
@@ -1412,7 +1422,9 @@ test("Keep the source agent when its workflow refresh fails after copying", asyn
   click(await screen.findByRole("option", { name: "Copy to Zero" }));
   click(within(dialog).getByText("Delete agent"));
 
-  await screen.findByText("Refresh failed");
+  await expect(within(dialog).findByRole("alert")).resolves.toHaveTextContent(
+    "Refresh failed",
+  );
   await waitFor(() => {
     expect(within(dialog).getByText("Delete agent")).toBeEnabled();
   });
@@ -1426,4 +1438,11 @@ test("Keep the source agent when its workflow refresh fails after copying", asyn
   const reopened = await screen.findByRole("dialog");
   expect(within(reopened).getByText("Delete agent")).toBeEnabled();
   expect(within(reopened).getByText("Cancel")).toBeEnabled();
+  expect(within(reopened).getByRole("combobox")).toHaveTextContent(
+    "Delete with agent",
+  );
+  await chooseWorkflowCopy(reopened);
+  refreshRecovered = true;
+  click(within(reopened).getByText("Delete agent"));
+  await screen.findByText("Agent deleted");
 });
