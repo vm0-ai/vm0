@@ -22,7 +22,7 @@ const github = connectorSlugSchema.parse("github");
 const slack = connectorSlugSchema.parse("slack");
 const gmail = connectorSlugSchema.parse("gmail");
 
-test("SSH warnings appear in services and compact icons without changing order or authorization", async () => {
+test("SSH connection failures do not add Chat-only indicators or change order or authorization", async () => {
   installComposerConnectorFixture({
     catalog: [builtinConnector({ slug: github, label: "GitHub" })],
     builtinAuthorizations: { [SCOUT_AGENT_ID]: [github] },
@@ -51,9 +51,8 @@ test("SSH warnings appear in services and compact icons without changing order o
     featureSwitches: { [FeatureSwitchKey.SshAccess]: true },
   });
   const trigger = await findFastControl("button", "Connectors");
-  await within(trigger).findByRole("status", {
-    name: "1 SSH host needs attention",
-  });
+  await within(trigger).findByRole("img", { name: "SSH" });
+  expect(within(trigger).queryByRole("status")).toBeNull();
   expect(triggerIcons(trigger)).toStrictEqual([
     "https://icons.example.test/github.svg",
     "SSH",
@@ -67,9 +66,7 @@ test("SSH warnings appear in services and compact icons without changing order o
   if (!row) {
     throw new Error("Missing SSH service row");
   }
-  expect(
-    within(row).getByRole("status", { name: "1 SSH host needs attention" }),
-  ).toBeInTheDocument();
+  expect(within(row).queryByRole("status")).toBeNull();
   expect(within(row).getByLabelText("Remove SSH")).toBeInTheDocument();
 });
 
