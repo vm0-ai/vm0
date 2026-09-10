@@ -14,8 +14,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-  badgeClassName,
-  cn,
+  Badge,
 } from "@okouai/ui";
 import type {
   MemberUsagePack,
@@ -431,28 +430,18 @@ function MemberIdentity({ member }: { readonly member: MemberDisplay }) {
             {member.name}
           </span>
           {member.isCurrent && (
-            <span
-              className={cn(
-                badgeClassName,
-                "shrink-0 rounded px-1.5 py-0.5 text-sm leading-none text-muted-foreground",
-              )}
-            >
+            <Badge className="shrink-0 text-sm text-muted-foreground">
               {i18n.t(($) => {
                 return $.settings.workspace.members.you;
               })}
-            </span>
+            </Badge>
           )}
           {member.isPending && (
-            <span
-              className={cn(
-                badgeClassName,
-                "shrink-0 rounded px-1.5 py-0.5 text-sm leading-none text-muted-foreground",
-              )}
-            >
+            <Badge className="shrink-0 text-sm text-muted-foreground">
               {i18n.t(($) => {
                 return $.settings.workspace.members.pending;
               })}
-            </span>
+            </Badge>
           )}
         </span>
         {member.email && member.email !== member.name && (
@@ -2969,16 +2958,11 @@ function migrationPlanComparisonRows({
       current: (
         <span className="inline-flex items-center justify-end gap-1.5">
           <span>{planName(sourceTier)}</span>
-          <span
-            className={cn(
-              badgeClassName,
-              "rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground",
-            )}
-          >
+          <Badge className="text-[10px] font-medium text-muted-foreground">
             {i18n.t(($) => {
               return $.billing.plans.legacy;
             })}
-          </span>
+          </Badge>
         </span>
       ),
       next: planName(targetTier),

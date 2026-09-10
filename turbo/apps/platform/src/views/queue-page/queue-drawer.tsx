@@ -15,8 +15,7 @@ import {
   SheetTitle,
   Button,
   Input,
-  badgeClassName,
-  cn,
+  Badge,
 } from "@okouai/ui";
 import { Crown, Minus, Plus } from "lucide-react";
 import {
@@ -300,17 +299,12 @@ function UpgradeCard({
         <h3 className={`text-sm font-mono font-semibold ${tierColor}`}>
           {upgrade.targetLabel}
         </h3>
-        <span
-          className={cn(
-            badgeClassName,
-            "inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground",
-          )}
-        >
+        <Badge className="text-xs font-medium text-muted-foreground">
           <Crown size={12} className="text-amber-500" />
           {t(($) => {
             return $.queue.upgrade.recommended;
           })}
-        </span>
+        </Badge>
       </div>
 
       <p className="text-lg font-medium text-foreground mb-1">
@@ -502,17 +496,12 @@ function ConcurrencyPurchaseCard({
             return $.queue.purchase.title;
           })}
         </h3>
-        <span
-          className={cn(
-            badgeClassName,
-            "inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground",
-          )}
-        >
+        <Badge className="text-xs font-medium text-muted-foreground">
           <Crown size={12} className="text-amber-500" />
           {t(($) => {
             return $.queue.purchase.addOn;
           })}
-        </span>
+        </Badge>
       </div>
 
       <p className="text-lg font-medium text-foreground mb-1">

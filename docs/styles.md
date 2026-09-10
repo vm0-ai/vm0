@@ -94,14 +94,20 @@ The `okou-card` selector and its consumers have been removed. This equivalent mi
 
 ### Inline badges
 
-`badgeClassName` from `@okouai/ui` owns the shared inline badge and tag treatment: role labels, status pills, version chips, and diagnostic values. Compose it with `cn()` on the existing host element; it adds no wrapper. It is a class constant rather than a `cva()` variant because it carries no variant axis, which also lets `cn()` resolve a consumer that overrides the stroke or the fill.
+`Badge` from `@okouai/ui` owns the shared inline badge and tag treatment: role labels, status pills, version chips, and diagnostic key/value chips. It renders a `span`; pass `render={<code />}` for another host element. It adds no wrapper and takes no size or tone props.
 
-| Decision | Shared token / utility                             | Theme contract                                                      |
-| -------- | -------------------------------------------------- | ------------------------------------------------------------------- |
-| Fill     | `bg-gray-0`                                        | The neutral base of the gray scale in each theme                    |
-| Border   | `--color-surface-border`, `--border-width-surface` | Gray 400 at 0.7 CSS pixels; the browser rounds for its device scale |
+| Decision    | Shared token / utility                             | Contract                                                                                  |
+| ----------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Fill        | `bg-gray-0`                                        | The neutral base of the gray scale in each theme                                          |
+| Border      | `--color-surface-border`, `--border-width-surface` | Gray 400 at 0.7 CSS pixels; the browser rounds for its device scale                       |
+| Radius      | `rounded-md`                                       | One radius for every badge                                                                |
+| Padding     | `px-2 py-0.5`                                      | One inset for every badge                                                                 |
+| Line height | `leading-snug`                                     | 1.375 of the badge's own font size, never an ancestor's                                   |
+| Layout      | `inline-flex items-center gap-1 align-middle`      | Icon and label share one row; `align-middle` applies where the badge is a real inline box |
 
-The variant owns only the stroke and the fill, because its consumers legitimately differ in display, radius, padding, typography, and foreground: some badges are inline text, others are `inline-flex` rows with an icon, and one is a `<code>` element. Declare those with layout and typography utilities on the consumer, and use `text-muted-foreground` where a badge reads as secondary. It reuses the page-surface border tokens rather than declaring badge-specific aliases, so one hairline decision keeps one owner.
+The badge owns geometry and nothing else. Typography and foreground stay with the caller, because a badge reads as secondary beside body text in one place and as the value itself in another; pass `text-xs font-medium text-muted-foreground` or let the badge inherit its context. Width constraints and flex behaviour (`max-w-full`, `break-all`, `min-w-0`, `shrink-0`) also stay with the caller.
+
+Line height belongs to the badge because a font-size utility with an arbitrary value carries no paired line height. A badge that declared only `text-[11px]` therefore took its box from whatever `line-height` an ancestor happened to set: the same badge measured 22px, 26px, or 34px tall across four ancestors. It reuses the page-surface border tokens rather than declaring badge-specific aliases, so one hairline decision keeps one owner.
 
 The `okou-badge`, `okou-pill`, and `okou-border-r` selectors and their consumers have been removed. `okou-pill` was scoped to `.okou-app` and set the muted foreground; its only consumer now spells that foreground itself. `okou-border-r` was a single settings-dialog divider and became `border-r-(length:--border-width-surface) border-r-gray-300` on that nav, keeping its lighter Gray 300 stroke.
 
