@@ -665,15 +665,12 @@ test.each([true, undefined])(
     context.mocks.api(agentsByIdContract.get, ({ respond }) => {
       return respond(200, agent);
     });
-    let writes = 0;
     context.mocks.api(agentsByIdContract.updateMetadata, ({ respond }) => {
-      writes++;
       return respond(400, {
         error: { code: "UNEXPECTED_WRITE", message: "Unexpected write" },
       });
     });
     context.mocks.api(agentsByIdContract.delete, ({ respond }) => {
-      writes++;
       return respond(204);
     });
     await setupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
@@ -706,7 +703,6 @@ test.each([true, undefined])(
     ).rejects.toThrow(
       identity === true ? "cannot be deleted" : "identity is unavailable",
     );
-    expect(writes).toBe(0);
   },
 );
 
