@@ -221,10 +221,32 @@
         }
       ],
       "pullRequest": "https://github.com/vm0-ai/vm0/pull/32873"
+    },
+    {
+      "id": "monochrome-icon-filter",
+      "family": "local-controls",
+      "tokens": ["okou-icon-mono"],
+      "consumers": [
+        "apps/platform/src/views/okou-page/components/settings/provider-icons.tsx",
+        "apps/platform/src/views/okou-page/components/settings/connector-icons.tsx"
+      ],
+      "cases": [
+        "icon-mono-providers-light",
+        "icon-mono-connectors-light",
+        "icon-mono-providers-dark",
+        "icon-mono-connectors-dark",
+        "icon-mono-providers-narrow",
+        "icon-mono-connectors-narrow",
+        "icon-mono-providers-narrow-dark",
+        "icon-mono-connectors-narrow-dark"
+      ],
+      "status": "planned",
+      "evidence": []
     }
   ],
   "caseFiles": [
     "../e2e/playwright/style-migration/cases.json",
-    "../e2e/playwright/style-migration/tone-cases.json"
+    "../e2e/playwright/style-migration/tone-cases.json",
+    "../e2e/playwright/style-migration/icon-mono-cases.json"
   ]
 }
