@@ -1,6 +1,5 @@
 """Method overrides must not escape the permission for the wire method."""
 
-import inspect
 import json
 
 import pytest
@@ -96,8 +95,8 @@ async def test_override_cannot_delete_an_audience_with_only_member_write_permiss
         result = mitm_addon.requestheaders(flow)
         if capture_bodies and ("headers" in auth_config or "query" in auth_config):
             await await_requestheaders_result(result)
-        elif inspect.isawaitable(result):
-            await result
+        else:
+            assert result is None
         auth_fetch.assert_not_called()
         _assert_no_request_stream(flow)
         await mitm_addon.request(flow)
