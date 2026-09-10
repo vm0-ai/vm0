@@ -9373,13 +9373,6 @@ function ComposerInputSlot({
   const sendModeLoadable = useLastLoadable(sendMode$);
   const sendMode =
     sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
-  const voiceInputV2Enabled = useGet(voiceInputV2Enabled$);
-  const hasInput = useGet(signals.editor.hasInput$);
-  const showVoiceTranscriptionSkeleton =
-    voiceInputV2Enabled &&
-    !hasInput &&
-    (actions.voiceAction === "finish" || actions.voiceAction === "retry");
-
   const handlePaste = (event: ComposerPasteEvent) => {
     if (
       restoreChatClipboardPayload({
@@ -9485,15 +9478,6 @@ function ComposerInputSlot({
           onPaste={handlePaste}
         />
       </div>
-      {showVoiceTranscriptionSkeleton ? (
-        <div
-          className="pointer-events-none col-start-1 row-start-1 flex min-h-0 flex-col justify-center gap-2 bg-card px-6"
-          aria-hidden="true"
-        >
-          <span className="h-2 w-[62%] animate-pulse rounded-full bg-muted/50 motion-reduce:animate-none" />
-          <span className="h-2 w-[44%] animate-pulse rounded-full bg-muted/50 [animation-delay:-350ms] motion-reduce:animate-none" />
-        </div>
-      ) : null}
     </div>
   );
 }
