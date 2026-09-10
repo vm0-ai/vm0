@@ -16,6 +16,7 @@ import {
   queryAllByRoleFast,
   setupPage,
 } from "../../../__tests__/page-helper.ts";
+import { mockNow } from "../../../__tests__/time.ts";
 import {
   CAPABILITY_AGENT_ID,
   context,
@@ -128,6 +129,86 @@ function installPermissionMetadata(
     },
   );
 }
+
+test.each([
+  {
+    expiresIn: "24h",
+    durationMs: 24 * 60 * 60 * 1000,
+    expiryText: "Expires in 24 hours",
+  },
+  {
+    expiresIn: "7d",
+    durationMs: 7 * 24 * 60 * 60 * 1000,
+    expiryText: "Expires in 7 days",
+  },
+  {
+    expiresIn: "1h",
+    durationMs: 60 * 60 * 1000,
+    expiryText: null,
+  },
+] as const)(
+  "Keep the $expiresIn permission expiry stable when the browser clock is behind",
+  async ({ expiresIn, durationMs, expiryText }) => {
+    const connectorSlug = "clock-service";
+    const permission = "records.read";
+    const grantedAt = new Date("2030-01-01T00:00:00.000Z");
+    mockNow(grantedAt.getTime() - 1000, context.signal);
+    installPermissionMetadata((slug) => {
+      return slug === connectorSlug
+        ? permissionMetadata({
+            connectorSlug,
+            label: "Clock Service",
+            permissions: [permission],
+          })
+        : null;
+    });
+    let grants: UserPermissionGrantResponse[] = [];
+    context.mocks.api(userPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, grants);
+    });
+    context.mocks.api(
+      userPermissionGrantsContract.apply,
+      ({ body, respond }) => {
+        expect(body.grants).toStrictEqual([
+          { permission, action: "allow", expiresIn },
+        ]);
+        grants = [
+          {
+            ...activeGrant({
+              connectorSlug,
+              permission,
+              action: "allow",
+              expiresAt: new Date(
+                grantedAt.getTime() + durationMs,
+              ).toISOString(),
+            }),
+            createdAt: grantedAt.toISOString(),
+            updatedAt: grantedAt.toISOString(),
+          },
+        ];
+        return respond(200, grants);
+      },
+    );
+    installActionConversation({
+      lines: [permissionActionUrl({ connectorSlug, permission, expiresIn })],
+    });
+
+    await setupPage({ context, path: RUN_PATH, host: "app.okou.ai" });
+    await readyChat();
+    const card = await screen.findByTestId("permission-action-card");
+    const confirm = await waitFor(() => {
+      return getButton("Confirm", card);
+    });
+    click(confirm);
+
+    await expect(
+      within(card).findByText("Permissions updated"),
+    ).resolves.toBeVisible();
+    expect(within(card).queryByText(/Expires in/u)?.textContent ?? null).toBe(
+      expiryText,
+    );
+  },
+);
 
 test("Fail closed and recover clearly from permission errors", async () => {
   const connectorSlug = "recovery-service";
