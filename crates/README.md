@@ -1,6 +1,6 @@
 # Rust Crates
 
-This workspace contains 28 Rust crates for sandbox orchestration, guest execution,
+This workspace contains Rust crates for sandbox orchestration, guest execution,
 control and RPC services, shared contracts, and developer/test support.
 
 ## Crates
@@ -34,10 +34,16 @@ control and RPC services, shared contracts, and developer/test support.
 | guest-telemetry          | Structured guest logging and operation telemetry                                                      |
 | ably-subscriber          | Subscribe-only Ably client with authentication and connection recovery                                |
 | shell-quote              | POSIX shell argument quoting                                                                          |
+| linux-mountinfo          | Byte-preserving Linux mountinfo parsing shared by host and guest consumers                            |
 | tracing-test-support     | Structured tracing capture for tests                                                                  |
 | xtask                    | Workspace developer checks, invoked through the cargo xtask alias                                     |
 
 ## Architecture and naming
+
+`linux-mountinfo` parses mount identities, device numbers and decoded target
+bytes without filesystem I/O. Consumers own path normalization, caching and
+invalid-record policy: cleanup and snapshot lookup skip malformed records;
+the privileged workspace helper rejects malformed records and empty tables.
 
 ```text
 Runner -> guest-control-client -> guest-control-server (guest-init child)
