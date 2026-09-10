@@ -2522,6 +2522,7 @@
       "moreIdeas": "Ide lainnya",
       "moreTemplates": "Template lainnya",
       "presentationTemplates": "Template presentasi",
+      "removeTask": "Hapus {{task}}",
       "tasks": {
         "image": "Gambar",
         "presentation": "Slide",

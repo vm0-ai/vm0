@@ -2530,6 +2530,7 @@
       "moreIdeas": "और सुझाव",
       "moreTemplates": "और टेम्पलेट",
       "presentationTemplates": "प्रस्तुति टेम्पलेट",
+      "removeTask": "{{task}} हटाएँ",
       "tasks": {
         "image": "चित्र",
         "presentation": "स्लाइड",

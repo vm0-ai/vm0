@@ -2522,6 +2522,7 @@
       "moreIdeas": "다른 아이디어",
       "moreTemplates": "더 많은 템플릿",
       "presentationTemplates": "프레젠테이션 템플릿",
+      "removeTask": "{{task}} 제거",
       "tasks": {
         "image": "이미지",
         "presentation": "슬라이드",
