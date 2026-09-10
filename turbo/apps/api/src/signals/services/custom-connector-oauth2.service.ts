@@ -10,6 +10,7 @@ import {
   mcpOAuthScopeTokenSchema,
 } from "@okouai/api-contracts/contracts/mcp-connectors";
 import type { ConnectorAccountMutationIntent } from "@okouai/api-contracts/contracts/connector-accounts";
+import type { ConnectorReconnectReason } from "@okouai/api-contracts/contracts/connector-schemas";
 import type { OAuthClientMetadata } from "@modelcontextprotocol/client";
 import {
   isIntegrationManagedCustomConnector,
@@ -81,7 +82,6 @@ import {
   CustomConnectorAutomaticOAuthError,
   customConnectorAutomaticOAuthErrorCode,
   isAutomaticOAuthInvalidClient,
-  isAutomaticOAuthInvalidGrant,
   prepareCustomConnectorAutomaticOAuthAuthorization,
   prepareCustomConnectorAutomaticOAuthReauthorization,
   readCustomConnectorAutomaticOAuthBinding,
@@ -91,6 +91,10 @@ import {
   type CustomConnectorCanonicalAutomaticOAuthStateContext as PreparedCustomConnectorAutomaticOAuthStateContext,
 } from "./custom-connector-automatic-oauth.service";
 import { configuredOkouMcpOAuthClientMetadata } from "./mcp-oauth-client-metadata.service";
+import {
+  isTerminalOAuthRefreshState,
+  terminalOAuthRefreshReconnectReason,
+} from "./connector-oauth-refresh-policy";
 
 const TOKEN_REFRESH_LEEWAY_MS = 60 * 1000;
 
@@ -1530,6 +1534,7 @@ interface StoredConnection {
   readonly id: string;
   readonly tokenExpiresAt: Date | null;
   readonly needsReconnect: boolean;
+  readonly reconnectReason: string | null;
   readonly oauthScopes: string | null;
   readonly encryptedAccessToken: string | null;
   readonly encryptedRefreshToken: string | null;
@@ -1551,6 +1556,7 @@ async function loadConnection(args: {
       id: connectors.id,
       tokenExpiresAt: connectors.tokenExpiresAt,
       needsReconnect: connectors.needsReconnect,
+      reconnectReason: connectors.reconnectReason,
       oauthScopes: connectors.oauthScopes,
     })
     .from(connectors)
@@ -1616,6 +1622,7 @@ async function loadConnection(args: {
     id: connection.id,
     tokenExpiresAt: connection.tokenExpiresAt,
     needsReconnect: connection.needsReconnect,
+    reconnectReason: connection.reconnectReason,
     oauthScopes: connection.oauthScopes,
     encryptedAccessToken:
       tokenRows.find((row) => {
@@ -1684,7 +1691,7 @@ export class CustomConnectorOAuth2TokenRefreshError extends Error {
 async function markCustomConnectorNeedsReconnect(
   db: Db,
   connectorId: string,
-  reconnectReason: "missing_refresh_token" | "authorization_expired_or_revoked",
+  reconnectReason: ConnectorReconnectReason | "missing_refresh_token",
 ): Promise<void> {
   await db
     .update(connectors)
@@ -1749,6 +1756,9 @@ async function resolveCustomConnectorOAuth2AccessToken(
     if (!lockedConnection) {
       return { kind: "unavailable" };
     }
+    if (isTerminalOAuthRefreshState(lockedConnection)) {
+      return { kind: "reconnect-required" };
+    }
     const lockedAccessToken = storedConnectionAccessToken(lockedConnection);
     const recoveredSinceInitialRead =
       connection.needsReconnect ||
@@ -1797,16 +1807,16 @@ async function resolveCustomConnectorOAuth2AccessToken(
       ),
     );
     if (!refreshResult.ok) {
-      if (
-        !isOAuthProviderHttpError(refreshResult.error) ||
-        refreshResult.error.oauthError !== "invalid_grant"
-      ) {
+      const reconnectReason = terminalOAuthRefreshReconnectReason(
+        refreshResult.error,
+      );
+      if (reconnectReason === null) {
         throw new CustomConnectorOAuth2TokenRefreshError(refreshResult.error);
       }
       await markCustomConnectorNeedsReconnect(
         tx,
         lockedConnection.id,
-        "authorization_expired_or_revoked",
+        reconnectReason,
       );
       return { kind: "reconnect-required" };
     }
@@ -1847,22 +1857,24 @@ async function handleAutomaticOAuthRefreshFailure(args: {
     );
     return { kind: "reconnect-required" };
   }
-  if (
-    isAutomaticOAuthInvalidGrant(args.error) ||
+  const reconnectReason =
     isAutomaticOAuthInvalidClient(args.error) ||
     (args.error instanceof CustomConnectorAutomaticOAuthError &&
       args.error.kind === "binding-drift")
-  ) {
+      ? "authorization_expired_or_revoked"
+      : terminalOAuthRefreshReconnectReason(args.error);
+  if (reconnectReason !== null) {
     await markCustomConnectorNeedsReconnect(
       args.db,
       args.connectionId,
-      "authorization_expired_or_revoked",
+      reconnectReason,
     );
     return { kind: "reconnect-required" };
   }
   if (
-    args.error instanceof CustomConnectorAutomaticOAuthError &&
-    args.error.kind === "temporary"
+    isOAuthProviderHttpError(args.error) ||
+    (args.error instanceof CustomConnectorAutomaticOAuthError &&
+      args.error.kind === "temporary")
   ) {
     throw new CustomConnectorOAuth2TokenRefreshError(args.error);
   }
@@ -1897,6 +1909,9 @@ async function refreshLockedAutomaticOAuthAccessToken(
   signal.throwIfAborted();
   if (!lockedConnection) {
     return { kind: "unavailable" };
+  }
+  if (isTerminalOAuthRefreshState(lockedConnection)) {
+    return { kind: "reconnect-required" };
   }
   const lockedAccessToken = storedConnectionAccessToken(lockedConnection);
   const recoveredSinceInitialRead =

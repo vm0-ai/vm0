@@ -1105,8 +1105,18 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
           : ["authorization_code", "refresh_token"],
       );
       const verifyOutcome: Record<typeof refreshError, () => Promise<void>> = {
-        invalid_grant: () => {
-          return Promise.resolve();
+        invalid_grant: async () => {
+          for (const forceRefresh of [false, true]) {
+            const repeated = await fw.requestFirewallAuth(
+              headers,
+              { ...authBody, forceRefresh },
+              [502],
+            );
+            expect(repeated.body).toMatchObject({
+              error: { failureReason: "reconnect_required" },
+            });
+          }
+          expect(provider.tokenBodies).toHaveLength(2);
         },
         invalid_client: async () => {
           const retiredAccounts = await connectors.listCustomConnectorAccounts(
@@ -1365,161 +1375,140 @@ describe("FW-4: connector refresh and replacement snapshots", () => {
     await connectors.deleteDefaultBuiltinConnectorAccount(actor, "aws");
   });
 
-  it("classifies invalid_grant refresh failures as reconnect-required and recovers", async () => {
-    const fw = createFirewallApi(context);
-    const { actor, headers } = await firewallRun();
-    await fw.seedTestConnector(actor, {
-      connectorSlug: "test-oauth",
-      authMethod: "oauth",
-      accessToken: "stale-access",
-      refreshToken: "refresh-1",
-      expiresIn: -60,
-    });
-    let failedRefreshCalls = 0;
-    fw.mockTestOauthTokenRefresh(() => {
-      failedRefreshCalls += 1;
-      return HttpResponse.json({ error: "invalid_grant" }, { status: 400 });
-    });
-
-    const body = {
-      encryptedSecrets: fw.encryptedSecretsBody({
-        TEST_OAUTH_TOKEN: "stale-access",
-      }),
-      authHeaders: {
-        Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
-      },
-      ...(await exactSecretConnectorSources(actor, {
-        TEST_OAUTH_TOKEN: "test-oauth",
-      })),
-    };
-
-    context.mocks.axiomLogging.warn.mockClear();
-    const failed = await fw.requestFirewallAuth(headers, body, [502]);
-    if (failed.status !== 502) {
-      throw new Error("Expected invalid_grant to fail with 502");
-    }
-    expect(failed.body.error.code).toBe("TOKEN_REFRESH_FAILED");
-    expect(failed.body.error.failureReason).toBe("reconnect_required");
-    expect(failed.body.error.connectors).toStrictEqual(["test-oauth"]);
-
-    const connectorsApi = createConnectorBddApi(context);
-    await connectorsApi.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.TestOauthConnector]: true,
-    });
-    const failedConnector = await connectorsApi.readConnectorBySlug(
-      actor,
-      "test-oauth",
-    );
-    expect(failedConnector.connectionStatus).toBe("reconnect-required");
-    expect(failedConnector.reconnectReason).toBe(
-      "authorization_expired_or_revoked",
-    );
-
-    const repeated = await fw.requestFirewallAuth(headers, body, [502]);
-    if (repeated.status !== 502) {
-      throw new Error("Expected repeated invalid_grant to fail with 502");
-    }
-    expect(repeated.body.error.failureReason).toBe("reconnect_required");
-    expect(failedRefreshCalls).toBe(2);
-    const refreshWarnings = context.mocks.axiomLogging.warn.mock.calls.filter(
-      ([message]) => {
-        return (
-          typeof message === "string" &&
-          message.includes("test-oauth token refresh failed")
-        );
-      },
-    );
-    expect(refreshWarnings).toHaveLength(1);
-
-    fw.mockTestOauthTokenRefresh(() => {
-      return fw.oauthTokenResponse({
-        accessToken: "recovered-access",
-        expiresIn: 3600,
+  it.each([
+    { subtype: undefined, reason: "authorization_expired_or_revoked" },
+    { subtype: "invalid_rapt", reason: "provider_session_expired" },
+  ])(
+    "stops standard OAuth $reason until reconnect",
+    async ({ subtype, reason }) => {
+      const fw = createFirewallApi(context);
+      const connectorsApi = createConnectorBddApi(context);
+      const { actor, headers } = await firewallRun();
+      await connectorsApi.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.TestOauthConnector]: true,
       });
-    });
-    const recovered = await fw.requestFirewallAuth(headers, body, [200]);
-    if (recovered.status !== 200) {
-      throw new Error("Expected refresh recovery to succeed");
-    }
-    expect(recovered.body.headers.Authorization).toBe(
-      "Bearer recovered-access",
-    );
-    const recoveredConnector = await connectorsApi.readConnectorBySlug(
-      actor,
-      "test-oauth",
-    );
-    expect(recoveredConnector.connectionStatus).toBe("connected");
-    expect(recoveredConnector.reconnectReason).toBeNull();
-  });
-
-  it("persists known OAuth refresh error subtypes as safe reconnect reasons", async () => {
-    const fw = createFirewallApi(context);
-    const { actor, headers } = await firewallRun();
-    await fw.seedTestConnector(actor, {
-      connectorSlug: "test-oauth",
-      authMethod: "oauth",
-      accessToken: "stale-access",
-      refreshToken: "refresh-1",
-      expiresIn: -60,
-    });
-    fw.mockTestOauthTokenRefresh(() => {
-      return HttpResponse.json(
-        {
-          error: "invalid_grant",
-          error_description: "Session control expired",
-          error_subtype: "invalid_rapt",
+      mockTestOAuthAuthCodeProvider({
+        refreshToken: "original-refresh",
+        userId: actor.userId,
+      });
+      const started = await connectorsApi.startOauth(
+        actor,
+        "test-oauth",
+        "oauth",
+      );
+      const state = new URL(started.authorizationUrl).searchParams.get("state");
+      if (!state) {
+        throw new Error("Expected OAuth authorization state");
+      }
+      await connectorsApi.completeOauthCallbackResult("test-oauth", {
+        code: "initial-code",
+        state,
+      });
+      const [account] = await connectorsApi.listBuiltinConnectorAccounts(
+        actor,
+        "test-oauth",
+      );
+      if (!account) {
+        throw new Error("Expected connected OAuth account");
+      }
+      let failedRefreshCalls = 0;
+      fw.mockTestOauthTokenRefresh(() => {
+        failedRefreshCalls += 1;
+        return HttpResponse.json(
+          {
+            error: "invalid_grant",
+            ...(subtype ? { error_subtype: subtype } : {}),
+          },
+          { status: 400 },
+        );
+      });
+      const body = {
+        encryptedSecrets: fw.encryptedSecretsBody({}),
+        authHeaders: {
+          Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
         },
-        { status: 400 },
+        ...(await exactSecretConnectorSources(actor, {
+          TEST_OAUTH_TOKEN: "test-oauth",
+        })),
+      };
+      context.mocks.axiomLogging.warn.mockClear();
+      context.mocks.axiomLogging.error.mockClear();
+      context.mocks.sentry.captureException.mockClear();
+      for (const forceRefresh of [true, false, true]) {
+        const failed = await fw.requestFirewallAuth(
+          headers,
+          { ...body, forceRefresh },
+          [502],
+        );
+        expect(failed.body).toMatchObject({
+          error: {
+            code: "TOKEN_REFRESH_FAILED",
+            failureReason: "reconnect_required",
+            connectors: ["test-oauth"],
+          },
+        });
+      }
+      expect(failedRefreshCalls).toBe(1);
+      expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+      expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+      expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+      await expect(
+        connectorsApi.listBuiltinConnectorAccounts(actor, "test-oauth"),
+      ).resolves.toContainEqual(
+        expect.objectContaining({
+          id: account.id,
+          connectionStatus: "reconnect-required",
+          reconnectReason: reason,
+        }),
       );
-    });
 
-    const body = {
-      encryptedSecrets: fw.encryptedSecretsBody({
-        TEST_OAUTH_TOKEN: "stale-access",
-      }),
-      authHeaders: {
-        Authorization: `Bearer ${secretTemplate("TEST_OAUTH_TOKEN")}`,
-      },
-      ...(await exactSecretConnectorSources(actor, {
-        TEST_OAUTH_TOKEN: "test-oauth",
-      })),
-    };
-
-    context.mocks.axiomLogging.warn.mockClear();
-    const failed = await fw.requestFirewallAuth(headers, body, [502]);
-    if (failed.status !== 502) {
-      throw new Error("Expected invalid_rapt to fail with 502");
-    }
-    expect(failed.body.error.failureReason).toBe("reconnect_required");
-
-    const connectorsApi = createConnectorBddApi(context);
-    await connectorsApi.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.TestOauthConnector]: true,
-    });
-    const connector = await connectorsApi.readConnectorBySlug(
-      actor,
-      "test-oauth",
-    );
-    expect(connector.connectionStatus).toBe("reconnect-required");
-    expect(connector.reconnectReason).toBe("provider_session_expired");
-
-    fw.mockTestOauthTokenRefresh(() => {
-      return HttpResponse.json(
-        { error: "temporarily_unavailable" },
-        { status: 400 },
+      const provider = mockTestOAuthAuthCodeProvider({
+        accessToken: "reconnected-access",
+        refreshToken: "replacement-refresh",
+        userId: actor.userId,
+      });
+      const reconnect = await connectorsApi.startOauth(
+        actor,
+        "test-oauth",
+        "oauth",
+        undefined,
+        {
+          intent: "reconnect",
+          connectionId: account.id,
+        },
       );
-    });
-    const transientFailure = await fw.requestFirewallAuth(headers, body, [502]);
-    if (transientFailure.status !== 502) {
-      throw new Error("Expected temporary refresh failure to fail with 502");
-    }
-    expect(transientFailure.body.error.failureReason).toBe("upstream_provider");
-    const preservedConnector = await connectorsApi.readConnectorBySlug(
-      actor,
-      "test-oauth",
-    );
-    expect(preservedConnector.reconnectReason).toBe("provider_session_expired");
-  });
+      const reconnectState = new URL(
+        reconnect.authorizationUrl,
+      ).searchParams.get("state");
+      if (!reconnectState) {
+        throw new Error("Expected OAuth reconnect state");
+      }
+      await connectorsApi.completeOauthCallbackResult("test-oauth", {
+        code: "reconnect-code",
+        state: reconnectState,
+      });
+      await expect(
+        connectorsApi.listBuiltinConnectorAccounts(actor, "test-oauth"),
+      ).resolves.toContainEqual(
+        expect.objectContaining({
+          id: account.id,
+          connectionStatus: "connected",
+          reconnectReason: null,
+        }),
+      );
+      const recovered = await fw.requestFirewallAuth(
+        headers,
+        { ...body, forceRefresh: true },
+        [200],
+      );
+      expect(recovered.body).toMatchObject({
+        headers: { Authorization: "Bearer reconnected-access" },
+      });
+      expect(provider.tokenBodies.at(-1)?.get("refresh_token")).toBe(
+        "replacement-refresh",
+      );
+    },
+  );
 
   it("logs unknown OAuth refresh error subtypes without exposing them", async () => {
     const fw = createFirewallApi(context);

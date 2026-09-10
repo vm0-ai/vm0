@@ -33,6 +33,10 @@ import { customConnectorAccountOauthBindings } from "@okouai/db/schema/custom-co
 import { orgCustomConnectors } from "@okouai/db/schema/org-custom-connector";
 import { orgCustomConnectorDcrRegistrations } from "@okouai/db/schema/org-custom-connector-dcr-registration";
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
+import {
+  isOAuthProviderHttpError,
+  throwOAuthError,
+} from "@okouai/connectors/auth-providers/oauth/error";
 
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
@@ -1500,6 +1504,7 @@ export async function refreshCustomConnectorAutomaticOAuthToken(
     context: boundClientContext(args.binding),
   });
   signal.throwIfAborted();
+  const fetchToken = fetchWithSignal(signal);
   const refreshed = await settle(
     refreshAuthorization(args.binding.issuer, {
       metadata: frozenAuthorizationServerMetadata({
@@ -1513,12 +1518,22 @@ export async function refreshCustomConnectorAutomaticOAuthToken(
       clientInformation,
       refreshToken: args.refreshToken,
       resource: new URL(args.binding.resource),
-      fetchFn: fetchWithSignal(signal),
+      fetchFn: async (input, init) => {
+        const response = await fetchToken(input, init);
+        // The SDK's OAuthError discards HTTP status and provider error subtypes.
+        if (!response.ok) {
+          await throwOAuthError("Automatic MCP", "refresh", response);
+        }
+        return response;
+      },
     }),
     signal,
   );
   if (!refreshed.ok) {
     const error = refreshed.error;
+    if (isOAuthProviderHttpError(error)) {
+      throw error;
+    }
     if (error instanceof OAuthError) {
       if (
         error.code === "server_error" ||
@@ -1546,9 +1561,9 @@ export async function refreshCustomConnectorAutomaticOAuthToken(
 }
 
 export function isAutomaticOAuthInvalidClient(error: unknown): boolean {
-  return error instanceof OAuthError && error.code === "invalid_client";
-}
-
-export function isAutomaticOAuthInvalidGrant(error: unknown): boolean {
-  return error instanceof OAuthError && error.code === "invalid_grant";
+  return (
+    isOAuthProviderHttpError(error) &&
+    (error.status === 400 || error.status === 401) &&
+    error.oauthError === "invalid_client"
+  );
 }

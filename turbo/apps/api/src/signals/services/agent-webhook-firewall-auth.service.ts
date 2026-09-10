@@ -87,6 +87,10 @@ import {
 } from "./auth-state-lock.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import {
+  isTerminalOAuthRefreshState,
+  terminalOAuthRefreshReconnectReason,
+} from "./connector-oauth-refresh-policy";
+import {
   loadRunCreditAdmissionState,
   resolveOrgCreditAvailability,
   runHasActiveCreditAdmission,
@@ -867,20 +871,18 @@ function classifyRefreshFailure(
   const refreshTimedOut = isRefreshTimeoutError(error, signal);
   const errorCode = refreshErrorCodeFromError(error, refreshTimedOut);
   const failureReason = refreshFailureReasonFromError(error, refreshTimedOut);
-  const connectorReconnectReason = connectorReconnectReasonFromRefreshFailure(
-    error,
-    failureReason,
-  );
-  const googleAnalyticsOAuth =
+  const awsSigninRefresh =
     args.sourceType === "connector" &&
-    args.accessSourceKey === "google-analytics" &&
-    args.connectorAccessBySlug.get(args.accessSourceKey)?.authMethod ===
-      "oauth";
-  const terminalGoogleAnalyticsFailure =
-    googleAnalyticsOAuth &&
-    isOAuthProviderHttpError(error) &&
-    error.status === 400 &&
-    connectorReconnectReason !== null;
+    args.accessSourceKey === "aws" &&
+    args.connectorAccessBySlug.get(args.accessSourceKey)?.authMethod === "cli";
+  let connectorReconnectReason =
+    args.sourceType === "connector" && failureReason === "reconnect_required"
+      ? terminalOAuthRefreshReconnectReason(error)
+      : null;
+  // AWS Sign-In normalizes client errors; only its explicit expiry path is terminal.
+  if (awsSigninRefresh && failureReason === "reconnect_required") {
+    connectorReconnectReason = "authorization_expired_or_revoked";
+  }
   const terminalCodexFailure =
     args.sourceType === "model-provider" &&
     args.accessSourceKey === "codex-oauth-token" &&
@@ -889,33 +891,11 @@ function classifyRefreshFailure(
   return {
     errorCode,
     failureReason,
-    connectorReconnectReason:
-      googleAnalyticsOAuth && !terminalGoogleAnalyticsFailure
-        ? null
-        : connectorReconnectReason,
+    connectorReconnectReason,
     expectedTerminalFailure:
-      terminalGoogleAnalyticsFailure || terminalCodexFailure,
+      (connectorReconnectReason !== null && !awsSigninRefresh) ||
+      terminalCodexFailure,
   };
-}
-
-function connectorReconnectReasonFromRefreshFailure(
-  error: unknown,
-  failureReason: FirewallAuthFailureReason | undefined,
-): ConnectorReconnectReason | null {
-  if (
-    failureReason !== "reconnect_required" ||
-    !isOAuthProviderHttpError(error) ||
-    error.oauthError !== "invalid_grant"
-  ) {
-    return null;
-  }
-  if (error.oauthErrorSubtype === "invalid_rapt") {
-    return "provider_session_expired";
-  }
-  if (!error.oauthErrorSubtype) {
-    return "authorization_expired_or_revoked";
-  }
-  return null;
 }
 
 function oauthRefreshFailureLogFields(error: unknown): {
@@ -1003,34 +983,20 @@ function isTerminalCodexRefreshState(
   );
 }
 
-function isExpiredAwsSigninRefreshState(
+function isTerminalConnectorRefreshState(
   prepared: PreparedRefreshTokenContext,
   state: RefreshState,
 ): boolean {
-  // Reconnect clears this reason with the credentials under the same lock.
-  // Other needsReconnect states retain their existing refresh/recovery policy.
-  return (
-    prepared.sourceType === "connector" &&
-    prepared.connectorSlug === "aws" &&
-    state.authMethod === "cli" &&
-    state.needsReconnect &&
-    state.reconnectReason === "credential_expired"
-  );
-}
-
-function isTerminalGoogleAnalyticsRefreshState(
-  prepared: PreparedRefreshTokenContext,
-  state: RefreshState,
-): boolean {
-  // Reconnect replaces the credentials and clears these reasons under the same lock.
-  return (
-    prepared.sourceType === "connector" &&
-    prepared.connectorSlug === "google-analytics" &&
-    state.authMethod === "oauth" &&
-    state.needsReconnect &&
-    (state.reconnectReason === "authorization_expired_or_revoked" ||
-      state.reconnectReason === "provider_session_expired")
-  );
+  if (prepared.sourceType !== "connector") {
+    return false;
+  }
+  if (prepared.connectorSlug === "aws" && state.authMethod === "cli") {
+    // Native AWS client errors retain their recovery policy until explicit expiry.
+    return (
+      state.needsReconnect && state.reconnectReason === "credential_expired"
+    );
+  }
+  return isTerminalOAuthRefreshState(state);
 }
 
 async function getConnectorSecretValues(args: {
@@ -2920,8 +2886,7 @@ async function refreshLockedAccessToken(args: {
 
   if (
     isTerminalCodexRefreshState(args.prepared, lockedState) ||
-    isExpiredAwsSigninRefreshState(args.prepared, lockedState) ||
-    isTerminalGoogleAnalyticsRefreshState(args.prepared, lockedState)
+    isTerminalConnectorRefreshState(args.prepared, lockedState)
   ) {
     return refreshFailedResult("reconnect_required");
   }
