@@ -15,6 +15,7 @@ const MAX_REQUEST_BODY_BYTES: usize = 1024 * 1024;
 pub(crate) enum RawHttpAction {
     Respond(Vec<u8>),
     Disconnect,
+    ResetConnection,
     WaitForDisconnect,
     WaitThenRespond {
         release: oneshot::Receiver<()>,
@@ -324,6 +325,7 @@ async fn serve(
                 write_response(index, &mut socket, &response).await?;
             }
             RawHttpAction::Disconnect => {}
+            RawHttpAction::ResetConnection => socket.set_zero_linger()?,
             RawHttpAction::WaitForDisconnect => {
                 let mut byte = [0];
                 let read = tokio::time::timeout(RAW_HTTP_FIXTURE_TIMEOUT, socket.read(&mut byte))

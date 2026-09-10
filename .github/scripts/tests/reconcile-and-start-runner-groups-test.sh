@@ -36,6 +36,10 @@ if [ "$*" = "bash -s -- $BIN_DIR" ]; then
   jq -r --arg target "$target" '.[$target]' <<<"$RUNNER_SHA_MAP"
   exit 0
 fi
+if [ "$*" = "bash -s -- $RUNNER_DIR" ]; then
+  bash -s -- "${MOCK_REMOTE_ROOT}/${host}"
+  exit 0
+fi
 
 printf '%s\t%s\n' "$host" "$*" >>"$MOCK_SERVICE_LOG"
 service_name=$(printf '%s\n' "$*" | sed -n "s/.*--name ['\"]*\\([a-z0-9-]*\\).*/\\1/p")
@@ -53,6 +57,11 @@ case "$*" in
   "sudo rm -f ${RUNNER_DIR}/status.json") ;;
   "sudo ${BIN_DIR}/runner service start "*)
     printf '%s\n' "$*" >"${MOCK_REMOTE_ROOT}/${host}/${service_name}"
+    printf '550e8400-e29b-41d4-a716-446655440000\n' >"${MOCK_REMOTE_ROOT}/${host}/runner_id"
+    printf '7\n' >"${MOCK_REMOTE_ROOT}/${host}/heartbeat_generation"
+    if [ "${MOCK_FAILURE:-none}" = identity ]; then
+      printf 'invalid\n' >"${MOCK_REMOTE_ROOT}/${host}/heartbeat_generation"
+    fi
     ;;
   "sudo ${BIN_DIR}/runner service wait-running "*)
     if [ "${MOCK_FAILURE:-none}" = readiness ]; then
@@ -69,6 +78,11 @@ case "$*" in
 esac
 SH
 chmod +x "${tmp_dir}/bin/ssh"
+cat >"${tmp_dir}/bin/sudo" <<'SH'
+#!/usr/bin/env bash
+exec "$@"
+SH
+chmod +x "${tmp_dir}/bin/sudo"
 
 cat >"${tmp_dir}/run-deployment" <<'SH'
 #!/usr/bin/env bash
@@ -119,6 +133,7 @@ run_case() {
     MOCK_REMOTE_ROOT="$case_dir" \
     MOCK_SERVICE_LOG="${case_dir}/service.log" \
     MOCK_FAILURE="$failure" \
+    GITHUB_OUTPUT="${case_dir}/github-output" \
     bash "${tmp_dir}/run-deployment" "$script" >"${case_dir}/output" 2>&1 || status=$?
 
   if [ "$failure" != none ]; then
@@ -137,6 +152,11 @@ run_case() {
       fail "${case_name}: selected service lost its original inventory index"
     grep -Fq -- "--hostname ${selected_host}" "${case_dir}/${selected_host}/config" ||
       fail "${case_name}: config does not use the selected host"
+    receipt=$(sed -n 's/^runner-receipt=//p' "${case_dir}/github-output" | tail -n1)
+    jq -e --arg host "$selected_host" --arg service "${service_ref}-${selected_index}" '
+      .host == $host and .service == $service and
+      .runnerId == "550e8400-e29b-41d4-a716-446655440000" and .heartbeatGeneration == 7
+    ' <<<"$receipt" >/dev/null || fail "${case_name}: invalid deployment receipt"
   fi
 
   [ "$(awk '!/runner service stop / {print $1}' "${case_dir}/service.log" | sort -u)" = "$selected_host" ] ||
@@ -168,6 +188,7 @@ run_case x86 pr-1 x86-1 2 none
 run_case x86 pr-1 x86-1 2 none
 run_case arm pr-2 arm-1 1 none
 run_case failed-start pr-9 x86-2 3 readiness
+run_case invalid-identity pr-9 x86-2 3 identity
 run_case failed-retirement pr-1 x86-1 2 retire
 run_case cancelled-start pr-9 x86-2 3 cancel
 # A new staging image ref can select another host while service names stay fixed.

@@ -35,6 +35,9 @@ export const adAttributionMetadataSchema = z
     utm_campaign: z.string().min(1).max(200).optional(),
     // Google Ads ValueTrack IDs are the stable join keys for campaign and ad
     // group reporting. Names and UTM values can change independently.
+    okou_campaign_id: z.string().min(1).max(100).optional(),
+    okou_ad_group_id: z.string().min(1).max(100).optional(),
+    // Old App requests and persisted first-touch records remain valid (#33059).
     vm0_campaign_id: z.string().min(1).max(100).optional(),
     vm0_ad_group_id: z.string().min(1).max(100).optional(),
     utm_content: z.string().min(1).max(200).optional(),

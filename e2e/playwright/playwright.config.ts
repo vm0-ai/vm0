@@ -59,7 +59,7 @@ export default defineConfig({
   use: {
     baseURL: appUrl,
     ignoreHTTPSErrors: true,
-    trace: "on-first-retry",
+    trace: "retain-on-failure",
     ...devices["Desktop Chrome"],
   },
   projects: [

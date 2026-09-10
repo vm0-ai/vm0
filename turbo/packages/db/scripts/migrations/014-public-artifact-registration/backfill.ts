@@ -5,13 +5,13 @@ import { pathToFileURL } from "node:url";
 import {
   GetObjectCommand,
   HeadObjectCommand,
-  ListMultipartUploadsCommand,
   ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 import postgres from "postgres";
 import { forEachConcurrent } from "./concurrent";
+import { pendingMultipartRegistrations } from "./multipart";
 import { resolveLegacyClickTrackContentType } from "./legacy-click-track";
 // Frozen v1 format: numbered data migrations must remain runnable after app
 // contracts evolve. Only confirmed historical Public records are constructed.
@@ -118,74 +118,6 @@ function objectRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("Invalid historical pointer or manifest");
   return value as Record<string, unknown>;
-}
-
-async function pendingMultipartRegistrations(
-  publicClient: S3Client,
-  hostedClient: S3Client,
-  options: Options,
-) {
-  let keyMarker: string | undefined;
-  let uploadIdMarker: string | undefined;
-  let pending = 0;
-  let unregistered = 0;
-  do {
-    const page = await publicClient.send(
-      new ListMultipartUploadsCommand({
-        Bucket: options.publicBucket,
-        Prefix: "artifacts/",
-        MaxUploads: 1000,
-        KeyMarker: keyMarker,
-        UploadIdMarker: uploadIdMarker,
-      }),
-    );
-    await forEachConcurrent(
-      page.Uploads ?? [],
-      options.concurrency ?? 16,
-      async (upload) => {
-        const key = upload.Key;
-        if (!key?.startsWith("artifacts/") || !upload.UploadId)
-          throw new Error("Invalid pending multipart upload identity");
-        if (++pending > options.maxObjects)
-          throw new Error("Pending multipart upload inventory limit reached");
-        const value = await readJson(
-          hostedClient,
-          options.hostedBucket,
-          artifactDeliveryKey("vm0", "file", key.slice("artifacts/".length)),
-        );
-        if (value === undefined) {
-          unregistered++;
-          return;
-        }
-        const record = objectRecord(value);
-        if (
-          record.version !== 1 ||
-          record.kind !== "legacy-file" ||
-          record.audience !== "public" ||
-          record.key !== key ||
-          (record.publicBrand !== "vm0" && record.publicBrand !== "okou") ||
-          typeof record.filename !== "string" ||
-          !record.filename ||
-          typeof record.contentType !== "string" ||
-          !record.contentType
-        )
-          throw new Error("Pending multipart upload registration is invalid");
-      },
-    );
-    if (
-      page.IsTruncated &&
-      (!page.NextKeyMarker ||
-        !page.NextUploadIdMarker ||
-        (page.NextKeyMarker === keyMarker &&
-          page.NextUploadIdMarker === uploadIdMarker))
-    )
-      throw new Error("Pending multipart upload pagination is incomplete");
-    keyMarker = page.IsTruncated ? page.NextKeyMarker : undefined;
-    uploadIdMarker = page.IsTruncated ? page.NextUploadIdMarker : undefined;
-  } while (keyMarker);
-  options.onProgress?.("pending-multipart-uploads", pending);
-  options.onProgress?.("unregistered-multipart-uploads", unregistered);
-  return { pending, unregistered };
 }
 
 function stringField(value: Record<string, unknown>, key: string): string {

@@ -7,6 +7,42 @@ on 2026-09-09. Register a newly verified campaign in both repositories before
 expecting its conversions. Campaign names, UTM names and product domains do not
 establish ownership; missing, unknown or conflicting IDs remain unresolved.
 
+## Attribution parameter migration
+
+`okou_campaign_id` and `okou_ad_group_id` are the canonical in-process and
+browser URL fields. URL capture accepts both spellings and retains conflicting
+values as comma-separated evidence. API and stored-metadata normalization does
+not trim IDs or choose one conflicting alias, preserving account validation.
+UTM parameters, click IDs, campaign ownership, first-touch precedence, event
+values and conversion deduplication are unchanged.
+
+The migration tracked in #33059 deliberately retains these deployment boundaries:
+
+- App requests serialize the legacy field names so a new App can reach an old
+  API with a strict request schema. The new API accepts either spelling.
+- Clerk `signup_attribution` writes retain legacy names so rollback APIs can
+  still parse the complete first touch. Reads normalize either spelling. No
+  existing first-touch record is overwritten or backfilled by this change.
+- Stripe customer/checkout/subscription metadata and signed purchase previews
+  carry equal Okou and VM0 aliases so old API and marketing consumers keep the
+  same account decision. New internal readers normalize the pair once.
+- PostHog event properties retain equal legacy aliases for existing reports.
+  Marketing does the same for GA4 and Stripe `gdm_*` delivery metadata. Each
+  event is still sent once with its original transaction and deduplication ID.
+
+The existing brand-neutral database campaign/ad-group columns and the cookie,
+session and conversion-deduplication storage keys stay in place. The companion
+`vm0-ai/vm0-marketing` change normalizes URL/Clerk/Stripe inputs to Okou names
+and retains the same provider payloads. Either repository can deploy first
+against the currently deployed alias-aware predecessor.
+
+Remove legacy request/Clerk serialization only after legacy-only APIs leave
+production serving and the retained rollback set. Remove Stripe/analytics
+aliases after all readers, report dimensions and recovery tools have migrated.
+Retire old input readers only after their supported clients/links and persisted
+records have been migrated or explicitly retired. Record each gate under #33059;
+merging these PRs alone does not complete that issue's historical-data cleanup.
+
 Signed-in onboarding and checkout events resolve ownership through
 `POST /api/attribution/google-ads-account`. A saved Clerk first touch is
 authoritative, including an unresolved or malformed saved touch. The request's

@@ -22,6 +22,7 @@ interface ChatEventSnapshotCompletionCounters {
   readonly skippedIncompleteHeads: number;
   readonly skippedFailedHeads: number;
   readonly skippedTimedOutHeads: number;
+  readonly oldestCandidateAgeMs: number;
   readonly scanCursorAdvanced: boolean;
   readonly scanWrapped: boolean;
   readonly duplicateEventIdConflictThreads: number;
@@ -53,6 +54,7 @@ export function recordChatEventSnapshotCompleted(
       skippedIncompleteHeads: counters.skippedIncompleteHeads,
       skippedFailedHeads: counters.skippedFailedHeads,
       skippedTimedOutHeads: counters.skippedTimedOutHeads,
+      oldestCandidateAgeMs: counters.oldestCandidateAgeMs,
       scanCursorAdvanced: counters.scanCursorAdvanced,
       scanWrapped: counters.scanWrapped,
       duplicateEventIdConflictThreads: counters.duplicateEventIdConflictThreads,
