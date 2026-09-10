@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.88.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.88.0...guest-agent-v0.88.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **guest-agent:** allow sequential pi inputs after settled handoff ([#33125](https://github.com/vm0-ai/vm0/issues/33125)) ([6143533](https://github.com/vm0-ai/vm0/commit/614353302507b8e3f9ab35aa25f5c5a121359679))
+* **guest-agent:** classify upstream content policy rejections ([#33180](https://github.com/vm0-ai/vm0/issues/33180)) ([f61db10](https://github.com/vm0-ai/vm0/commit/f61db105d0965c93bffb84f061d1027db8d79e36))
+* **pi:** preserve provider http status in opaque model failures ([#33129](https://github.com/vm0-ai/vm0/issues/33129)) ([28a9d76](https://github.com/vm0-ai/vm0/commit/28a9d7642e0b5c07fe09ef6cd93b80e92f6dd65a)), closes [#33071](https://github.com/vm0-ai/vm0/issues/33071)
+* recognize invalid claude oauth tokens ([#33113](https://github.com/vm0-ai/vm0/issues/33113)) ([4803ac0](https://github.com/vm0-ai/vm0/commit/4803ac067beffb4501a0b15160bd39a87430adf8))
+
+
+### Documentation
+
+* **rust:** correct guest completion reporting order ([#33121](https://github.com/vm0-ai/vm0/issues/33121)) ([70c8a94](https://github.com/vm0-ai/vm0/commit/70c8a944dfe6c5dd61c1c5bf83fc6efb022cdcda))
+
 ## [0.88.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.87.1...guest-agent-v0.88.0) (2026-09-09)
 
 
