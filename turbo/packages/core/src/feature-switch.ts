@@ -329,7 +329,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "lancy@okou.ai",
     description:
-      "Run owned chat threads with the official Pi runtime, native session persistence, and shared memory learning across interactive, Automation, and Goal turns.",
+      "Run owned chat threads with the official Pi runtime, native session persistence, and shared memory learning across interactive and automation turns.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
