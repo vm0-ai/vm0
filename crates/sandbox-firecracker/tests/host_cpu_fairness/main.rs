@@ -17,7 +17,6 @@ use sandbox::{
 };
 use sandbox_firecracker::FirecrackerRuntime;
 
-#[path = "host_cpu_fairness/launch_contract.rs"]
 mod launch_contract;
 
 type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
