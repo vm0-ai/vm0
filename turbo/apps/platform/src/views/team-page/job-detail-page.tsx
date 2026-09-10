@@ -1022,7 +1022,8 @@ function AgentProfileSettings({
 }) {
   const pageSignal = useGet(pageSignal$);
   const workflowsLoadable = useLastLoadable(currentAgentVisibleWorkflows$);
-  const agentsLoadable = useLoadable(agents$);
+  const agentsLoadable = useLastLoadable(agents$);
+  const user = useLastResolved(user$);
   const [, copyWorkflow] = useLoadableSet(copyWorkflow$);
 
   const deleteWorkflows =
@@ -1038,7 +1039,7 @@ function AgentProfileSettings({
     agentsLoadable.state === "hasData"
       ? agentsLoadable.data
           .filter((agent) => {
-            return agent.agentId !== agentId;
+            return agent.agentId !== agentId && agent.ownerId === user?.id;
           })
           .map((agent) => {
             return { id: agent.agentId, displayName: agent.displayName };

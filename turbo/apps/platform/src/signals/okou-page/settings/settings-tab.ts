@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import type { Tone } from "../../../views/okou-page/tone-constants.ts";
+import { withCleanup } from "../../utils.ts";
 
 interface SettingsFormValues {
   name: string;
@@ -47,10 +48,36 @@ export const resetSettingsForm$ = command(({ set }) => {
 
 export const deleteAgent$ = command(
   async (
-    _ctx,
-    deleteFn: () => Promise<void>,
-    _signal: AbortSignal,
+    { set },
+    {
+      deleteFn,
+      copyWorkflow,
+      rescues,
+    }: {
+      readonly deleteFn: () => Promise<void>;
+      readonly copyWorkflow?: (
+        workflowId: string,
+        toAgentId: string,
+      ) => Promise<void>;
+      readonly rescues: readonly (readonly [string, string])[];
+    },
+    signal: AbortSignal,
   ): Promise<void> => {
+    signal.throwIfAborted();
+    if (copyWorkflow && rescues.length > 0) {
+      set(internalDeleteCopying$, true);
+      await withCleanup(
+        (async () => {
+          for (const [workflowId, toAgentId] of rescues) {
+            await copyWorkflow(workflowId, toAgentId);
+            signal.throwIfAborted();
+          }
+        })(),
+        () => {
+          set(internalDeleteCopying$, false);
+        },
+      );
+    }
     await deleteFn();
   },
 );
@@ -87,7 +114,4 @@ export const setAgentDeleteCopyChoices$ = command(
 const internalDeleteCopying$ = state<boolean>(false);
 export const agentDeleteCopying$ = computed((get) => {
   return get(internalDeleteCopying$);
-});
-export const setAgentDeleteCopying$ = command(({ set }, copying: boolean) => {
-  set(internalDeleteCopying$, copying);
 });

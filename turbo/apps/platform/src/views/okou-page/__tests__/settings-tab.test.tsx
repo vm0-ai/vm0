@@ -8,10 +8,16 @@ import { expect, test } from "vitest";
 
 import {
   agentInstructionsContract,
+  agentsMainContract,
   agentsByIdContract,
   type AgentMetadataRequest,
   type AgentResponse,
 } from "@okouai/api-contracts/contracts/agents";
+import {
+  workflowsCollectionContract,
+  workflowsDetailContract,
+  type WorkflowSummary,
+} from "@okouai/api-contracts/contracts/workflows";
 import {
   AVATAR_PRESET_COUNT,
   DEFAULT_AGENT_AVATAR_URL,
@@ -868,3 +874,163 @@ test("Hide cancellation once agent deletion starts", async () => {
     expect(screen.getByText("Agent deleted")).toBeInTheDocument();
   });
 });
+
+function copyTarget(
+  agentId: string,
+  displayName: string,
+  ownerId = "test-user-123",
+): AgentResponse {
+  return {
+    agentId,
+    displayName,
+    ownerId,
+    description: null,
+    sound: null,
+    avatarUrl: null,
+    visibility: "public",
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
+  };
+}
+
+function prepareDeleteWorkflow(): WorkflowSummary {
+  const workflow: WorkflowSummary = {
+    id: "d0000000-0000-4000-a000-000000000201",
+    agentId: AGENT_ID,
+    agentName: "research-agent",
+    agentDisplayName: "Research Agent",
+    name: "daily-research",
+    displayName: "Daily research",
+    description: null,
+    visibility: "private",
+    ownerUserId: "test-user-123",
+    createdAt: "2026-09-10T00:00:00.000Z",
+    canManage: true,
+    canPublish: true,
+    official: null,
+  };
+  context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
+    return respond(200, [workflow]);
+  });
+  return workflow;
+}
+
+test("Refresh only owned workflow copy targets whenever the delete dropdown opens", async () => {
+  prepareAgentProfile();
+  prepareDeleteWorkflow();
+  const source = copyTarget(AGENT_ID, "Research Agent");
+  const shared = copyTarget(DEFAULT_AGENT_ID, "Shared Agent", "another-user");
+  const firstTarget = copyTarget(
+    "a0000000-0000-4000-a000-000000000021",
+    "New Personal Agent",
+  );
+  const secondTarget = copyTarget(
+    "a0000000-0000-4000-a000-000000000022",
+    "Latest Personal Agent",
+  );
+  let availableAgents = [source, shared];
+  context.mocks.api(agentsMainContract.list, ({ respond }) => {
+    return respond(200, availableAgents);
+  });
+
+  await setupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+  await findAgentNameInput();
+  click(screen.getByText("Delete agent"));
+  const dialog = await screen.findByRole("dialog");
+  const select = await within(dialog).findByRole("combobox");
+
+  availableAgents = [source, shared, firstTarget];
+  click(select);
+  const firstOption = await screen.findByRole("option", {
+    name: "Copy to New Personal Agent",
+  });
+  expect(
+    screen.queryByRole("option", { name: "Copy to Shared Agent" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("option", { name: "Copy to Research Agent" }),
+  ).not.toBeInTheDocument();
+  click(firstOption);
+  expect(select).toHaveTextContent("Copy to New Personal Agent");
+
+  availableAgents = [source, shared, secondTarget];
+  click(select);
+  const secondOption = await screen.findByRole("option", {
+    name: "Copy to Latest Personal Agent",
+  });
+  expect(
+    screen.queryByRole("option", { name: "Copy to New Personal Agent" }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("option", { name: "Copy to Shared Agent" }),
+  ).not.toBeInTheDocument();
+  click(secondOption);
+  expect(select).toHaveTextContent("Copy to Latest Personal Agent");
+});
+
+test.each(["copy", "delete"])(
+  "Recover and reopen the agent delete dialog after a %s failure",
+  async (failure) => {
+    prepareAgentProfile();
+    const workflow = prepareDeleteWorkflow();
+    const copyResponse = context.mocks.deferred<void>();
+    let canSubmit = false;
+    context.mocks.api(workflowsDetailContract.copy, async ({ respond }) => {
+      await copyResponse.promise;
+      return !canSubmit && failure === "copy"
+        ? respond(403, {
+            error: { code: "FORBIDDEN", message: "Copy failed" },
+          })
+        : respond(201, {
+            ...workflow,
+            id: "d0000000-0000-4000-a000-000000000202",
+            agentId: DEFAULT_AGENT_ID,
+          });
+    });
+    context.mocks.api(agentsByIdContract.delete, ({ respond }) => {
+      return !canSubmit && failure === "delete"
+        ? respond(403, {
+            error: { code: "FORBIDDEN", message: "Delete failed" },
+          })
+        : respond(204);
+    });
+
+    await setupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+    await findAgentNameInput();
+    click(screen.getByText("Delete agent"));
+    const dialog = await screen.findByRole("dialog");
+    click(await within(dialog).findByRole("combobox"));
+    click(await screen.findByRole("option", { name: "Copy to Zero" }));
+    click(within(dialog).getByText("Delete agent"));
+
+    const copyingButton = await within(dialog).findByText("Copying…");
+    expect(copyingButton).toBeDisabled();
+    expect(within(dialog).getByRole("combobox")).toBeDisabled();
+    copyResponse.resolve();
+
+    await screen.findByText(
+      failure === "copy" ? "Copy failed" : "Delete failed",
+    );
+    await waitFor(() => {
+      expect(within(dialog).getByText("Delete agent")).toBeEnabled();
+    });
+    expect(within(dialog).getByRole("combobox")).toBeEnabled();
+    click(within(dialog).getByText("Cancel"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    click(screen.getByText("Delete agent"));
+    const reopened = await screen.findByRole("dialog");
+    expect(within(reopened).getByText("Delete agent")).toBeEnabled();
+    const select = within(reopened).getByRole("combobox");
+    expect(select).toHaveTextContent("Delete with agent");
+    click(select);
+    click(await screen.findByRole("option", { name: "Copy to Zero" }));
+
+    canSubmit = true;
+    click(within(reopened).getByText("Delete agent"));
+    await screen.findByText("Agent deleted");
+  },
+);

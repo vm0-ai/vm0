@@ -22,13 +22,13 @@ import {
 import { AlertTriangle, Trash } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { pageSignal$ } from "../../../signals/page-signal.ts";
+import { reloadAgents$ } from "../../../signals/agent.ts";
 import { detach, Reason } from "../../../signals/utils.ts";
 import {
   deleteAgent$,
   agentDeleteCopyChoices$,
   setAgentDeleteCopyChoices$,
   agentDeleteCopying$,
-  setAgentDeleteCopying$,
 } from "../../../signals/okou-page/settings/settings-tab.ts";
 
 export interface AgentDeleteWorkflow {
@@ -136,6 +136,7 @@ function AgentDeleteReconcileView({
   setCopyChoices,
 }: AgentDeleteReconcileViewProps) {
   const { t } = useTranslation("agents");
+  const reloadAgents = useSet(reloadAgents$);
 
   return (
     <div className="grid grid-cols-[264px_1fr]">
@@ -185,6 +186,12 @@ function AgentDeleteReconcileView({
                 </span>
                 <Select
                   value={copyChoices[workflow.id] ?? DELETE_WITH_AGENT}
+                  disabled={deleting || copying}
+                  onOpenChange={(open) => {
+                    if (open) {
+                      reloadAgents();
+                    }
+                  }}
                   onValueChange={(value) => {
                     setCopyChoices({ ...copyChoices, [workflow.id]: value });
                   }}
@@ -301,11 +308,8 @@ export function AgentDeleteDialog({
   const copyChoices = useGet(agentDeleteCopyChoices$);
   const setCopyChoices = useSet(setAgentDeleteCopyChoices$);
   const copying = useGet(agentDeleteCopying$);
-  const setCopying = useSet(setAgentDeleteCopying$);
   const canReconcile =
-    deleteWorkflows.length > 0 &&
-    deleteCopyTargets.length > 0 &&
-    onCopyWorkflowBeforeDelete !== undefined;
+    deleteWorkflows.length > 0 && onCopyWorkflowBeforeDelete !== undefined;
 
   const handleDelete = () => {
     // Scope rescues to this agent's workflows so stale choices from a
@@ -323,16 +327,14 @@ export function AgentDeleteDialog({
       },
     );
     detach(
-      (async () => {
-        if (rescues.length > 0 && onCopyWorkflowBeforeDelete) {
-          setCopying(true);
-          for (const [workflowId, toAgentId] of rescues) {
-            await onCopyWorkflowBeforeDelete(workflowId, toAgentId);
-          }
-          setCopying(false);
-        }
-        await deleteAgentFn(onDelete, pageSignal);
-      })(),
+      deleteAgentFn(
+        {
+          deleteFn: onDelete,
+          copyWorkflow: onCopyWorkflowBeforeDelete,
+          rescues,
+        },
+        pageSignal,
+      ),
       Reason.DomCallback,
     );
   };
@@ -354,7 +356,13 @@ export function AgentDeleteDialog({
             </p>
           </div>
           <div className="flex w-full shrink-0 justify-end sm:w-auto">
-            <Dialog>
+            <Dialog
+              onOpenChange={(open) => {
+                if (open && !deleting && !copying) {
+                  setCopyChoices({});
+                }
+              }}
+            >
               <DialogTrigger asChild>
                 <Button
                   variant="outline"
