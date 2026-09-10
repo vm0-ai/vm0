@@ -508,6 +508,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ComposerTemplateChipCover]: {
+    maintainer: "tongx@okou.ai",
+    description:
+      "Show the chosen template's cover image on the composer's inline template chip instead of a generic glyph.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {
