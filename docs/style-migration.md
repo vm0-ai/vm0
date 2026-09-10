@@ -239,3 +239,10 @@ activation, reload, removing the icon, text fallback and empty search.
 The existing capture, bootstrap and image helpers and their rounding limits
 remain unchanged. Before modifying business styles, capture and archive a
 successful BEFORE/A-A pair with frozen runner, fixture and case hashes.
+
+`chat-emoji-worker.ts` additionally intercepts the SharedWorker's external API
+requests through a local Chromium debugging connection. Page/Context routing
+does not cover those requests. The deployed Worker executes unchanged, and
+its snapshot boundary must be observed in each case. CORS preflight is handled
+at that same fixture boundary. The runner requires the initial loading overlay
+to be hidden and the chat icon to be unobscured before capturing.

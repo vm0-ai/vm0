@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import type { Page } from "@playwright/test";
 import { fixtureBootstrap } from "./bootstrap";
+import { installChatEmojiWorkerFixture } from "./chat-emoji-worker";
 
 export const threadId = "b3969267-d928-4277-9568-99e91d54ca12";
 const agentId = "c3969267-d928-4277-9568-99e91d54ca12";
@@ -110,6 +111,7 @@ export async function installChatEmojiFixture(
       hasMore: false,
     },
     [`/api/chat-threads/${threadId}/artifacts`]: { runs: [] },
+    [`/api/chat-threads/${threadId}/workflow-automations`]: { automations: [] },
     "/api/billing/status": {
       tier: "pro",
       showUsagePack: false,
@@ -128,8 +130,13 @@ export async function installChatEmojiFixture(
       concurrencySubscriptions: [],
     },
   });
+  const worker = await installChatEmojiWorkerFixture(
+    apiOrigin,
+    fixtures,
+    failures,
+  );
   await fixtureBootstrap(page, appOrigin, fixtures);
-  await page.route(
+  await page.context().route(
     (url) => url.origin === apiOrigin,
     async (route) => {
       const request = route.request();
@@ -185,4 +192,5 @@ export async function installChatEmojiFixture(
       }
     },
   );
+  return worker;
 }

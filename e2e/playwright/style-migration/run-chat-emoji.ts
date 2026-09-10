@@ -48,12 +48,14 @@ interface Manifest {
   appOrigin: string;
   apiOrigin: string;
   browser: string;
+  userAgent: string;
   captures: Capture[];
   cases: VisualCase[];
   fixtureSha256: string;
   apiBuildSha: string;
   featureSwitches: Record<string, boolean>;
   prerequisites: string;
+  workerRequests: Record<string, string[]>;
   failures: string[];
 }
 
@@ -68,6 +70,7 @@ const { values } = parseArgs({
     baseline: { type: "string" },
     "executable-path": { type: "string" },
     "api-build": { type: "string" },
+    case: { type: "string" },
   },
 });
 
@@ -116,9 +119,8 @@ async function observe(group: Locator) {
       "overflow",
     ];
     return [
-      element,
       ...element.querySelectorAll(
-        "button, button > span, [data-chat-thread-emoji-feed] + div, [data-chat-thread-emoji-feed] + div > span",
+        "button, button > span, [data-testid=chat-thread-header-title], [data-chat-thread-emoji-feed] + div, [data-chat-thread-emoji-feed] + div > span",
       ),
     ].map((control) => {
       const box = control.getBoundingClientRect();
@@ -165,6 +167,7 @@ async function run() {
       await Promise.all([
         readFile(__filename),
         readFile(path.join(__dirname, "chat-emoji-fixture.ts")),
+        readFile(path.join(__dirname, "chat-emoji-worker.ts")),
         readFile(path.join(__dirname, "images.ts")),
         readFile(path.join(__dirname, "capture.ts")),
         readFile(path.join(__dirname, "bootstrap.ts")),
@@ -182,6 +185,9 @@ async function run() {
     caseBytes.toString(),
   );
   assert.equal(caseFile.version, 1);
+  if (values.case)
+    caseFile.cases = caseFile.cases.filter((item) => item.id === values.case);
+  assert(caseFile.cases.length > 0);
   const baseline: Manifest | undefined = values.baseline
     ? JSON.parse(
         await readFile(path.join(values.baseline, "manifest.json"), "utf8"),
@@ -189,6 +195,7 @@ async function run() {
     : undefined;
   if (baseline) {
     assert.equal(baseline.protocol, "channel-rounding-v1");
+    assert.deepEqual(baseline.cases, caseFile.cases);
     assert.equal(baseline.runnerSha256, runnerSha256, "Frozen runner changed");
     assert.equal(
       baseline.caseSha256,
@@ -206,7 +213,7 @@ async function run() {
   await mkdir(out);
   const browser = await chromium.launch({
     executablePath: values["executable-path"],
-    args: browserArgs,
+    args: [...browserArgs, "--remote-debugging-port=9227"],
   });
   const manifest: Manifest = {
     version: 1,
@@ -219,6 +226,7 @@ async function run() {
     appOrigin,
     apiOrigin,
     browser: browser.version(),
+    userAgent: "",
     captures: [],
     cases: caseFile.cases,
     apiBuildSha,
@@ -229,6 +237,7 @@ async function run() {
     prerequisites:
       "Isolated Clerk TEST account; onboarding, empty threads and API metadata controlled before HTML bootstrap and fetch. No runs, connectors or purchases.",
     fixtureSha256: sha256(fixtureBytes),
+    workerRequests: {},
     failures: [],
   };
   try {
@@ -252,6 +261,9 @@ async function run() {
         reducedMotion: "reduce",
       });
 
+      let worker:
+        | Awaited<ReturnType<typeof installChatEmojiFixture>>
+        | undefined;
       try {
         // Theme bootstrap and runtime share this cookie.
         await context.clearCookies({ name: "__Secure-okou-theme" });
@@ -282,7 +294,9 @@ async function run() {
         }
         const page = await context.newPage();
         page.setDefaultTimeout(30_000);
-        await installChatEmojiFixture(
+        manifest.userAgent = await page.evaluate(() => navigator.userAgent);
+        if (baseline) assert.equal(manifest.userAgent, baseline.userAgent);
+        worker = await installChatEmojiFixture(
           page,
           appOrigin,
           apiOrigin,
@@ -316,6 +330,22 @@ async function run() {
           ).toHaveAttribute("content", appBuildSha);
           const id = `${item.id}-${state}`;
           const image = `${id}.png`;
+          await expect(page.locator("#app-bootstrap-skeleton")).toBeHidden();
+          await expect(changeIcon).toBeVisible();
+          if (!(await search.isVisible())) {
+            assert(
+              await changeIcon.evaluate((element) => {
+                const box = element.getBoundingClientRect();
+                return element.contains(
+                  document.elementFromPoint(
+                    box.x + box.width / 2,
+                    box.y + box.height / 2,
+                  ),
+                );
+              }),
+              "Chat icon is obscured",
+            );
+          }
           const bytes = await stableScreenshot(page);
           const observation = await observe(group);
           await writeFile(path.join(out, image), bytes, { flag: "wx" });
@@ -382,11 +412,12 @@ async function run() {
           exact: true,
         });
         await color.hover();
+        await color.focus();
         await expect(
           page.getByText(":grinning_face:", { exact: true }),
         ).toBeVisible();
         await capture("color-preview-hover");
-        await search.fill("Japanese");
+        await search.fill("reserved");
         const dual = feed.getByRole("button", {
           name: "Japanese “reserved” button",
           exact: true,
@@ -405,9 +436,7 @@ async function run() {
         await capture("reloaded");
         await changeIcon.click();
         await expect(search).toBeVisible();
-        await page
-          .getByRole("button", { name: "Remove icon", exact: true })
-          .click();
+        await page.getByRole("button", { name: "Remove", exact: true }).click();
         await expect(search).not.toBeVisible();
         await expect(changeIcon).toHaveText("");
         await expect(page.getByTestId("chat-thread-header-title")).toHaveText(
@@ -421,6 +450,7 @@ async function run() {
           page.getByText("No emoji found", { exact: true }),
         ).toBeVisible();
         await page.mouse.move(0, 0);
+        await search.press("Tab");
         await capture("empty-search");
         await page.keyboard.press("Escape");
         await expect(search).not.toBeVisible();
@@ -444,9 +474,20 @@ async function run() {
           );
         }
       } finally {
+        manifest.workerRequests[item.id] = [...(worker?.paths ?? [])].sort();
+        if (!worker?.paths.has("GET /api/chat-threads/snapshot"))
+          manifest.failures.push(
+            `${item.id}: SharedWorker snapshot fixture was not exercised`,
+          );
+        await worker?.close();
         await context.close();
       }
     }
+    assert.equal(
+      manifest.captures.length,
+      caseFile.cases.length * 7,
+      "Every configured state must be captured",
+    );
     if (baseline)
       assert.equal(
         manifest.captures.length,
