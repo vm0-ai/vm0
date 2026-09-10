@@ -9850,6 +9850,7 @@ describe("CHAT-02: model-first provider policies", () => {
           events: (await chat.listThreadEvents(actor, run.threadId)).events,
           telemetry: [
             ...context.mocks.axiomLogging.debug.mock.calls,
+            ...context.mocks.axiomLogging.info.mock.calls,
             ...context.mocks.axiomLogging.warn.mock.calls,
           ],
         }),
@@ -9974,6 +9975,7 @@ describe("CHAT-02: model-first provider policies", () => {
           events: (await chat.listThreadEvents(actor, run.threadId)).events,
           logs: [
             ...context.mocks.axiomLogging.debug.mock.calls,
+            ...context.mocks.axiomLogging.info.mock.calls,
             ...context.mocks.axiomLogging.warn.mock.calls,
           ],
         }),
@@ -12770,7 +12772,7 @@ describe("CHAT-02: model-first provider policies", () => {
     await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
       status: "completed",
     });
-    expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
+    expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
       "Pi API first-turn outcome",
       expect.objectContaining({
         runId: run.runId,
@@ -12778,7 +12780,7 @@ describe("CHAT-02: model-first provider policies", () => {
         reason: "api_attempt_timed_out",
       }),
     );
-    expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
+    expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
       "Pi API first-turn outcome",
       expect.objectContaining({
         runId: run.runId,
@@ -14038,6 +14040,7 @@ describe("CHAT-02: model-first provider policies", () => {
       ).toStrictEqual([]);
       const telemetry = JSON.stringify([
         ...context.mocks.axiomLogging.debug.mock.calls,
+        ...context.mocks.axiomLogging.info.mock.calls,
         ...context.mocks.axiomLogging.warn.mock.calls,
       ]);
       expect(telemetry).not.toContain(partialText);
@@ -14563,7 +14566,9 @@ describe("CHAT-02: model-first provider policies", () => {
       );
       expect(warningCallsForRun(run.runId)).toStrictEqual([]);
       expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
-      expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
+      // Info is the lowest level the Axiom transport ingests, so this is the
+      // only production evidence that the run recovered instead of dying.
+      expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
         "Pi API first-turn outcome",
         expect.objectContaining({
           runId: run.runId,
@@ -14572,6 +14577,10 @@ describe("CHAT-02: model-first provider policies", () => {
           modelFailureCategory: scenario.category,
           modelFailureHttpStatus: scenario.status,
         }),
+      );
+      expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalledWith(
+        "Pi API first-turn outcome",
+        expect.objectContaining({ outcome: "sandbox_retry_started" }),
       );
       for (const log of Object.values(context.mocks.axiomLogging)) {
         expect(JSON.stringify(log.mock.calls)).not.toContain(privateMarker);
@@ -14730,7 +14739,7 @@ describe("CHAT-02: model-first provider policies", () => {
         );
       }),
     ).toStrictEqual([]);
-    expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
+    expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
       "Pi API first-turn outcome",
       expect.objectContaining({
         runId: run.runId,
@@ -15374,7 +15383,7 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: originalPrompt,
           piLaunchConfig: { apiFirstTurn: { sandboxEventSequenceStart: 1 } },
         });
-        const outcomes = context.mocks.axiomLogging.debug.mock.calls.filter(
+        const outcomes = context.mocks.axiomLogging.info.mock.calls.filter(
           (call) => {
             return (
               call[0] === "Pi API first-turn outcome" &&
@@ -16052,7 +16061,7 @@ describe("CHAT-02: model-first provider policies", () => {
       );
     });
     await waitForRunStatus(actor, second.runId, "queued");
-    context.mocks.axiomLogging.debug.mockClear();
+    context.mocks.axiomLogging.info.mockClear();
     await completeChatRunOk(anchor.runId, anchorSandboxHeaders);
 
     const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${second.runId}/manifest.json`;
@@ -16106,7 +16115,7 @@ describe("CHAT-02: model-first provider policies", () => {
       },
     });
     expect(transferredH0).not.toContain("serviceTier");
-    expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
+    expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
       "Pi API first-turn outcome",
       expect.objectContaining({
         runId: second.runId,
@@ -17871,6 +17880,7 @@ describe("CHAT-02: model-first provider policies", () => {
           h2,
           telemetry: [
             ...context.mocks.axiomLogging.debug.mock.calls,
+            ...context.mocks.axiomLogging.info.mock.calls,
             ...context.mocks.axiomLogging.warn.mock.calls,
           ],
         }),
@@ -17983,6 +17993,7 @@ describe("CHAT-02: model-first provider policies", () => {
       );
       const piLogCalls = JSON.stringify([
         ...context.mocks.axiomLogging.debug.mock.calls,
+        ...context.mocks.axiomLogging.info.mock.calls,
         ...context.mocks.axiomLogging.warn.mock.calls,
       ]);
       expect(piLogCalls).not.toContain(initialSecret);
@@ -18164,6 +18175,7 @@ describe("CHAT-02: model-first provider policies", () => {
       );
       const telemetry = JSON.stringify([
         ...context.mocks.axiomLogging.debug.mock.calls,
+        ...context.mocks.axiomLogging.info.mock.calls,
         ...context.mocks.axiomLogging.warn.mock.calls,
       ]);
       expect(telemetry).not.toContain(secret);
