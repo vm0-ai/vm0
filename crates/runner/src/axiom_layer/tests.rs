@@ -469,6 +469,61 @@ async fn oversized_string_field_is_bounded_before_ingest() {
 }
 
 #[tokio::test]
+async fn helper_failure_keeps_a_bounded_redacted_causal_tail_at_ingest() {
+    let server = MockServer::start_async().await;
+    let (ingest, captured) = capture_axiom_ingest(&server).await;
+    let (layer, guard) =
+        init_with_base_url(&server.base_url(), "t", "test").expect("init must succeed");
+    let subscriber = tracing_subscriber::registry().with(with_ingest_filter(layer));
+    let stderr = format!(
+        "{}\nHTTP status 403 s3_code=ExpiredRequest\nhttps://storage.example/archive.tar.gz?X-Amz-Signature=private-signature",
+        "download progress 中\n".repeat(1000),
+    );
+    let result = sandbox::ExecResult {
+        termination: sandbox::ExecTermination::Exited { exit_code: 1 },
+        guest_duration_ms: None,
+        stdout: Vec::new(),
+        stderr: stderr.into_bytes(),
+        diagnostic: String::new(),
+        stdout_truncated: false,
+        stderr_truncated: false,
+    };
+    let error = crate::helper_exec::format_helper_exec_failure("storage download", &result);
+    {
+        let _sub = tracing::subscriber::set_default(subscriber);
+        tracing::error!(
+            error = %error,
+            error_tail = super::error_tail(&error),
+            "helper failure",
+        );
+        tracing::error!(
+            error = "short failure",
+            error_tail = super::error_tail("short failure"),
+            "short helper failure",
+        );
+    }
+    guard.shutdown().await;
+
+    ingest.assert_calls_async(1).await;
+    let events = captured.events();
+    let failure = event_with_message(&events, "helper failure");
+    let prefix = string_field(failure, "error");
+    assert!(prefix.starts_with("storage download failed (exit code 1)"));
+    assert!(prefix.ends_with(TRUNCATION_MARKER));
+    assert!(!prefix.contains("s3_code=ExpiredRequest"));
+    let tail = string_field(failure, "error_tail");
+    assert!(tail.len() <= TEXT_FIELD_MAX_BYTES);
+    assert!(tail.contains("HTTP status 403 s3_code=ExpiredRequest"));
+    assert!(!json_contains_string(failure, "private-signature"));
+    assert!(!json_contains_string(failure, "X-Amz-Signature"));
+    assert!(
+        event_with_message(&events, "short helper failure")
+            .get("error_tail")
+            .is_none()
+    );
+}
+
+#[tokio::test]
 async fn axiom_filter_does_not_suppress_sibling_local_layers() {
     let server = MockServer::start_async().await;
 

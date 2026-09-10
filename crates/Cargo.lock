@@ -505,7 +505,7 @@ dependencies = [
  "http 0.2.12",
  "pretty_assertions",
  "regex-lite",
- "roxmltree",
+ "roxmltree 0.14.1",
  "serde_json",
  "thiserror",
 ]
@@ -1811,6 +1811,7 @@ dependencies = [
  "httpmock",
  "libc",
  "linux-mountinfo",
+ "roxmltree 0.21.1",
  "serde",
  "serde_json",
  "tar",
@@ -3348,6 +3349,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "921904a62e410e37e215c40381b7117f830d9d89ba60ab5236170541dd25646b"
 dependencies = [
  "xmlparser",
+]
+
+[[package]]
+name = "roxmltree"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1964b10c76125c36f8afe190065a4bf9a87bf324842c05701330bba9f1cacbb"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
