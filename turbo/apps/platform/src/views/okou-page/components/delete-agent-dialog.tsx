@@ -1,4 +1,4 @@
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
   surfaceVariants,
   Button,
@@ -27,6 +27,7 @@ import { detach, Reason } from "../../../signals/utils.ts";
 import {
   deleteAgent$,
   agentDeleteSession$,
+  agentDeleteResult$,
   setAgentDeleteCopyChoices$,
   setAgentDeleteDialogOpen$,
   reloadAgentDeleteWorkflows$,
@@ -344,6 +345,7 @@ function AgentDeleteFeedback({
   onRetry: (sessionId: symbol) => void;
 }) {
   const { t } = useTranslation("agents");
+  const result = useLoadable(agentDeleteResult$);
   const busy = session !== null && session.phase !== "idle";
   return (
     <>
@@ -380,7 +382,9 @@ function AgentDeleteFeedback({
           </Button>
         </div>
       ) : (
-        <AgentDeleteError error={session?.error ?? null} />
+        <AgentDeleteError
+          error={session && result.state === "hasError" ? result.error : null}
+        />
       )}
       {session && session.completedRescues.length > 0 && (
         <div role="status" className="space-y-2 px-6 pb-6 text-sm">

@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
 import type { Tone } from "../../../views/okou-page/tone-constants.ts";
-import { onRejection, withCleanup } from "../../utils.ts";
+import { withCleanup } from "../../utils.ts";
 import {
   currentAgentVisibleWorkflows$,
   reloadWorkflows$,
@@ -66,12 +66,15 @@ export interface AgentDeleteSession {
   readonly workflows: readonly AgentDeleteWorkflow[];
   readonly completedRescues: readonly WorkflowRescue[];
   readonly phase: "idle" | "copying" | "deleting";
-  readonly error: unknown;
+  readonly result: Promise<void> | undefined;
 }
 
 const internalAgentDeleteSession$ = state<AgentDeleteSession | null>(null);
 export const agentDeleteSession$ = computed((get) => {
   return get(internalAgentDeleteSession$);
+});
+export const agentDeleteResult$ = computed((get) => {
+  return get(internalAgentDeleteSession$)?.result;
 });
 
 /** Fresh confirmations retain acknowledged copies from this agent page, not drafts. */
@@ -98,7 +101,7 @@ export const setAgentDeleteDialogOpen$ = command(
           ...previous,
           open: false,
           choices: {},
-          error: null,
+          result: undefined,
         });
         return true;
       }
@@ -127,7 +130,7 @@ export const setAgentDeleteDialogOpen$ = command(
       workflows: workflows ?? (sameOwner ? previous.workflows : []),
       completedRescues: sameOwner ? previous.completedRescues : [],
       phase: "idle",
-      error: null,
+      result: undefined,
     });
     return true;
   },
@@ -152,7 +155,7 @@ export const reloadAgentDeleteWorkflows$ = command(
     const session = get(internalAgentDeleteSession$);
     if (session?.id === sessionId && session.open && session.phase === "idle") {
       session.owner.throwIfAborted();
-      set(internalAgentDeleteSession$, { ...session, error: null });
+      set(internalAgentDeleteSession$, { ...session, result: undefined });
       set(reloadWorkflows$);
     }
   },
@@ -203,52 +206,43 @@ export const deleteAgent$ = command(
     set(internalAgentDeleteSession$, {
       ...session,
       phase: copyWorkflow && rescues.length > 0 ? "copying" : "deleting",
-      error: null,
+      result: undefined,
     });
-    await withCleanup(
-      onRejection(
-        (async () => {
-          // Never start a rescue from an unavailable source-workflow list.
-          await get(currentAgentVisibleWorkflows$);
-          signal.throwIfAborted();
-          if (copyWorkflow) {
-            for (const [workflowId, toAgentId] of rescues) {
-              await copyWorkflow(workflowId, toAgentId);
-              signal.throwIfAborted();
-              const current = get(internalAgentDeleteSession$);
-              if (current?.id !== sessionId) {
-                return;
-              }
-              set(internalAgentDeleteSession$, {
-                ...current,
-                completedRescues: [
-                  ...current.completedRescues,
-                  [workflowId, toAgentId],
-                ],
-              });
-              // Copying refreshes the workflow list. Settle that read before
-              // another copy or deletion, while retaining its acknowledgement
-              // if the refresh fails.
-              await get(currentAgentVisibleWorkflows$);
-              signal.throwIfAborted();
+    const result = withCleanup(
+      (async () => {
+        // Never start a rescue from an unavailable source-workflow list.
+        await get(currentAgentVisibleWorkflows$);
+        signal.throwIfAborted();
+        if (copyWorkflow) {
+          for (const [workflowId, toAgentId] of rescues) {
+            await copyWorkflow(workflowId, toAgentId);
+            signal.throwIfAborted();
+            const current = get(internalAgentDeleteSession$);
+            if (current?.id !== sessionId) {
+              return;
             }
+            set(internalAgentDeleteSession$, {
+              ...current,
+              completedRescues: [
+                ...current.completedRescues,
+                [workflowId, toAgentId],
+              ],
+            });
+            // Copying refreshes the workflow list. Settle that read before
+            // another copy or deletion, while retaining its acknowledgement
+            // if the refresh fails.
+            await get(currentAgentVisibleWorkflows$);
+            signal.throwIfAborted();
           }
-          const current = get(internalAgentDeleteSession$);
-          if (current?.id !== sessionId) {
-            return;
-          }
-          set(internalAgentDeleteSession$, { ...current, phase: "deleting" });
-          await deleteFn();
-          signal.throwIfAborted();
-        })(),
-        (error) => {
-          signal.throwIfAborted();
-          const current = get(internalAgentDeleteSession$);
-          if (current?.id === sessionId) {
-            set(internalAgentDeleteSession$, { ...current, error });
-          }
-        },
-      ),
+        }
+        const current = get(internalAgentDeleteSession$);
+        if (current?.id !== sessionId) {
+          return;
+        }
+        set(internalAgentDeleteSession$, { ...current, phase: "deleting" });
+        await deleteFn();
+        signal.throwIfAborted();
+      })(),
       () => {
         const current = get(internalAgentDeleteSession$);
         if (current?.id === sessionId) {
@@ -260,6 +254,11 @@ export const deleteAgent$ = command(
         }
       },
     );
+    const current = get(internalAgentDeleteSession$);
+    if (current?.id === sessionId) {
+      set(internalAgentDeleteSession$, { ...current, result });
+    }
+    await result;
   },
 );
 
