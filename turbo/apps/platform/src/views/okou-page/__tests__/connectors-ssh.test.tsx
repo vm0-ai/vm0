@@ -65,16 +65,17 @@ test.each([0, 2])(
       throw new Error("Expected the Communication category option");
     }
     click(communication);
-    await screen.findByTestId("connector-category-communication-collaboration");
+    // Inside a category the page renders that category's connectors alone --
+    // the breadcrumb and the filter already name it, so the grouped headings
+    // are gone.
+    await screen.findByTestId("connector-category-grid");
     expect(queryConnectorAction("link", "Manage SSH hosts")).toBeNull();
     click(getConnectorAction("button", "Filter connectors"));
     const categoryMenu = await screen.findByRole("menu");
     click(getConnectorAction("menuitem", "Remote access1", categoryMenu));
     await screen.findByRole("heading", { name: "Remote access" });
     expect(queryConnectorAction("link", "Manage SSH hosts")).not.toBeNull();
-    expect(
-      screen.queryByTestId("connector-category-communication-collaboration"),
-    ).toBeNull();
+    expect(screen.queryByTestId("connector-category-grid")).toBeNull();
     click(getConnectorAction("button", "Connectors"));
     await screen.findByTestId("connector-shelf-communication-collaboration");
     expect(getConnectorAction("link", "Manage SSH hosts")).toBeInTheDocument();
