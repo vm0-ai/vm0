@@ -286,13 +286,19 @@
         "chat-emoji-narrow",
         "chat-emoji-narrow-dark"
       ],
-      "status": "baselined",
+      "status": "implemented",
       "evidence": [
         {
           "kind": "before-and-unchanged-replay-with-all-rejected-calibrations",
           "url": "https://a.okou.io/3qkwcyzuet.zip",
           "sha256": "b455d3943ee52b0e4188ddbf47c6e21fa29ba43f40f25805959de85549712819",
           "commit": "1e09b73cb906f1202b566255760655db893048c2"
+        },
+        {
+          "kind": "refreshed-before-and-unchanged-replay-after-upstream-composer-change",
+          "url": "https://a.okou.io/z6rgfsqp0b.zip",
+          "sha256": "18a6c9fe37af3ab5cdafb67caf2fd1ea3bbe9ef4d0d1fb08d545bf8389b54438",
+          "commit": "4e18c07e3eb936da5778207e5a81508cfce9aaa0"
         }
       ],
       "pullRequest": "https://github.com/vm0-ai/vm0/pull/33064"

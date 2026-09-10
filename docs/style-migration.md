@@ -326,3 +326,12 @@ Main was synchronized to `b440c7b27c62b2b79afe88a9762cc51c790bfb95`; the three
 legacy consumers and their rule are temporarily restored for a refreshed
 BEFORE/A-A deployment. The frozen runner, fixtures, cases and limits are
 unchanged. Publish the refreshed baseline before reapplying the same migration.
+
+The [refreshed BEFORE/A-A archive](https://a.okou.io/z6rgfsqp0b.zip) passed all
+28 states with zero changed pixels, on source
+`4e18c07e3eb936da5778207e5a81508cfce9aaa0` and App/API build
+`e9e64de2da25bbd5514c02f1db0766490b6d9904`. It retains the rejected initial
+AFTER and the source-parent diagnosis. That rejected AFTER also matches the
+refreshed legacy BEFORE exactly in all 28 frames, isolating the upstream
+composer change. After the refreshed baseline was uploaded, the original
+three-consumer font migration and its shrink-only ratchet patch were reapplied.
