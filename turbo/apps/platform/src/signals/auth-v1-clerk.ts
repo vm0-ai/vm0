@@ -11,7 +11,7 @@ type ClerkRouter = NonNullable<ClerkProviderProps["routerPush"]>;
 type ClerkRouterMetadata = Parameters<ClerkRouter>[1];
 
 /** A route-owned integration with the external Clerk runtime. */
-export function createAuthV1ClerkSignals() {
+export function createAuthV1ClerkSignals(clerk: Pick<Clerk, "on" | "off">) {
   const navigateClerkUrl$ = command(
     (
       { set },
@@ -75,33 +75,25 @@ export function createAuthV1ClerkSignals() {
   );
   // The provider handle arrives at its committed marker. Own the subscription
   // through onRef so replacement and unmount release the exact SDK listener.
-  const attach$ = command(
-    ({ set }, element: HTMLSpanElement, clerk: Pick<Clerk, "on" | "off">) => {
-      const ref$ = onRef(
-        // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
-        command(
-          ({ get, set }, _element: HTMLSpanElement, signal: AbortSignal) => {
-            const routeSignal = AbortSignal.any([signal, get(pageSignal$)]);
-            if (routeSignal.aborted) {
-              return;
-            }
-            const unregisterRouter = registerClerkRouter({
-              push(url, metadata) {
-                set(clerkRouterPush$, url, metadata);
-              },
-              replace(url, metadata) {
-                set(clerkRouterReplace$, url, metadata);
-              },
-            });
-            routeSignal.addEventListener("abort", unregisterRouter, {
-              once: true,
-            });
-            set(observe$, clerk, routeSignal);
-          },
-        ),
-      );
-      return set(ref$, element);
-    },
+  const attach$ = onRef(
+    command(({ get, set }, _element: HTMLSpanElement, signal: AbortSignal) => {
+      const routeSignal = AbortSignal.any([signal, get(pageSignal$)]);
+      if (routeSignal.aborted) {
+        return;
+      }
+      const unregisterRouter = registerClerkRouter({
+        push(url, metadata) {
+          set(clerkRouterPush$, url, metadata);
+        },
+        replace(url, metadata) {
+          set(clerkRouterReplace$, url, metadata);
+        },
+      });
+      routeSignal.addEventListener("abort", unregisterRouter, {
+        once: true,
+      });
+      set(observe$, clerk, routeSignal);
+    }),
   );
   return { ready$, attach$, clerkRouterPush$, clerkRouterReplace$ };
 }
