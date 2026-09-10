@@ -1885,12 +1885,15 @@
       "create": {
         "addStyle": "Add style",
         "addTemplate": "Add template",
+        "chooseScene": "Choose what to create",
         "chooseType": "Choose a type",
         "description": "Presentations, videos, and images",
         "exit": "Exit create mode",
         "image": "Create image",
+        "imageDescription": "Turn an idea into a visual",
         "imagePlaceholder": "Describe the image you want to create…",
         "presentation": "Create presentation",
+        "presentationDescription": "Slides for your story",
         "presentationPlaceholder": "What is your presentation about?",
         "question": "What would you like to make happen?",
         "settingsAdjusted": "Some video settings were adjusted for this model",
@@ -1899,6 +1902,7 @@
         "slideCountRange": "{{range}} slides",
         "title": "Create",
         "video": "Create video",
+        "videoDescription": "Bring your ideas to motion",
         "videoPlaceholder": "Describe the video you want to create…"
       },
       "createWorkflow": "Create workflow",

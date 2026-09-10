@@ -1882,12 +1882,15 @@
       "create": {
         "addStyle": "Tambahkan gaya",
         "addTemplate": "Tambahkan templat",
+        "chooseScene": "Pilih yang ingin dibuat",
         "chooseType": "Pilih jenis",
         "description": "Presentasi, video, dan gambar",
         "exit": "Keluar dari mode pembuatan",
         "image": "Buat gambar",
+        "imageDescription": "Ubah ide menjadi visual",
         "imagePlaceholder": "Jelaskan gambar yang ingin Anda buat…",
         "presentation": "Buat presentasi",
+        "presentationDescription": "Slide untuk cerita Anda",
         "presentationPlaceholder": "Apa topik presentasi Anda?",
         "question": "Apa yang ingin Anda wujudkan?",
         "settingsAdjusted": "Beberapa pengaturan video disesuaikan untuk model ini",
@@ -1896,6 +1899,7 @@
         "slideCountRange": "{{range}} slide",
         "title": "Buat",
         "video": "Buat video",
+        "videoDescription": "Hidupkan ide Anda dengan gerakan",
         "videoPlaceholder": "Jelaskan video yang ingin Anda buat…"
       },
       "createWorkflow": "Buat alur kerja",

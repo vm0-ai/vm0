@@ -1914,12 +1914,15 @@
       "create": {
         "addStyle": "Aggiungi stile",
         "addTemplate": "Aggiungi modello",
+        "chooseScene": "Scegli cosa creare",
         "chooseType": "Scegli un tipo",
         "description": "Presentazioni, video e immagini",
         "exit": "Esci dalla modalità creazione",
         "image": "Crea immagine",
+        "imageDescription": "Trasforma un'idea in un'immagine",
         "imagePlaceholder": "Descrivi l’immagine che vuoi creare…",
         "presentation": "Crea presentazione",
+        "presentationDescription": "Diapositive per la tua storia",
         "presentationPlaceholder": "Di cosa tratta la tua presentazione?",
         "question": "Cosa vorresti realizzare?",
         "settingsAdjusted": "Alcune impostazioni video sono state adattate a questo modello",
@@ -1928,6 +1931,7 @@
         "slideCountRange": "{{range}} diapositive",
         "title": "Crea",
         "video": "Crea video",
+        "videoDescription": "Metti in movimento le tue idee",
         "videoPlaceholder": "Descrivi il video che vuoi creare…"
       },
       "createWorkflow": "Crea flusso di lavoro",
