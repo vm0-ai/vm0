@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.651.1](https://github.com/vm0-ai/vm0/compare/core-v8.651.0...core-v8.651.1) (2026-09-10)
+
+
+### Refactoring
+
+* remove final obsolete goal source references ([#33336](https://github.com/vm0-ai/vm0/issues/33336)) ([8ae8492](https://github.com/vm0-ai/vm0/commit/8ae84922a0556340df38b0be2197f55614c0c4f4))
+
 ## [8.651.0](https://github.com/vm0-ai/vm0/compare/core-v8.650.0...core-v8.651.0) (2026-09-10)
 
 
