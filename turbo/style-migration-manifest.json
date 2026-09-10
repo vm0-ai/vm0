@@ -221,10 +221,25 @@
         }
       ],
       "pullRequest": "https://github.com/vm0-ai/vm0/pull/32873"
+    },
+    {
+      "id": "chat-emoji-font",
+      "family": "local-controls",
+      "tokens": ["okou-emoji"],
+      "consumers": ["apps/platform/src/views/okou-page/chat-thread-page.tsx"],
+      "cases": [
+        "chat-emoji-light",
+        "chat-emoji-dark",
+        "chat-emoji-narrow",
+        "chat-emoji-narrow-dark"
+      ],
+      "status": "planned",
+      "evidence": []
     }
   ],
   "caseFiles": [
     "../e2e/playwright/style-migration/cases.json",
-    "../e2e/playwright/style-migration/tone-cases.json"
+    "../e2e/playwright/style-migration/tone-cases.json",
+    "../e2e/playwright/style-migration/chat-emoji-cases.json"
   ]
 }

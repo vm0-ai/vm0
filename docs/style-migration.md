@@ -219,3 +219,23 @@ The corresponding source passed 27 focused page tests, App/UI/E2E types,
 formatting, and the [PR CI pipeline](https://github.com/vm0-ai/vm0/actions/runs/34328666624).
 This is bounded Chromium acceptance; the earlier native and motion exclusions
 remain in force.
+
+## Chat emoji font batch
+
+`chat-emoji-cases.json` and `run-chat-emoji.ts` cover the real chat icon trigger,
+emoji preview and emoji grid in Light/Dark desktop and narrow DPR 2 Chromium.
+Run `pnpm exec tsx playwright/style-migration/run-chat-emoji.ts` from `e2e`, using
+the standard App/API origin, source/build, private storage-state and output
+arguments, plus `--api-build` with the full API deployment SHA.
+
+The isolated TEST account signs in normally. `chat-emoji-fixture.ts` controls
+empty thread metadata, preferences, onboarding, feature switches and header
+context at both fetch and inert HTML bootstrap boundaries. It enables
+`chatThreadHeaderActions` and disables `_realAgentInPreview`; rename and read
+requests stay inside the fixture. No Agent run, connector authorization or
+purchase is performed. The production emoji catalog is unchanged. Each case
+checks colorful emoji, a dual-presentation CJK symbol, hover preview, keyboard
+activation, reload, removing the icon, text fallback and empty search.
+The existing capture, bootstrap and image helpers and their rounding limits
+remain unchanged. Before modifying business styles, capture and archive a
+successful BEFORE/A-A pair with frozen runner, fixture and case hashes.
