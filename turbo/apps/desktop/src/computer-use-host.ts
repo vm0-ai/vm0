@@ -270,6 +270,7 @@ export class ComputerUseHostRuntime {
   private commandExecutionRunning = false;
   private draining = false;
   private sessionGeneration = 0;
+  private registrationController: AbortController | null = null;
   private pauseGeneration = 0;
   private commandDrained = createComputerUseDrain();
   private readonly commandRequests = new Set<Promise<unknown>>();
@@ -339,6 +340,7 @@ export class ComputerUseHostRuntime {
 
   async stop(): Promise<void> {
     this.running = false;
+    this.registrationController?.abort();
     for (const controller of this.reportingControllers) controller.abort();
     this.sessionGeneration++;
     this.pauseGeneration++;
@@ -811,14 +813,22 @@ export class ComputerUseHostRuntime {
     this.setState({ status: "connecting", lastError: null });
     const runtimeBody = await this.runtimeBody();
     if (!this.running || generation !== this.sessionGeneration) return null;
+    const registration = new AbortController();
+    this.registrationController = registration;
     const response = await this.sessionFetch(
       `${this.apiBaseUrl}/api/computer-use/hosts/start`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(runtimeBody),
+        // A background auth refresh can retire this runtime while fetching a
+        // new bearer. Its original registration must not retry after retirement.
+        signal: registration.signal,
       },
-    );
+    ).finally(() => {
+      if (this.registrationController === registration)
+        this.registrationController = null;
+    });
     if (!this.running || generation !== this.sessionGeneration) {
       if (response.ok) {
         const body = (await response.json()) as ComputerUseHostStartResponse;

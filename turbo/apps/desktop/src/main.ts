@@ -560,6 +560,8 @@ function getAuthSession(): DesktopAuthSession {
       return await authWindow.run(request);
     },
     onChange: notifyAuthChanged,
+    onBackgroundRefresh: (event) =>
+      computerUseController.handleBackgroundAuthRefresh(event),
     onAuthCompleted: maybeStartComputerUseAfterAuth,
   });
 
