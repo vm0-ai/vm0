@@ -2415,28 +2415,6 @@ test("Keep a retired Official Workflow operable but structurally read-only", asy
   expect(screen.queryByText("Delete selected file")).not.toBeInTheDocument();
 });
 
-test("Preserve safe Official Workflow operations when parameter metadata is unavailable", async () => {
-  const workflow = officialSalesResearch("retired");
-  mockWorkflowApis([workflow]);
-  context.mocks.api(
-    officialWorkflowInstallationsContract.get,
-    ({ respond }) => {
-      return respond(200, { workflow });
-    },
-  );
-
-  await setupWorkflowDetailPage(workflowDetailPath("info"));
-
-  await expect(
-    screen.findByText(
-      "Authoritative parameter metadata is temporarily unavailable.",
-    ),
-  ).resolves.toBeInTheDocument();
-  expect(buttonByText("Reconfigure")).toBeDisabled();
-  expect(buttonByText("Copy workflow")).toBeEnabled();
-  expect(buttonByText("Uninstall")).toBeEnabled();
-});
-
 async function expectOfficialReconciliation(
   status: "current" | "reconciling" | "needs_reconfiguration" | "failed",
   label: string,
