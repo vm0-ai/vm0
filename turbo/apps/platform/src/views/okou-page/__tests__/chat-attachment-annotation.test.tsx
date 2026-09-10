@@ -1,5 +1,5 @@
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
@@ -157,8 +157,7 @@ test("A tool shortcut works on open and text is typed onto the image", async () 
   await user.keyboard("t");
   clickSurface(surface, 7);
 
-  const field = await screen.findByTestId("annotation-text-editor");
-  const input = within(field).getByRole("textbox");
+  const input = await screen.findByLabelText("Type here");
   await waitFor(() => {
     expect(input).toHaveFocus();
   });
@@ -169,7 +168,7 @@ test("A tool shortcut works on open and text is typed onto the image", async () 
   await user.keyboard("Raise this");
   await user.keyboard("{Enter}");
 
-  expect(screen.queryByTestId("annotation-text-editor")).toBeNull();
+  expect(screen.queryByLabelText("Type here")).toBeNull();
   expect(screen.getByTestId("annotation-mark-1")).toHaveTextContent(
     "Raise this",
   );
@@ -195,14 +194,66 @@ test("A text mark nobody typed into is discarded on Escape", async () => {
   await user.keyboard("t");
   clickSurface(surface, 8);
 
-  await screen.findByTestId("annotation-text-editor");
+  await screen.findByLabelText("Type here");
   await expect(findNamedButton("Attach marks")).resolves.toBeEnabled();
 
   await user.keyboard("{Escape}");
 
-  expect(screen.queryByTestId("annotation-text-editor")).toBeNull();
+  expect(screen.queryByLabelText("Type here")).toBeNull();
   expect(screen.getByTestId("image-annotation-editor")).toBeVisible();
   await expect(findNamedButton("Attach marks")).resolves.toBeDisabled();
+});
+
+/**
+ * Two text marks share one editor element, so the caret has to follow the mark
+ * that was clicked rather than the first one that mounted.
+ */
+test("Clicking a second text mark moves the caret to it", async () => {
+  const image = draftAttachment("two-labels.png", {
+    annotatedFileId: "draft-two-labels-annotated",
+    annotations: {
+      marks: [
+        {
+          id: "first-label",
+          ordinal: 1,
+          shape: "text" as const,
+          at: { x: 0.2, y: 0.3 },
+          text: "Before",
+          ink: "#5E6AD2" as const,
+        },
+        {
+          id: "second-label",
+          ordinal: 2,
+          shape: "text" as const,
+          at: { x: 0.6, y: 0.5 },
+          text: "After",
+          ink: "#5E6AD2" as const,
+        },
+      ],
+    },
+  });
+  mockAttachmentChat(context, { draft: draftForAttachment(image, "") });
+
+  await setupPage({
+    context,
+    path: `/chats/${ATTACHMENT_THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerImageAnnotation]: true },
+  });
+
+  await openAnnotationEditor("two-labels.png");
+  fireEvent.click(screen.getByTestId("annotation-mark-1"));
+
+  const first = await screen.findByDisplayValue("Before");
+  await waitFor(() => {
+    expect(first).toHaveFocus();
+  });
+
+  fireEvent.click(screen.getByTestId("annotation-mark-2"));
+
+  const second = await screen.findByDisplayValue("After");
+  await waitFor(() => {
+    expect(second).toHaveFocus();
+  });
 });
 
 test("A confirmed annotation blocks sending while its image uploads", async () => {
