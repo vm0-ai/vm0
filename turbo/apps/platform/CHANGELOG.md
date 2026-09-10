@@ -11,6 +11,14 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.884.3](https://github.com/vm0-ai/vm0/compare/app-v0.884.2...app-v0.884.3) (2026-09-10)
+
+
+### Refactoring
+
+* **platform:** own welcome thread creation by the settings action signal ([#33327](https://github.com/vm0-ai/vm0/issues/33327)) ([1cd0ae2](https://github.com/vm0-ai/vm0/commit/1cd0ae24f034db0360d0f43519131c1f1ea83c58))
+* **platform:** restore DOM-owned chat container refs ([#33328](https://github.com/vm0-ai/vm0/issues/33328)) ([54618ed](https://github.com/vm0-ai/vm0/commit/54618ed11c8319eea57f6b657a48ac5467652ccb))
+
 ## [0.884.2](https://github.com/vm0-ai/vm0/compare/app-v0.884.1...app-v0.884.2) (2026-09-10)
 
 
