@@ -13,7 +13,7 @@ import { accept } from "../lib/accept.ts";
 import { apiClient$ } from "./api-client.ts";
 import { resolveApiBase } from "./api-base.ts";
 import { isAuthenticatedAttachmentUrl } from "./attachment-resource-url.ts";
-import { pageSignal$ } from "./page-signal.ts";
+import { pageVersion$ } from "./page-signal.ts";
 
 function artifactSharingTarget(url: string): ArtifactShareTarget | null {
   const id = privateHostedDeploymentId(url, resolveApiBase());
@@ -52,17 +52,38 @@ const resolveSharingTarget$ = command(
   },
 );
 
-// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
-const pageStatusState$ = computed((get) => {
-  get(pageSignal$);
-  return state<Readonly<Record<string, ArtifactShareStatus>>>({});
+interface PageArtifactShareStatuses {
+  readonly pageVersion: number;
+  readonly statuses: Readonly<Record<string, ArtifactShareStatus>>;
+}
+
+const pageStatusState$ = state<PageArtifactShareStatuses>({
+  pageVersion: -1,
+  statuses: {},
 });
 export const artifactShareStatuses$ = computed((get) => {
-  return get(get(pageStatusState$));
+  const current = get(pageStatusState$);
+  return current.pageVersion === get(pageVersion$) ? current.statuses : {};
 });
+
+function withArtifactShareStatus(
+  current: PageArtifactShareStatuses,
+  pageVersion: number,
+  url: string,
+  status: ArtifactShareStatus,
+): PageArtifactShareStatuses {
+  return {
+    pageVersion,
+    statuses: {
+      ...(current.pageVersion === pageVersion ? current.statuses : {}),
+      [url]: status,
+    },
+  };
+}
 
 export const loadArtifactShare$ = command(
   async ({ get, set }, url: string, signal: AbortSignal) => {
+    const pageVersion = get(pageVersion$);
     const target = await set(resolveSharingTarget$, url, signal);
     if (!target) {
       return;
@@ -75,11 +96,11 @@ export const loadArtifactShare$ = command(
       [200],
       signal,
     );
-    set(get(pageStatusState$), (previous) => {
-      return {
-        ...previous,
-        [url]: response.body,
-      };
+    if (get(pageVersion$) !== pageVersion) {
+      return;
+    }
+    set(pageStatusState$, (current) => {
+      return withArtifactShareStatus(current, pageVersion, url, response.body);
     });
   },
 );
@@ -94,6 +115,7 @@ export const shareArtifact$ = command(
     signal: AbortSignal,
   ) => {
     signal.throwIfAborted();
+    const pageVersion = get(pageVersion$);
     const status = get(artifactShareStatuses$)[args.url];
     if (
       status?.url &&
@@ -116,11 +138,16 @@ export const shareArtifact$ = command(
       signal,
     );
     signal.throwIfAborted();
-    set(get(pageStatusState$), (previous) => {
-      return {
-        ...previous,
-        [args.url]: response.body,
-      };
+    if (get(pageVersion$) !== pageVersion) {
+      return null;
+    }
+    set(pageStatusState$, (current) => {
+      return withArtifactShareStatus(
+        current,
+        pageVersion,
+        args.url,
+        response.body,
+      );
     });
     return response.body.url;
   },

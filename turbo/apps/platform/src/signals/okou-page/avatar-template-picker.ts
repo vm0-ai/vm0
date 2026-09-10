@@ -55,10 +55,7 @@ interface OffsetCatalogPage<T> {
   readonly hasNext: boolean;
 }
 
-type LoadOffsetCatalogPage<T> = (
-  page: number,
-  signal?: AbortSignal,
-) => Promise<OffsetCatalogPage<T>>;
+type LoadOffsetCatalogPage<T> = (page: number) => Promise<OffsetCatalogPage<T>>;
 
 function emptyAvatarTemplateFilters(): AvatarTemplateFilters {
   return {
@@ -296,7 +293,7 @@ function createOffsetCatalogPagingSignals<T>(
       });
       set(internalLoadingMore$, true);
       const loadPage = get(loadPage$);
-      const next = await onRejection(loadPage(nextPage, signal), () => {
+      const next = await onRejection(loadPage(nextPage), () => {
         if (get(internalGeneration$) !== generation) {
           return;
         }
@@ -365,21 +362,18 @@ function createAvatarTemplateCatalogSignals() {
   const internalFilters$ = state<AvatarTemplateFilters>(
     emptyAvatarTemplateFilters(),
   );
-  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const loadPage$ = computed(
     (get): LoadOffsetCatalogPage<AvatarVideoAvatar> => {
       const client = get(apiClient$)(avatarVideoContract, {
         apiBase: "api",
       });
       const filters = get(internalFilters$);
-      return async (page, signal) => {
+      return async (page) => {
         const result = await accept(
           client.avatars({
             query: avatarCatalogQuery(filters, page),
-            ...(signal ? { fetchOptions: { signal } } : {}),
           }),
           [200],
-          signal,
         );
         return {
           items: result.body.avatars,
@@ -423,20 +417,17 @@ function createAvatarTemplateVoiceCatalogSignals() {
   const internalVoiceFilters$ = state<AvatarTemplateVoiceFilters>(
     emptyAvatarTemplateVoiceFilters(),
   );
-  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const loadPage$ = computed((get): LoadOffsetCatalogPage<AvatarVideoVoice> => {
     const client = get(apiClient$)(avatarVideoContract, {
       apiBase: "api",
     });
     const filters = get(internalVoiceFilters$);
-    return async (page, signal) => {
+    return async (page) => {
       const result = await accept(
         client.voices({
           query: voiceCatalogQuery(filters, page),
-          ...(signal ? { fetchOptions: { signal } } : {}),
         }),
         [200],
-        signal,
       );
       return {
         items: result.body.voices,

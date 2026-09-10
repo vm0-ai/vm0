@@ -1,10 +1,8 @@
-import type { Computed } from "ccstate";
 import { useGet, useSet } from "ccstate-react";
 
 import type { AuthV2Navigation } from "../../../signals/auth-v2/navigation.ts";
 import type { AuthV2SignInSignals } from "../../../signals/auth-v2/sign-in-flow.ts";
 import type { AuthBrandContext } from "../../../signals/auth.ts";
-import { pageSignal$ } from "../../../signals/page-signal.ts";
 import { AuthV2IdentityPreview } from "../auth-v2-identity-preview.tsx";
 import { AuthV2Shell } from "../auth-v2-shell.tsx";
 import {
@@ -21,13 +19,11 @@ import {
 export function AuthV2SignInCard({
   authBrand,
   navigation,
-  operationSignal$ = pageSignal$,
   signals,
   surface = "page",
 }: {
   readonly authBrand: AuthBrandContext;
   readonly navigation: AuthV2Navigation;
-  readonly operationSignal$?: Computed<AbortSignal>;
   readonly signals: AuthV2SignInSignals;
   readonly surface?: "dialog" | "page";
 }) {
@@ -83,7 +79,6 @@ export function AuthV2SignInCard({
     >
       <SignInCardContent
         copy={copy}
-        operationSignal$={operationSignal$}
         signUpHref={signUpHref}
         signals={signals}
         state={flowState}

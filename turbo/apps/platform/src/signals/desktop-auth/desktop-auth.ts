@@ -165,12 +165,9 @@ const activateDesktopOrganization$ = command(
   },
 );
 
-function createDesktopMemberships(lifetime: AbortSignal) {
-  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
+function createDesktopMemberships() {
   return computed(async (get) => {
-    const signal = lifetime;
     const clerk = await get(clerk$);
-    signal.throwIfAborted();
     if (!clerk.user) {
       return [];
     }
@@ -179,14 +176,10 @@ function createDesktopMemberships(lifetime: AbortSignal) {
     const memberships = [];
     let offset = 0;
     for (;;) {
-      const page = await waitForDesktopOperation(
-        clerk.user.getOrganizationMemberships({
-          initialPage: Math.floor(offset / 100) + 1,
-          pageSize: 100,
-        }),
-        signal,
-      );
-      signal.throwIfAborted();
+      const page = await clerk.user.getOrganizationMemberships({
+        initialPage: Math.floor(offset / 100) + 1,
+        pageSize: 100,
+      });
       memberships.push(...page.data);
       offset += page.data.length;
       if (offset >= page.total_count || page.data.length === 0) {
@@ -362,12 +355,11 @@ function createDesktopSelection(
 function createDesktopAuthSignals(
   mode: DesktopAuthRoute,
   params: URLSearchParams,
-  lifetime: AbortSignal,
 ) {
   const phase$ = state<DesktopAuthPhase>("connecting");
   const selectedOrganization$ = state<string | null>(null);
   const callbackUrl$ = state<string | null>(null);
-  const memberships$ = createDesktopMemberships(lifetime);
+  const memberships$ = createDesktopMemberships();
 
   const callback$ = createDesktopCallback(params, phase$, callbackUrl$);
 
@@ -447,7 +439,7 @@ export type DesktopAuthSignals = ReturnType<typeof createDesktopAuthSignals>;
 export function setupDesktopAuthPage(mode: DesktopAuthRoute) {
   return command(async ({ get, set }, signal: AbortSignal) => {
     const params = new URLSearchParams(get(searchParams$));
-    const signals = createDesktopAuthSignals(mode, params, signal);
+    const signals = createDesktopAuthSignals(mode, params);
     set(updatePage$, createElement(DesktopAuthPage, { signals, mode }));
     await set(hideAppSkeleton$, signal);
     signal.throwIfAborted();

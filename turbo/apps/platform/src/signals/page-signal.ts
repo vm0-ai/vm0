@@ -1,9 +1,18 @@
 import { command, computed, state } from "ccstate";
 
 const innerPageSignal$ = state<AbortSignal | undefined>(undefined);
+const innerPageVersion$ = state(0);
 
 export const setPageSignal$ = command(({ set }, signal: AbortSignal) => {
   set(innerPageSignal$, signal);
+  set(innerPageVersion$, (version) => {
+    return version + 1;
+  });
+});
+
+/** A signal-free invalidation key for values scoped to one page setup. */
+export const pageVersion$ = computed((get) => {
+  return get(innerPageVersion$);
 });
 
 // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership

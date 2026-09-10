@@ -1,4 +1,4 @@
-import { command, computed, state, type Computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 
 import { captureAuthV2DiagnosticEvent } from "../../lib/posthog.ts";
 import {
@@ -18,7 +18,6 @@ import { resetSignal } from "../utils.ts";
 
 export interface AuthV2AddAccountDialogModel {
   readonly continuationSignals: AuthV2ContinuationSignals;
-  readonly operationSignal$: Computed<AbortSignal>;
   readonly platformContext: AuthV2PlatformContext;
   readonly signInSignals: AuthV2SignInSignals;
 }
@@ -92,14 +91,8 @@ export const openAuthV2AddAccountDialog$ = command(
         set(signInSignals.restart$);
       }),
     };
-    // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
-    const operationSignal$ = computed(() => {
-      return dialogSignal;
-    });
-
     set(internalDialogModel$, {
       continuationSignals,
-      operationSignal$,
       platformContext,
       signInSignals,
     });

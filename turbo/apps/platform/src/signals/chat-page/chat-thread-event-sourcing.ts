@@ -165,13 +165,9 @@ interface ChatThreadEventSyncBarrier {
   work: Promise<void> | null;
 }
 
-// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
-const chatThreadEventSyncBarrier$ = computed(
-  (get): ChatThreadEventSyncBarrier => {
-    get(rootSignal$);
-    return { work: null };
-  },
-);
+const chatThreadEventSyncBarrier$ = computed((): ChatThreadEventSyncBarrier => {
+  return { work: null };
+});
 
 const optimisticChatThreadCreateIds$ = computed((get): ReadonlySet<string> => {
   return new Set(

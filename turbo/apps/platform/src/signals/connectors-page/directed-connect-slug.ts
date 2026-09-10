@@ -16,7 +16,6 @@ import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { agents$ } from "../agent.ts";
-import { pageSignal$ } from "../page-signal.ts";
 import { resetManualGrantForm$ } from "../okou-page/settings/connectors.ts";
 
 /**
@@ -60,7 +59,6 @@ export const directedConnectAccountTarget$ = computed(
   },
 );
 
-// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 export const directedConnectExactAccount$ = computed(
   async (get): Promise<ConnectorAccountConnection | null> => {
     const target = get(directedConnectAccountTarget$);
@@ -68,16 +66,13 @@ export const directedConnectExactAccount$ = computed(
     if (target.kind !== "exact" || !connectorSlug) {
       return null;
     }
-    const signal = get(pageSignal$);
     const result = await accept(
       get(apiClient$)(connectorAccountsContract).connection({
         params: { connectionId: target.connectionId },
         query: { kind: "builtin", connectorSlug },
-        fetchOptions: { signal },
       }),
       [200, 404],
     );
-    signal.throwIfAborted();
     return result.status === 200 ? result.body : null;
   },
 );

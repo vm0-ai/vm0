@@ -6,17 +6,14 @@ import {
 import { command, computed, state } from "ccstate";
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
-import { pageSignal$ } from "../page-signal.ts";
 import { onRef } from "../utils.ts";
 
 function createIntroVideoStyleGallerySignals() {
   const internalReload$ = state(0);
   const internalPreviewId$ = state<string | null>(null);
   return {
-    // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
     catalog$: computed(async (get) => {
       get(internalReload$);
-      const signal = get(pageSignal$);
       const client = get(apiClient$)(introVideoPresenterContract, {
         apiBase: "api",
       });
@@ -31,10 +28,8 @@ function createIntroVideoStyleGallerySignals() {
               pageSize: 100,
               ...(token === null ? {} : { token }),
             },
-            fetchOptions: { signal },
           }),
           [200],
-          signal,
         );
         styles.push(...result.body.styles);
         token = result.body.hasMore ? result.body.nextToken : null;
