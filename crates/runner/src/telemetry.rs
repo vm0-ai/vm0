@@ -1534,7 +1534,7 @@ mod tests {
             .expect("oom evidence upload failure should be logged");
         assert_eq!(event.level, Level::WARN);
         assert_eq!(event.fields["reason"], "http_status");
-        assert_eq!(event.fields["http_status"], "Some(400)");
+        assert_eq!(event.fields["http_status"], "400");
         let event_debug = format!("{event:#?}");
         assert!(!event_debug.contains(RESPONSE_BODY_SECRET));
         assert!(!event_debug.contains(SANDBOX_ID));
