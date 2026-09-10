@@ -2543,14 +2543,6 @@
       "workflows": {
         "back": "Workflows entdecken",
         "browse": "Workflows entdecken",
-        "catalogDescription": "Wählen Sie ein Ergebnis und passen Sie den Workflow an.",
-        "catalogTitle": "Finden Sie einen Workflow für Ihren Alltag",
-        "categories": {
-          "all": "Alle",
-          "business": "Geschäft",
-          "daily": "Arbeitsalltag",
-          "operations": "Betrieb"
-        },
         "close": "Schließen",
         "contextPrefix": "Das ist mir wichtig: {{context}}",
         "heading": "Welche Aufgabe möchten Sie abgeben?",

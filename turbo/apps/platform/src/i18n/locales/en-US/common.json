@@ -2543,14 +2543,6 @@
       "workflows": {
         "back": "Browse workflows",
         "browse": "Browse workflows",
-        "catalogDescription": "Choose a result, then make the workflow your own.",
-        "catalogTitle": "Find a workflow for your day",
-        "categories": {
-          "all": "All",
-          "business": "Business",
-          "daily": "Daily work",
-          "operations": "Operations"
-        },
         "close": "Close",
         "contextPrefix": "What matters to me: {{context}}",
         "heading": "What would you like to take off your plate?",

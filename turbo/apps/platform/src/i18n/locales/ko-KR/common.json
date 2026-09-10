@@ -2535,14 +2535,6 @@
       "workflows": {
         "back": "워크플로 둘러보기",
         "browse": "워크플로 둘러보기",
-        "catalogDescription": "원하는 결과를 고르고 나에게 맞게 조정하세요.",
-        "catalogTitle": "일상에 맞는 워크플로 찾기",
-        "categories": {
-          "all": "전체",
-          "business": "비즈니스",
-          "daily": "일상 업무",
-          "operations": "운영"
-        },
         "close": "닫기",
         "contextPrefix": "중요한 사항: {{context}}",
         "heading": "어떤 일을 맡기고 싶으세요?",

@@ -18,7 +18,6 @@ import {
   DialogHeader,
   DialogTitle,
   Textarea,
-  ToggleButton,
   surfaceVariants,
 } from "@okouai/ui";
 import { cn } from "@okouai/ui/lib/utils";
@@ -27,7 +26,6 @@ import type { ComposerSignals } from "../../signals/okou-page/composer-signals.t
 import {
   WORKFLOW_RECOMMENDATIONS,
   type WorkflowRecommendation,
-  type WorkflowRecommendationCategory,
 } from "../../signals/okou-page/composer-workflow-recommendations.ts";
 import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -38,12 +36,6 @@ import { WorkflowResultPreview } from "./workflow-result-preview.tsx";
 
 const CARDS_PER_PAGE = 3;
 const DETAIL_ORDER = ["one", "two", "three"] as const;
-const CATEGORIES = [
-  "all",
-  "daily",
-  "operations",
-  "business",
-] as const satisfies readonly WorkflowRecommendationCategory[];
 
 function WorkflowConnectors({
   item,
@@ -175,54 +167,6 @@ function useWorkflowActions(signals: ComposerSignals) {
   };
 }
 
-function WorkflowCatalog({ signals }: { readonly signals: ComposerSignals }) {
-  const { t } = useTranslation();
-  const categories = t(
-    ($) => {
-      return $.chat.taskChips.workflows.categories;
-    },
-    { returnObjects: true },
-  );
-  const category = useGet(signals.taskChips.workflows.category$);
-  const setCategory = useSet(signals.taskChips.workflows.setCategory$);
-  const open = useSet(signals.taskChips.workflows.open$);
-  return (
-    <div className="space-y-5 pb-2">
-      <div className="flex flex-wrap gap-2">
-        {CATEGORIES.map((value) => {
-          return (
-            <ToggleButton
-              key={value}
-              selected={category === value}
-              onClick={() => {
-                setCategory(value);
-              }}
-              className="rounded-full px-3 py-1.5 text-xs"
-            >
-              {categories[value]}
-            </ToggleButton>
-          );
-        })}
-      </div>
-      <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-        {WORKFLOW_RECOMMENDATIONS.filter((item) => {
-          return category === "all" || item.group === category;
-        }).map((item) => {
-          return (
-            <WorkflowCard
-              key={item.id}
-              item={item}
-              onSelect={() => {
-                open(item.id);
-              }}
-            />
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function WorkflowDetailNavigation({
   signals,
   item,
@@ -238,6 +182,8 @@ function WorkflowDetailNavigation({
     { returnObjects: true },
   );
   const open = useSet(signals.taskChips.workflows.open$);
+  const close = useSet(signals.taskChips.workflows.close$);
+  const openTemplates = useSet(signals.template.openTemplatePicker$);
   const move = (offset: number) => {
     const index = WORKFLOW_RECOMMENDATIONS.findIndex((candidate) => {
       return candidate.id === item.id;
@@ -255,7 +201,8 @@ function WorkflowDetailNavigation({
         variant="quiet"
         size="xs"
         onClick={() => {
-          open("catalog");
+          close();
+          openTemplates({ kind: "insert", category: "workflow" });
         }}
         className="gap-1.5 font-normal"
       >
@@ -441,7 +388,6 @@ function WorkflowDialog({ signals }: { readonly signals: ComposerSignals }) {
   const item = WORKFLOW_RECOMMENDATIONS.find((candidate) => {
     return candidate.id === view;
   });
-  const catalog = view === "catalog";
   return (
     <Dialog
       open={view !== null}
@@ -452,19 +398,14 @@ function WorkflowDialog({ signals }: { readonly signals: ComposerSignals }) {
       }}
       onOpenChangeComplete={onCloseComplete}
     >
-      <DialogContent maxWidth={catalog ? "6xl" : "4xl"} closeLabel={copy.close}>
+      <DialogContent maxWidth="4xl" closeLabel={copy.close}>
         <DialogHeader className="pr-10">
-          <DialogTitle>
-            {catalog ? copy.catalogTitle : item && copy.items[item.id].name}
-          </DialogTitle>
+          <DialogTitle>{item && copy.items[item.id].name}</DialogTitle>
           <DialogDescription>
-            {catalog
-              ? copy.catalogDescription
-              : item && copy.items[item.id].description}
+            {item && copy.items[item.id].description}
           </DialogDescription>
         </DialogHeader>
         <DialogBody>
-          {catalog && <WorkflowCatalog signals={signals} />}
           {item && (
             <WorkflowDetail signals={signals} item={item} onUse={useWorkflow} />
           )}
@@ -489,6 +430,7 @@ export function ComposerWorkflowRecommendations({
   const page = useGet(signals.taskChips.ideaPages$).workflow;
   const nextIdeas = useSet(signals.taskChips.nextIdeas$);
   const open = useSet(signals.taskChips.workflows.open$);
+  const openTemplates = useSet(signals.template.openTemplatePicker$);
   const pageItems = WORKFLOW_RECOMMENDATIONS.slice(
     page * CARDS_PER_PAGE,
     (page + 1) * CARDS_PER_PAGE,
@@ -508,7 +450,7 @@ export function ComposerWorkflowRecommendations({
           size="xs"
           className="gap-1.5 font-normal"
           onClick={() => {
-            open("catalog");
+            openTemplates({ kind: "insert", category: "workflow" });
           }}
         >
           {copy.browse}

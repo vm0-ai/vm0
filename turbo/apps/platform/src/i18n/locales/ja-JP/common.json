@@ -2535,14 +2535,6 @@
       "workflows": {
         "back": "ワークフローを見る",
         "browse": "ワークフローを見る",
-        "catalogDescription": "欲しい結果を選んで、自分に合うワークフローにしましょう。",
-        "catalogTitle": "毎日に役立つワークフローを探す",
-        "categories": {
-          "all": "すべて",
-          "business": "ビジネス",
-          "daily": "日々の仕事",
-          "operations": "業務管理"
-        },
         "close": "閉じる",
         "contextPrefix": "重視したいこと：{{context}}",
         "heading": "どの仕事を任せたいですか？",

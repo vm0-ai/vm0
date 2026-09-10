@@ -2588,14 +2588,6 @@
       "workflows": {
         "back": "Parcourir les workflows",
         "browse": "Parcourir les workflows",
-        "catalogDescription": "Choisissez un résultat, puis adaptez le workflow à vos besoins.",
-        "catalogTitle": "Trouvez un workflow pour votre quotidien",
-        "categories": {
-          "all": "Tout",
-          "business": "Entreprise",
-          "daily": "Travail quotidien",
-          "operations": "Opérations"
-        },
         "close": "Fermer",
         "contextPrefix": "Ce qui compte pour moi : {{context}}",
         "heading": "Quelle tâche souhaitez-vous déléguer ?",

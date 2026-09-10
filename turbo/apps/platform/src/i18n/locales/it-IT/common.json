@@ -2588,14 +2588,6 @@
       "workflows": {
         "back": "Esplora i workflow",
         "browse": "Esplora i workflow",
-        "catalogDescription": "Scegli un risultato e adatta il workflow alle tue esigenze.",
-        "catalogTitle": "Trova un workflow per la tua giornata",
-        "categories": {
-          "all": "Tutti",
-          "business": "Business",
-          "daily": "Lavoro quotidiano",
-          "operations": "Operazioni"
-        },
         "close": "Chiudi",
         "contextPrefix": "Per me è importante: {{context}}",
         "heading": "Quale attività vuoi delegare?",
