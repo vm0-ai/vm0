@@ -1268,6 +1268,17 @@ fn successful_containment_evidence_diagnostic(
             .saturating_add(1)
             > u16::MAX as usize
         {
+            // Dropping evidence keeps the real diagnostic intact, but the loss
+            // itself must be observable rather than inferred from its absence.
+            log(
+                "WARN",
+                &format!(
+                    "exec operation: oom evidence omitted from terminal envelope label={} diagnostic_len={} evidence_len={}",
+                    truncate_command_preview(label),
+                    diagnostic.len(),
+                    evidence.len(),
+                ),
+            );
             return diagnostic;
         }
         return if diagnostic.is_empty() {
@@ -2315,9 +2326,16 @@ fn exec_termination_is_notable(termination: ExecTermination, expected_exit_codes
     )
 }
 
-fn exec_terminal_log_reason(slow: bool, notable: bool) -> Option<&'static str> {
+fn exec_terminal_log_reason(
+    slow: bool,
+    notable: bool,
+    oom_evidence_proof: bool,
+) -> Option<&'static str> {
     if notable {
         return Some("notable");
+    }
+    if oom_evidence_proof {
+        return Some("oom_evidence");
     }
     if slow {
         return Some("slow");
@@ -2331,15 +2349,18 @@ struct ExecTerminalLogMessageInput<'a> {
     termination: ExecTermination,
     stdout_result: &'a BoundedDrainResult,
     stderr_result: &'a BoundedDrainResult,
-    diagnostic: &'a str,
+    diagnostic_present: bool,
+    oom_evidence: bool,
+    oom_evidence_proof: bool,
     slow: bool,
     notable: bool,
 }
 
 fn exec_terminal_log_message(input: ExecTerminalLogMessageInput<'_>) -> Option<String> {
-    let terminal_reason = exec_terminal_log_reason(input.slow, input.notable)?;
+    let terminal_reason =
+        exec_terminal_log_reason(input.slow, input.notable, input.oom_evidence_proof)?;
     Some(format!(
-        "exec result: seq={} label={} process_class={} operation_kind={} elapsed_ms={} slow={} notable={} terminal_reason={} termination={:?} stdout_len={} stderr_len={} stdout_truncated={} stderr_truncated={} diagnostic_present={}",
+        "exec result: seq={} label={} process_class={} operation_kind={} elapsed_ms={} slow={} notable={} terminal_reason={} termination={:?} stdout_len={} stderr_len={} stdout_truncated={} stderr_truncated={} diagnostic_present={} oom_evidence={} oom_evidence_proof={}",
         input.request.seq,
         truncate_command_preview(&input.request.label),
         input.request.process_class(),
@@ -2353,7 +2374,9 @@ fn exec_terminal_log_message(input: ExecTerminalLogMessageInput<'_>) -> Option<S
         input.stderr_result.captured.as_ref().map_or(0, Vec::len),
         input.stdout_result.capture_truncated,
         input.stderr_result.capture_truncated,
-        !input.diagnostic.is_empty(),
+        input.diagnostic_present,
+        input.oom_evidence,
+        input.oom_evidence_proof,
     ))
 }
 
@@ -2367,10 +2390,15 @@ fn log_exec_terminal_if_notable(
 ) {
     let elapsed = started.elapsed();
     let slow = elapsed >= EXEC_OPERATION_STAGE_SLOW_THRESHOLD;
+    // The terminal frame also transports bounded OOM metadata. Classify on the
+    // residual so an inspected-and-empty capture candidate is not reported as a
+    // diagnostic, and keep a broken envelope loud.
+    let split = guest_contracts::oom_evidence::split_diagnostic(diagnostic);
     let notable = exec_termination_is_notable(termination, &request.expected_exit_codes)
         || stdout_result.capture_truncated
         || stderr_result.capture_truncated
-        || !diagnostic.is_empty();
+        || split.is_actionable()
+        || split.malformed_lines > 0;
 
     if let Some(message) = exec_terminal_log_message(ExecTerminalLogMessageInput {
         request,
@@ -2378,7 +2406,9 @@ fn log_exec_terminal_if_notable(
         termination,
         stdout_result,
         stderr_result,
-        diagnostic,
+        diagnostic_present: split.is_actionable(),
+        oom_evidence: split.evidence.is_some(),
+        oom_evidence_proof: split.has_proof(),
         slow,
         notable,
     }) {
@@ -2769,7 +2799,9 @@ mod tests {
             termination: ExecTermination::Exited { exit_code: 0 },
             stdout_result: &stdout,
             stderr_result: &stderr,
-            diagnostic: "",
+            diagnostic_present: false,
+            oom_evidence: false,
+            oom_evidence_proof: false,
             slow: true,
             notable: false,
         })
@@ -2805,7 +2837,9 @@ mod tests {
             termination: ExecTermination::Exited { exit_code: 1 },
             stdout_result: &stdout,
             stderr_result: &stderr,
-            diagnostic: "diagnostic",
+            diagnostic_present: true,
+            oom_evidence: false,
+            oom_evidence_proof: false,
             slow: false,
             notable: true,
         })
@@ -2840,7 +2874,9 @@ mod tests {
                 termination: ExecTermination::Exited { exit_code: 0 },
                 stdout_result: &stdout,
                 stderr_result: &stderr,
-                diagnostic: "",
+                diagnostic_present: false,
+                oom_evidence: false,
+                oom_evidence_proof: false,
                 slow: false,
                 notable: false,
             })
