@@ -1,3 +1,7 @@
+import {
+  legacyGoogleAdsAttribution,
+  normalizeGoogleAdsAttribution,
+} from "@okouai/core/google-ads-attribution";
 import { command } from "ccstate";
 import {
   googleAdsAccountForAttribution,
@@ -130,12 +134,14 @@ const recordSignupInner$ = command(
       };
     }
 
-    const attribution: AdAttributionMetadata = bodyResult.data.attribution;
+    const attribution: AdAttributionMetadata = normalizeGoogleAdsAttribution(
+      bodyResult.data.attribution,
+    );
     await clerk.users.updateUserMetadata(auth.userId, {
       privateMetadata: {
         ...privateMetadata,
         [SIGNUP_ATTRIBUTION_KEY]: {
-          ...attribution,
+          ...legacyGoogleAdsAttribution(attribution),
           recorded_at: nowDate().toISOString(),
         },
       },

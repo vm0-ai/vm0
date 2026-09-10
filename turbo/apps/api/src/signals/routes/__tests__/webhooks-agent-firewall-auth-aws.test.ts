@@ -299,6 +299,7 @@ describe("AWS Sign-In refresh expiry", () => {
       failureReason: "reconnect_required",
     },
     { status: 400, code: "TOKEN_EXPIRED", failureReason: "reconnect_required" },
+    { status: 400, code: undefined, failureReason: "reconnect_required" },
     { status: 429, code: "TOKEN_EXPIRED", failureReason: "upstream_provider" },
     { status: 503, code: "TOKEN_EXPIRED", failureReason: "upstream_provider" },
   ])(

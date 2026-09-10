@@ -274,6 +274,54 @@ No expected image, mask or threshold changed. This is bounded Chromium
 acceptance; explicit sidebar readiness remains necessary before using the
 runner as an unattended gate.
 
+## Tone preview surfaces
+
+The `tone-preview-surfaces` batch covers the user sample bubble and its enclosing
+preview border in Agent profile settings. It replaces two legacy consumption
+sites with existing gray, foreground and surface-border utilities. The assistant
+bubble retains its separate Markdown and native Desktop selection contract;
+the shared legacy border definition remains while other consumers use it.
+
+`pnpm style:migration:tone-preview` uses `tone-preview-cases.json` and requires
+private storage state, an owned synthetic Agent fixture (`--agent-fixture`) and
+the TEST account's frozen feature-switch response (`--feature-fixture`). The
+`--sidebar-fixture` freezes its admin organization and free-tier billing status;
+desktop captures wait for the resulting Get Pro card after navigation and reload.
+Both browser requests and embedded App bootstrap responses use those fixtures.
+The 33 states cover four tones, hover, keyboard activation/focus, Discard,
+pending Save, successful Save and reload in desktop Light/Dark and narrow DPR 2.
+Real API persistence is checked separately; no Agent run is needed.
+
+The `tone-surface-rgba8-v1` observation protocol adds exact geometry and computed
+styles for the `tone-preview` and `tone-preview-user-message` semantic slots.
+Only the user bubble's background color is compared as the browser's exact
+8-bit sRGB canvas readback, including its alpha byte. Serialized alpha must also
+match exactly. Its raw computed CSS is
+also archived: Tailwind's `color-mix` and legacy `rgba` serialize differently.
+This records equivalence for the pinned 8-bit screenshot environment, not
+floating-point color or cross-browser equivalence. Other styles remain literal
+comparisons and the full-page `channel-rounding-v1` limits remain unchanged.
+Freeze and upload the unchanged BEFORE/A/A pair before replacing business
+classes, then replay the same runner, cases and fixtures on the PR deployment.
+
+[PR #33133](https://github.com/vm0-ai/vm0/pull/33133) froze its
+[BEFORE and unchanged-code replay](https://a.okou.io/0ey5ajo2g7.zip) before
+replacing either business class. All 33 states have zero raw changed pixels
+on unmigrated App/API build `047e880cc958225a79c2ebceb961718a0916d5c9`.
+The archive retains setup failures and the first replay's outer exit anomaly;
+the confirming replay completed normally with the same frozen protocol.
+
+The [AFTER archive](https://a.okou.io/uc3wow1q46.zip) and
+[comparison image](https://a.okou.io/seho80x6gx.png) record all 33 states with
+zero raw changed pixels and identical surface/control observations on App/API
+build `1a665b1d0b25311c4c98471c206212a64be79c0d`, from implementation source
+`a9ae349966e02c2db99aad68378a24b9cac31f8a`. Both artifacts were anonymously
+downloaded and hash-verified. Actual TEST API Save, reload, Discard and original
+tone restoration passed, as did all 18 existing Profile tests and the relevant
+static checks. The branch removes one token, two declarations and two legacy
+consumption sites. The batch remains implemented until the complete current-head
+CI and acceptance gates pass; inspect the PR for live CI status.
+
 ## Monochrome icon filter batch
 
 The independent `monochrome-icon-filter` batch covers only `ProviderIcon`,

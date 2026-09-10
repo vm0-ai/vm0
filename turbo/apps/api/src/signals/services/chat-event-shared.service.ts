@@ -172,7 +172,7 @@ async function assistantEventRunContextForRun(
     .where(and(eq(agentRuns.id, runId), isNotNull(agentRuns.triggerSource)))
     .limit(1);
   return {
-    goalId: await historicalRunGroupId(db, runId, signal),
+    goalId: await historicalRunGroupId(db, runId, undefined, signal),
     shouldAttemptFirstAssistantEventClaim:
       run !== undefined &&
       run.apiStartedAt !== null &&

@@ -1,3 +1,4 @@
+import { normalizeGoogleAdsAttribution } from "@okouai/core/google-ads-attribution";
 import {
   adAttributionMetadataSchema,
   type AdAttributionMetadata,
@@ -16,8 +17,8 @@ import { writeDb$ } from "../external/db";
 const ORG_ATTRIBUTION_FIELDS = [
   ["source_type", "acquisitionSourceType"],
   ["vm0_source", "acquisitionFirstPartySource"],
-  ["vm0_campaign_id", "acquisitionCampaignId"],
-  ["vm0_ad_group_id", "acquisitionAdGroupId"],
+  ["okou_campaign_id", "acquisitionCampaignId"],
+  ["okou_ad_group_id", "acquisitionAdGroupId"],
   ["utm_campaign", "acquisitionCampaign"],
   ["utm_source", "acquisitionUtmSource"],
   ["utm_medium", "acquisitionUtmMedium"],
@@ -52,7 +53,9 @@ export function parseStoredSignupAttribution(
 
   const { recorded_at: _recordedAt, ...metadata } = value;
   const parsed = adAttributionMetadataSchema.safeParse(metadata);
-  return parsed.success ? parsed.data : undefined;
+  return parsed.success
+    ? normalizeGoogleAdsAttribution(parsed.data)
+    : undefined;
 }
 
 export const googleAdsAccountForUser$ = command(
@@ -91,8 +94,9 @@ function orgAttributionValues(
   attribution: Readonly<Record<string, string | undefined>> | undefined,
 ): Partial<Record<OrgAttributionField, string>> {
   const values: Partial<Record<OrgAttributionField, string>> = {};
+  const normalized = normalizeGoogleAdsAttribution(attribution ?? {});
   for (const [sourceKey, targetKey] of ORG_ATTRIBUTION_FIELDS) {
-    const value = attribution?.[sourceKey]?.trim();
+    const value = normalized[sourceKey]?.trim();
     if (value) {
       values[targetKey] = value;
     }
@@ -109,14 +113,17 @@ export function mergeFirstTouchAttribution(
   }
 
   if (!stored) {
-    return provided;
+    return provided ? normalizeGoogleAdsAttribution(provided) : undefined;
   }
 
   // The click and its campaign belong to one touch. Filling missing campaign
   // fields from a later visit can send the original click to another Ads account.
   // A GA client identifier is independent of that advertising attribution.
   const gaClientId = stored.ga_client_id ?? provided?.ga_client_id;
-  return { ...stored, ...(gaClientId ? { ga_client_id: gaClientId } : {}) };
+  return {
+    ...normalizeGoogleAdsAttribution(stored),
+    ...(gaClientId ? { ga_client_id: gaClientId } : {}),
+  };
 }
 
 export const persistOrgAcquisitionAttribution$ = command(
