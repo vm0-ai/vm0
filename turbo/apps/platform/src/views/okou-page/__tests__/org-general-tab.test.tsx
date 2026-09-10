@@ -382,7 +382,14 @@ test("Require fresh workspace confirmation after closing Settings or navigating 
   act(() => {
     window.history.back();
   });
+  await screen.findByRole("heading", { name: "Preference" });
+  act(() => {
+    window.history.back();
+  });
   await waitFor(() => {
+    expect(
+      new URLSearchParams(window.location.search).has("settings"),
+    ).toBeFalsy();
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
