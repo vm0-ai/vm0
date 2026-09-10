@@ -244,10 +244,19 @@ impl DiagnosticSplit {
 /// same payloads.
 pub fn split_diagnostic(diagnostic: &str) -> DiagnosticSplit {
     let mut split = DiagnosticSplit::default();
-    let mut residual = Vec::new();
-    for line in diagnostic.lines() {
+    let mut residual = String::new();
+    for raw_line in diagnostic.split_inclusive('\n') {
+        let line = raw_line.strip_suffix('\n').unwrap_or(raw_line);
+        // `str::lines` recognizes CRLF, so retain that parsing behavior for an
+        // evidence line while keeping the original bytes of every residual
+        // diagnostic line below.
+        let line = if raw_line.ends_with('\n') {
+            line.strip_suffix('\r').unwrap_or(line)
+        } else {
+            line
+        };
         let Some(json) = line.strip_prefix(EVIDENCE_PREFIX) else {
-            residual.push(line);
+            residual.push_str(raw_line);
             continue;
         };
         match parse_bounded_evidence(json) {
@@ -255,7 +264,7 @@ pub fn split_diagnostic(diagnostic: &str) -> DiagnosticSplit {
             None => split.malformed_lines = split.malformed_lines.saturating_add(1),
         }
     }
-    split.residual = residual.join("\n");
+    split.residual = residual;
     split
 }
 
@@ -428,7 +437,7 @@ mod tests {
             evidence_line(&evidence)
         ));
 
-        assert_eq!(split.residual, "Failed to wait: no child processes");
+        assert_eq!(split.residual, "Failed to wait: no child processes\n");
         assert!(split.is_actionable());
         assert_eq!(split.evidence.as_ref(), Some(&evidence));
         assert_eq!(split.malformed_lines, 0);
@@ -499,13 +508,34 @@ mod tests {
 
     #[test]
     fn clean_diagnostic_is_preserved_verbatim() {
-        for diagnostic in ["", "Failed to clean process containment: EBUSY"] {
+        for diagnostic in [
+            "",
+            "Failed to clean process containment: EBUSY",
+            "Failed to clean process containment: EBUSY\n",
+            "Failed to clean process containment: EBUSY\r\n",
+        ] {
             let split = split_diagnostic(diagnostic);
             assert_eq!(split.residual, diagnostic);
             assert_eq!(split.is_actionable(), !diagnostic.is_empty());
             assert!(split.evidence.is_none());
             assert_eq!(split.malformed_lines, 0);
         }
+    }
+
+    #[test]
+    fn split_preserves_real_diagnostic_bytes_around_metadata() {
+        let evidence: OomEvidence = serde_json::from_str(FIXTURE).unwrap();
+        let split = split_diagnostic(&format!(
+            "Failed to wait: no child processes\r\n{}\r\ncleanup still failed\n",
+            evidence_line(&evidence)
+        ));
+
+        assert_eq!(
+            split.residual,
+            "Failed to wait: no child processes\r\ncleanup still failed\n"
+        );
+        assert_eq!(split.evidence.as_ref(), Some(&evidence));
+        assert_eq!(split.malformed_lines, 0);
     }
 
     #[test]
