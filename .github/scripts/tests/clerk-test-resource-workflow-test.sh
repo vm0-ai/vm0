@@ -257,17 +257,22 @@ unless playwright_finalizer_condition.include?("always()") &&
   raise "Playwright finalizer must run after terminal matrix outcomes"
 end
 playwright_finalizer_steps = playwright_finalizer.fetch("steps")
-playwright_cleanup = playwright_finalizer_steps.find do |step|
-  step["name"] == "Cleanup Playwright E2E accounts"
+playwright_steps = turbo_jobs.fetch("cli-e2e-02-playwright").fetch("steps")
+playwright_cleanup = playwright_steps.find do |step|
+  step["name"] == "Cleanup recorded Playwright E2E accounts"
 end
-unless playwright_cleanup && playwright_cleanup.fetch("if") == "always()" &&
-    playwright_cleanup.fetch("run").include?(
-      "cleanup-generation playwright,paid-onboarding",
-    )
-  raise "Playwright final cleanup must reconcile only its current-generation roles"
+unless playwright_cleanup &&
+    playwright_cleanup.fetch("if") == "always() && steps.playwright-tests.outcome != 'skipped'" &&
+    playwright_cleanup.fetch("run").include?("cleanup-recorded playwright,paid-onboarding")
+  raise "Playwright cleanup must use the lane's recorded current-generation resources"
 end
-unless playwright_finalizer_steps.last == playwright_cleanup
-  raise "Playwright generation cleanup must be the final finalizer step"
+playwright_tests = playwright_steps.find { |step| step["id"] == "playwright-tests" }
+unless playwright_tests.dig("env", "E2E_CLERK_RESOURCE_DIR") ==
+    playwright_cleanup.dig("env", "E2E_CLERK_RESOURCE_DIR")
+  raise "Playwright tests and cleanup must share their resource records"
+end
+if playwright_finalizer_steps.any? { |step| step.fetch("run", "").include?("cleanup-generation") }
+  raise "Playwright report finalization must not scan the whole Clerk instance"
 end
 
 runner_cleanup = turbo_jobs.fetch("cli-e2e-03-runner-cleanup")
@@ -297,13 +302,13 @@ runner_run_cleanup = runner_cleanup_steps.find do |step|
   step["name"] == "Cleanup runner E2E workflow run"
 end
 unless runner_generation_cleanup&.fetch("run", "")&.end_with?(
-    "runner-account.ts cleanup-generation",
+    "runner-account.ts cleanup-recorded-generation",
   ) && runner_generation_cleanup["if"] ==
     "steps.cleanup-scope.outputs.scope == 'generation'"
   raise "failed preparation must reconcile only its current generation"
 end
 unless runner_run_cleanup&.fetch("run", "")&.end_with?(
-    "runner-account.ts cleanup-run",
+    "runner-account.ts cleanup-recorded-run",
   ) && runner_run_cleanup["if"] ==
     "steps.cleanup-scope.outputs.scope == 'run'"
   raise "successful runner work must reconcile its exact workflow run"

@@ -39,7 +39,6 @@ import type {
   ChatThreadTranslationResult,
 } from "../../signals/chat-page/chat-thread-feedback.ts";
 import { ChatForwardDialog } from "./chat-forward-dialog.tsx";
-import { ChatTouchSelection } from "./chat-touch-selection.tsx";
 
 function selectionAnchor(selection: ChatThreadFeedbackSelection) {
   return {
@@ -52,7 +51,7 @@ function selectionAnchor(selection: ChatThreadFeedbackSelection) {
 
 function ShortcutHint({ shortcut }: { readonly shortcut: string }) {
   return (
-    <KbdGroup aria-hidden="true" className="[@media(pointer:coarse)]:hidden">
+    <KbdGroup aria-hidden="true">
       {getShortcutParts(shortcut).map((part) => {
         return (
           <Kbd key={part}>{part.length === 1 ? part.toUpperCase() : part}</Kbd>
@@ -75,7 +74,7 @@ function FeedbackToolbar({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="flex flex-wrap items-center gap-0.5">
+    <div className="flex items-center gap-0.5">
       <Button
         type="button"
         variant="quiet"
@@ -389,15 +388,11 @@ export function ChatFeedbackSelection({
 }) {
   const selection = useGet(feedback.selection$);
   const translationResult = useGet(feedback.translationResult$);
-  const features = useGet(featureSwitch$);
-  const translationEnabled = features[FeatureSwitchKey.ChatTranslation];
-  const touchSelectionEnabled =
-    features[FeatureSwitchKey.ChatTouchSelection] ?? false;
+  const translationEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatTranslation];
   const forwardSelection = useGet(feedback.forwardSelection$);
   const rootSignal = useGet(rootSignal$);
   const setFeedbackSelectionListenersRef = useSet(feedback.setListenersRef$);
-  const setTouchSelectionListenersRef = useSet(feedback.setTouchListenersRef$);
-  const setTouchSelectionOverlayRef = useSet(feedback.setTouchOverlayRef$);
   const setFeedbackSelectionToolbarRef = useSet(feedback.setToolbarRef$);
   const startFeedback = useSet(feedback.start$);
   const closeSelectionToolbar = useSet(feedback.close$);
@@ -408,18 +403,6 @@ export function ChatFeedbackSelection({
   return (
     <>
       <span ref={setFeedbackSelectionListenersRef} hidden />
-      {touchSelectionEnabled ? (
-        <span ref={setTouchSelectionListenersRef} hidden />
-      ) : null}
-      {touchSelectionEnabled && selection?.touch ? (
-        <>
-          <span ref={setTouchSelectionOverlayRef} hidden />
-          <ChatTouchSelection
-            geometry={selection.touch}
-            threadId={selection.threadId}
-          />
-        </>
-      ) : null}
       {selection ? (
         <Popover
           open
@@ -449,7 +432,7 @@ export function ChatFeedbackSelection({
             className={
               translationEnabled && translationResult
                 ? "w-[min(380px,calc(100vw-2rem))] rounded-xl border-[0.7px] border-[hsl(var(--gray-400))] bg-[hsl(var(--card)/0.96)] p-3 text-foreground shadow-lg"
-                : "w-auto max-w-[calc(100vw-2rem)] rounded-xl border-[0.7px] border-[hsl(var(--gray-400))] bg-[hsl(var(--card)/0.85)] p-1 text-foreground shadow-lg"
+                : "w-auto rounded-xl border-[0.7px] border-[hsl(var(--gray-400))] bg-[hsl(var(--card)/0.85)] p-1 text-foreground shadow-lg"
             }
           >
             {translationEnabled && translationResult ? (

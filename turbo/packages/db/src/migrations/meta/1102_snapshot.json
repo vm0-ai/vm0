@@ -1,5 +1,5 @@
 {
-  "id": "09c6a15f-f62d-41d4-9ebf-c7cedabe424e",
+  "id": "ae3b9e64-5d05-476b-b241-6231a589c809",
   "prevId": "5bd131a5-cc24-4169-80c7-6081724b306a",
   "version": "7",
   "dialect": "postgresql",
@@ -874,6 +874,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "goal_id": {
+          "name": "goal_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "model_provider": {
           "name": "model_provider",
           "type": "varchar(100)",
@@ -967,12 +973,6 @@
         "trigger_brief": {
           "name": "trigger_brief",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "goal_id": {
-          "name": "goal_id",
-          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         }
@@ -1169,12 +1169,12 @@
           "onDelete": "set null",
           "onUpdate": "no action"
         },
-        "agent_runs_chat_thread_id_chat_threads_id_fk": {
-          "name": "agent_runs_chat_thread_id_chat_threads_id_fk",
+        "agent_runs_goal_id_thread_goals_id_fk": {
+          "name": "agent_runs_goal_id_thread_goals_id_fk",
           "tableFrom": "agent_runs",
-          "tableTo": "chat_threads",
+          "tableTo": "thread_goals",
           "columnsFrom": [
-            "chat_thread_id"
+            "goal_id"
           ],
           "columnsTo": [
             "id"
@@ -1182,12 +1182,12 @@
           "onDelete": "set null",
           "onUpdate": "no action"
         },
-        "agent_runs_goal_id_thread_goals_id_fk": {
-          "name": "agent_runs_goal_id_thread_goals_id_fk",
+        "agent_runs_chat_thread_id_chat_threads_id_fk": {
+          "name": "agent_runs_chat_thread_id_chat_threads_id_fk",
           "tableFrom": "agent_runs",
-          "tableTo": "thread_goals",
+          "tableTo": "chat_threads",
           "columnsFrom": [
-            "goal_id"
+            "chat_thread_id"
           ],
           "columnsTo": [
             "id"
@@ -14787,192 +14787,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.image_references": {
-      "name": "image_references",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "owner_user_id": {
-          "name": "owner_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source_file_id": {
-          "name": "source_file_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "visibility": {
-          "name": "visibility",
-          "type": "varchar(16)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'private'"
-        },
-        "width": {
-          "name": "width",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "height": {
-          "name": "height",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_by": {
-          "name": "updated_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "idx_image_references_owner_created": {
-          "name": "idx_image_references_owner_created",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "owner_user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_image_references_org_public_created": {
-          "name": "idx_image_references_org_public_created",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            },
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"image_references\".\"visibility\" = 'public'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "image_references_source_file_id_run_uploaded_files_id_fk": {
-          "name": "image_references_source_file_id_run_uploaded_files_id_fk",
-          "tableFrom": "image_references",
-          "tableTo": "run_uploaded_files",
-          "columnsFrom": [
-            "source_file_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "uq_image_references_source_file": {
-          "name": "uq_image_references_source_file",
-          "nullsNotDistinct": false,
-          "columns": [
-            "source_file_id"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "chk_image_references_visibility": {
-          "name": "chk_image_references_visibility",
-          "value": "\"image_references\".\"visibility\" IN ('private', 'public')"
-        },
-        "chk_image_references_title": {
-          "name": "chk_image_references_title",
-          "value": "char_length(trim(\"image_references\".\"title\")) BETWEEN 1 AND 80"
-        },
-        "chk_image_references_dimensions": {
-          "name": "chk_image_references_dimensions",
-          "value": "\"image_references\".\"width\" > 0 AND \"image_references\".\"height\" > 0 AND \"image_references\".\"width\" <= 16384 AND \"image_references\".\"height\" <= 16384 AND \"image_references\".\"width\" * \"image_references\".\"height\" <= 67108864"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.mail_drafts": {
       "name": "mail_drafts",
       "schema": "",
@@ -18371,6 +18185,18 @@
         },
         "acquisition_recorded_at": {
           "name": "acquisition_recorded_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "impact_click_id": {
+          "name": "impact_click_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "impact_click_at": {
+          "name": "impact_click_at",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": false
@@ -27705,6 +27531,18 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "impact_click_id": {
+          "name": "impact_click_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "impact_click_at": {
+          "name": "impact_click_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
         },
         "usage_pack_usd": {
           "name": "usage_pack_usd",

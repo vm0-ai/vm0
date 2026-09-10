@@ -120,11 +120,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the DocuSign e-signature connector",
     enabled: false,
   },
-  [FeatureSwitchKey.DropboxConnector]: {
-    maintainer: "yuma@okou.ai",
-    description: "Enable the Dropbox file storage connector",
-    enabled: true,
-  },
   [FeatureSwitchKey.FigmaConnector]: {
     maintainer: "yuma@okou.ai",
     description: "Enable the Figma design connector",
@@ -359,12 +354,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Transcribe and polish voice input before inserting it into the composer, with Mod+Shift+E to start or stop recording.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ChatTouchSelection]: {
-    maintainer: "bingjie@okou.ai",
-    description:
-      "Use custom text selection handles and passage actions on touch devices.",
-    enabled: false,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@okou.ai",

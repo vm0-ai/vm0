@@ -36,7 +36,7 @@ test("paid onboarding completes through the video template deep link", async ({
       activeOrganizationId: organizationId,
     });
 
-    await startVideoOnboardingCheckout(page, { appUrl });
+    await startVideoOnboardingCheckout(page, { appUrl, apiUrl });
     await fillStripeCheckout(page);
     const completionUrl = await waitForPaidOnboardingCompletion(page, {
       appUrl,

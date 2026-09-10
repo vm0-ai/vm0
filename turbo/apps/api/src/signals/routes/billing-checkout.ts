@@ -17,6 +17,7 @@ import { adAttributionMetadataSchema } from "@okouai/api-contracts/contracts/acq
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 
+import { impactStripeMetadata$ } from "../services/impact-attribution.service";
 import { optionalEnv } from "../../lib/env";
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
 import { logger } from "../../lib/log";
@@ -622,12 +623,16 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   } = bodyResult.data;
   const previewEnabled = supportsInAppPreview === true;
   const clerk = get(clerk$);
-  const resolvedAttribution = await checkoutAttribution(
+  const acquisition = await checkoutAttribution(
     clerk,
     auth.userId,
     adAttribution,
     signal,
   );
+  const resolvedAttribution = {
+    ...acquisition,
+    ...(await set(impactStripeMetadata$, auth.orgId, signal)),
+  };
 
   if (!checkoutRedirectsAllowed(successUrl, cancelUrl)) {
     return badRequestMessage(
@@ -834,12 +839,16 @@ const usagePackCheckoutAuthed$ = command(
 
     const previewEnabled = body.supportsInAppPreview === true;
     const clerk = get(clerk$);
-    const resolvedAttribution = await checkoutAttribution(
+    const acquisition = await checkoutAttribution(
       clerk,
       auth.userId,
       body.adAttribution,
       signal,
     );
+    const resolvedAttribution = {
+      ...acquisition,
+      ...(await set(impactStripeMetadata$, auth.orgId, signal)),
+    };
 
     if (!checkoutRedirectsAllowed(body.successUrl, body.cancelUrl)) {
       return badRequestMessage(

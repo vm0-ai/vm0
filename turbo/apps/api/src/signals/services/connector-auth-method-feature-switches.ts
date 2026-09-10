@@ -22,7 +22,6 @@ const FEATURE_SWITCH_BY_AUTH_METHOD = Object.freeze<
   "datadog\0oauth": FeatureSwitchKey.DatadogConnector,
   "deel\0oauth": FeatureSwitchKey.DeelConnector,
   "docusign\0oauth": FeatureSwitchKey.DocuSignConnector,
-  "dropbox\0oauth": FeatureSwitchKey.DropboxConnector,
   "expensify\0api-token": FeatureSwitchKey.ExpensifyConnector,
   "figma\0oauth": FeatureSwitchKey.FigmaConnector,
   "garmin-connect\0oauth": FeatureSwitchKey.GarminConnectConnector,

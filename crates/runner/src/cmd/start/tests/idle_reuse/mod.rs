@@ -4,6 +4,7 @@ mod blank_session_history;
 mod device_limits;
 mod drain;
 mod parking;
+mod prune_idle;
 mod same_thread_reuse;
 mod status;
 mod workspace_cache;

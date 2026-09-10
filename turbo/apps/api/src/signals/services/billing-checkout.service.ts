@@ -30,6 +30,10 @@ import {
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 import { persistOrgAcquisitionAttribution$ } from "./acquisition-attribution.service";
 import {
+  impactStripeMetadata$,
+  readOrgImpactMetadata,
+} from "./impact-attribution.service";
+import {
   addStripeConcurrencySubscriptionItem$,
   previewStripeConcurrencySubscriptionChange$,
 } from "./billing-concurrency-subscription.service";
@@ -197,6 +201,7 @@ const creditPurchasePreviewTokenSchema = z.object({
   quantity: z.number().int().positive(),
   credits: z.number().int().positive(),
   amountCents: z.number().int().nonnegative(),
+  impactMetadata: z.record(z.string(), z.string()).optional(),
   currency: z.string().length(3),
   successUrl: z.string().url().optional(),
   cancelUrl: z.string().url().optional(),
@@ -524,7 +529,7 @@ function creditPurchasePayableAmount(invoice: StripeInvoice): number {
 
 export const previewExistingBillingCreditPurchase$ = command(
   async (
-    { get },
+    { get, set },
     args: PreviewExistingBillingCreditPurchaseArgs,
     signal: AbortSignal,
   ): Promise<CreditPurchasePreviewResponse | null> => {
@@ -596,6 +601,7 @@ export const previewExistingBillingCreditPurchase$ = command(
       quantity,
       credits,
       amountCents,
+      impactMetadata: await set(impactStripeMetadata$, args.orgId, signal),
       currency: invoice.currency,
       successUrl: args.successUrl,
       cancelUrl: args.cancelUrl,
@@ -725,6 +731,7 @@ export const confirmExistingBillingCreditPurchase$ = command(
       creditsAmountMode: "amount_subtotal",
       requestedCreditsAmount: String(preview.credits),
       creditPurchaseId: preview.purchaseId,
+      ...preview.impactMetadata,
       ...stripePreviewMetadata(),
     };
     const invoice = await stripe.invoices.create(
@@ -1446,6 +1453,7 @@ export const createCreditCheckoutSession$ = command(
     const baseMetadata = {
       purpose: "credit_purchase",
       orgId: args.orgId,
+      ...(await readOrgImpactMetadata(set(writeDb$), args.orgId, signal)),
       ...stripePreviewMetadata(),
     };
     const customCreditUnitPriceId = activeCustomCreditUnitPriceId();

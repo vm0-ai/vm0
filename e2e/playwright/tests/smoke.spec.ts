@@ -1,14 +1,20 @@
 import { resolveApiBackendUrl } from "../api-backend-url";
 import { expect, test } from "../fixtures";
 import { signInWithClerkEmailCode } from "../lib/auth";
+import {
+  createOrganization,
+  createUser,
+  generateTestEmail,
+} from "../lib/clerk-api";
 import { completeExploreOnboarding } from "../lib/onboarding";
 import { deriveAppUrl, STORAGE_STATE } from "../playwright.config";
 
 test("complete app onboarding to chat page", async ({ browser, page }) => {
   test.setTimeout(240_000);
 
-  const email = process.env.E2E_CLERK_USER_EMAIL!;
-  const orgId = process.env.E2E_CLERK_ORG_ID!;
+  const email = generateTestEmail("playwright");
+  const userId = await createUser(email);
+  const orgId = await createOrganization("E2E Test Org", userId, "playwright");
   const apiUrl = resolveApiBackendUrl();
   const appUrl = deriveAppUrl(apiUrl);
 
