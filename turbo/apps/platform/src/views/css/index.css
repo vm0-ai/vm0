@@ -516,6 +516,13 @@ body {
 }
 
 /* Reusable 0.7px border utilities — replaces inline style={{ border: "0.7px solid ..." }} */
+/* Force the color-emoji font ahead of the inherited CJK/text stack so emoji
+   glyphs render in color. Without this, dual-presentation codepoints fall back
+   to a CJK text font and appear as flat black outlines. */
+.okou-emoji {
+  font-family: var(--font-family-emoji);
+}
+
 .okou-border {
   border: 0.7px solid hsl(var(--gray-400));
 }

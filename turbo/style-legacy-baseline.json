@@ -36,6 +36,7 @@
     "okou-composer",
     "okou-desktop-no-drag",
     "okou-desktop-titlebar-drag-region",
+    "okou-emoji",
     "okou-fixed-viewport-shell",
     "okou-icon-mono",
     "okou-managed-bottom-safe-area",
@@ -697,6 +698,13 @@
         "selector": ":where([data-theme=\"dark\"]) .okou-icon-mono",
         "property": "filter",
         "value": "invert(1)",
+        "important": false
+      },
+      {
+        "atRules": [],
+        "selector": ".okou-emoji",
+        "property": "font-family",
+        "value": "var(--font-family-emoji)",
         "important": false
       },
       {
@@ -3921,6 +3929,7 @@
       "okou-chat-bubble-user": 2,
       "okou-chat-card": 2,
       "okou-chat-skeleton-reveal": 1,
+      "okou-emoji": 3,
       "okou-shimmer-text": 1,
       "okou-thinking-enter": 3,
       "okou-thinking-spinner": 1,

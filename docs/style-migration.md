@@ -317,3 +317,12 @@ baseline entries are removed. DOM, events and size utilities are unchanged.
 Screenshot rename/reload uses a stateful TEST fixture; separate real-page
 selection and reload also passed with an empty TEST thread created using the
 allowed `deepseek-v4-pro` model. No Agent run or paid action was required.
+
+The first AFTER build also included upstream voice-composer fix #33058
+(`724dc63d33064e66f8a41e0bef6ad54e345ef94a`), which was absent from the initial
+BEFORE. All emoji control observations matched, but the complete frames
+correctly failed on unrelated composer pixels. That failed AFTER is retained.
+Main was synchronized to `b440c7b27c62b2b79afe88a9762cc51c790bfb95`; the three
+legacy consumers and their rule are temporarily restored for a refreshed
+BEFORE/A-A deployment. The frozen runner, fixtures, cases and limits are
+unchanged. Publish the refreshed baseline before reapplying the same migration.

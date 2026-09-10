@@ -286,7 +286,7 @@
         "chat-emoji-narrow",
         "chat-emoji-narrow-dark"
       ],
-      "status": "implemented",
+      "status": "baselined",
       "evidence": [
         {
           "kind": "before-and-unchanged-replay-with-all-rejected-calibrations",

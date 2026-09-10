@@ -879,7 +879,7 @@ function ChatThreadEmojiMenuButton({
                 {emoji ? (
                   <span
                     aria-hidden="true"
-                    className="font-(family-name:--font-family-emoji) text-base leading-none"
+                    className="okou-emoji text-base leading-none"
                   >
                     {emoji}
                   </span>
@@ -1282,10 +1282,7 @@ function ChatThreadEmojiPreview() {
     <div className="flex h-10 shrink-0 items-center gap-2 border-t border-border px-2">
       {preview ? (
         <>
-          <span
-            aria-hidden="true"
-            className="font-(family-name:--font-family-emoji) text-lg leading-none"
-          >
+          <span aria-hidden="true" className="okou-emoji text-lg leading-none">
             {preview.emoji}
           </span>
           <span className="truncate text-xs font-medium text-muted-foreground">
@@ -1520,10 +1517,7 @@ function ChatThreadEmojiGrid({
               onSelect(item.emoji);
             }}
           >
-            <span
-              aria-hidden="true"
-              className="font-(family-name:--font-family-emoji)"
-            >
+            <span aria-hidden="true" className="okou-emoji">
               {item.emoji}
             </span>
             {shortcutDigit !== null && (
