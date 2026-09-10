@@ -6472,6 +6472,7 @@
       "install": "インストール",
       "installDescription": "エージェントを選択し、必須パラメーターをすべて入力してください。含まれるすべての自動化がインストールされます。",
       "installed": "公式ワークフローをインストールしました",
+      "installedStatus": "インストール済み",
       "installErrorDescription": "エージェントとパラメーター値を確認して、もう一度お試しください。",
       "installErrorTitle": "公式ワークフローをインストールできませんでした",
       "installTitle": "{{name}} をインストール",

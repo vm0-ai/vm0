@@ -6553,6 +6553,7 @@
       "install": "Installer",
       "installDescription": "Choisissez un agent et renseignez chaque paramètre obligatoire. Toutes les automatisations incluses seront installées.",
       "installed": "Workflow officiel installé",
+      "installedStatus": "Installé",
       "installErrorDescription": "Vérifiez l’agent et les valeurs des paramètres, puis réessayez.",
       "installErrorTitle": "Le workflow officiel n’a pas pu être installé",
       "installTitle": "Installer {{name}}",

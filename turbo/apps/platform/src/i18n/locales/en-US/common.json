@@ -6477,6 +6477,7 @@
       "install": "Install",
       "installDescription": "Choose an Agent and complete every required parameter. All included automations will be installed.",
       "installed": "Official Workflow installed",
+      "installedStatus": "Installed",
       "installErrorDescription": "Check the Agent and parameter values, then try again.",
       "installErrorTitle": "Official Workflow could not be installed",
       "installTitle": "Install {{name}}",

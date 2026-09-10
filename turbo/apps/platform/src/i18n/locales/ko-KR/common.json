@@ -6472,6 +6472,7 @@
       "install": "설치",
       "installDescription": "에이전트를 선택하고 모든 필수 매개변수를 입력하세요. 포함된 모든 자동화가 설치됩니다.",
       "installed": "공식 워크플로가 설치되었습니다",
+      "installedStatus": "설치됨",
       "installErrorDescription": "에이전트와 매개변수 값을 확인한 후 다시 시도하세요.",
       "installErrorTitle": "공식 워크플로를 설치하지 못했습니다",
       "installTitle": "{{name}} 설치",

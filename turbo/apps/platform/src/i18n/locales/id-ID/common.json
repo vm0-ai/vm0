@@ -6472,6 +6472,7 @@
       "install": "Instal",
       "installDescription": "Pilih Agen dan lengkapi setiap parameter wajib. Semua automasi yang disertakan akan diinstal.",
       "installed": "Workflow Resmi telah diinstal",
+      "installedStatus": "Terinstal",
       "installErrorDescription": "Periksa Agen dan nilai parameter, lalu coba lagi.",
       "installErrorTitle": "Workflow Resmi tidak dapat diinstal",
       "installTitle": "Instal {{name}}",
