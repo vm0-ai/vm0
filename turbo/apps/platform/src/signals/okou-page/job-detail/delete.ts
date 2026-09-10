@@ -6,6 +6,24 @@ import { accept } from "../../../lib/accept.ts";
 import { agentDetail$ } from "./detail.ts";
 import { reloadAgents$ } from "../../agent.ts";
 import { i18n } from "../../../i18n/index.ts";
+import {
+  copyWorkflow$,
+  currentAgentVisibleWorkflows$,
+} from "../../workflows-page/workflows-signals.ts";
+
+export const copyWorkflowBeforeAgentDelete$ = command(
+  async (
+    { get, set },
+    input: { workflowId: string; toAgentId: string },
+    signal: AbortSignal,
+  ) => {
+    await set(copyWorkflow$, input, signal);
+    // Copying refreshes this list. Finish its source-agent read before deletion
+    // removes the agent, otherwise the in-flight refresh can fail after success.
+    await get(currentAgentVisibleWorkflows$);
+    signal.throwIfAborted();
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Delete agent

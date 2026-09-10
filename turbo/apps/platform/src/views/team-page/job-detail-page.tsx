@@ -59,7 +59,10 @@ import {
   buildAgentInstructions$,
 } from "../../signals/okou-page/job-detail/instructions";
 import { updateAgentSettings$ } from "../../signals/okou-page/job-detail/settings";
-import { deleteAgent$ } from "../../signals/okou-page/job-detail/delete";
+import {
+  copyWorkflowBeforeAgentDelete$,
+  deleteAgent$,
+} from "../../signals/okou-page/job-detail/delete";
 import {
   agentAuthorizedConnectors$,
   authorizeAgentConnector$,
@@ -101,10 +104,7 @@ import {
 } from "../../signals/permission-allow/permission-allow-signals.ts";
 import { matchesConnectorSearch } from "../../signals/okou-page/settings/connectors.ts";
 import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
-import {
-  currentAgentVisibleWorkflows$,
-  copyWorkflow$,
-} from "../../signals/workflows-page/workflows-signals.ts";
+import { currentAgentVisibleWorkflows$ } from "../../signals/workflows-page/workflows-signals.ts";
 import { toast } from "@okouai/ui/components/ui/sonner";
 import {
   permConnectorSlug$,
@@ -1024,7 +1024,7 @@ function AgentProfileSettings({
   const workflowsLoadable = useLastLoadable(currentAgentVisibleWorkflows$);
   const agentsLoadable = useLastLoadable(agents$);
   const user = useLastResolved(user$);
-  const [, copyWorkflow] = useLoadableSet(copyWorkflow$);
+  const [, copyWorkflow] = useLoadableSet(copyWorkflowBeforeAgentDelete$);
 
   const deleteWorkflows =
     workflowsLoadable.state === "hasData"

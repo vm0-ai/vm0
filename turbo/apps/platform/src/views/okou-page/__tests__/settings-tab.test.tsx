@@ -978,15 +978,16 @@ test.each(["copy", "delete"])(
     let canSubmit = false;
     context.mocks.api(workflowsDetailContract.copy, async ({ respond }) => {
       await copyResponse.promise;
-      return !canSubmit && failure === "copy"
-        ? respond(403, {
-            error: { code: "FORBIDDEN", message: "Copy failed" },
-          })
-        : respond(201, {
-            ...workflow,
-            id: "d0000000-0000-4000-a000-000000000202",
-            agentId: DEFAULT_AGENT_ID,
-          });
+      if (!canSubmit && failure === "copy") {
+        return respond(403, {
+          error: { code: "FORBIDDEN", message: "Copy failed" },
+        });
+      }
+      return respond(201, {
+        ...workflow,
+        id: "d0000000-0000-4000-a000-000000000202",
+        agentId: DEFAULT_AGENT_ID,
+      });
     });
     context.mocks.api(agentsByIdContract.delete, ({ respond }) => {
       return !canSubmit && failure === "delete"
@@ -1034,3 +1035,50 @@ test.each(["copy", "delete"])(
     await screen.findByText("Agent deleted");
   },
 );
+
+test("Keep the source agent when its workflow refresh fails after copying", async () => {
+  prepareAgentProfile();
+  const workflow = prepareDeleteWorkflow();
+  let copySucceeded = false;
+  context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
+    return copySucceeded
+      ? respond(403, {
+          error: { code: "FORBIDDEN", message: "Refresh failed" },
+        })
+      : respond(200, [workflow]);
+  });
+  context.mocks.api(workflowsDetailContract.copy, ({ respond }) => {
+    copySucceeded = true;
+    return respond(201, {
+      ...workflow,
+      id: "d0000000-0000-4000-a000-000000000202",
+      agentId: DEFAULT_AGENT_ID,
+    });
+  });
+  context.mocks.api(agentsByIdContract.delete, ({ respond }) => {
+    return respond(204);
+  });
+
+  await setupPage({ context, path: `/agents/${AGENT_ID}?tab=profile` });
+  await findAgentNameInput();
+  click(screen.getByText("Delete agent"));
+  const dialog = await screen.findByRole("dialog");
+  click(await within(dialog).findByRole("combobox"));
+  click(await screen.findByRole("option", { name: "Copy to Zero" }));
+  click(within(dialog).getByText("Delete agent"));
+
+  await screen.findByText("Refresh failed");
+  await waitFor(() => {
+    expect(within(dialog).getByText("Delete agent")).toBeEnabled();
+  });
+  click(within(dialog).getByText("Cancel"));
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+  const nameInput = await findAgentNameInput();
+  expect(nameInput).toBeInTheDocument();
+  click(screen.getByText("Delete agent"));
+  const reopened = await screen.findByRole("dialog");
+  expect(within(reopened).getByText("Delete agent")).toBeEnabled();
+  expect(within(reopened).getByText("Cancel")).toBeEnabled();
+});
