@@ -8,6 +8,10 @@ import { writeDb$ } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { getStripeClient } from "../external/stripe-client";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
+import {
+  impactStripeMetadata$,
+  updateImpactCustomer,
+} from "./impact-attribution.service";
 
 interface GetOrCreateStripeCustomerArgs {
   readonly orgId: string;
@@ -23,11 +27,12 @@ interface GetOrCreateStripeCustomerArgs {
  * process races during the web→api cutover coordinate on the same lock.
  */
 export const getOrCreateStripeCustomer$ = command(
-  (
+  async (
     { set },
     args: GetOrCreateStripeCustomerArgs,
     signal: AbortSignal,
   ): Promise<string> => {
+    const impactMetadata = await set(impactStripeMetadata$, args.orgId, signal);
     const writeDb = set(writeDb$);
     return writeDb.transaction(async (tx) => {
       await tx.execute(
@@ -43,6 +48,11 @@ export const getOrCreateStripeCustomer$ = command(
       signal.throwIfAborted();
 
       if (row?.stripeCustomerId) {
+        await updateImpactCustomer(
+          row.stripeCustomerId,
+          impactMetadata,
+          signal,
+        );
         return row.stripeCustomerId;
       }
 
@@ -56,6 +66,7 @@ export const getOrCreateStripeCustomer$ = command(
         }
       }
       Object.assign(metadata, stripePreviewMetadata());
+      Object.assign(metadata, impactMetadata);
       const customer = await stripe.customers.create({ metadata });
       signal.throwIfAborted();
 

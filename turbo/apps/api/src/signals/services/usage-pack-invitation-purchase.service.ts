@@ -71,6 +71,7 @@ import {
   loadBillingOrganizationPendingInvitations,
 } from "./billing-clerk-directory.service";
 import { onRejection, settle } from "../utils";
+import { readOrgImpactMetadata } from "./impact-attribution.service";
 
 const PURPOSE = "usage_pack_invitation_purchase";
 const PURCHASE_ID_METADATA_KEY = "usagePackInvitationPurchaseId";
@@ -427,9 +428,11 @@ function checkoutMetadata(purchaseId: string): Record<string, string> {
 async function insertPendingInvitationPurchase(
   db: Db,
   args: PendingInvitationPurchaseArgs,
+  signal: AbortSignal,
 ): Promise<string | null> {
   return await db.transaction(async (tx) => {
     await lockInvitationEmail(tx, args.orgId, args.email);
+    const impact = await readOrgImpactMetadata(tx, args.orgId, signal);
     await tx
       .update(usagePackInvitationPurchases)
       .set({
@@ -453,6 +456,10 @@ async function insertPendingInvitationPurchase(
         normalizedEmail: args.email,
         role: args.role,
         inviterUserId: args.inviterUserId,
+        impactClickId: impact.impact_click_id ?? null,
+        impactClickAt: impact.impact_click_at
+          ? new Date(impact.impact_click_at)
+          : null,
         publicBrand: args.publicBrand,
         usagePackUsd: args.usagePackUsd,
         stripePriceId: args.stripePriceId,
@@ -589,21 +596,25 @@ async function prepareNewUsagePackInvitationPurchase(
     };
   }
 
-  const purchaseId = await insertPendingInvitationPurchase(db, {
-    subscription,
-    orgId: args.orgId,
-    email,
-    role: args.role,
-    inviterUserId: args.inviterUserId,
-    publicBrand: args.publicBrand,
-    usagePackUsd: args.usagePackUsd,
-    stripePriceId,
-    preview,
-    unitAmountCents,
-    purchasedCredits,
-    bonusCredits,
-    checkoutExpiresAt,
-  });
+  const purchaseId = await insertPendingInvitationPurchase(
+    db,
+    {
+      subscription,
+      orgId: args.orgId,
+      email,
+      role: args.role,
+      inviterUserId: args.inviterUserId,
+      publicBrand: args.publicBrand,
+      usagePackUsd: args.usagePackUsd,
+      stripePriceId,
+      preview,
+      unitAmountCents,
+      purchasedCredits,
+      bonusCredits,
+      checkoutExpiresAt,
+    },
+    signal,
+  );
   if (!purchaseId) {
     return {
       status: "conflict",
@@ -1593,7 +1604,15 @@ async function createInvitationPurchaseInvoice(
       ...(args.paymentMethod
         ? stripeBillingPurchasePaymentParams(args.paymentMethod)
         : {}),
-      metadata: checkoutMetadata(purchase.id),
+      metadata: {
+        ...checkoutMetadata(purchase.id),
+        ...(purchase.impactClickId && purchase.impactClickAt
+          ? {
+              impact_click_id: purchase.impactClickId,
+              impact_click_at: purchase.impactClickAt.toISOString(),
+            }
+          : {}),
+      },
       discounts: "",
       ...(structuredCharge.preview.automaticTax
         ? { automatic_tax: structuredCharge.preview.automaticTax }

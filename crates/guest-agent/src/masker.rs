@@ -425,7 +425,7 @@ impl SecretMasker {
 /// Unescaped set per ECMAScript spec (uriUnescaped):
 ///   A-Z a-z 0-9 - _ . ! ~ * ' ( )
 ///
-/// See: https://tc39.es/ecma262/#sec-encodeuricomponent-uricomponent
+/// See: <https://tc39.es/ecma262/#sec-encodeuricomponent-uricomponent>
 fn url_encode(s: &str) -> String {
     let mut encoded = String::with_capacity(s.len() * 3);
     // Rust &str is valid UTF-8, so iterating bytes and percent-encoding
