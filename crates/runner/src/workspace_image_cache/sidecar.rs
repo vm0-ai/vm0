@@ -333,7 +333,13 @@ impl WorkspaceImageCache {
         let bytes = serde_json::to_vec_pretty(&sidecar_metadata).map_err(|e| {
             RunnerError::Internal(format!("serialize workspace session history sidecar: {e}"))
         })?;
-        if let Err(e) = fs::write(&tmp_metadata_path, bytes).await {
+        if let Err(e) = crate::host_file::write_private_new(
+            &tmp_metadata_path,
+            &bytes,
+            "workspace session history metadata staging file",
+        )
+        .await
+        {
             let _ = remove_workspace_cache_path_if_exists(&tmp_metadata_path).await;
             let _ = remove_workspace_cache_path_if_exists(&source.tmp_path).await;
             return Err(e.into());

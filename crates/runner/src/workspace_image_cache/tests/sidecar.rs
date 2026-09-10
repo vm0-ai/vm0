@@ -1,5 +1,6 @@
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::Path;
+use std::time::Duration;
 
 use api_contracts::generated::constants::runners::{
     RESUME_SESSION_HISTORY_MAX_BYTES, paths::CANONICAL_WORKING_DIR,
@@ -21,6 +22,12 @@ use super::support::{TEST_PROFILE_NAME, local_cache, write_current_cache_entry};
 use crate::ids::RunId;
 use crate::paths::RunnerPaths;
 use crate::restored_session_identity::RestoredSessionIdentity;
+use crate::test_fixtures::ignored_child::{
+    ignored_child_test_env_guard_enabled, run_ignored_child_test,
+};
+
+const PERMISSIVE_UMASK_CHILD_ENV: &str = "OKOU_RUN_SIDECAR_PERMISSIVE_UMASK_TEST";
+const PUBLICATION_UMASK_ENV: &str = "OKOU_SIDECAR_PUBLICATION_UMASK";
 
 fn mode(path: &Path) -> u32 {
     std::fs::metadata(path).unwrap().permissions().mode() & 0o777
@@ -115,6 +122,91 @@ async fn session_history_sidecar_publish_and_probe_hit() {
     );
     assert_eq!(mode(&metadata_path), 0o600);
     assert_eq!(mode(&sidecar.path), 0o600);
+}
+
+#[tokio::test]
+async fn session_history_sidecar_publishes_under_permissive_umask() {
+    for mask in ["0002", "0000"] {
+        run_ignored_child_test(
+            "workspace_image_cache::tests::sidecar::session_history_sidecar_publishes_under_permissive_umask_child",
+            (PERMISSIVE_UMASK_CHILD_ENV, "1"),
+            &[(PUBLICATION_UMASK_ENV, Some(mask))],
+            Duration::from_secs(60),
+        )
+        .await;
+    }
+}
+
+#[test]
+#[ignore]
+fn session_history_sidecar_publishes_under_permissive_umask_child() {
+    if !ignored_child_test_env_guard_enabled((PERMISSIVE_UMASK_CHILD_ENV, "1")) {
+        return;
+    }
+
+    let mask = u32::from_str_radix(&std::env::var(PUBLICATION_UMASK_ENV).unwrap(), 8).unwrap();
+    // This exact test runs alone in a child; set umask before Tokio starts any workers.
+    nix::sys::stat::umask(nix::sys::stat::Mode::from_bits_truncate(mask));
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(assert_sidecar_private_publication());
+}
+
+async fn assert_sidecar_private_publication() {
+    let (dir, paths, cache) = local_cache().await;
+    fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700))
+        .await
+        .unwrap();
+    fs::set_permissions(paths.base_dir(), std::fs::Permissions::from_mode(0o700))
+        .await
+        .unwrap();
+    let run_id = RunId::new_v4();
+    let session_id = "sess-sidecar-private";
+    let history = br#"{"type":"message","content":"private"}"#;
+    let cache_key =
+        cache.scoped_cache_key(TEST_PROFILE_NAME, session_id, CANONICAL_WORKING_DIR, 4096);
+    cache
+        .ensure_workspace_cache_entry_dir(&cache_key)
+        .await
+        .unwrap();
+    let tmp_path = cache.workspace_image_cache_tmp_sidecar(&cache_key, run_id);
+    fs::write(&tmp_path, history).await.unwrap();
+    fs::set_permissions(&tmp_path, std::fs::Permissions::from_mode(0o600))
+        .await
+        .unwrap();
+    let identity = test_restored_session_identity(session_id, history);
+    let source = WorkspaceSessionHistorySidecarPromotionSource {
+        tmp_path: tmp_path.clone(),
+        representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
+        encoded_size: history.len() as u64,
+        restored_session_identity: identity.clone(),
+    };
+
+    cache
+        .publish_session_history_sidecar(
+            &cache_key,
+            run_id,
+            WorkspaceSessionHistorySidecarPublication::Replace(&source),
+        )
+        .await
+        .unwrap();
+
+    let sidecar = cache
+        .probe_session_history_sidecar(&cache_key, &identity)
+        .await
+        .unwrap();
+    assert_eq!(fs::read(&sidecar.path).await.unwrap(), history);
+    assert_eq!(mode(&sidecar.path), 0o600);
+    let entry_paths = cache.entry_paths(&cache_key);
+    assert_eq!(mode(entry_paths.session_history_sidecar_metadata()), 0o600);
+    assert!(!tmp_path.exists());
+    assert!(
+        !entry_paths
+            .tmp_session_history_sidecar_metadata(run_id)
+            .exists()
+    );
 }
 
 #[tokio::test]
