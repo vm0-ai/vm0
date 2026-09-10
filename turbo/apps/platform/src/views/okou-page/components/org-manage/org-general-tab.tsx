@@ -442,10 +442,9 @@ function DangerZoneSection({ isAdmin }: { isAdmin: boolean }) {
                 </p>
               </div>
               <Dialog
-                onOpenChange={(open) => {
-                  if (!open) {
-                    resetDeleteConfirm();
-                  }
+                onOpenChange={() => {
+                  // Opening also resets after an org refresh unmounts the dialog.
+                  resetDeleteConfirm();
                 }}
               >
                 <DialogTrigger asChild>

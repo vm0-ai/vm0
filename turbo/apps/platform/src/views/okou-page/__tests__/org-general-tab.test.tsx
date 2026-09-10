@@ -14,6 +14,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
 
@@ -393,6 +394,45 @@ test("Require fresh workspace confirmation after closing Settings or navigating 
   expect(buttonWithText(afterNavigation, "Delete workspace")).toBeDisabled();
 });
 
+test("Require fresh confirmation after workspace details finish saving", async () => {
+  const saveReady = createDeferredPromise<void>(context.signal);
+  const refreshReady = createDeferredPromise<void>(context.signal);
+  let workspace = { id: "org_1", name: "Old Name", role: "admin" as const };
+  context.mocks.api(orgContract.get, async ({ respond }) => {
+    if (workspace.name === "New Name") {
+      await refreshReady.promise;
+    }
+    return respond(200, workspace);
+  });
+  context.mocks.api(orgContract.update, async ({ respond }) => {
+    await saveReady.promise;
+    workspace = { ...workspace, name: "New Name" };
+    return respond(200, workspace);
+  });
+  await openGeneralTab();
+
+  await fill(screen.getByDisplayValue("Old Name"), "New Name");
+  click(screen.getByText("Save changes"));
+  await screen.findByText("Saving...");
+  const dialog = await openDeleteDialog();
+  await fill(within(dialog).getByPlaceholderText("confirm"), "confirm");
+  expect(buttonWithText(dialog, "Delete workspace")).toBeEnabled();
+
+  saveReady.resolve();
+  await screen.findByText("Workspace updated");
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("dialog", { name: "Delete workspace?" }),
+    ).not.toBeInTheDocument();
+  });
+  refreshReady.resolve();
+  await screen.findByDisplayValue("New Name");
+
+  const reopened = await openDeleteDialog();
+  expect(within(reopened).getByPlaceholderText("confirm")).toHaveValue("");
+  expect(buttonWithText(reopened, "Delete workspace")).toBeDisabled();
+});
+
 test("Navigate to a fresh page when the workspace changes after cancelling deletion", async () => {
   let workspace = { id: "org_a", name: "Workspace A", role: "admin" as const };
   context.mocks.api(orgContract.get, ({ respond }) => {
@@ -432,6 +472,34 @@ test("Navigate to a fresh page when the workspace changes after cancelling delet
     expect(window.location.pathname).toBe("/");
     expect(window.location.search).toBe("");
   });
+});
+
+test("Keep a pending workspace deletion running when its dialog closes", async () => {
+  const deletionReady = createDeferredPromise<void>(context.signal);
+  context.mocks.data.org({ id: "org_1", name: "Acme", role: "admin" });
+  context.mocks.api(orgDeleteContract.delete, async ({ respond }) => {
+    await deletionReady.promise;
+    return respond(200, { message: "Workspace deleted" });
+  });
+  await openGeneralTab();
+
+  const dialog = await openDeleteDialog();
+  await fill(within(dialog).getByPlaceholderText("confirm"), "confirm");
+  click(buttonWithText(dialog, "Delete workspace"));
+  await within(dialog).findByText("Deleting...");
+  click(buttonWithText(dialog, "Cancel"));
+  await waitFor(() => {
+    expect(
+      screen.queryByRole("dialog", { name: "Delete workspace?" }),
+    ).not.toBeInTheDocument();
+  });
+
+  const reopened = await openDeleteDialog();
+  expect(within(reopened).getByPlaceholderText("confirm")).toHaveValue("");
+  expect(buttonWithText(reopened, "Deleting...")).toBeDisabled();
+  deletionReady.resolve();
+  await screen.findByText("Workspace deleted");
+  expect(window.location.pathname).toBe("/sign-in/tasks/choose-organization");
 });
 
 test("Enable workspace deletion only for the exact confirmation and keep the success flow", async () => {
