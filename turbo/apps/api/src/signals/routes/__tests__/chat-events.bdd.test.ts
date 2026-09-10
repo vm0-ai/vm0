@@ -21998,6 +21998,23 @@ describe("CHAT-02: initial thinking indicator", () => {
       },
       warned: true,
     },
+    // An exhausted token budget describes our own request rather than the
+    // provider's availability, so it stays outside the suppressed set.
+    {
+      name: "an exhausted token budget",
+      thinkingResponse: () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "length",
+              native_finish_reason: "MAX_TOKENS",
+              message: { content: providerDetail },
+            },
+          ],
+        });
+      },
+      warned: true,
+    },
   ])(
     "omits opening copy and reports a defect only for $name",
     async ({ thinkingResponse, warned }) => {
