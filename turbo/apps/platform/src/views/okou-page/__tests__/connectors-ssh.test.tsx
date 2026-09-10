@@ -1,5 +1,6 @@
 import { agentSshAccessContract } from "@okouai/api-contracts/contracts/ssh-access";
 import { sshConnectionsContract } from "@okouai/api-contracts/contracts/ssh-connections";
+import { customConnectorsContract } from "@okouai/api-contracts/contracts/custom-connectors";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { connectorSlugSchema } from "@okouai/api-contracts/contracts/connector-identity";
 import { screen, waitFor, within } from "@testing-library/react";
@@ -12,6 +13,7 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
+  customConnector,
   getConnectorAction,
   listAgent,
   mockConnectors,
@@ -24,7 +26,7 @@ const context = testContext();
 const agentId = "c0000000-0000-4000-8000-000000000001";
 
 test.each([0, 2])(
-  "SSH with %i hosts remains visible in the directory and respects its category filter",
+  "SSH with %i hosts appears before custom connectors and respects its category filter",
   async (configuredCount) => {
     mockCatalog();
     mockPublicConnectorStatus(
@@ -42,6 +44,9 @@ test.each([0, 2])(
     context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
       return respond(200, { configuredCount });
     });
+    context.mocks.api(customConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [customConnector()] });
+    });
     await setupPage({
       context,
       path: "/connectors",
@@ -51,7 +56,14 @@ test.each([0, 2])(
       },
     });
     await screen.findByTestId("connector-shelf-communication-collaboration");
-    await screen.findByRole("heading", { name: "Remote access" });
+    const remoteAccess = await screen.findByRole("heading", {
+      name: "Remote access",
+    });
+    const custom = await screen.findByText("Acme Search");
+    expect(
+      remoteAccess.compareDocumentPosition(custom) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(getConnectorAction("link", "Manage SSH hosts")).toHaveAttribute(
       "href",
       configuredCount === 0 ? "/connectors/ssh?add=1" : "/connectors/ssh",
