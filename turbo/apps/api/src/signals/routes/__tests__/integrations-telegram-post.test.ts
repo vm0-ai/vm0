@@ -919,25 +919,33 @@ describe("POST /api/telegram/register", () => {
   it.each([
     {
       caseName: "the Okou canonical default",
-      displayName: "Zero",
+      displayName: "Okou",
       seedDefaultAgent: true,
+      expectedUpdateStatus: 200,
       expectedAgentName: "Okou",
     },
     {
       caseName: "an Okou canonical default rename attempt",
       displayName: "Finance Agent",
       seedDefaultAgent: true,
+      expectedUpdateStatus: 400,
       expectedAgentName: "Okou",
     },
     {
       caseName: "a non-canonical Okou agent named Zero",
       displayName: "Zero",
       seedDefaultAgent: false,
+      expectedUpdateStatus: 200,
       expectedAgentName: "Zero",
     },
   ] as const)(
     "brands Telegram command descriptions for $caseName",
-    async ({ displayName, seedDefaultAgent, expectedAgentName }) => {
+    async ({
+      displayName,
+      seedDefaultAgent,
+      expectedAgentName,
+      expectedUpdateStatus,
+    }) => {
       const telegramBotId = newTelegramBotId();
       const fixture = await trackFixture(
         seedTelegramPostFixture({
@@ -947,9 +955,17 @@ describe("POST /api/telegram/register", () => {
         }),
       );
       const actor = actorForFixture(fixture);
-      await authOrgApi.updateAgentMetadata(actor, fixture.composeId, {
-        displayName,
-      });
+      const updated = await authOrgApi.requestUpdateAgentMetadata(
+        actor,
+        fixture.composeId,
+        { displayName },
+        [expectedUpdateStatus],
+      );
+      if (updated.status === 400) {
+        expect(updated.body).toMatchObject({
+          error: { code: "DEFAULT_AGENT_NAME_LOCKED" },
+        });
+      }
       mockEnv("OKOU_WEB_URL", "https://api.okou.ai");
       mockEnv("APP_URL", "https://app.okou.ai");
       mockTelegramGetMe({
