@@ -269,7 +269,7 @@ export const orgDetail$ = command(
 
       const now = nowDate();
       const writeDb = set(writeDb$);
-      await writeDb
+      const [savedIdentity] = await writeDb
         .insert(orgCache)
         .values({
           orgId: args.orgId,
@@ -277,15 +277,23 @@ export const orgDetail$ = command(
           createdBy: identity.createdBy,
           cachedAt: now,
         })
+        // Preserve a profile update or fill that won during the Clerk read.
+        // A no-op update returns that identity atomically without refreshing
+        // its timestamp or copying fields from this potentially older snapshot.
         .onConflictDoUpdate({
           target: orgCache.orgId,
-          set: {
-            name: identity.name,
-            createdBy: identity.createdBy,
-            cachedAt: now,
-          },
+          set: { name: orgCache.name },
+        })
+        .returning({
+          name: orgCache.name,
+          createdBy: orgCache.createdBy,
         });
       signal.throwIfAborted();
+
+      if (!savedIdentity) {
+        throw new Error("Organization identity cache upsert returned no row");
+      }
+      identity = savedIdentity;
     }
 
     const cachedRole = membership[0]?.role;
@@ -502,13 +510,21 @@ export const updateOrg$ = command(
     }
 
     const client = get(clerk$);
-    await client.organizations.updateOrganization(args.orgId, {
+    const clerkOrg = await client.organizations.updateOrganization(args.orgId, {
       name: args.name,
     });
     signal.throwIfAborted();
 
     const writeDb = set(writeDb$);
-    await writeDb.delete(orgCache).where(eq(orgCache.orgId, args.orgId));
+    const identity = {
+      name: clerkOrg.name,
+      createdBy: clerkOrg.createdBy ?? null,
+      cachedAt: nowDate(),
+    };
+    await writeDb
+      .insert(orgCache)
+      .values({ orgId: args.orgId, ...identity })
+      .onConflictDoUpdate({ target: orgCache.orgId, set: identity });
     signal.throwIfAborted();
 
     const org = await set(

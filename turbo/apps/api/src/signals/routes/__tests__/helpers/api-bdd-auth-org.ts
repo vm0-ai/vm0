@@ -567,9 +567,13 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       context.mocks.clerk.organizations.revokeOrganizationInvitation.mockResolvedValue(
         {},
       );
-      context.mocks.clerk.organizations.updateOrganization.mockResolvedValue(
-        {},
-      );
+      context.mocks.clerk.organizations.updateOrganization.mockResolvedValue({
+        id: actor.orgId,
+        slug,
+        name,
+        createdBy,
+        createdAt,
+      });
       context.mocks.clerk.organizations.updateOrganizationMembership.mockResolvedValue(
         {},
       );
