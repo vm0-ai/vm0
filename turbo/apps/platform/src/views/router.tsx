@@ -9,7 +9,7 @@ import {
 } from "../signals/app-skeleton.ts";
 import { AppSkeleton } from "./okou-page/app-skeleton.tsx";
 import { SidebarLayout } from "./okou-page/sidebar-layout.tsx";
-import { MinimalSidebarLayout } from "./okou-page/directed-shared.tsx";
+import { StandaloneLayout } from "./okou-page/directed-shared.tsx";
 
 function PageSlot() {
   const page = useGet(page$);
@@ -21,8 +21,8 @@ function LayoutHost({ children }: { children: ReactNode }) {
   if (layout === "sidebar") {
     return <SidebarLayout>{children}</SidebarLayout>;
   }
-  if (layout === "minimal") {
-    return <MinimalSidebarLayout>{children}</MinimalSidebarLayout>;
+  if (layout === "standalone") {
+    return <StandaloneLayout>{children}</StandaloneLayout>;
   }
   return <>{children}</>;
 }

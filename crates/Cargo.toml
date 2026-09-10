@@ -9,6 +9,7 @@ members = [
     "runner-rpc-client",
     "guest-tool-exec",
     "process-control-ipc",
+    "process-launch",
     "guest-telemetry",
     "guest-storage-apply",
     "guest-init",
@@ -46,6 +47,7 @@ session-history-selector = { path = "session-history-selector" }
 runner-rpc-client = { path = "runner-rpc-client" }
 guest-tool-exec = { path = "guest-tool-exec" }
 process-control-ipc = { path = "process-control-ipc" }
+process-launch = { path = "process-launch" }
 guest-telemetry = { path = "guest-telemetry" }
 guest-storage-apply = { path = "guest-storage-apply" }
 guest-init = { path = "guest-init" }
@@ -96,6 +98,7 @@ proptest = { version = "1", default-features = false }
 reqwest = { version = "0.13", default-features = false }
 rmp-serde = { version = "1", default-features = false }
 rmpv = { version = "1", default-features = false }
+roxmltree = { version = "0.21", default-features = false }
 rsa = { version = "=0.10.0-rc.18", default-features = false }
 russh = { version = "=0.63.3", default-features = false }
 rustix = { version = "1", default-features = false }

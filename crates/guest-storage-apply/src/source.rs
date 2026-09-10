@@ -18,6 +18,7 @@ static HTTP_AGENT: LazyLock<ureq::Agent> = LazyLock::new(|| {
 
     ureq::Agent::config_builder()
         .timeout_global(Some(TIMEOUT))
+        .http_status_as_error(false)
         .tls_config(
             TlsConfig::builder()
                 .root_certs(RootCerts::PlatformVerifier)
@@ -54,6 +55,9 @@ pub(crate) fn open_archive(
         let (retriable, message) = classify_http_error(&e);
         DownloadError::transport(message, retriable)
     })?;
+    if response.status().is_client_error() || response.status().is_server_error() {
+        return Err(crate::http_failure::from_response(url, response));
+    }
     Ok(ArchiveSource::http(
         response.into_body().into_reader(),
         metrics,
@@ -63,10 +67,6 @@ pub(crate) fn open_archive(
 fn classify_http_error(error: &ureq::Error) -> (bool, String) {
     // Never render the raw error: URI-bearing variants can expose presigned credentials.
     match error {
-        // Retry on server errors (5xx) and rate limiting (429).
-        ureq::Error::StatusCode(code) => {
-            (*code >= 500 || *code == 429, format!("HTTP status {code}"))
-        }
         ureq::Error::HostNotFound => (true, request_error_message("dns")),
         ureq::Error::Timeout(timeout) => (
             true,

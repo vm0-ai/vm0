@@ -1418,7 +1418,7 @@ async fn execute_inner_reports_a_broken_oom_evidence_envelope_without_leaking_it
 }
 
 #[tokio::test]
-async fn execute_inner_retains_trusted_oom_evidence_without_changing_terminal_semantics() {
+async fn execute_inner_retains_trusted_oom_evidence_and_attributes_agent_domain_sigkill() {
     let evidence =
         include_str!("../../../../../guest-contracts/tests/fixtures/oom-evidence-v1.json");
     let parsed: guest_contracts::oom_evidence::OomEvidence =
@@ -1464,15 +1464,29 @@ async fn execute_inner_retains_trusted_oom_evidence_without_changing_terminal_se
                 "recovered tool OOM must preserve success"
             );
         } else {
-            assert!(
-                !outcome
-                    .failure
-                    .as_ref()
-                    .unwrap()
-                    .error
-                    .as_str()
-                    .contains("OKOU_OOM_EVIDENCE")
-            );
+            let failure = outcome.failure.as_ref().unwrap();
+            assert!(!failure.error.as_str().contains("OKOU_OOM_EVIDENCE"));
+            if matches!(
+                termination,
+                ExecTermination::Exited {
+                    exit_code: EXIT_SIGKILL
+                }
+            ) {
+                assert_eq!(
+                    failure.error,
+                    "The agent process ran out of memory and was terminated by the sandbox out-of-memory killer"
+                );
+                assert_eq!(
+                    failure
+                        .resource_diagnostics
+                        .and_then(|diagnostics| diagnostics.failure_kind),
+                    Some(ResourceFailureKind::GuestMemoryOomKilled)
+                );
+                assert_eq!(
+                    outcome.sandbox_reuse_disposition,
+                    SandboxReuseDisposition::Ineligible(SandboxReuseRejection::ResourceFailure)
+                );
+            }
         }
         if termination == ExecTermination::TimedOut {
             assert!(matches!(
@@ -1481,4 +1495,47 @@ async fn execute_inner_retains_trusted_oom_evidence_without_changing_terminal_se
             ));
         }
     }
+}
+
+#[tokio::test]
+async fn execute_inner_keeps_tool_domain_oom_out_of_agent_terminal_attribution() {
+    let evidence =
+        include_str!("../../../../../guest-contracts/tests/fixtures/oom-evidence-v1.json");
+    let mut parsed: guest_contracts::oom_evidence::OomEvidence =
+        serde_json::from_str(evidence).unwrap();
+    let workload = parsed.groups[0].cgroup.clone();
+    parsed.incidents[0].kernel_events[0].task_cgroup = format!("{workload}/tools/tool-281-10-3-1");
+
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let mut exit = ProcessExit::new(1, EXIT_SIGKILL, Vec::new(), Vec::new());
+    exit.diagnostic = format!(
+        "{}{}",
+        guest_contracts::oom_evidence::EVIDENCE_PREFIX,
+        serde_json::to_string(&parsed).unwrap()
+    );
+    overrides.push_wait_process_exit(exit);
+    let factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
+    let ctx = minimal_context();
+
+    let outcome = run_new_sandbox_outcome(&factory, &ctx, &config, &default_params())
+        .await
+        .unwrap();
+
+    let failure = outcome
+        .failure
+        .as_ref()
+        .expect("tool OOM must retain the failed run");
+    assert_eq!(failure.error, "Agent exited with code 137");
+    assert_ne!(
+        failure
+            .resource_diagnostics
+            .and_then(|diagnostics| diagnostics.failure_kind),
+        Some(ResourceFailureKind::GuestMemoryOomKilled)
+    );
+    assert_eq!(
+        outcome.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::NonzeroExit)
+    );
 }

@@ -12,6 +12,7 @@ import {
   ComposerCreatePicker,
   ComposerCreateImageModelPicker,
   ComposerCreateVideoModelPicker,
+  ComposerSelectedTask,
 } from "./composer-create.tsx";
 import type { ComposerVoiceInputStatus } from "../../signals/okou-page/composer-voice-input.ts";
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
@@ -10608,6 +10609,9 @@ function ComposerConnectorsSlot({
   const agents = useLastResolved(agents$) ?? [];
   const connectorUi = useGet(signals.connector.connectorUiState$);
   const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
+  const openAddConnectorsDialog = useSet(
+    signals.connector.openAddConnectorsDialog$,
+  );
 
   const pageSignal = useGet(pageSignal$);
   const selectedConnectorSlug = connectorUi.selectedConnectorSlug;
@@ -10779,9 +10783,7 @@ function ComposerConnectorsSlot({
         connectorsLoading={connectorData === undefined}
         actions={actions}
         computerUse={computerUse}
-        onOpenAddDialog={() => {
-          return updateConnectorUi({ showAddDialog: true });
-        }}
+        onOpenAddDialog={openAddConnectorsDialog}
         onToggle={handleToggle}
         onToggleCustom={handleCustomToggle}
       />
@@ -11008,6 +11010,7 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
           <ComposerImportedTemplateUrlRefreshLifecycle signals={signals} />
           <ComposerCreateControls signals={signals} />
           <ComposerAttachments signals={signals} />
+          <ComposerSelectedTask signals={signals} />
           <ComposerInputSlot
             signals={signals}
             actions={actions}

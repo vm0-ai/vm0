@@ -16,16 +16,18 @@ import {
   type SQL,
 } from "drizzle-orm";
 
-import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
-import { FAST_PATH_MODEL, generateText } from "../external/openrouter";
 import {
-  isTransientProviderFailure,
-  openRouterFailureReason,
-} from "../external/openrouter-failure";
+  FAST_PATH_MODEL,
+  generateTextWithUsage,
+  openRouterTokenCounts,
+} from "../external/openrouter";
 import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
-import { tapError } from "../utils";
 import { assistantEventIdForRunEvent } from "./assistant-event-id";
+import {
+  generateAuxiliary,
+  type RecordAuxiliaryGenerationDetail,
+} from "./auxiliary-generation.service";
 import { visibleChatEventCondition } from "./chat-event-shared.service";
 import { insertChatEvent } from "./chat-event.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
@@ -40,8 +42,6 @@ import {
   canonicalChatEventError,
   canonicalChatEventUserMessage,
 } from "./canonical-chat-event-read.service";
-
-const log = logger("api:chat-initial-thinking");
 
 const INITIAL_THINKING_RUN_EVENT_ID = "thinking:initial";
 const THINKING_CONTEXT_MESSAGE_CAP = 8;
@@ -197,6 +197,7 @@ async function runCanReceiveThinkingMessage(args: {
 async function generateInitialThinkingText(args: {
   readonly currentPrompt: string;
   readonly history: readonly ThinkingContextMessage[];
+  readonly record: RecordAuxiliaryGenerationDetail;
 }): Promise<string | null> {
   const history = args.history
     .map((message) => {
@@ -204,7 +205,7 @@ async function generateInitialThinkingText(args: {
     })
     .join("\n\n");
 
-  const text = await generateText(
+  const generation = await generateTextWithUsage(
     FAST_PATH_MODEL,
     [
       {
@@ -233,8 +234,15 @@ async function generateInitialThinkingText(args: {
     THINKING_MAX_TOKENS,
     { reasoning: { effort: "low" } },
   );
+  if (generation === null) {
+    return null;
+  }
+  args.record({
+    truncated: generation.truncated === true,
+    tokens: openRouterTokenCounts(generation.usage),
+  });
 
-  return sanitizeThinkingText(text);
+  return sanitizeThinkingText(generation.text);
 }
 
 export async function generateAndPersistInitialThinkingMessage(args: {
@@ -265,34 +273,24 @@ export async function generateAndPersistInitialThinkingMessage(args: {
   ) {
     return false;
   }
-  const thinking = await tapError(
-    generateInitialThinkingText({
-      currentPrompt: args.currentPrompt,
-      history,
-    }),
-    (err) => {
-      // Opening copy is optional, is never retried, and its omission changes no
-      // run outcome, so a provider limit, timeout or upstream gateway failure is
-      // an expected outcome here rather than a defect. Those classes produced
-      // nearly every warning this call site emitted and nothing acted on them.
-      // Narrow suppression only: a rejected request, broken credentials, output
-      // this service cannot interpret and unclassified errors stay visible,
-      // because an unsupported-parameter defect is exactly what this warning
-      // surfaced last.
-      if (isTransientProviderFailure(openRouterFailureReason(err))) {
-        return;
-      }
-      log.warn("Initial thinking generation failed", {
-        threadId: args.threadId,
-        runId: args.runId,
-        err,
+  // Progress copy is the most disposable of the auxiliary generations: the run
+  // still answers without it. Share the boundary so an exhausted provider
+  // window is counted as expected degradation instead of warned about here.
+  const thinking = await generateAuxiliary({
+    feature: "chat_initial_thinking",
+    generate: (record) => {
+      return generateInitialThinkingText({
+        currentPrompt: args.currentPrompt,
+        history,
+        record,
       });
     },
-  );
-  if (thinking === undefined) {
-    return false;
-  }
-  if (thinking === null) {
+    usable: (value) => {
+      return value !== null;
+    },
+    diagnosticContext: { runId: args.runId, threadId: args.threadId },
+  });
+  if (thinking === undefined || thinking === null) {
     return false;
   }
   if (!(await runCanReceiveThinkingMessage(args))) {

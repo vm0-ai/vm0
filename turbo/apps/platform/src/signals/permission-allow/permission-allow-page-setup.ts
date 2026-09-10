@@ -12,7 +12,7 @@ export const setupPermissionAllowPage$ = command(
     await get(initialFeatureSwitchHydration$);
     signal.throwIfAborted();
 
-    set(updatePage$, createElement(PermissionAllowPage), "minimal");
+    set(updatePage$, createElement(PermissionAllowPage), "standalone");
     set(
       updateDocumentTitle$,
       i18n.t(($) => {

@@ -1,3 +1,4 @@
+import { EVENT } from "@axiomhq/logging";
 import { desktopUpdatesContract } from "@okouai/api-contracts/contracts/desktop-updates";
 import { testDesktopUpdateManifestStateContract } from "@okouai/api-contracts/contracts/test-desktop-update-manifest-state";
 import { HttpResponse, http } from "msw";
@@ -364,6 +365,420 @@ describe("desktop update routes", () => {
     );
 
     expect(response.body.error.code).toBe("NOT_FOUND");
+  });
+
+  // The manifest lives on a host we do not control. A request that only
+  // failed to read it must not look like "no release exists": a Squirrel
+  // updater treats 404 as up to date and the migration wall's download button
+  // would dead-end. The cases below pin that separation, and pin that a
+  // genuinely broken manifest still fails loudly.
+  function feedRequest() {
+    return client().productFeed({
+      params: {
+        product: "ai-okou-desktop",
+        channel: "stable",
+        platform: "darwin",
+        arch: "arm64",
+      },
+    });
+  }
+
+  function countingManifestHandler(respond: (attempt: number) => Response): {
+    readonly attempts: () => number;
+  } {
+    let attempts = 0;
+    server.use(
+      http.get(OKOU_DESKTOP_UPDATE_MANIFEST_URL, () => {
+        attempts += 1;
+        return respond(attempts);
+      }),
+    );
+    return {
+      attempts: () => {
+        return attempts;
+      },
+    };
+  }
+
+  function unhandledRequestErrors(
+    testCase: ReturnType<typeof testContext>,
+  ): readonly Record<string, unknown>[] {
+    return testCase.mocks.axiomLogging.error.mock.calls.flatMap(
+      ([, fields]) => {
+        return typeof fields === "object" &&
+          fields !== null &&
+          (fields as Record<string, unknown>).type === "unhandled_request_error"
+          ? [fields as Record<string, unknown>]
+          : [];
+      },
+    );
+  }
+
+  // The logger attaches the emitting context and lifts the recognized root
+  // fields into the Axiom event root, so asserting the whole record also
+  // proves the event was promoted rather than passed through unrecognized.
+  function loggedManifestEvent(fields: Record<string, unknown>) {
+    return {
+      ...fields,
+      context: "DesktopUpdates",
+      [EVENT]: { source: "api", ...fields },
+    };
+  }
+
+  function manifestLogFields(
+    calls: readonly (readonly unknown[])[],
+  ): readonly Record<string, unknown>[] {
+    return calls.flatMap(([, fields]) => {
+      return typeof fields === "object" &&
+        fields !== null &&
+        (fields as Record<string, unknown>).type ===
+          "desktop_update_manifest_upstream"
+        ? [fields as Record<string, unknown>]
+        : [];
+    });
+  }
+
+  it("still serves a release after transient upstream failures", async () => {
+    const upstream = countingManifestHandler((attempt) => {
+      if (attempt < 3) {
+        return new HttpResponse(null, { status: 502 });
+      }
+      return HttpResponse.json(
+        stableManifest("1.2.3", {
+          "1.2.3": darwinArm64Release("1.2.3", okouZipUrl("1.2.3")),
+        }),
+      );
+    });
+
+    const response = await accept(feedRequest(), [200]);
+
+    expect(response.body.currentRelease).toBe("1.2.3");
+    expect(upstream.attempts()).toBe(3);
+    // Absorbed, so it must not reach the error channels that page a human.
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+    expect(unhandledRequestErrors(context)).toStrictEqual([]);
+    expect(
+      manifestLogFields(context.mocks.axiomLogging.warn.mock.calls),
+    ).toStrictEqual([]);
+  });
+
+  it("stops retrying at the attempt bound and reports the upstream status", async () => {
+    const upstream = countingManifestHandler(() => {
+      return new HttpResponse(null, { status: 500 });
+    });
+
+    const response = await accept(feedRequest(), [503]);
+
+    expect(response.body.error.code).toBe("DESKTOP_UPDATE_UNAVAILABLE");
+    expect(upstream.attempts()).toBe(3);
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+    expect(unhandledRequestErrors(context)).toStrictEqual([]);
+    expect(
+      manifestLogFields(context.mocks.axiomLogging.warn.mock.calls),
+    ).toStrictEqual([
+      loggedManifestEvent({
+        type: "desktop_update_manifest_upstream",
+        outcome: "unavailable",
+        provider: "github_release_asset",
+        provider_status: 500,
+        failure_class: "transient_read_exhausted",
+        attempts: 3,
+        line: "ai-okou-desktop",
+        method: "GET",
+        route:
+          "/api/desktop/updates/:product/:channel/:platform/:arch/RELEASES.json",
+      }),
+    ]);
+  });
+
+  it("keeps an unavailable feed uncacheable and tells the caller to retry", async () => {
+    countingManifestHandler(() => {
+      return HttpResponse.error();
+    });
+
+    const response = await appRequest(
+      "http://api.test/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64/RELEASES.json",
+    );
+
+    expect(response.status).toBe(503);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("Retry-After")).toBe("60");
+  });
+
+  it("bounds each attempt so a hanging upstream cannot hold the request", async () => {
+    // A real deadline would make this test wait for it. Firing it immediately
+    // proves the same thing that matters: the fetch is bound to a deadline
+    // signal, and tripping it is retried and then reported as unavailable
+    // rather than surfacing as an unhandled error.
+    context.mocks.abortSignal.timeout.mockImplementation(() => {
+      const controller = new AbortController();
+      controller.abort(
+        new DOMException("The operation timed out", "TimeoutError"),
+      );
+      return controller.signal;
+    });
+    countingManifestHandler(() => {
+      return HttpResponse.json(
+        stableManifest("1.2.3", {
+          "1.2.3": darwinArm64Release("1.2.3", okouZipUrl("1.2.3")),
+        }),
+      );
+    });
+
+    const response = await accept(feedRequest(), [503]);
+
+    expect(response.body.error.code).toBe("DESKTOP_UPDATE_UNAVAILABLE");
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+    // No response ever arrived, so there is no upstream status to report.
+    expect(
+      manifestLogFields(context.mocks.axiomLogging.warn.mock.calls),
+    ).toStrictEqual([
+      loggedManifestEvent({
+        type: "desktop_update_manifest_upstream",
+        outcome: "unavailable",
+        provider: "github_release_asset",
+        failure_class: "transient_read_exhausted",
+        attempts: 3,
+        line: "ai-okou-desktop",
+        method: "GET",
+        route:
+          "/api/desktop/updates/:product/:channel/:platform/:arch/RELEASES.json",
+      }),
+    ]);
+  });
+
+  it("reports every manifest-backed route as unavailable, including the wall's download", async () => {
+    countingManifestHandler(() => {
+      return HttpResponse.error();
+    });
+
+    const feedResponse = await accept(feedRequest(), [503]);
+    expect(feedResponse.body.error.code).toBe("DESKTOP_UPDATE_UNAVAILABLE");
+
+    // The redirect routes read the same manifest, so they share the status.
+    // This one is the migration wall's `Download Okou` target.
+    const dmgResponse = await appRequest(
+      "http://api.test/api/desktop/updates/stable/darwin/arm64/dmg",
+    );
+    expect(dmgResponse.status).toBe(503);
+
+    const releaseResponse = await appRequest(
+      "http://api.test/api/desktop/updates/stable/darwin/arm64/release",
+    );
+    expect(releaseResponse.status).toBe(503);
+
+    const productDmgResponse = await appRequest(
+      "http://api.test/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64/dmg",
+    );
+    expect(productDmgResponse.status).toBe(503);
+
+    const productReleaseResponse = await appRequest(
+      "http://api.test/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64/release",
+    );
+    expect(productReleaseResponse.status).toBe(503);
+  });
+
+  it("serves the cached release while the manifest host is unreachable", async () => {
+    const initialNow = Date.parse("2026-06-08T00:00:00.000Z");
+
+    await withMockNowForTest(initialNow, async () => {
+      mockDesktopUpdateManifest(
+        stableManifest("1.2.3", {
+          "1.2.3": darwinArm64Release("1.2.3", okouZipUrl("1.2.3")),
+        }),
+      );
+
+      const warmed = await accept(feedRequest(), [200]);
+      expect(warmed.body.currentRelease).toBe("1.2.3");
+
+      countingManifestHandler(() => {
+        return HttpResponse.error();
+      });
+      mockNow(initialNow + 30 * 60_000 - 1);
+
+      const stale = await accept(feedRequest(), [200]);
+
+      expect(stale.body.currentRelease).toBe("1.2.3");
+      expect(
+        manifestLogFields(context.mocks.axiomLogging.warn.mock.calls),
+      ).toStrictEqual([]);
+      expect(
+        manifestLogFields(context.mocks.axiomLogging.debug.mock.calls),
+      ).toStrictEqual([
+        loggedManifestEvent({
+          type: "desktop_update_manifest_upstream",
+          outcome: "served_stale",
+          provider: "github_release_asset",
+          failure_class: "transient_read",
+          attempts: 3,
+          stale_age_ms: 30 * 60_000 - 1,
+          line: "ai-okou-desktop",
+        }),
+      ]);
+    });
+  });
+
+  // The window is anchored to the fetch, so a run of stale hits cannot renew
+  // it. Without that, a long outage would serve one manifest forever and a
+  // blocked release would keep being offered.
+  it("expires the cached release instead of renewing it on each stale hit", async () => {
+    const initialNow = Date.parse("2026-06-08T00:00:00.000Z");
+
+    await withMockNowForTest(initialNow, async () => {
+      mockDesktopUpdateManifest(
+        stableManifest("1.2.3", {
+          "1.2.3": darwinArm64Release("1.2.3", okouZipUrl("1.2.3")),
+        }),
+      );
+      await accept(feedRequest(), [200]);
+
+      countingManifestHandler(() => {
+        return HttpResponse.error();
+      });
+
+      for (const minutes of [10, 20, 29]) {
+        mockNow(initialNow + minutes * 60_000);
+        const stale = await accept(feedRequest(), [200]);
+        expect(stale.body.currentRelease).toBe("1.2.3");
+      }
+
+      mockNow(initialNow + 30 * 60_000);
+      const expired = await accept(feedRequest(), [503]);
+
+      expect(expired.body.error.code).toBe("DESKTOP_UPDATE_UNAVAILABLE");
+    });
+  });
+
+  it("does not serve stale after retries carry it past the stale deadline", async () => {
+    const initialNow = Date.parse("2026-06-08T00:00:00.000Z");
+
+    await withMockNowForTest(initialNow, async () => {
+      mockDesktopUpdateManifest(
+        stableManifest("1.2.3", {
+          "1.2.3": darwinArm64Release("1.2.3", okouZipUrl("1.2.3")),
+        }),
+      );
+      await accept(feedRequest(), [200]);
+
+      mockNow(initialNow + 30 * 60_000 - 1);
+      countingManifestHandler(() => {
+        // The retry began inside the stale window, but completes after it.
+        // The service must evaluate stale eligibility when it is about to
+        // answer, not when the request started.
+        mockNow(initialNow + 30 * 60_000);
+        return HttpResponse.error();
+      });
+
+      const response = await accept(feedRequest(), [503]);
+
+      expect(response.body.error.code).toBe("DESKTOP_UPDATE_UNAVAILABLE");
+    });
+  });
+
+  it("keeps the cached release usable across a failed refresh", async () => {
+    const initialNow = Date.parse("2026-06-08T00:00:00.000Z");
+
+    await withMockNowForTest(initialNow, async () => {
+      mockDesktopUpdateManifest(
+        stableManifest("1.2.3", {
+          "1.2.3": darwinArm64Release("1.2.3", okouZipUrl("1.2.3")),
+        }),
+      );
+      await accept(feedRequest(), [200]);
+
+      countingManifestHandler(() => {
+        return HttpResponse.error();
+      });
+      mockNow(initialNow + 5 * 60_000);
+      await accept(feedRequest(), [200]);
+
+      // A failed refresh must not evict or age the entry, and a later success
+      // must replace it outright rather than merge with it.
+      mockDesktopUpdateManifest(
+        stableManifest("1.2.4", {
+          "1.2.4": darwinArm64Release("1.2.4", okouZipUrl("1.2.4")),
+        }),
+      );
+      mockNow(initialNow + 10 * 60_000);
+      const refreshed = await accept(feedRequest(), [200]);
+
+      expect(refreshed.body.currentRelease).toBe("1.2.4");
+    });
+  });
+
+  it("fails loudly when the manifest is missing or unreadable", async () => {
+    const missing = countingManifestHandler(() => {
+      return new HttpResponse(null, { status: 404 });
+    });
+
+    const missingResponse = await appRequest(
+      "http://api.test/api/desktop/updates/stable/darwin/arm64/dmg",
+    );
+
+    expect(missingResponse.status).toBe(500);
+    // A manifest our own release pipeline publishes is not an outage, so it
+    // is neither retried nor downgraded.
+    expect(missing.attempts()).toBe(1);
+    expect(context.mocks.sentry.captureException).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Desktop update manifest fetch failed with 404",
+      }),
+    );
+
+    countingManifestHandler(() => {
+      return HttpResponse.json({ schemaVersion: 1 });
+    });
+
+    const invalidResponse = await appRequest(
+      "http://api.test/api/desktop/updates/stable/darwin/arm64/dmg",
+    );
+    expect(invalidResponse.status).toBe(500);
+  });
+
+  // Invalid JSON is not an unreadable host. The bytes arrived and they are not
+  // a manifest, so it must not be retried, absorbed, or answered from cache.
+  it("fails loudly when the manifest body is not json", async () => {
+    const upstream = countingManifestHandler(() => {
+      return new HttpResponse("not-a-manifest", {
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    const response = await appRequest(
+      "http://api.test/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64/RELEASES.json",
+    );
+
+    expect(response.status).toBe(500);
+    expect(upstream.attempts()).toBe(1);
+    expect(context.mocks.sentry.captureException).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "SyntaxError" }),
+    );
+  });
+
+  // A cached manifest must not paper over a broken release: the loud failures
+  // above stay loud even when an older copy is sitting in the cache.
+  it("does not answer a broken manifest from the cache", async () => {
+    const initialNow = Date.parse("2026-06-08T00:00:00.000Z");
+
+    await withMockNowForTest(initialNow, async () => {
+      mockDesktopUpdateManifest(
+        stableManifest("1.2.3", {
+          "1.2.3": darwinArm64Release("1.2.3", okouZipUrl("1.2.3")),
+        }),
+      );
+      await accept(feedRequest(), [200]);
+
+      countingManifestHandler(() => {
+        return new HttpResponse(null, { status: 404 });
+      });
+      mockNow(initialNow + 5 * 60_000);
+
+      const response = await appRequest(
+        "http://api.test/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64/RELEASES.json",
+      );
+
+      expect(response.status).toBe(500);
+    });
   });
 
   it("returns not found when no dmg release is available", async () => {

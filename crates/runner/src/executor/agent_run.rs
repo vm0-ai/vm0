@@ -1097,9 +1097,75 @@ fn sandbox_reuse_disposition_for_process_exit(
     }
 }
 
+/// User-visible reason for an agent process killed by the guest OOM killer.
+const GUEST_MEMORY_OOM_KILLED_ERROR: &str =
+    "The agent process ran out of memory and was terminated by the sandbox out-of-memory killer";
+
+/// Whether retained guest kernel records name a victim in the agent's own
+/// containment domain.
+///
+/// Shell tools run in separately contained `<workload>/tools/tool-*` leaves.
+/// The kernel routinely reclaims those without ending the run, so only the
+/// workload domain itself and its runtime leaf attribute a terminated agent.
+/// Evidence whose identity could not be correlated cannot attribute anything.
+/// Whether this failed run was terminated by a guest out-of-memory kill of the
+/// agent process itself.
+///
+/// The kernel record supplies the attribution. The terminal exit code only
+/// corroborates that the process the guest waited on was killed: depending on
+/// the launcher, that arrives either as an observed signal or as a shell's
+/// `137` exit translation, so a signal field is not required here.
+fn guest_memory_oom_killed_agent(agent_domain_oom_kill: bool, exit: &sandbox::ProcessExit) -> bool {
+    agent_domain_oom_kill
+        && matches!(exit.termination, ExecTermination::Exited { exit_code } if exit_code == EXIT_SIGKILL)
+}
+
+/// Select the user-visible reason a failed agent run stopped.
+fn agent_failure_error(
+    guest_memory_oom_killed: bool,
+    stderr: String,
+    guest_error: Option<String>,
+    failure_exit_code: i32,
+) -> String {
+    if guest_memory_oom_killed {
+        // The captured stderr tail describes whatever the agent last reported,
+        // not why it stopped. Guest logs retain that tail either way.
+        return GUEST_MEMORY_OOM_KILLED_ERROR.to_string();
+    }
+    if !stderr.is_empty() {
+        return stderr;
+    }
+    // Stderr is empty (redirected to log file). Check for a structured error
+    // file written by the guest-agent for final failure handoff.
+    guest_error.unwrap_or_else(|| agent_exit_failure_message(failure_exit_code))
+}
+
+fn guest_kernel_oom_killed_agent_domain(
+    evidence: &guest_contracts::oom_evidence::OomEvidence,
+) -> bool {
+    use guest_contracts::oom_evidence::EvidenceStatus;
+
+    let workload = evidence.groups[0].cgroup.as_str();
+    let runtime = format!("{workload}/runtime");
+    evidence
+        .incidents
+        .iter()
+        .filter(|incident| {
+            !matches!(
+                incident.kernel_status,
+                EvidenceStatus::Recreated | EvidenceStatus::Uncorrelated
+            )
+        })
+        .flat_map(|incident| incident.kernel_events.iter())
+        .any(|event| {
+            event.boottime_us >= evidence.started_boottime_us
+                && (event.task_cgroup == workload || event.task_cgroup == runtime)
+        })
+}
+
 /// Remove bounded OOM metadata before outcome processing so it never reaches
-/// user-facing stderr or a terminal-status decision. A metadata line that broke
-/// its own contract is dropped too, but must not disappear silently.
+/// user-facing stderr. Metadata alone does not select terminal semantics;
+/// correlated kernel evidence is evaluated separately for a proven agent OOM.
 fn take_oom_evidence(
     run_id: crate::ids::RunId,
     diagnostic: &mut String,
@@ -2556,6 +2622,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 .with_active_input_delivery_ids(active_input_delivery_ids));
         }
     };
+    let mut agent_domain_oom_kill = false;
     if let Some(evidence) = take_oom_evidence(context.run_id, &mut exit.diagnostic).or(oom_evidence)
     {
         if evidence
@@ -2567,6 +2634,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 evidence_kind = ResourceFailureKind::GuestMemoryOomKilled.as_str(),
                 "preserved operation-scoped guest kernel oom evidence");
         }
+        agent_domain_oom_kill = guest_kernel_oom_killed_agent_domain(&evidence);
         let path = config.log_paths.oom_evidence_log(context.run_id);
         if let Ok(bytes) = serde_json::to_vec(&evidence) {
             let retained =
@@ -2691,14 +2759,19 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 .await;
             }
         }
-        let error = if !stderr.is_empty() {
-            stderr
-        } else {
-            // Stderr is empty (redirected to log file). Check for a structured
-            // error file written by the guest-agent for final failure
-            // handoff.
-            guest_error.unwrap_or_else(|| agent_exit_failure_message(failure_exit_code))
-        };
+        let guest_memory_oom_killed = guest_memory_oom_killed_agent(agent_domain_oom_kill, &exit);
+        if guest_memory_oom_killed {
+            resource_diagnostics = Some(ResourceFailureDiagnostics {
+                failure_kind: Some(ResourceFailureKind::GuestMemoryOomKilled),
+                ..resource_diagnostics.unwrap_or_default()
+            });
+        }
+        let error = agent_failure_error(
+            guest_memory_oom_killed,
+            stderr,
+            guest_error,
+            failure_exit_code,
+        );
         let is_runner_job_timeout = matches!(exit.termination, ExecTermination::TimedOut)
             || diagnostic_is_agent_execution_timeout(failure_diagnostic.as_ref());
         Some(if is_runner_job_timeout {
@@ -2810,6 +2883,217 @@ mod tests {
 
     fn nonzero_process_exit() -> sandbox::ProcessExit {
         sandbox::ProcessExit::new(42, 1, Vec::new(), Vec::new())
+    }
+
+    const TEST_WORKLOAD_CGROUP: &str = "/vm0-exec/exec-281-10-3/workload";
+    const TEST_OPERATION_STARTED_US: u64 = 1_000_000;
+
+    fn test_memory_snapshot(
+        role: &str,
+        cgroup: &str,
+    ) -> guest_contracts::oom_evidence::MemorySnapshot {
+        guest_contracts::oom_evidence::MemorySnapshot {
+            role: role.to_string(),
+            cgroup: cgroup.to_string(),
+            inode: None,
+            status: guest_contracts::oom_evidence::EvidenceStatus::Available,
+            current: None,
+            peak: None,
+            limit: None,
+            initial_limit: None,
+            anon: None,
+            file: None,
+            kernel: None,
+            baseline: guest_contracts::oom_evidence::MemoryEvents::default(),
+            events: guest_contracts::oom_evidence::MemoryEvents::default(),
+            delta: guest_contracts::oom_evidence::MemoryEvents::default(),
+            local_baseline: guest_contracts::oom_evidence::MemoryEvents::default(),
+            local_events: guest_contracts::oom_evidence::MemoryEvents::default(),
+            local_delta: guest_contracts::oom_evidence::MemoryEvents::default(),
+        }
+    }
+
+    fn test_memory_groups() -> [guest_contracts::oom_evidence::MemorySnapshot; 3] {
+        [
+            test_memory_snapshot("workload", TEST_WORKLOAD_CGROUP),
+            test_memory_snapshot("runtime", &format!("{TEST_WORKLOAD_CGROUP}/runtime")),
+            test_memory_snapshot("tools", &format!("{TEST_WORKLOAD_CGROUP}/tools")),
+        ]
+    }
+
+    fn test_kernel_event(
+        task_cgroup: &str,
+        boottime_us: u64,
+    ) -> guest_contracts::oom_evidence::KernelOomEvent {
+        guest_contracts::oom_evidence::KernelOomEvent {
+            source: "guest".to_string(),
+            sequence: 7,
+            boottime_us,
+            constraint: "CONSTRAINT_NONE".to_string(),
+            oom_cgroup: None,
+            victim_pid: 4242,
+            victim_comm: "tsc".to_string(),
+            task_cgroup: task_cgroup.to_string(),
+        }
+    }
+
+    fn test_oom_evidence(
+        kernel_status: guest_contracts::oom_evidence::EvidenceStatus,
+        kernel_events: Vec<guest_contracts::oom_evidence::KernelOomEvent>,
+    ) -> guest_contracts::oom_evidence::OomEvidence {
+        guest_contracts::oom_evidence::OomEvidence {
+            operation_id: "1e1e1e1e-1e1e-4e1e-8e1e-1e1e1e1e1e1e".to_string(),
+            guest_boot_id: None,
+            started_boottime_us: TEST_OPERATION_STARTED_US,
+            sampled_at: "2026-09-09T10:34:57.253Z".to_string(),
+            kernel_cursor: None,
+            kernel_status,
+            groups: test_memory_groups(),
+            incidents: vec![guest_contracts::oom_evidence::OomIncident {
+                id: "1e1e1e1e-1e1e-4e1e-8e1e-1e1e1e1e1e1e:1".to_string(),
+                captured_at: "2026-09-09T10:34:57.253Z".to_string(),
+                reason: guest_contracts::oom_evidence::CaptureReason::Cleanup,
+                after_observation: true,
+                before_cleanup: true,
+                kernel_status,
+                kernel_events,
+                groups: test_memory_groups(),
+            }],
+            dropped_incidents: 0,
+        }
+    }
+
+    fn sigkill_process_exit() -> sandbox::ProcessExit {
+        // Production observes the launcher's 137 exit translation, not a
+        // signal field, so the exit shape here matches the recorded incident.
+        sandbox::ProcessExit::new(42, EXIT_SIGKILL, Vec::new(), Vec::new())
+    }
+
+    #[test]
+    fn guest_kernel_evidence_attributes_agent_domain_victims() {
+        for task_cgroup in [
+            TEST_WORKLOAD_CGROUP.to_string(),
+            format!("{TEST_WORKLOAD_CGROUP}/runtime"),
+        ] {
+            let evidence = test_oom_evidence(
+                guest_contracts::oom_evidence::EvidenceStatus::Available,
+                vec![test_kernel_event(&task_cgroup, TEST_OPERATION_STARTED_US)],
+            );
+
+            assert!(
+                guest_kernel_oom_killed_agent_domain(&evidence),
+                "agent domain victim must be attributed: {task_cgroup}"
+            );
+        }
+    }
+
+    #[test]
+    fn guest_kernel_evidence_ignores_separately_contained_tool_victims() {
+        // A reclaimed shell tool is the ordinary case in production and must
+        // keep the run's original terminal outcome.
+        let evidence = test_oom_evidence(
+            guest_contracts::oom_evidence::EvidenceStatus::Available,
+            vec![test_kernel_event(
+                &format!("{TEST_WORKLOAD_CGROUP}/tools/tool-281-10-3-1"),
+                TEST_OPERATION_STARTED_US + 10,
+            )],
+        );
+
+        assert!(!guest_kernel_oom_killed_agent_domain(&evidence));
+        assert!(!guest_memory_oom_killed_agent(
+            guest_kernel_oom_killed_agent_domain(&evidence),
+            &sigkill_process_exit(),
+        ));
+    }
+
+    #[test]
+    fn guest_kernel_evidence_requires_a_correlated_record_from_this_operation() {
+        let no_records = test_oom_evidence(
+            guest_contracts::oom_evidence::EvidenceStatus::Missing,
+            Vec::new(),
+        );
+        let stale_record = test_oom_evidence(
+            guest_contracts::oom_evidence::EvidenceStatus::Available,
+            vec![test_kernel_event(
+                TEST_WORKLOAD_CGROUP,
+                TEST_OPERATION_STARTED_US - 1,
+            )],
+        );
+
+        assert!(!guest_kernel_oom_killed_agent_domain(&no_records));
+        assert!(!guest_kernel_oom_killed_agent_domain(&stale_record));
+
+        for kernel_status in [
+            guest_contracts::oom_evidence::EvidenceStatus::Recreated,
+            guest_contracts::oom_evidence::EvidenceStatus::Uncorrelated,
+        ] {
+            let evidence = test_oom_evidence(
+                kernel_status,
+                vec![test_kernel_event(
+                    TEST_WORKLOAD_CGROUP,
+                    TEST_OPERATION_STARTED_US,
+                )],
+            );
+
+            assert!(
+                !guest_kernel_oom_killed_agent_domain(&evidence),
+                "uncorrelated identity cannot attribute a victim: {kernel_status:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn guest_memory_oom_attribution_requires_a_kill_shaped_exit() {
+        assert!(guest_memory_oom_killed_agent(true, &sigkill_process_exit()));
+        assert!(!guest_memory_oom_killed_agent(
+            true,
+            &nonzero_process_exit()
+        ));
+        assert!(!guest_memory_oom_killed_agent(
+            false,
+            &sigkill_process_exit()
+        ));
+        assert!(!guest_memory_oom_killed_agent(
+            true,
+            &sandbox::ProcessExit {
+                termination: ExecTermination::TimedOut,
+                ..sigkill_process_exit()
+            }
+        ));
+    }
+
+    #[test]
+    fn oom_killed_agent_reports_the_termination_reason_over_captured_stderr() {
+        let error = agent_failure_error(
+            true,
+            "{\"type\":\"pi_memory_recall_outcome\",\"status\":\"miss\"} Killed".to_string(),
+            Some("guest error file".to_string()),
+            EXIT_SIGKILL,
+        );
+
+        assert_eq!(error, GUEST_MEMORY_OOM_KILLED_ERROR);
+        assert!(!error.contains("pi_memory_recall_outcome"));
+    }
+
+    #[test]
+    fn ordinary_failures_keep_their_existing_error_selection() {
+        assert_eq!(
+            agent_failure_error(false, "boom".to_string(), None, 1),
+            "boom"
+        );
+        assert_eq!(
+            agent_failure_error(
+                false,
+                String::new(),
+                Some("guest error file".to_string()),
+                1
+            ),
+            "guest error file"
+        );
+        assert_eq!(
+            agent_failure_error(false, String::new(), None, EXIT_SIGKILL),
+            agent_exit_failure_message(EXIT_SIGKILL)
+        );
     }
 
     #[test]

@@ -9,7 +9,7 @@ import { updatePage$ } from "../react-router.ts";
 
 export const setupBrowserAuthorizationPage$ = command(
   async ({ set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(BrowserAuthorizationPage), "minimal");
+    set(updatePage$, createElement(BrowserAuthorizationPage), "standalone");
     set(
       updateDocumentTitle$,
       i18n.t(($) => {

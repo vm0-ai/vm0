@@ -17,6 +17,8 @@ use sandbox::{
 };
 use sandbox_firecracker::FirecrackerRuntime;
 
+mod launch_contract;
+
 type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
 
 const CONTROL_WEIGHT: u32 = 200;
@@ -68,6 +70,7 @@ async fn real_firecracker_guests_receive_weighted_host_cpu_service() -> TestResu
         host_cpu_placement,
     })
     .await?;
+    launch_contract::verify(&delegated_root()?).await?;
     let mut factory = runtime
         .create_factory(FactoryConfig {
             profile: "vm0/host-cpu-metal".into(),

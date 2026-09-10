@@ -878,7 +878,7 @@ function ChatThreadEmojiMenuButton({
                 {emoji ? (
                   <span
                     aria-hidden="true"
-                    className="okou-emoji text-base leading-none"
+                    className="font-family-emoji text-base leading-none"
                   >
                     {emoji}
                   </span>
@@ -1281,7 +1281,10 @@ function ChatThreadEmojiPreview() {
     <div className="flex h-10 shrink-0 items-center gap-2 border-t border-border px-2">
       {preview ? (
         <>
-          <span aria-hidden="true" className="okou-emoji text-lg leading-none">
+          <span
+            aria-hidden="true"
+            className="font-family-emoji text-lg leading-none"
+          >
             {preview.emoji}
           </span>
           <span className="truncate text-xs font-medium text-muted-foreground">
@@ -1516,7 +1519,7 @@ function ChatThreadEmojiGrid({
               onSelect(item.emoji);
             }}
           >
-            <span aria-hidden="true" className="okou-emoji">
+            <span aria-hidden="true" className="font-family-emoji">
               {item.emoji}
             </span>
             {shortcutDigit !== null && (
@@ -4219,7 +4222,8 @@ function ShimmerText({
   return (
     <p
       className={cn(
-        "okou-shimmer-text h-auto min-w-0 flex-1 truncate text-[0.8125rem] leading-[inherit]",
+        "okou-shimmer-text h-auto min-w-0 flex-1 truncate",
+        CHAT_THREAD_RESPONSE_SUPPORTING_TEXT_CLASS,
         className,
       )}
       aria-label={ariaLabel}
@@ -4296,7 +4300,9 @@ function ThinkingLoader({
         <img
           src={thinkingSpinnerImg}
           alt=""
-          className="okou-thinking-spinner size-4 max-w-none shrink-0 animate-spin motion-reduce:animate-none"
+          // The 48px asset has a 4px inset. A 17px canvas makes its visible
+          // mark match the perceived size of the 16px line icons.
+          className="okou-thinking-spinner size-[17px] max-w-none shrink-0 animate-spin motion-reduce:animate-none"
         />
       </span>
     );
@@ -5165,7 +5171,7 @@ function AssistantErrorRecoveryCard({
     <div
       role="status"
       data-testid="assistant-error-recovery"
-      className="okou-chat-card grid min-h-[88px] w-full grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 gap-y-3 px-3.5 py-3 text-foreground @[640px]:grid-cols-[auto_minmax(0,1fr)_auto] @[640px]:items-center"
+      className="okou-chat-card grid min-h-[88px] w-full grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 gap-y-3 px-3.5 py-3 text-foreground @[640px]:grid-cols-[auto_minmax(0,1fr)_auto] @[640px]:content-center"
     >
       {recovery.kind === "usage-limit" ||
       recovery.kind === "execution-timeout" ? (

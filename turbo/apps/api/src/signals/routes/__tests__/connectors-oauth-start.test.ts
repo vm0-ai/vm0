@@ -181,6 +181,35 @@ const LAUNCH_GATED_DIRECT_OKOU_CASES: readonly LaunchGatedDirectOkouCase[] = [
     },
   },
   {
+    connectorSlug: "calendly",
+    label: "Calendly",
+    clientEnvPrefix: "CALENDLY",
+    authorizationEndpoint: "https://auth.calendly.com/oauth/authorize",
+    tokenUrl: "https://auth.calendly.com/oauth/token",
+    pkce: true,
+    jsonTokenRequest: true,
+    tokenResponse: {
+      token_type: "Bearer",
+      access_token: "calendly-test-token",
+      refresh_token: "calendly-refresh-token",
+      expires_in: 7200,
+      scope: "users:read scheduled_events:read scheduled_events:write",
+    },
+    mockUserInfo: () => {
+      server.use(
+        http.get("https://api.calendly.com/users/me", () => {
+          return HttpResponse.json({
+            resource: {
+              uri: "https://api.calendly.com/users/calendly-test-user",
+              name: "Calendly Test User",
+              email: "calendly@example.test",
+            },
+          });
+        }),
+      );
+    },
+  },
+  {
     connectorSlug: "canva",
     label: "Canva",
     clientEnvPrefix: "CANVA",
