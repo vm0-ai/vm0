@@ -387,39 +387,59 @@ test("An unresolved signup can be sent after its account is verified", async () 
   );
 });
 
-test("A returning user forwards Impact attribution separately without firing a signup conversion", async () => {
-  mockNow(NOW, context.signal);
-  const gtag = installGtagMock();
-  let receivedImpact: unknown;
-  let receivedAcquisition: unknown;
-  context.mocks.api(
-    acquisitionAttributionContract.recordSignup,
-    ({ body, respond }) => {
-      receivedImpact = body.impactAttribution;
-      receivedAcquisition = body.attribution;
-      return respond(200, { recorded: false });
+test.each([
+  {
+    referral: "Impact alone",
+    query: "im_ref=partner-click",
+    acquisition: {},
+  },
+  {
+    referral: "Impact alongside an Okou Google Ads campaign",
+    query:
+      "im_ref=partner-click&gclid=original-click&okou_campaign_id=24220469665&okou_ad_group_id=123456",
+    acquisition: {
+      gclid: "original-click",
+      vm0_campaign_id: "24220469665",
+      vm0_ad_group_id: "123456",
     },
-  );
-  await setupPage({
-    context,
-    path: "/agents?im_ref=partner-click",
-    auth: {
-      user: {
-        id: "test-user-123",
-        fullName: "Test User",
-        email: "test@example.com",
-        createdAt: new Date(NOW - 86_400_000),
+  },
+])(
+  "A returning user forwards $referral separately without firing a signup conversion",
+  async ({ query, acquisition }) => {
+    mockNow(NOW, context.signal);
+    const gtag = installGtagMock();
+    let receivedImpact: unknown;
+    let receivedAcquisition: unknown;
+    context.mocks.api(
+      acquisitionAttributionContract.recordSignup,
+      ({ body, respond }) => {
+        receivedImpact = body.impactAttribution;
+        receivedAcquisition = body.attribution;
+        return respond(200, { recorded: false });
       },
-    },
-  });
-  await waitForAgentsPage();
-  expect(receivedImpact).toStrictEqual({
-    clickId: "partner-click",
-    capturedAt: new Date(NOW).toISOString(),
-  });
-  expect(receivedAcquisition).not.toHaveProperty("im_ref");
-  expect(gtag).not.toHaveBeenCalled();
-});
+    );
+    await setupPage({
+      context,
+      path: `/agents?${query}`,
+      auth: {
+        user: {
+          id: "test-user-123",
+          fullName: "Test User",
+          email: "test@example.com",
+          createdAt: new Date(NOW - 86_400_000),
+        },
+      },
+    });
+    await waitForAgentsPage();
+    expect(receivedImpact).toStrictEqual({
+      clickId: "partner-click",
+      capturedAt: new Date(NOW).toISOString(),
+    });
+    expect(receivedAcquisition).toMatchObject(acquisition);
+    expect(receivedAcquisition).not.toHaveProperty("im_ref");
+    expect(gtag).not.toHaveBeenCalled();
+  },
+);
 
 test("An expired shared Impact cookie is not forwarded", async () => {
   let receivedImpact: unknown;
