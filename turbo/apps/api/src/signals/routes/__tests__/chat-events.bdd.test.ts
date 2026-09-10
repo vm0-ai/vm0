@@ -21893,6 +21893,116 @@ describe("CHAT-02: initial thinking indicator", () => {
     },
   );
 
+  const providerDetail = "private-provider-detail";
+
+  it.each([
+    {
+      name: "an upstream gateway timeout delivered inside a 200 envelope",
+      thinkingResponse: () => {
+        return HttpResponse.json({
+          error: { code: 504, message: providerDetail },
+        });
+      },
+      warned: false,
+    },
+    {
+      name: "a provider rate limit",
+      thinkingResponse: () => {
+        return new HttpResponse(providerDetail, { status: 429 });
+      },
+      warned: false,
+    },
+    {
+      name: "an upstream bad gateway",
+      thinkingResponse: () => {
+        return new HttpResponse(providerDetail, { status: 502 });
+      },
+      warned: false,
+    },
+    // Negative control: an unsupported request is our defect, not the
+    // provider's availability, and stays reportable.
+    {
+      name: "a rejected request",
+      thinkingResponse: () => {
+        return new HttpResponse(providerDetail, { status: 400 });
+      },
+      warned: true,
+    },
+    {
+      name: "broken credentials",
+      thinkingResponse: () => {
+        return new HttpResponse(providerDetail, { status: 401 });
+      },
+      warned: true,
+    },
+    // An exhausted token budget describes our own request rather than the
+    // provider's availability, so it stays outside the suppressed set.
+    {
+      name: "an exhausted token budget",
+      thinkingResponse: () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "length",
+              native_finish_reason: "MAX_TOKENS",
+              message: { content: providerDetail },
+            },
+          ],
+        });
+      },
+      warned: true,
+    },
+  ])(
+    "omits opening copy and reports a defect only for $name",
+    async ({ thinkingResponse, warned }) => {
+      const { actor, agentId } = await entitledChatActor();
+      mockOptionalEnv("OPENROUTER_API_KEY", "thinking-classification-key");
+      server.use(
+        http.post(
+          "https://openrouter.ai/api/v1/chat/completions",
+          async ({ request }) => {
+            const payload = openRouterBodySchema.parse(await request.json());
+            const system = payload.messages[0]?.content ?? "";
+            return system.includes("Write user-visible progress copy")
+              ? thinkingResponse()
+              : HttpResponse.json({
+                  choices: [
+                    {
+                      finish_reason: "stop",
+                      message: { content: "Launch Checklist" },
+                    },
+                  ],
+                });
+          },
+        ),
+      );
+
+      const run = await sendChatRun(actor, {
+        agentId,
+        prompt: "Prepare the launch checklist",
+      });
+      await flushWaitUntilForTest();
+
+      // The optional generation is isolated: no marker, and the run proceeds.
+      const events = await chat.listThreadEvents(actor, run.threadId);
+      expect(
+        events.events.filter((event) => {
+          return event.runEventId === "thinking:initial";
+        }),
+      ).toStrictEqual([]);
+      expect((await api.readRun(actor, run.runId)).status).toBe("pending");
+
+      const warnings = context.mocks.axiomLogging.warn.mock.calls.filter(
+        ([message]) => {
+          return message === "Initial thinking generation failed";
+        },
+      );
+      expect(warnings).toHaveLength(warned ? 1 : 0);
+      expect(JSON.stringify(warnings)).not.toContain(providerDetail);
+      await cancelChatRun(actor, run.runId);
+    },
+  );
+
   it("persists a fast assistant thinking marker with paragraphs for active web chat runs", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
