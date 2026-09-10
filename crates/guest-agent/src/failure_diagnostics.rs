@@ -285,6 +285,12 @@ fn classify_cli_failure_reason(
     }
     if matches!(framework, AgentFramework::Codex)
         && source == FailureDetailSource::CodexJsonl
+        && failure_patterns::is_content_policy_rejection_message(failure_message)
+    {
+        return Some(FailureReason::SafetyPolicyRefusal);
+    }
+    if matches!(framework, AgentFramework::Codex)
+        && source == FailureDetailSource::CodexJsonl
         && failure_patterns::is_codex_rate_limit_retry_exhausted_message(failure_message)
     {
         return Some(FailureReason::ProviderRateLimited);
@@ -403,7 +409,7 @@ fn has_insufficient_credits_response_envelope(normalized: &str) -> bool {
     };
 
     let Some((Some(value), _)) =
-        parse_next_json_object(normalized, status_index + STATUS_MARKER.len())
+        failure_patterns::parse_next_json_object(normalized, status_index + STATUS_MARKER.len())
     else {
         return false;
     };
@@ -567,7 +573,9 @@ fn is_codex_oauth_reconnect_required_run_error(error_message: &str) -> bool {
     }
 
     let mut search_start = 0;
-    while let Some((value, end_index)) = parse_next_json_object(error_message, search_start) {
+    while let Some((value, end_index)) =
+        failure_patterns::parse_next_json_object(error_message, search_start)
+    {
         if value
             .as_ref()
             .is_some_and(is_codex_oauth_reconnect_required_value)
@@ -581,7 +589,9 @@ fn is_codex_oauth_reconnect_required_run_error(error_message: &str) -> bool {
 
 fn is_codex_chatgpt_account_unsupported_model_run_error(error_message: &str) -> bool {
     let mut search_start = 0;
-    while let Some((value, end_index)) = parse_next_json_object(error_message, search_start) {
+    while let Some((value, end_index)) =
+        failure_patterns::parse_next_json_object(error_message, search_start)
+    {
         if value.as_ref().is_some_and(|value| {
             value.get("type").and_then(Value::as_str) == Some("error")
                 && value.get("status").and_then(Value::as_u64) == Some(400)
@@ -597,18 +607,6 @@ fn is_codex_chatgpt_account_unsupported_model_run_error(error_message: &str) -> 
         search_start = end_index;
     }
     false
-}
-
-fn parse_next_json_object(message: &str, search_start: usize) -> Option<(Option<Value>, usize)> {
-    let body_start = message[search_start.min(message.len())..]
-        .find('{')
-        .map(|offset| search_start + offset)?;
-    let mut stream = serde_json::Deserializer::from_str(&message[body_start..]).into_iter();
-
-    match stream.next() {
-        Some(Ok(value)) => Some((Some(value), body_start + stream.byte_offset())),
-        Some(Err(_)) | None => Some((None, body_start + 1)),
-    }
 }
 
 fn is_codex_oauth_reconnect_required_value(value: &Value) -> bool {

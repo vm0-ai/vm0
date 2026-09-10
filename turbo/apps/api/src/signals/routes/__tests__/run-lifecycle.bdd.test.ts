@@ -19511,7 +19511,11 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       },
     );
 
-    describe.each(["input_too_large", "execution_timeout"] as const)(
+    describe.each([
+      "input_too_large",
+      "execution_timeout",
+      "safety_policy_refusal",
+    ] as const)(
       "globally suppresses %s",
       (failureReason) => {
         it.each([
