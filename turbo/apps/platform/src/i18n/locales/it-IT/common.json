@@ -386,14 +386,14 @@
   },
   "appLoading": {
     "tips": {
-      "ask": "Quando non sai quale sia il prossimo passo, chiedi a {{assistantName}}.",
-      "cloud": "Prenditi una pausa quando serve. {{assistantName}} può continuare a lavorare nel cloud.",
-      "employee": "Assumi un collega AI e dedica più tempo a ciò che conta.",
-      "ideas": "Basta un'idea iniziale. {{assistantName}} può suddividerla in passaggi e suggerirti nuove idee.",
-      "model": "Scegli il modello adatto a ogni attività e sfrutta al meglio il tuo budget.",
-      "schedule": "Programma le attività ripetitive e togli una cosa dalla lista delle cose da fare.",
-      "support": "Per ulteriore aiuto, contattaci all’indirizzo {{supportEmail}}.",
-      "workflow": "Un flusso di lavoro è una competenza riutilizzabile. Condividilo con il team, così tutti potranno usarlo."
+      "ask": "Chiedi a {{assistantName}}.",
+      "cloud": "Fai una pausa. {{assistantName}} lavora.",
+      "employee": "Assumi un collega AI.",
+      "ideas": "Pensa e pianifica con {{assistantName}}.",
+      "model": "Scegli il modello adatto al compito.",
+      "schedule": "Programma le attività. Risparmia tempo.",
+      "support": "Scrivi a {{supportEmail}}.",
+      "workflow": "Workflow: competenze da condividere col team."
     }
   },
   "appShell": {

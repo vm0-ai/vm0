@@ -6,7 +6,7 @@ import { mockNow } from "../../../lib/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
-const EMPLOYEE_TIP = "Hire an AI teammate and make more time for what matters.";
+const EMPLOYEE_TIP = "Hire an AI teammate.";
 
 test("Loading rotates all eight tips, offers support, and stops when the page is ready", async () => {
   let time = new Date("2026-09-10T08:00:00Z").getTime();
@@ -21,20 +21,21 @@ test("Loading rotates all eight tips, offers support, and stops when the page is
   await expect(within(loading).findByText(EMPLOYEE_TIP)).resolves.toBeVisible();
 
   for (const text of [
-    "Choose the right model for each task to make your budget go further.",
-    "Schedule repeat tasks and give yourself one less thing to do.",
-    "Step away when you need to. Okou can keep working in the cloud.",
-    "Start with a rough idea. Okou can break it down and spark new ideas.",
-    "A workflow is a reusable skill. Share it with your team so everyone can use it.",
-    "Whenever you're unsure what to do next, just ask Okou.",
-    "For extra help, contact us at contact@okou.ai.",
+    "Match the model to the task.",
+    "Schedule tasks. Save time.",
+    "Step away. Okou keeps working.",
+    "Let Okou brainstorm and plan.",
+    "Workflows are skills your team can share.",
+    "Just ask Okou.",
+    "Email contact@okou.ai.",
   ]) {
     time += 8000;
     await expect(within(loading).findByText(text)).resolves.toBeVisible();
   }
-  expect(
-    within(loading).getByText("For extra help, contact us at contact@okou.ai."),
-  ).toHaveAttribute("href", "mailto:contact@okou.ai");
+  expect(within(loading).getByText("Email contact@okou.ai.")).toHaveAttribute(
+    "href",
+    "mailto:contact@okou.ai",
+  );
 
   time += 8000;
   await expect(within(loading).findByText(EMPLOYEE_TIP)).resolves.toBeVisible();
@@ -69,7 +70,7 @@ test("The initial HTML loading avatar shows tips in the browser's supported lang
 
   await startPage({ context, path: "/v1/sign-in", auth: null });
 
-  const tip = "Recrutez un collègue IA et gardez du temps pour l'essentiel.";
+  const tip = "Recrutez un collègue IA.";
   await expect(within(loading).findByText(tip)).resolves.toBeVisible();
   expect(screen.queryByText(EMPLOYEE_TIP)).not.toBeInTheDocument();
 

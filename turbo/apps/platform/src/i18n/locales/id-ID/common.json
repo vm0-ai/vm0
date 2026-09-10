@@ -372,14 +372,14 @@
   },
   "appLoading": {
     "tips": {
-      "ask": "Saat bingung harus melakukan apa selanjutnya, tanyakan saja kepada {{assistantName}}.",
-      "cloud": "Beristirahatlah saat perlu. {{assistantName}} bisa tetap bekerja di cloud.",
-      "employee": "Rekrut rekan kerja AI dan luangkan lebih banyak waktu untuk hal yang penting.",
-      "ideas": "Mulai dari ide sederhana. {{assistantName}} bisa menguraikannya menjadi langkah-langkah dan memicu ide baru.",
-      "model": "Pilih model yang tepat untuk setiap tugas agar anggaran Anda lebih optimal.",
-      "schedule": "Jadwalkan tugas berulang dan kurangi satu hal dari daftar pekerjaan Anda.",
-      "support": "Untuk bantuan lebih lanjut, hubungi kami di {{supportEmail}}.",
-      "workflow": "Alur kerja adalah keterampilan yang bisa digunakan kembali. Bagikan dengan tim agar semua bisa memakainya."
+      "ask": "Tanya saja {{assistantName}}.",
+      "cloud": "Beristirahatlah. {{assistantName}} tetap bekerja.",
+      "employee": "Rekrut rekan kerja AI.",
+      "ideas": "Gali ide dan rencanakan bersama {{assistantName}}.",
+      "model": "Sesuaikan model dengan tugas.",
+      "schedule": "Jadwalkan tugas. Hemat waktu.",
+      "support": "Email {{supportEmail}}.",
+      "workflow": "Alur kerja: keterampilan untuk dibagikan ke tim."
     }
   },
   "appShell": {
