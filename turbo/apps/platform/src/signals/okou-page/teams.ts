@@ -115,6 +115,7 @@ export const watchTeamsConnection$ = command(
     signal.throwIfAborted();
     set(internalTeamsStatus$, current);
 
+    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
     const onTeamsChanged$ = command(async ({ get, set }, sig: AbortSignal) => {
       const previous = get(internalTeamsStatus$);
       set(reloadTeamsOrg$);

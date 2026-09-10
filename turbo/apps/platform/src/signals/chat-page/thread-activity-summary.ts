@@ -104,6 +104,7 @@ function createThinkingSummaryDemand(
   const subscribe$ = command(async ({ set }, signal: AbortSignal) => {
     signal.throwIfAborted();
     let activeDemand = Promise.resolve();
+    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
     const ensureSummaryDemand$ = command(
       async ({ get, set }, demandOwnerSignal: AbortSignal) => {
         demandOwnerSignal.throwIfAborted();
@@ -126,6 +127,7 @@ function createThinkingSummaryDemand(
         }
       },
     );
+    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
     const afterEventsChange$ = command(({ set }) => {
       return set(ensureSummaryDemand$, signal);
     });
@@ -135,6 +137,7 @@ function createThinkingSummaryDemand(
       afterEventsChange$,
       signal,
     );
+    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
     const ensureHydratedSummaryDemand$ = command(
       async ({ get, set }, signal: AbortSignal) => {
         await get(initialFeatureSwitchHydration$);

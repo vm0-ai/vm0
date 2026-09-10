@@ -2,6 +2,21 @@
 
 [ccstate guide](../SKILL.md)
 
+## Construct the command graph before commands run
+
+Define commands at package scope or while constructing an owning signal
+factory. Never call `command()` from inside another command callback. A command
+created at runtime only gets a fresh identity around the callback closure; it
+does not gain ccstate state, memoization, lifecycle, or isolation.
+
+Pass runtime values as positional sub-command arguments instead. When the value
+must remain reactive or outlive one invocation, represent it as explicit
+ccstate state owned by the surrounding signal graph. A signal factory may
+construct commands for a genuinely separate graph instance, but the owning
+code must instantiate that factory outside command execution.
+
+`ccstate/no-command-in-command` enforces this boundary.
+
 ## Extracting Shared Logic from Commands
 
 When two or more commands share duplicated logic, extract it into a **sub-command** (`command()`), not a plain function that receives `get`/`set`.

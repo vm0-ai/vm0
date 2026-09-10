@@ -225,6 +225,7 @@ export default [
       "api/require-sql-result-mapping": "error",
       "api/signal-check-await": "error",
       "ccstate/no-accessor-escape": "error",
+      "ccstate/no-command-in-command": "error",
     },
   },
   {

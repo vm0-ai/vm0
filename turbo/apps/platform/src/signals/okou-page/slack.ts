@@ -128,6 +128,7 @@ export const watchSlackConnection$ = command(
     signal.throwIfAborted();
     set(internalSlackStatus$, current);
 
+    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
     const onSlackChanged$ = command(async ({ get, set }, sig: AbortSignal) => {
       const previous = get(internalSlackStatus$);
       set(reloadSlackOrg$);

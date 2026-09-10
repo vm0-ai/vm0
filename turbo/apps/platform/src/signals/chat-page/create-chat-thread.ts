@@ -3055,6 +3055,7 @@ function createRunTracking({
     await set(setupChatEvents$, signal);
     signal.throwIfAborted();
 
+    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
     const onThreadDetailChanged$ = command(({ set }) => {
       L.debug("onThreadDetailChanged$ fired", { threadId });
       set(cancellationRecovery.reload$);
@@ -3062,17 +3063,20 @@ function createRunTracking({
       return false;
     });
 
+    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
     const onAutomationsChanged$ = command(({ set }) => {
       set(automationSignals.headerAutomations.reload$);
       return false;
     });
 
+    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
     const onArtifactsChanged$ = command(({ set }) => {
       L.debug("onArtifactsChanged$ fired", { threadId });
       set(reloadArtifacts$);
       return false;
     });
 
+    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
     const onWorkflowsChanged$ = command(
       async ({ set }, signal: AbortSignal): Promise<boolean> => {
         L.debug("onWorkflowsChanged$ fired", { threadId });

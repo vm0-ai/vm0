@@ -15,6 +15,7 @@
  * - no-store-in-params: Prevent Store type in function params
  * - no-side-effect-in-render: Prevent side-effect calls (set, detach) directly in render
  * - command-async-signal: Async commands must accept AbortSignal as last param
+ * - no-command-in-command: Prevent runtime command creation inside commands
  * - no-getter-setter-params: Functions must not accept ccstate Getter/Setter — use command()
  * - no-accessor-escape: ccstate get/set accessors must only be called directly
  * - no-new-abort-controller: Disallow new AbortController() — use signal hierarchy
@@ -46,6 +47,7 @@ import noStoreInParams from "./rules/no-store-in-params.ts";
 import setupPageRender from "./rules/setup-page-render.ts";
 import noSideEffectInRender from "./rules/no-side-effect-in-render.ts";
 import commandAsyncSignal from "./rules/command-async-signal.ts";
+import noCommandInCommand from "./rules/no-command-in-command.ts";
 import noGetterSetterParams from "./rules/no-getter-setter-params.ts";
 import noAccessorEscape from "./rules/no-accessor-escape.ts";
 import noNewAbortController from "./rules/no-new-abort-controller.ts";
@@ -90,6 +92,7 @@ const plugin = {
     "setup-page-render": setupPageRender,
     "no-side-effect-in-render": noSideEffectInRender,
     "command-async-signal": commandAsyncSignal,
+    "no-command-in-command": noCommandInCommand,
     "no-getter-setter-params": noGetterSetterParams,
     "no-accessor-escape": noAccessorEscape,
     "no-new-abort-controller": noNewAbortController,

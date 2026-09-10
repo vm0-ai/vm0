@@ -355,6 +355,7 @@ export const reloadTelegramBots$ = command(({ set }) => {
 
 export const startTelegramSettingsRealtime$ = command(
   async ({ set }, signal: AbortSignal) => {
+    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
     const onTelegramChanged$ = command(({ set }) => {
       set(reloadTelegramBots$);
       return false;
