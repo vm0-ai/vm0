@@ -211,10 +211,20 @@ async function run() {
   }
   // Deliberately exclusive: no command can replace a frozen archive or failed attempt.
   await mkdir(out);
-  const browser = await chromium.launch({
+  const server = await chromium.launchServer({
     executablePath: values["executable-path"],
-    args: [...browserArgs, "--remote-debugging-port=9227"],
+    args: [
+      ...browserArgs,
+      "--remote-debugging-port=0",
+      "--remote-debugging-address=127.0.0.1",
+    ],
   });
+  const browser = await chromium.connect(server.wsEndpoint());
+  const chromiumProfile = server
+    .process()
+    .spawnargs.find((argument) => argument.startsWith("--user-data-dir="))
+    ?.slice("--user-data-dir=".length);
+  assert(chromiumProfile, "Use the profile belonging to the launched browser");
   const manifest: Manifest = {
     version: 1,
     protocol: "channel-rounding-v1",
@@ -302,6 +312,7 @@ async function run() {
           apiOrigin,
           item.theme,
           manifest.failures,
+          chromiumProfile,
         );
         await page.goto(
           new URL(item.path.replace(":threadId", threadId), appOrigin).href,
@@ -332,6 +343,12 @@ async function run() {
           const image = `${id}.png`;
           await expect(page.locator("#app-bootstrap-skeleton")).toBeHidden();
           await expect(changeIcon).toBeVisible();
+          await expect(
+            page.getByRole("button", { name: "Voice input", exact: true }),
+          ).toBeEnabled();
+          await expect(
+            page.getByRole("button", { name: "Send", exact: true }),
+          ).toBeDisabled();
           if (!(await search.isVisible())) {
             assert(
               await changeIcon.evaluate((element) => {
@@ -422,9 +439,13 @@ async function run() {
           name: "Japanese “reserved” button",
           exact: true,
         });
-        await dual.focus();
-        await expect(dual).toBeFocused();
         await page.mouse.move(0, 0);
+        await search.press("Tab");
+        await page.keyboard.press("Tab");
+        await expect(dual).toBeFocused();
+        await expect(
+          page.locator('span[aria-hidden="true"]').filter({ hasText: "🈯" }),
+        ).toHaveCount(2);
         await capture("dual-presentation-keyboard");
         await page.keyboard.press("Space");
         await expect(search).not.toBeVisible();
@@ -496,6 +517,7 @@ async function run() {
       );
   } finally {
     await browser.close();
+    await server.close();
     await writeFile(
       path.join(out, "manifest.json"),
       `${JSON.stringify(manifest, null, 2)}\n`,

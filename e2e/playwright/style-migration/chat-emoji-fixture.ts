@@ -15,6 +15,7 @@ export async function installChatEmojiFixture(
   apiOrigin: string,
   theme: "light" | "dark",
   failures: string[],
+  chromiumProfile: string,
 ) {
   let title = "😀 Emoji planning ABC 中文";
   const agent = {
@@ -131,6 +132,7 @@ export async function installChatEmojiFixture(
     },
   });
   const worker = await installChatEmojiWorkerFixture(
+    chromiumProfile,
     apiOrigin,
     fixtures,
     failures,

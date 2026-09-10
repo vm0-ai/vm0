@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 
 interface WorkerRequest {
   requestId: string;
@@ -8,14 +10,21 @@ interface WorkerRequest {
 // SharedWorker fetches do not go through Playwright's Page/Context routing.
 // Intercept only the external API boundary; execute the deployed worker intact.
 export async function installChatEmojiWorkerFixture(
+  profile: string,
   apiOrigin: string,
   fixtures: () => Record<string, unknown>,
   failures: string[],
 ) {
-  const metadata: { webSocketDebuggerUrl: string } = await (
-    await fetch("http://127.0.0.1:9227/json/version")
-  ).json();
-  const socket = new WebSocket(metadata.webSocketDebuggerUrl);
+  // Resolve only this browser's ephemeral, loopback-only debugging endpoint.
+  // Reading its own profile avoids an HTTP discovery request or a fixed port.
+  const [port, endpoint] = (
+    await readFile(path.join(profile, "DevToolsActivePort"), "utf8")
+  )
+    .trim()
+    .split("\n");
+  assert(port && /^\d+$/.test(port) && Number(port) <= 65535);
+  assert(endpoint && /^\/devtools\/browser\/[a-f0-9-]+$/.test(endpoint));
+  const socket = new WebSocket(`ws://127.0.0.1:${port}${endpoint}`);
   await new Promise<void>((resolve, reject) => {
     socket.addEventListener("open", () => resolve(), { once: true });
     socket.addEventListener(
