@@ -384,7 +384,9 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       updateOrganizationLogo: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     users: {
-      getUserList: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      getUserList: vi
+        .fn<(...args: unknown[]) => Promise<unknown>>()
+        .mockResolvedValue({ data: [] }),
       getOrganizationMembershipList:
         vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       updateUserMetadata: vi.fn<(...args: unknown[]) => Promise<unknown>>(),

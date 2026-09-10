@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { acquisitionAttributionContract } from "@okouai/api-contracts/contracts/acquisition-attribution";
 
 import { HttpResponse, http } from "msw";
 import { testBillingReconciliationStateContract } from "@okouai/api-contracts/contracts/test-billing-reconciliation-state";
@@ -37,7 +38,7 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
-import { clearMockNow, mockNow, now } from "../../../lib/time";
+import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
 import {
   mockStripeClient,
   type StripeInvoice,
@@ -62,6 +63,7 @@ import { readOrgAcquisitionAttributionFixture } from "../../../test-fixtures/org
 import { webhooksClerkRoutes } from "../webhooks-clerk";
 import { testBillingReconciliationStateRoutes } from "../test-billing-reconciliation-state";
 import { billingCheckoutRoutes } from "../billing-checkout";
+import { acquisitionAttributionRoutes } from "../acquisition-attribution";
 import { billingConcurrencyCheckoutRoutes } from "../billing-concurrency-checkout";
 import { billingConcurrencySubscriptionRoutes } from "../billing-concurrency-subscriptions";
 import { billingCreditCheckoutRoutes } from "../billing-credit-checkout";
@@ -13459,7 +13461,7 @@ describe("usage pack allocation management", () => {
     });
   });
 
-  it("recreates a discounted exclusive-tax invitation charge without reapplying discounts", async () => {
+  it("preserves the invitation preview Impact snapshot and discounted exclusive-tax amount", async () => {
     const { fixture, email } =
       await setupInvitationPreviewContext("taxed-invite");
     const paymentMethodId = `pm_invite_${randomUUID()}`;
@@ -13488,6 +13490,33 @@ describe("usage pack allocation management", () => {
       periodEnd: fixture.billingPeriod.end,
       automaticTax: true,
     });
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({
+      data: [],
+      has_more: false,
+    });
+    const capturedAt = new Date(now()).toISOString();
+    context.mocks.clerk.users.getUserList.mockResolvedValue({
+      data: [{ id: fixture.userId, privateMetadata: {} }],
+    });
+    context.mocks.stripe.customers.retrieve.mockResolvedValue({
+      id: fixture.customerId,
+      metadata: {},
+    });
+    const recordImpact = (clickId: string, timestamp: string) => {
+      return accept(
+        setupApp({ context, routes: acquisitionAttributionRoutes })(
+          acquisitionAttributionContract,
+        ).recordSignup({
+          body: {
+            attribution: {},
+            impactAttribution: { clickId, capturedAt: timestamp },
+          },
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
+    };
+    await recordImpact("invitation-preview-partner", capturedAt);
     const client = setupApp({ context, routes: orgInviteRoutes })(
       orgInviteContract,
     );
@@ -13508,6 +13537,8 @@ describe("usage pack allocation management", () => {
     const metadata = {
       purpose: "usage_pack_invitation_purchase",
       usagePackInvitationPurchaseId: preview.body.purchaseId,
+      impact_click_id: "invitation-preview-partner",
+      impact_click_at: capturedAt,
     };
     context.mocks.stripe.invoices.create.mockResolvedValue({
       id: invoiceId,
@@ -13531,6 +13562,11 @@ describe("usage pack allocation management", () => {
       hosted_invoice_url: hostedInvoiceUrl,
     });
 
+    mockNow(new Date(now() + 60_000));
+    await recordImpact(
+      "partner-after-invitation-preview",
+      new Date(now()).toISOString(),
+    );
     const confirmation = await accept(
       client.confirmPurchase({
         headers: { authorization: "Bearer clerk-session" },
@@ -20992,7 +21028,7 @@ describe("POST /api/billing/credit-checkout", () => {
     );
   });
 
-  it("carries the purchaser's Impact click into new and existing Stripe customers", async () => {
+  it("persists the latest org Impact click and snapshots it on new and existing customer checkouts", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const capturedAt = new Date("2026-09-09T04:00:00.000Z");
@@ -21020,13 +21056,13 @@ describe("POST /api/billing/credit-checkout", () => {
     context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
       url: "https://checkout.stripe.com/session/impact-credit",
     });
-    const client = setupApp({ context, routes: billingCreditCheckoutRoutes })(
-      billingCreditCheckoutContract,
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
+      billingCheckoutContract,
     );
     const checkout = () => {
       return client.create({
         body: {
-          credits: 20_000,
+          tier: "pro",
           successUrl: `${APP_ORIGIN}/billing?credit=success`,
           cancelUrl: `${APP_ORIGIN}/billing?credit=canceled`,
         },
@@ -21041,9 +21077,74 @@ describe("POST /api/billing/credit-checkout", () => {
         impact_click_at: capturedAt.toISOString(),
       },
     });
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ impact_click_id: "partner-first" }),
+        subscription_data: {
+          metadata: expect.objectContaining({
+            impact_click_id: "partner-first",
+          }),
+        },
+      }),
+    );
     mockNow(new Date(capturedAt.getTime() + 60_000));
     impact.clickId = "partner-next";
     impact.capturedAt = new Date(capturedAt.getTime() + 60_000).toISOString();
+    context.mocks.stripe.subscriptions.list.mockResolvedValueOnce({
+      data: [
+        {
+          id: "sub_active_impact",
+          status: "active",
+          metadata: {
+            impact_click_id: "partner-first",
+            impact_click_at: capturedAt.toISOString(),
+          },
+        },
+        { id: "sub_canceled_impact", status: "canceled", metadata: {} },
+      ],
+      has_more: false,
+    });
+    // Login records the new organization click before billing starts.
+    await accept(
+      setupApp({ context, routes: acquisitionAttributionRoutes })(
+        acquisitionAttributionContract,
+      ).recordSignup({
+        body: { attribution: {}, impactAttribution: impact },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(
+      context.mocks.stripe.subscriptions.update,
+    ).toHaveBeenCalledExactlyOnceWith("sub_active_impact", {
+      metadata: {
+        impact_click_id: impact.clickId,
+        impact_click_at: impact.capturedAt,
+      },
+    });
+    context.mocks.stripe.customers.retrieve.mockResolvedValue({
+      id: customerId,
+      metadata: {
+        impact_click_id: impact.clickId,
+        impact_click_at: impact.capturedAt,
+      },
+    });
+    // A stale Clerk record must not roll the durable organization click back.
+    context.mocks.clerk.users.getUserList.mockResolvedValue({
+      data: [
+        {
+          id: fixture.userId,
+          privateMetadata: {
+            impact_attribution: {
+              clickId: "partner-first",
+              capturedAt: capturedAt.toISOString(),
+            },
+          },
+        },
+      ],
+    });
     await accept(checkout(), [200]);
     expect(context.mocks.stripe.customers.create).toHaveBeenCalledTimes(1);
     expect(
@@ -21054,6 +21155,116 @@ describe("POST /api/billing/credit-checkout", () => {
         impact_click_at: impact.capturedAt,
       },
     });
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          impact_click_id: "partner-next",
+          impact_click_at: impact.capturedAt,
+        }),
+        subscription_data: {
+          metadata: expect.objectContaining({
+            impact_click_id: "partner-next",
+            impact_click_at: impact.capturedAt,
+          }),
+        },
+      }),
+    );
+    context.mocks.clerk.users.getUserList.mockResolvedValue({
+      data: [{ id: fixture.userId, privateMetadata: {} }],
+    });
+    await accept(checkout(), [200]);
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ impact_click_id: "partner-next" }),
+      }),
+    );
+    // A member can retain their own referral but cannot change organization billing attribution.
+    const memberId = `user_member_${randomUUID()}`;
+    mocks.clerk.session(memberId, fixture.orgId, "org:member");
+    context.mocks.clerk.users.getUserList.mockResolvedValue({
+      data: [{ id: memberId, privateMetadata: {} }],
+    });
+    mockNow(new Date(capturedAt.getTime() + 120_000));
+    await accept(
+      setupApp({ context, routes: acquisitionAttributionRoutes })(
+        acquisitionAttributionContract,
+      ).recordSignup({
+        body: {
+          attribution: {},
+          impactAttribution: {
+            clickId: "member-partner",
+            capturedAt: new Date(capturedAt.getTime() + 120_000).toISOString(),
+          },
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    context.mocks.clerk.users.getUserList.mockResolvedValue({
+      data: [{ id: fixture.userId, privateMetadata: {} }],
+    });
+    await accept(checkout(), [200]);
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ impact_click_id: "partner-next" }),
+      }),
+    );
+  });
+
+  it("snapshots the org Impact click on credit Checkout, invoice and PaymentIntent metadata", async () => {
+    const fixture = await createSubscriptionOrg({ tier: "pro" });
+    const impact = {
+      clickId: "credit-partner",
+      capturedAt: nowDate().toISOString(),
+    };
+    context.mocks.clerk.users.getUserList.mockResolvedValue({
+      data: [
+        { id: fixture.userId, privateMetadata: { impact_attribution: impact } },
+      ],
+    });
+    context.mocks.stripe.customers.retrieve.mockResolvedValue({
+      id: fixture.customerId,
+      metadata: {},
+    });
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
+      url: "https://checkout.stripe.com/session/impact-credit",
+    });
+    await accept(
+      setupApp({ context, routes: billingCreditCheckoutRoutes })(
+        billingCreditCheckoutContract,
+      ).create({
+        body: {
+          credits: 20_000,
+          successUrl: `${APP_ORIGIN}/billing?credit=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?credit=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const snapshot = expect.objectContaining({
+      impact_click_id: impact.clickId,
+      impact_click_at: impact.capturedAt,
+    });
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        metadata: snapshot,
+        invoice_creation: {
+          enabled: true,
+          invoice_data: { metadata: snapshot },
+        },
+        payment_intent_data: expect.objectContaining({ metadata: snapshot }),
+      }),
+    );
   });
 
   it("automatically applies the customer's coupon", async () => {
@@ -21112,7 +21323,7 @@ describe("POST /api/billing/credit-checkout", () => {
     );
   });
 
-  it("applies a customer coupon without including subscription renewal", async () => {
+  it("applies a customer coupon and preserves the preview Impact click without including renewal", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });
     const paymentMethodId = `pm_credit_${randomUUID().slice(0, 8)}`;
     const couponId = `coupon_${randomUUID().slice(0, 8)}`;
@@ -21129,6 +21340,17 @@ describe("POST /api/billing/credit-checkout", () => {
           coupon: couponId,
         },
       },
+    });
+    const capturedAt = new Date("2026-09-09T04:00:00.000Z");
+    mockNow(capturedAt);
+    const impact = {
+      clickId: "credit-preview-partner",
+      capturedAt: capturedAt.toISOString(),
+    };
+    context.mocks.clerk.users.getUserList.mockResolvedValue({
+      data: [
+        { id: fixture.userId, privateMetadata: { impact_attribution: impact } },
+      ],
     });
     mockCreditPurchasePreview(fixture.customerId);
 
@@ -21236,6 +21458,9 @@ describe("POST /api/billing/credit-checkout", () => {
       status: "paid",
     });
 
+    mockNow(new Date(capturedAt.getTime() + 60_000));
+    impact.clickId = "partner-after-preview";
+    impact.capturedAt = new Date(capturedAt.getTime() + 60_000).toISOString();
     const confirmation = await accept(
       client.confirm({
         body: { previewToken: preview.body.previewToken },
@@ -21257,6 +21482,8 @@ describe("POST /api/billing/credit-checkout", () => {
           purpose: "credit_purchase",
           orgId: fixture.orgId,
           requestedCreditsAmount: "20000",
+          impact_click_id: "credit-preview-partner",
+          impact_click_at: capturedAt.toISOString(),
         }),
       }),
       expect.objectContaining({
