@@ -1,19 +1,19 @@
 import * as React from "react";
-import { Button as ButtonPrimitive } from "@base-ui/react/button";
-import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
 
-import { asChildRender } from "../../lib/base-ui-compat";
 import { cn } from "../../lib/utils";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "./tooltip";
+  ButtonBase,
+  buttonBaseClassName,
+  type ButtonBaseProps,
+  type ButtonTooltipOptions,
+} from "./button-base";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  [
+    buttonBaseClassName,
+    "inline-flex items-center justify-center gap-2 whitespace-nowrap ring-offset-background transition-colors focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  ],
   {
     variants: {
       variant: {
@@ -65,116 +65,21 @@ const buttonVariants = cva(
   },
 );
 
-interface ButtonBaseProps
+interface StyledButtonProps
   extends
-    Omit<ButtonPrimitive.Props, "className" | "render">,
-    VariantProps<typeof buttonVariants> {
-  asChild?: boolean;
-  className?: string;
-  render?: ButtonPrimitive.Props["render"];
-}
+    Omit<ButtonBaseProps, "showTooltip" | "tooltipFullWidth">,
+    VariantProps<typeof buttonVariants> {}
 
-export type ButtonProps = ButtonBaseProps &
-  (
-    | {
-        showTooltip: true;
-        "aria-label": string;
-      }
-    | {
-        showTooltip?: false;
-      }
-  );
-
-interface ButtonAsChildProps {
-  children: React.ReactNode;
-  className: string;
-  props: Omit<
-    ButtonPrimitive.Props,
-    "children" | "className" | "nativeButton" | "ref" | "render"
-  >;
-  ref: React.ForwardedRef<HTMLElement>;
-}
-
-function ButtonAsChild({
-  children,
-  className,
-  props,
-  ref,
-}: ButtonAsChildProps) {
-  return useRender({
-    defaultTagName: "button",
-    props: {
-      ...props,
-      className,
-      "data-slot": "button",
-    },
-    ref,
-    render: asChildRender(children),
-  });
-}
+export type ButtonProps = StyledButtonProps & ButtonTooltipOptions;
 
 const Button = React.forwardRef<HTMLElement, ButtonProps>(
-  (
-    {
-      asChild = false,
-      children,
-      className,
-      iconSize,
-      nativeButton,
-      render,
-      showTooltip = false,
-      size,
-      variant,
-      ...props
-    },
-    ref,
-  ) => {
-    const resolvedClassName = cn(
-      buttonVariants({ variant, size, iconSize, className }),
-    );
-    const { title: _title, ...propsWithoutTitle } = props;
-    const buttonProps = showTooltip ? propsWithoutTitle : props;
-
-    const button = asChild ? (
-      <ButtonAsChild
-        className={resolvedClassName}
-        props={buttonProps}
-        ref={ref}
-      >
-        {children}
-      </ButtonAsChild>
-    ) : (
-      <ButtonPrimitive
-        className={resolvedClassName}
-        data-slot="button"
-        nativeButton={nativeButton}
-        ref={ref}
-        render={render}
-        {...buttonProps}
-      >
-        {children}
-      </ButtonPrimitive>
-    );
-
-    if (!showTooltip) {
-      return button;
-    }
-
-    const tooltipTrigger = buttonProps.disabled ? (
-      <span className="inline-flex">{button}</span>
-    ) : (
-      button
-    );
-
+  ({ className, iconSize, size, variant, ...props }, ref) => {
     return (
-      <TooltipProvider delayDuration={200}>
-        <Tooltip>
-          <TooltipTrigger render={tooltipTrigger} />
-          <TooltipContent>
-            <p className="text-xs">{buttonProps["aria-label"]}</p>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+      <ButtonBase
+        {...props}
+        className={cn(buttonVariants({ variant, size, iconSize, className }))}
+        ref={ref}
+      />
     );
   },
 );

@@ -1,7 +1,7 @@
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { Sun, Moon, Monitor, Palette } from "lucide-react";
-import { ChoiceButton } from "@okouai/ui";
+import { ToggleButton } from "@okouai/ui";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import { featureSwitch$ } from "../../../../../signals/external/feature-switch.ts";
@@ -67,7 +67,7 @@ function AppearanceBlock() {
                       return $.settings.preferences.appearance.theme.system;
                     });
             return (
-              <ChoiceButton
+              <ToggleButton
                 key={value}
                 type="button"
                 selected={isActive}
@@ -77,7 +77,7 @@ function AppearanceBlock() {
               >
                 <Icon size={15} />
                 {label}
-              </ChoiceButton>
+              </ToggleButton>
             );
           })}
         </div>
