@@ -3029,6 +3029,13 @@ function createOnSubscribedCommand({
   });
 }
 
+const onWorkflowsChanged$ = command(
+  async ({ set }, signal: AbortSignal): Promise<boolean> => {
+    await set(reloadMountedComposerWorkflows$, signal);
+    return false;
+  },
+);
+
 function createRunTracking({
   threadId,
   setupChatEvents$,
@@ -3075,15 +3082,6 @@ function createRunTracking({
       set(reloadArtifacts$);
       return false;
     });
-
-    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
-    const onWorkflowsChanged$ = command(
-      async ({ set }, signal: AbortSignal): Promise<boolean> => {
-        L.debug("onWorkflowsChanged$ fired", { threadId });
-        await set(reloadMountedComposerWorkflows$, signal);
-        return false;
-      },
-    );
 
     await Promise.all([
       set(syncHydratedEventTrees$, signal),
