@@ -73,6 +73,7 @@ fn log_job_execution_failed(
                 exit_code,
                 reused,
                 error = %failure.error,
+                error_tail = crate::axiom_layer::error_tail(&failure.error),
                 timeout_ms,
                 elapsed_ms,
                 guest_duration_ms,
@@ -613,6 +614,30 @@ mod tests {
 
         assert_eq!(generic_fields, timeout_fields);
         assert_eq!(generic_field_kinds, timeout_field_kinds);
+    }
+
+    #[test]
+    fn terminal_failure_emits_a_bounded_causal_tail_only_for_long_errors() {
+        let cause = "HTTP status 403 s3_code=ExpiredRequest";
+        let error = format!("{}\n{cause}", "中".repeat(3000));
+        let failure = executor::ExecutionFailure::new(1, &error, None);
+
+        let event = capture_job_failure_log(&failure);
+
+        assert_field_eq(&event, "message", "job execution failed");
+        assert_field_eq(&event, "error", &error);
+        assert_field_kind(&event, "error_tail", "str");
+        let tail = event.fields.get("error_tail").expect("missing causal tail");
+        assert!(tail.len() <= 4096);
+        assert!(tail.ends_with(cause));
+        assert!(error.ends_with(tail));
+
+        for error in ["short failure".to_owned(), "x".repeat(4096)] {
+            let failure = executor::ExecutionFailure::new(1, &error, None);
+            let event = capture_job_failure_log(&failure);
+            assert_field_eq(&event, "error", &error);
+            assert!(!event.fields.contains_key("error_tail"));
+        }
     }
 
     #[test]
