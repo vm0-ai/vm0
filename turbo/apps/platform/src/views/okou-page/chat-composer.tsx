@@ -9732,6 +9732,9 @@ function ComposerRunModelPickerControl({
             : undefined
         }
         flyoutLayout={modelFlyoutEnabled}
+        onSelected={() => {
+          setModelPickerOpen(false);
+        }}
         compactTrigger
         mobileIconTrigger
         open={modelPickerOpen}
