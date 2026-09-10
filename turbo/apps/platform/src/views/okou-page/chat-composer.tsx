@@ -10815,6 +10815,7 @@ function ComposerConnectorsSlot({
             categoryCounts={connectorData?.categoryConnectorCounts}
             categoryMetadata={connectorData?.categoryMetadata}
             loading={connectorData === undefined}
+            chipCatalog={connectorData?.relatedCatalogItems ?? []}
             connected={agentConnectors}
             unconnected={unconnectedConnectors}
             connectedCustom={agentCustomConnectors}
