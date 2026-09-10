@@ -45,9 +45,11 @@ The shared database Worker reports the same response to its connected tabs as
 a `worker-unavailable` event with reason `force-upgrade-required`. Tabs route
 that event through the same update dialog instead of reloading automatically.
 Worker load and transport failures reject pending requests with their original
-error and mark the connection disconnected. Queries and computed reads have no
-time limit and remain cancellable through their owning lifecycle. An IndexedDB
-version change closes the affected connection and reports it as unavailable.
+error. The Worker reports no separate connection status: tabs observe transport
+health through the outcome of their own requests and subscriptions. Queries and
+computed reads have no time limit and remain cancellable through their owning
+lifecycle. An IndexedDB version change closes the affected connection and
+reports it as unavailable.
 These failures propagate through the normal error handling without reloading
 the page.
 

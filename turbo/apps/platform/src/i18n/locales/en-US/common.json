@@ -3808,9 +3808,7 @@
       "requestFailed": "Request failed"
     },
     "realtime": {
-      "degraded": "Live updates ran into a problem. Please refresh the page.",
-      "disconnected": "Realtime disconnected",
-      "reconnecting": "Realtime reconnecting"
+      "degraded": "Live updates ran into a problem. Please refresh the page."
     }
   },
   "invitationRedirect": {

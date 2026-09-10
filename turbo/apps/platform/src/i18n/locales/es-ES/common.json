@@ -3869,9 +3869,7 @@
       "requestFailed": "Solicitud fallida"
     },
     "realtime": {
-      "degraded": "Se produjo un problema con las actualizaciones en directo. Actualiza la página.",
-      "disconnected": "Conexión en tiempo real desconectada",
-      "reconnecting": "Reconectando la conexión en tiempo real"
+      "degraded": "Se produjo un problema con las actualizaciones en directo. Actualiza la página."
     }
   },
   "invitationRedirect": {

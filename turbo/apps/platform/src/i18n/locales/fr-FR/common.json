@@ -3869,9 +3869,7 @@
       "requestFailed": "La requête a échoué"
     },
     "realtime": {
-      "degraded": "Les mises à jour en direct ont rencontré un problème. Veuillez actualiser la page.",
-      "disconnected": "Connexion en temps réel interrompue",
-      "reconnecting": "Reconnexion en temps réel"
+      "degraded": "Les mises à jour en direct ont rencontré un problème. Veuillez actualiser la page."
     }
   },
   "invitationRedirect": {
