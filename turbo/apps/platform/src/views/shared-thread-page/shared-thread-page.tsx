@@ -5,7 +5,7 @@ import type {
 import { DEFAULT_AGENT_AVATAR_URL } from "@okouai/core/agent-avatar";
 import { Button, Card, CardContent, cn } from "@okouai/ui";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import { useGet, useSet } from "ccstate-react";
+import { useLoadable, useSet } from "ccstate-react";
 import type { Root } from "hast";
 import { Copy, Share2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -16,7 +16,6 @@ import {
 } from "../../signals/branding.ts";
 import type { SharedThreadRichContentSignals } from "../../signals/shared-thread-page/shared-thread-rich-content.ts";
 import { writeToClipboard } from "../../signals/okou-page/clipboard.ts";
-import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { MarkdownEventBody } from "../components/markdown.tsx";
 import { ProductBrandMark } from "../components/product-brand-mark.tsx";
@@ -39,8 +38,9 @@ import {
 import { AvatarFromUrl } from "../okou-page/sidebar-shared.tsx";
 
 /**
- * A shared message with the tree its body parsed into. The page setup command
- * parses assistant bodies and embeds their diagram signals before rendering.
+ * A shared message with an optional prepared plain tree. Rich bodies leave the
+ * tree undefined and are derived by the thread's rich-content signals when the
+ * view consumes them.
  */
 export type SharedDisplayMessage = SharedMessage & { readonly tree?: Root };
 
@@ -263,20 +263,11 @@ function SharedRichMessageBody({
   readonly messageIndex: number;
   readonly richContent: SharedThreadRichContentSignals;
 }) {
-  const state = useGet(richContent.state$);
+  const trees = useLoadable(richContent.trees$);
   const retry = useSet(richContent.retry$);
-  const pageSignal = useGet(pageSignal$);
-  const tree = state.trees.get(messageIndex);
-  const onRetry =
-    state.status === "error"
-      ? () => {
-          detach(
-            retry(pageSignal),
-            Reason.DomCallback,
-            "retry shared thread rich content",
-          );
-        }
-      : undefined;
+  const tree =
+    trees.state === "hasData" ? trees.data.get(messageIndex) : undefined;
+  const onRetry = trees.state === "hasError" ? retry : undefined;
   return (
     <MarkdownEventBody tree={tree} mediaPreview="link" onRetry={onRetry} />
   );
