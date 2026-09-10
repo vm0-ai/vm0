@@ -133,3 +133,44 @@ cleanup; the sanitized checkpoint records fixture IDs and the random name for
 an operator to inspect and remove through another approved Action. Do not start
 historical migration until that cleanup is verified. Neither synthetic plaintext
 nor credentials, session JWTs, cookies, or ciphertext enter the uploaded reports.
+
+## Read-only exit dependency inventory
+
+After the final database verification, run **KMS Production Exit Dependencies**
+on `main` and approve its existing `production` environment gate. Supply the UTC
+completion time of the accepted full database verification. This timestamp is
+an operator-provided comparison point; this workflow does not validate or replace
+the database certificate.
+
+The two independent jobs reuse existing production credentials:
+
+- Runner inventory uses the existing Cloudflare SSH transport and production
+  host list. A Python program is sent over SSH stdin and only reads
+  `/var/lib/vm0-runner/runners/v{version}/proxy-registry.json`, including retained
+  production release directories. It does not install a program, restart a
+  service, unregister a sandbox, or decrypt a secret. Only aggregate outer-key
+  counts leave each host. PR and staging directories are excluded.
+- Recovery inventory makes GET requests to the production Neon project's
+  metadata, branch list, snapshot list and production backup schedule. It does
+  not request a database connection URI or connect to PostgreSQL. It reports
+  configured history-window overlap and counts every retained snapshot as
+  requiring key review: snapshot creation time does not prove which historical
+  LSN was captured. Other branches are counted without inspecting their data.
+
+The workflow needs no new AWS credentials, IAM roles or KMS grants. It retains
+sanitized reports for 30 days. Failed SSH, unreadable or changing files, unknown
+keys, malformed envelopes, metadata failures, or incomplete pagination prevent
+a successful collection. A missing production registry is unresolved coverage,
+not a zero count. A workflow failure during SSH setup can occur before a report
+exists; do not treat that missing artifact as a successful inventory.
+
+Successful collection is **not retirement clearance**. The reports explicitly
+leave nested runner payloads, state outside these registries, actual earliest
+restorable timestamps, backup ciphertext and external backups unverified. A
+configured recovery window overlapping the migration is a potential recovery
+dependency, not proof that a particular historical point is still restorable.
+Review these results alongside the full database certificate, old-key CloudTrail
+activity, source/target CloudTrail and Config delivery, historical audit-log
+retention, and the agreed rollback requirements before retiring anything. This
+workflow never disables keys/users, changes retention, deletes state, restores
+backups, or changes a deployment.
