@@ -254,6 +254,12 @@ interface SetAblyPayloadLoopArgs {
 interface RealtimePayloadLoopState {
   deferred: ReturnType<typeof createDeferredPromise<boolean>>;
   poked: boolean;
+  /**
+   * A continuity gap is waiting to be handled on the next iteration. It only
+   * produces work for a subscription that has an `initializeCommand$`: a purely
+   * event-driven payload subscription has no baseline to re-read, so its data
+   * stays as stale as the events it missed.
+   */
   resyncPending: boolean;
   transientRetryCount: number;
   readonly pendingPayloads: unknown[];
@@ -959,6 +965,16 @@ const connectRealtimeClient$ = command(
       identity.orgId,
     );
     const stopObservingChannels = observeRealtimeChannels(channels);
+    const close = (): void => {
+      signal.removeEventListener("abort", close);
+      closeConnection();
+      stopObservingChannels();
+    };
+    // Own the observer before the first suspension point: cancelling during the
+    // attach below must still detach these listeners.
+    signal.removeEventListener("abort", closeConnection);
+    signal.addEventListener("abort", close, { once: true });
+
     await attachRealtimeChannels(channels);
     signal.throwIfAborted();
     publishConnectionDiagnostic({
@@ -966,13 +982,6 @@ const connectRealtimeClient$ = command(
       event: "realtime.channel",
       phase: "instant",
     });
-    const close = (): void => {
-      signal.removeEventListener("abort", close);
-      closeConnection();
-      stopObservingChannels();
-    };
-    signal.removeEventListener("abort", closeConnection);
-    signal.addEventListener("abort", close, { once: true });
     return { ably, channels };
   },
 );
