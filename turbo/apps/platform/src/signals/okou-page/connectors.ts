@@ -106,6 +106,7 @@ export interface ComposerConnectorSignals {
     [ComposerConnectorAuthorizationTarget, boolean, AbortSignal]
   >;
   readonly connectorUiState$: Computed<ComposerConnectorUiState>;
+  readonly openAddConnectorsDialog$: Command<void, []>;
   readonly updateConnectorUiState$: Command<
     void,
     [Partial<ComposerConnectorUiState>]
@@ -362,7 +363,7 @@ function createConnectorAuthorizationCommand(
 
 function createConnectorUiSignals(): Pick<
   ComposerConnectorSignals,
-  "connectorUiState$" | "updateConnectorUiState$"
+  "connectorUiState$" | "updateConnectorUiState$" | "openAddConnectorsDialog$"
 > {
   const internalUiState$ = state(initialComposerConnectorUiState());
   const connectorUiState$ = computed((get): ComposerConnectorUiState => {
@@ -378,7 +379,23 @@ function createConnectorUiSignals(): Pick<
       });
     },
   );
-  return { connectorUiState$, updateConnectorUiState$ };
+  const openAddConnectorsDialog$ = command(({ set }): void => {
+    // Ordinary entry starts a fresh browsing session without changing explicit
+    // connector/account targets or the lifetime of an ongoing connection.
+    set(updateConnectorUiState$, {
+      showAddDialog: true,
+      addDialogSearch: "",
+      directoryTab: "discover",
+      directoryCategory: null,
+      directoryDetailSlug: null,
+      directoryActiveIndex: 0,
+    });
+  });
+  return {
+    connectorUiState$,
+    updateConnectorUiState$,
+    openAddConnectorsDialog$,
+  };
 }
 
 export function createComposerConnectorSignals(
