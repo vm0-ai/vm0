@@ -41,9 +41,13 @@ request cancellation still propagates instead of being recorded as a timeout.
 Alert on sustained lag, never on a single timeout. The terminal event carries
 `skippedTimedOutHeads`, `skippedFailedHeads`, `selectedCandidates`,
 `deferredCandidates`, `scanWrapped`, and `oldestCandidateAgeMs` — the age of
-the least recently updated selected candidate. A stuck head keeps reappearing
-each cycle and drags `oldestCandidateAgeMs` upward, while an isolated deadline
-does not. Warn/error-only queries do not contain the downgraded info events.
+the least recently updated candidate **in that invocation's batch**. Global
+discovery selects candidates in thread-ID order, so a single invocation sees
+one slice of the eligible set and the per-invocation value varies with batch
+composition. Aggregate it as a maximum over a window: a stuck head keeps
+reappearing every cycle with a `lastMessageAt` that never moves, so its age
+grows monotonically, while an isolated deadline leaves no trend.
+Warn/error-only queries do not contain the downgraded info events.
 
 ## Rollout verification
 
@@ -52,8 +56,8 @@ change. Record the deployed API revision and observe a bounded window, then
 check that the warn/error feed carries no
 `chat_event_snapshot_candidate_timed_out` records, that any info record carries
 a non-empty `stage` and `durationMs`, that `chat_event_snapshot_completed`
-keeps its cadence with `skippedFailedHeads` at zero, and that
-`oldestCandidateAgeMs` stays flat.
+keeps its cadence with `skippedFailedHeads` at zero, and that the windowed
+maximum of `oldestCandidateAgeMs` shows no sustained upward trend.
 
 The observed base rate is roughly one timeout per 40,000 candidates, so a quiet
 window without an exercised timeout is not recovery evidence. Correlate at
