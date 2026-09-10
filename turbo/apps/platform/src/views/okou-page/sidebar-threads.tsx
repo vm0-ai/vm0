@@ -1,5 +1,4 @@
 import type { MouseEvent } from "react";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { useGet, useLoadable, useSet, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
@@ -94,9 +93,6 @@ import { Link } from "../router/link.tsx";
 import { OverlayScrollArea } from "./sidebar-scroll.tsx";
 import { ThreadPinMoveMenuItems } from "./sidebar-thread-reorder.tsx";
 import { equalArrays } from "../../lib/equality.ts";
-import { activeRoute$ } from "../../signals/active-route.ts";
-import { assistantName$ } from "../../signals/branding.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { GLOBAL_KEYBOARD_SHORTCUTS } from "../../lib/global-keyboard-shortcuts.ts";
 
 // The row glyphs draw at 17px, which the shared button base (`[&_svg]:size-4`)
@@ -455,35 +451,6 @@ function ChatThreadItem({
       <div className="pointer-events-none relative col-start-1 row-start-1 flex h-8 w-8 items-center justify-center justify-self-end">
         <ChatThreadMenu signals={signals} />
       </div>
-    </div>
-  );
-}
-
-function BuiltInWelcomeThreadItem() {
-  const { t } = useTranslation();
-  const assistantName = useGet(assistantName$);
-  const isCurrentPage = useGet(activeRoute$) === "welcomeThread";
-  const title = t(
-    ($) => {
-      return $.chat.welcomeThread.title;
-    },
-    { assistantName },
-  );
-
-  return (
-    <div className="group relative" data-testid="built-in-welcome-thread-row">
-      <Link
-        pathname="/chats/welcome"
-        aria-current={isCurrentPage ? "page" : undefined}
-        data-sidebar-built-in-thread
-        className={`flex h-8 items-center gap-2 rounded-lg px-2 py-2 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
-          isCurrentPage
-            ? "bg-state-selected text-sidebar-foreground font-medium"
-            : "text-sidebar-foreground hover:bg-state-hover"
-        }`}
-      >
-        <span className="min-w-0 flex-1 truncate">{title}</span>
-      </Link>
     </div>
   );
 }
@@ -1058,18 +1025,12 @@ function ResolvedAgentChatThreadsContent({
   scrollSignals: SidebarChatThreadScrollSignals;
 }) {
   const currentMainThreadListed = useGet(listSignals.currentThreadListed$);
-  const threadCount = useGet(listSignals.count$);
-  const unreadOnly = useGet(chatThreadOnlyUnread$);
-  const featureSwitches = useGet(featureSwitch$);
-  const showBuiltInWelcomeThread =
-    !unreadOnly && featureSwitches[FeatureSwitchKey.OnboardingChat];
   const scrollCurrentChatThreadOnRef = useSet(
     scrollSignals.scrollCurrentChatThreadOnRef$,
   );
 
   return (
     <div className="flex flex-col gap-1">
-      {showBuiltInWelcomeThread ? <BuiltInWelcomeThreadItem /> : null}
       {currentMainThreadId && currentMainThreadListed ? (
         <span
           ref={scrollCurrentChatThreadOnRef}
@@ -1077,9 +1038,7 @@ function ResolvedAgentChatThreadsContent({
           hidden
         />
       ) : null}
-      {threadCount === 0 && showBuiltInWelcomeThread ? null : (
-        <ChatThreads listSignals={listSignals} />
-      )}
+      <ChatThreads listSignals={listSignals} />
     </div>
   );
 }
