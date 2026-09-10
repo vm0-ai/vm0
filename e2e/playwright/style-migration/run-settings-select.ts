@@ -39,6 +39,7 @@ interface Manifest {
   caseSha256: string;
   runnerSha256: string;
   fixtureSha256: string;
+  localeAssetsSha256: string;
   roundingTolerance: typeof roundingTolerance;
   sourceSha: string;
   appBuildSha: string;
@@ -58,6 +59,7 @@ const { values } = parseArgs({
       "source-sha",
       "storage-state",
       "fixture",
+      "locale-assets",
       "out",
       "baseline",
       "executable-path",
@@ -133,13 +135,28 @@ async function run() {
     path.join(__dirname, "settings-select-cases.json"),
   );
   const fixtureBytes = await readFile(required("fixture"));
+  const localeAssetBytes = await readFile(required("locale-assets"));
+  const localeAssets: {
+    assets: { url: string; sha256: string; bodyBase64: string }[];
+  } = JSON.parse(localeAssetBytes.toString());
+  assert.equal(localeAssets.assets.length, 3);
+  for (const asset of localeAssets.assets) {
+    const url = new URL(asset.url);
+    assert.equal(url.origin, "https://static.okou.io");
+    assert(
+      url.pathname.startsWith("/okou-app/assets/") &&
+        url.pathname.endsWith(".json"),
+    );
+    assert.equal(sha256(Buffer.from(asset.bodyBase64, "base64")), asset.sha256);
+  }
   const frozen: Record<string, unknown> = JSON.parse(fixtureBytes.toString());
   assert(
     frozen["/api/org"] &&
       frozen["/api/agents"] &&
       frozen["/api/onboarding/status"] &&
       frozen["/api/feature-switches"] &&
-      frozen["/api/billing/status"],
+      frozen["/api/billing/status"] &&
+      frozen["/api/org/members"],
   );
   const onboarding = frozen["/api/onboarding/status"] as {
     defaultAgentId: string;
@@ -189,6 +206,11 @@ async function run() {
       sha256(fixtureBytes),
       "Frozen fixture changed",
     );
+    assert.equal(
+      baseline.localeAssetsSha256,
+      sha256(localeAssetBytes),
+      "Frozen locale asset bytes changed",
+    );
     assert.deepEqual(baseline.failures, []);
   }
   const out = path.resolve(required("out"));
@@ -205,6 +227,7 @@ async function run() {
     protocol: "channel-rounding-v1",
     caseSha256: sha256(caseBytes),
     fixtureSha256: sha256(fixtureBytes),
+    localeAssetsSha256: sha256(localeAssetBytes),
     runnerSha256,
     roundingTolerance,
     sourceSha,
@@ -260,6 +283,33 @@ async function run() {
           );
         const page = await context.newPage();
         page.setDefaultTimeout(30_000);
+        // The CDN currently returns production-only CORS headers on PR origins.
+        // Replay exact downloaded bytes; this certifies UI painting and client
+        // behavior, not the unmodified CDN/preview integration.
+        await page.route(
+          (url) =>
+            url.origin === "https://static.okou.io" &&
+            url.pathname.startsWith("/okou-app/assets/") &&
+            url.pathname.endsWith(".json"),
+          async (route) => {
+            const asset = localeAssets.assets.find(
+              (candidate) => candidate.url === route.request().url(),
+            );
+            assert(
+              asset,
+              `Unfrozen locale resource: ${new URL(route.request().url()).pathname}`,
+            );
+            assert.equal(route.request().method(), "GET");
+            await route.fulfill({
+              status: 200,
+              headers: {
+                "content-type": "application/json",
+                "access-control-allow-origin": appOrigin,
+              },
+              body: Buffer.from(asset.bodyBase64, "base64"),
+            });
+          },
+        );
         page.on("response", (response) => {
           const url = new URL(response.url());
           if (url.origin === apiOrigin && response.status() >= 400)
@@ -381,6 +431,9 @@ async function run() {
           else await control.click();
         }
         async function capture(state: string) {
+          await expect(
+            page.locator('meta[name="okou-app-git-commit-sha"]'),
+          ).toHaveAttribute("content", appBuildSha);
           const id = `${item.id}-${state}`;
           const image = `${id}.png`;
           const bytes = await stableScreenshot(page);
@@ -495,7 +548,9 @@ async function run() {
         savePending = new Promise<void>((resolve) => {
           releaseSave = resolve;
         });
-        await activate(page.getByRole("option", { name: /Tokyo/ }));
+        await activate(
+          page.getByRole("option", { name: /Japan Standard Time/ }),
+        );
         await expect(timezone).toBeDisabled();
         await expect(page.getByRole("listbox")).not.toBeVisible();
         await page.mouse.move(0, 0);
@@ -504,11 +559,11 @@ async function run() {
         releaseSave?.();
         savePending = undefined;
         await expect(timezone).toBeEnabled();
-        await expect(timezone).toHaveText(/Tokyo/);
+        await expect(timezone).toHaveText(/Japan Standard Time/);
         await capture("timezone-saved");
         await page.reload({ waitUntil: "domcontentloaded" });
         await ready();
-        await expect(timezone).toHaveText(/Tokyo/);
+        await expect(timezone).toHaveText(/Japan Standard Time/);
         await timezone.scrollIntoViewIfNeeded();
         await page.mouse.move(0, 0);
         await capture("timezone-reloaded");

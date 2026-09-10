@@ -353,3 +353,38 @@ has it false. Both keep `modelPickerFlyout=false` and `_realAgentInPreview=false
 No live switch was changed. Earlier manual portal navigation attempts are
 explicitly unaccepted diagnostics, distinct from the four passing frozen portal
 states. The archive was anonymously downloaded and hash-verified.
+
+## Settings select surfaces
+
+The `settings-select-surfaces` batch owns the Language and Time zone triggers
+in Preferences. Each native shared `SelectTrigger` retains its dimensions,
+border width, foreground, ref and interaction contract. The two consumers
+compose existing `border-control-border`, `bg-control-surface` and
+`[&:hover]:bg-state-hover-overlay` utilities. The unconditional hover selector
+preserves the old touch-browser treatment. Other `okou-btn-morandi` consumers
+keep their legacy definition until they migrate.
+
+`data-slot="language-setting"` and `data-slot="timezone-setting"` identify the
+existing rows for scoped semantic control queries; neither slot carries styles.
+`settings-select-cases.json` and `run-settings-select.ts` independently cover
+four Light/Dark desktop/narrow DPR 2 cases, with 13 states each. Run
+`pnpm style:migration:settings-select` from `e2e`, supplying App/API origins,
+source/build SHAs, private storage state, `--fixture`, `--locale-assets`, `--out`
+and optional `--baseline`. The runner observes trigger and menu styles, geometry,
+focus, disabled and selected states, and captures full-page PNGs without masks.
+Mobile primary activations use touch; keyboard and hover are explicit additional
+states. A stateful preference response checks pending saves, language changes,
+timezone selection and reload. Default Agent list/detail, onboarding, member,
+organization, billing and feature responses are frozen before the baseline.
+
+[Issue #33157](https://github.com/vm0-ai/vm0/issues/33157) records a pre-existing
+preview limitation discovered during calibration: public Japanese locale JSON
+returns a production-only CDN CORS header. The first attempt and its failure
+are retained. The separate locale fixture pins exactly three immutable URLs,
+original downloaded bytes and hashes; response access is supplied for the PR
+origin without changing the JSON. Those bytes also match the repository's
+Japanese agents/common and Clerk localization files. The runner rejects an
+unfrozen locale resource and changes to the asset fixture on replay. This
+establishes bounded rendering and client behavior under the recorded resource
+boundary; it does not certify or repair unmodified CDN access. Real API
+persistence and unmodified preview behavior are reported separately.
