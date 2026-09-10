@@ -233,7 +233,10 @@ bootstrap responses. Only preferences and feature switches are controlled.
 Before editing swatch styles, capture and upload BEFORE plus unchanged-code
 A/A using this exact runner. In Light, Dark and narrow DPR 2, the cases cover
 all eight previews, inactive hover, keyboard focus and Space selection, every
-selected palette, and reload. Every capture observes both native controls and
+selected palette, and reload. After every selection, wait for the matching
+preferences GET that follows the POST and Clerk token refresh before taking the
+next action; an optimistic pressed state does not prove that save completed.
+Every capture observes both native controls and
 their preview spans, including background image and geometry. Distinct gradients
 must survive changes to the root palette. The disabled capability remains hidden.
 Real API persistence is a separate preview check; controlled responses certify

@@ -133,7 +133,7 @@ export function ColorThemeSettings() {
               <span
                 aria-hidden="true"
                 data-color-theme={value}
-                className="okou-color-theme-swatch h-8 w-8 shrink-0 rounded-full border border-black/5"
+                className="bg-palette-anchor bg-palette-gradient h-8 w-8 shrink-0 rounded-full border border-black/5"
               />
               <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
                 {label}

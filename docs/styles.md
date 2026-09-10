@@ -143,3 +143,11 @@ The check has three layers:
 CI runs this as the independent required `lint-style` job. The pre-commit hook runs the fast repository policy so the most actionable boundary failures are returned before push. Both policy diagnostics and the full lint command's failure output direct contributors to `docs/styles.md` for the style guide. The full command keeps a failing exit status for policy, CSS, Tailwind, or test failures.
 
 When a style check fails, read this guide and replace business styling with the appropriate Tailwind utilities and registered tokens. Prune the baseline when legacy code has been removed. Do not suppress the check or add a business styling exception to make it pass.
+
+## App palette previews
+
+`bg-palette-anchor bg-palette-gradient` renders the color-theme anchor and its
+fixed companion gradient. These App-owned domain utilities use `@theme inline`
+so each element resolves its own `data-color-theme` anchor/companion instead of
+inheriting the selected document palette. The 135-degree gradient and 52% sRGB
+midpoint are identical in Light/Dark; consumer geometry stays at the call site.

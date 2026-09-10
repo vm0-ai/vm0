@@ -235,8 +235,22 @@
         "swatch-mobile",
         "swatch-disabled"
       ],
-      "status": "planned",
-      "evidence": []
+      "status": "implemented",
+      "evidence": [
+        {
+          "kind": "before-and-unchanged-replay",
+          "url": "https://a.okou.io/tfbcvgmfih.zip",
+          "sha256": "e5356716c129260faa07990eccf8b8e494e66ac88363112b210d42fce124181d",
+          "commit": "440d64b6dfffeba66d643e35fee9685ad90df335"
+        },
+        {
+          "kind": "superseded-calibration-and-retained-failures",
+          "url": "https://a.okou.io/w9gttm8nol.zip",
+          "sha256": "5d0ac66ea71a0c195a57605b90f4819a5a21237ccafa40397dc338df9fb9b94d",
+          "commit": "440d64b6dfffeba66d643e35fee9685ad90df335"
+        }
+      ],
+      "pullRequest": "https://github.com/vm0-ai/vm0/pull/33063"
     }
   ],
   "caseFiles": [
