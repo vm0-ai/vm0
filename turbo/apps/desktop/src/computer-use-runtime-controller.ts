@@ -46,7 +46,7 @@ interface PermissionRecovery {
 
 /** The `ComputerUseHostRuntime` surface the controller drives. */
 interface ComputerUseRuntimeLike {
-  start(): Promise<void>;
+  start(options?: { readonly userInitiated?: boolean }): Promise<void>;
   stop(): Promise<void>;
   drainAndStop(): Promise<void>;
   pauseAndDrainCommands(): Promise<() => void>;
@@ -64,7 +64,9 @@ interface ComputerUseRuntimeControllerOptions {
    * exists. The production implementation wires all Electron/session
    * dependencies into a `ComputerUseHostRuntime`.
    */
-  readonly createRuntime: () => ComputerUseRuntimeLike;
+  readonly createRuntime: (options: {
+    readonly refreshRegistrationAuth: boolean;
+  }) => ComputerUseRuntimeLike;
   readonly refreshPermissions: () => Promise<ComputerUsePermissionState>;
   readonly getAuthState: () => Promise<DesktopAuthState>;
   readonly getAuthAuthority?: () => object | null;
@@ -88,7 +90,7 @@ interface ComputerUseRuntimeControllerOptions {
  * stop-and-detach paths and the ad-hoc quit flags into one owner.
  */
 export class ComputerUseRuntimeController {
-  private readonly createRuntime: () => ComputerUseRuntimeLike;
+  private readonly createRuntime: ComputerUseRuntimeControllerOptions["createRuntime"];
   private readonly refreshPermissions: () => Promise<ComputerUsePermissionState>;
   private readonly getAuthState: () => Promise<DesktopAuthState>;
   private readonly setHostRuntimeOnline: (online: boolean) => void;
@@ -124,6 +126,7 @@ export class ComputerUseRuntimeController {
   private backgroundAuthRefresh: {
     readonly signal: AbortSignal;
     authority: object | null;
+    refreshed: boolean;
   } | null = null;
   private readonly reconcileAuthRecovery = latestWinsSingleFlight(() =>
     this.recoverAfterAuthRefresh(),
@@ -167,7 +170,11 @@ export class ComputerUseRuntimeController {
   handleBackgroundAuthRefresh(event: DesktopAuthRefreshEvent): void {
     if (this.quitStopStarted || event.signal.aborted) return;
     if (event.phase === "started") {
-      this.backgroundAuthRefresh = { signal: event.signal, authority: null };
+      this.backgroundAuthRefresh = {
+        signal: event.signal,
+        authority: null,
+        refreshed: false,
+      };
       return;
     }
     const refresh = this.backgroundAuthRefresh;
@@ -179,6 +186,7 @@ export class ComputerUseRuntimeController {
       return;
     }
     refresh.authority = this.options.getAuthAuthority?.() ?? null;
+    refresh.refreshed = event.identity === "same";
     this.reconcileAuthRecovery();
   }
 
@@ -208,7 +216,8 @@ export class ComputerUseRuntimeController {
         !current() ||
         !this.runningRequested ||
         this.manualStopRequested ||
-        this.quitStopStarted
+        this.quitStopStarted ||
+        this.runtime?.getState().status === "error"
       )
         return;
       intent = this.intent;
@@ -491,6 +500,8 @@ export class ComputerUseRuntimeController {
       readonly signal?: AbortSignal;
     } = {},
   ): Promise<void> {
+    if (this.backgroundAuthRefresh?.signal.aborted)
+      this.backgroundAuthRefresh = null;
     if (
       this.quitStopStarted ||
       ((this.nativeError !== null || this.driver?.getState().error) &&
@@ -501,6 +512,10 @@ export class ComputerUseRuntimeController {
     options.signal?.throwIfAborted();
     this.runningRequested = true;
     if (options.userInitiated) {
+      // A new explicit Start gets its own auth budget. A pending refresh still
+      // owns the completion that will finish Start after credentials arrive.
+      if (this.backgroundAuthRefresh?.authority)
+        this.backgroundAuthRefresh = null;
       if (this.driver?.getState().error) {
         this.stopping = Promise.all([
           this.stopping,
@@ -520,7 +535,12 @@ export class ComputerUseRuntimeController {
     };
     options.signal?.addEventListener("abort", abort, { once: true });
     const selection = this.selectionRevision;
-    const start = this.startRuntime(intent, selection, this.transitionTail);
+    const start = this.startRuntime(
+      intent,
+      selection,
+      this.transitionTail,
+      options.userInitiated,
+    );
     this.starting = start;
     this.phaseStartedAt = performance.now();
     try {
@@ -545,6 +565,7 @@ export class ComputerUseRuntimeController {
     intent: number,
     selection: number,
     transitions: Promise<void>,
+    userInitiated = false,
   ): Promise<void> {
     await withComputerUseDeadline(
       this.stopping,
@@ -605,8 +626,10 @@ export class ComputerUseRuntimeController {
       !this.nativeBlockReason()
     )
       this.driver?.activate();
-    const runtime = (this.runtime ??= this.createRuntime());
-    await runtime.start();
+    const runtime = (this.runtime ??= this.createRuntime({
+      refreshRegistrationAuth: !this.backgroundAuthRefresh?.refreshed,
+    }));
+    await runtime.start({ userInitiated });
     if (intent !== this.intent || selection !== this.selectionRevision) return;
     this.setHostRuntimeOnline(runtime.getState().status === "online");
   }

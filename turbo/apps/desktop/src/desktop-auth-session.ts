@@ -24,6 +24,8 @@ export type DesktopAuthRefreshEvent =
 export interface DesktopAuthRequestOptions {
   /** Stateful callers can let their fresh runtime own retry after auth refresh. */
   readonly retryAfterRefresh?: boolean;
+  /** A recovery attempt must not open another refresh cycle after rejection. */
+  readonly refreshOn401?: boolean;
 }
 
 interface DesktopAuthSessionOptions {
@@ -438,7 +440,8 @@ export class DesktopAuthSession {
       lifetime.signal,
       init,
     );
-    if (response.status !== 401) return response;
+    if (response.status !== 401 || options?.refreshOn401 === false)
+      return response;
     // No cookie-only retry. One App refresh and at most one authenticated retry.
     const refresh = this.getToken({ forceRefresh: true });
     const refreshLifetime = this.lifetime;

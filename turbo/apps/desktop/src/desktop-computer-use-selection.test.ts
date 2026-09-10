@@ -86,6 +86,7 @@ lines.on('line', line => {
   let authWindows = 0;
   let rejectIdentityOnce = false;
   let rejectHostStartOnce = false;
+  let rejectHostStarts = false;
   const stoppedHostTokens: (string | null)[] = [];
   let debug = true;
   let hostGranted = true;
@@ -219,9 +220,10 @@ lines.on('line', line => {
     preparePlugins: () => plugin.prepareForHost(),
     transitionTimeoutMs: 1234,
     lifecycleTimers: { setTimeout: schedule, clearTimeout: clear },
-    createRuntime: () =>
+    createRuntime: (options) =>
       createDesktopComputerUseHostRuntime(
         {
+          refreshRegistrationAuth: options.refreshRegistrationAuth,
           platformUrl: new URL("https://app.okou.ai"),
           installationId: readOrCreateComputerUseInstallationId(file),
           hostName: "fixture",
@@ -293,7 +295,7 @@ lines.on('line', line => {
         return HttpResponse.json({ effectiveSwitches: { _debug: enabled } });
       }
       if (url.pathname.endsWith("/hosts/start")) {
-        if (rejectHostStartOnce) {
+        if (rejectHostStartOnce || rejectHostStarts) {
           rejectHostStartOnce = false;
           return new HttpResponse(null, { status: 401 });
         }
@@ -355,6 +357,9 @@ lines.on('line', line => {
     },
     rejectHostStart: () => {
       rejectHostStartOnce = true;
+    },
+    set rejectHostStarts(value: boolean) {
+      rejectHostStarts = value;
     },
     acceptedHosts: () => hostStarts,
     stoppedHostTokens,
@@ -1374,4 +1379,42 @@ it("recovers a hidden refresh triggered by host registration without registering
     nativeStarts: 2,
     nativeActive: true,
   });
+});
+
+it("keeps a terminal CUA registration error after developer access is refreshed", async () => {
+  const app = desktop();
+  await app.authorize();
+  await app.selection.select("cua");
+  const unexpectedRefresh = deferred<string | null>();
+  app.authReply(Promise.resolve("first"));
+  // Bound a broken automatic retry loop without granting another refresh.
+  app.authReply(unexpectedRefresh.promise);
+  app.rejectHostStarts = true;
+  try {
+    await app.controller.start({ userInitiated: true });
+    await vi.waitFor(() =>
+      expect(app.controller.getHostState().status).toBe("error"),
+    );
+    expect(app.authWindows()).toBe(2);
+    expect(
+      app.requests.filter((request) => request.path.endsWith("/hosts/start")),
+    ).toHaveLength(2);
+    expect(app.acceptedHosts()).toBe(0);
+
+    app.developer.requestRefresh();
+    await vi.waitFor(() =>
+      expect(app.developer.getAvailability()).toBe("available"),
+    );
+    await app.settle();
+    await nextTurn();
+    expect(app.controller.getHostState().status).toBe("error");
+    expect(app.authWindows()).toBe(2);
+    expect(
+      app.requests.filter((request) => request.path.endsWith("/hosts/start")),
+    ).toHaveLength(2);
+    expect(app.acceptedHosts()).toBe(0);
+  } finally {
+    app.auth.signOut();
+    unexpectedRefresh.resolve(null);
+  }
 });
