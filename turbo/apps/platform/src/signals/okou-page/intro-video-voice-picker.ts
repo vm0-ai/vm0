@@ -20,6 +20,7 @@ function createIntroVideoVoicePickerSignals() {
     language: undefined,
     gender: undefined,
   });
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const loadPage$ = computed((get) => {
     const client = get(apiClient$)(introVideoPresenterContract, {
       apiBase: "api",

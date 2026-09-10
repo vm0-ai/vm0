@@ -60,6 +60,7 @@ export const directedConnectAccountTarget$ = computed(
   },
 );
 
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 export const directedConnectExactAccount$ = computed(
   async (get): Promise<ConnectorAccountConnection | null> => {
     const target = get(directedConnectAccountTarget$);

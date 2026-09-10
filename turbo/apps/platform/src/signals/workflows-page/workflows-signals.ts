@@ -807,6 +807,7 @@ export const allWorkflowAutomationEntries$ = computed(
 );
 
 /** One response owner per workflow and reload generation. */
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const currentWorkflowDetailResource$ = computed((get) => {
   get(workflowReloadVersion$);
   const workflowId = get(currentWorkflowId$);

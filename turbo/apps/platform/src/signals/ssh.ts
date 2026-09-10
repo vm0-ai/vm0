@@ -113,6 +113,7 @@ export const sshIdentity$ = computed(async (get) => {
   return user ? `${identity.orgId}:${user.id}` : null;
 });
 const reload$ = state(0);
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const sshClients$ = computed(async (get) => {
   const identity = await get(sshIdentity$);
   const clerk = await get(clerk$);

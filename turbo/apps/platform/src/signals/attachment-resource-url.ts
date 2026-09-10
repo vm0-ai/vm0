@@ -51,6 +51,7 @@ function withFragment(url: string, fragment: string): string {
 function createArtifactReferencePresignedToken$(
   reference: ArtifactReference,
 ): Computed<Promise<AttachmentPresignedToken | null>> {
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   return computed(async (get) => {
     const signal = get(pageSignal$);
     const response = await accept(
@@ -73,6 +74,7 @@ function createPrivateHostedPresignedToken$(
   url: string,
   deploymentId: string,
 ): Computed<Promise<AttachmentPresignedToken | null>> {
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   return computed(async (get) => {
     const signal = get(pageSignal$);
     const response = await accept(
@@ -94,6 +96,7 @@ function createPrivateHostedPresignedToken$(
 function createWebFilePresignedToken$(
   url: string,
 ): Computed<Promise<AttachmentPresignedToken | null>> {
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   return computed(async (get) => {
     const sourceUrl = new URL(url);
     const fileId = sourceUrl.searchParams.get("file_id");

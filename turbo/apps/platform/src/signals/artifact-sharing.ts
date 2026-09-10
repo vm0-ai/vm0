@@ -52,6 +52,7 @@ const resolveSharingTarget$ = command(
   },
 );
 
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const pageStatusState$ = computed((get) => {
   get(pageSignal$);
   return state<Readonly<Record<string, ArtifactShareStatus>>>({});

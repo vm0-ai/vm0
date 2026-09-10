@@ -125,6 +125,7 @@ const executeCatchUpChatEvent$ = command(
   },
 );
 
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const catchUpChatEventThrottle$ = computed((get) => {
   get(rootSignal$).throwIfAborted();
   return throttleCommand(
@@ -143,6 +144,7 @@ interface WorkerChatThreadIndicatorsCache {
   result: Promise<ChatThreadIndicators> | null;
 }
 
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const workerChatThreadIndicatorsCache$ = computed(
   (get): WorkerChatThreadIndicatorsCache => {
     get(rootSignal$).throwIfAborted();

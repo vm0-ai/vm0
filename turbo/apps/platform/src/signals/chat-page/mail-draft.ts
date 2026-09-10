@@ -112,6 +112,7 @@ function createAttachmentPreviews(
     loadVersion += 1;
     revokeAttachmentObjectUrls();
   };
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const attachmentPreviews$ = computed(
     async (get): Promise<MailAttachmentPreviews> => {
       if (!get(attachmentScopeActive$)) {
@@ -234,6 +235,7 @@ function createMailDraftResourceSignals(
 ): MailDraftResourceSignals {
   const draftOverride$ = state<MailDraft | null | undefined>(undefined);
   const draftReloadVersion$ = state(0);
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const draft$ = computed(async (get): Promise<MailDraft | null> => {
     get(draftReloadVersion$);
     const override = get(draftOverride$);

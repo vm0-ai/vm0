@@ -18,6 +18,7 @@ export function createBrowserSessionPageSignals(
   threadId: string,
 ): BrowserSessionPageSignals {
   const browser = createBrowserSessionSignals(threadId);
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const threadAccessible$ = computed(async (get): Promise<boolean> => {
     const signal = get(pageSignal$);
     const session = await get(browser.session$);

@@ -136,6 +136,7 @@ export function parseBankingActionUrl(
 
 function createBankingStatusSignals(descriptor: BankingActionDescriptor) {
   const reload$ = state(0);
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const status$ = computed(async (get) => {
     get(reload$);
     const client = get(apiClient$)(bankingUserContract);

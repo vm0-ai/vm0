@@ -47,6 +47,7 @@ function createThinkingSummaryDemand(
   const summaryDemandRunId$ = state<string | null>(null);
   const resetSummaryDemand$ = resetSignal();
   let summaryDemandSignal: AbortSignal | null = null;
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const demandSummaries$ = computed(async (get) => {
     get(internalReloadDemandSummary$);
     const runId = get(summaryDemandRunId$);

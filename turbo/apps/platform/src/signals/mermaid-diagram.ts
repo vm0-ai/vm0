@@ -181,6 +181,7 @@ export function createMermaidDiagramSignals(
     "light" | "dark",
     Promise<MermaidDiagramImage | null>
   >();
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const diagram$ = computed((get): Promise<MermaidDiagramImage | null> => {
     const theme = get(theme$);
     const existing = imagesByTheme.get(theme);

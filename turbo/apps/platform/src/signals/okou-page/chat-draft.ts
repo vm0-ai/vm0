@@ -686,6 +686,7 @@ export type RestorableAttachment = Omit<PersistedAttachment, "url"> & {
 export function createRestoredAttachment(
   persisted: RestorableAttachment,
 ): ChatAttachment {
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const fileInfo$ = computed(async (get): Promise<FileInfo | null> => {
     const signal = get(rootSignal$);
     const client = get(apiClient$)(webFilesContract);

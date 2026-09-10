@@ -15,6 +15,7 @@ export interface WelcomeThreadAction {
   readonly create$: Command<Promise<void>, [AbortSignal]>;
 }
 
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 export const welcomeThreadAction$ = computed(
   async (get): Promise<WelcomeThreadAction> => {
     const dialogSignal = get(settingsActionSignal$);
