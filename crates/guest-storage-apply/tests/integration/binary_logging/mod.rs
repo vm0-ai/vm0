@@ -9,6 +9,7 @@ use tempfile::TempDir;
 
 mod attribution;
 mod empty_artifact;
+mod http_failure;
 mod manifest_input;
 mod redaction;
 mod runtime_paths;

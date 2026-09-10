@@ -2577,6 +2577,7 @@
       "moreIdeas": "Altre idee",
       "moreTemplates": "Altri modelli",
       "presentationTemplates": "Modelli di presentazione",
+      "removeTask": "Rimuovi {{task}}",
       "tasks": {
         "image": "Immagine",
         "presentation": "Diapositive",
@@ -6552,6 +6553,7 @@
       "install": "Installa",
       "installDescription": "Scegli un agente e completa tutti i parametri obbligatori. Verranno installate tutte le automazioni incluse.",
       "installed": "Workflow ufficiale installato",
+      "installedStatus": "Installato",
       "installErrorDescription": "Controlla l’agente e i valori dei parametri, quindi riprova.",
       "installErrorTitle": "Impossibile installare il workflow ufficiale",
       "installTitle": "Installa {{name}}",

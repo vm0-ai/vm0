@@ -274,6 +274,96 @@ No expected image, mask or threshold changed. This is bounded Chromium
 acceptance; explicit sidebar readiness remains necessary before using the
 runner as an unattended gate.
 
+## Chat emoji font batch
+
+`chat-emoji-cases.json` and `run-chat-emoji.ts` cover the real chat icon trigger,
+emoji preview and emoji grid in Light/Dark desktop and narrow DPR 2 Chromium.
+Run `pnpm exec tsx playwright/style-migration/run-chat-emoji.ts` from `e2e`, using
+the standard App/API origin, source/build, private storage-state and output
+arguments, plus `--api-build` with the full API deployment SHA.
+
+The isolated TEST account signs in normally. `chat-emoji-fixture.ts` controls
+empty thread metadata, preferences, onboarding, feature switches and header
+context at both fetch and inert HTML bootstrap boundaries. It enables
+`chatThreadHeaderActions` and disables `_realAgentInPreview`; rename and read
+requests stay inside the fixture. No Agent run, connector authorization or
+purchase is performed. The production emoji catalog is unchanged. Each case
+checks colorful emoji, a dual-presentation CJK symbol, hover preview, keyboard
+activation, reload, removing the icon, text fallback and empty search.
+The existing capture, bootstrap and image helpers and their rounding limits
+remain unchanged. Before modifying business styles, capture and archive a
+successful BEFORE/A-A pair with frozen runner, fixture and case hashes.
+
+`chat-emoji-worker.ts` additionally intercepts the SharedWorker's external API
+requests through a local Chromium debugging connection. Page/Context routing
+does not cover those requests. The deployed Worker executes unchanged, and
+its snapshot boundary must be observed in each case. CORS preflight is handled
+at that same fixture boundary. The runner requires the initial loading overlay
+to be hidden and the chat icon to be unobscured before capturing.
+
+The [frozen BEFORE and unchanged replay](https://a.okou.io/3qkwcyzuet.zip)
+passed all 28 states with zero changed pixels and identical computed styles,
+geometry and control observations. Source
+`1e09b73cb906f1202b566255760655db893048c2` deployed as App/API build
+`0d5834c732c37516c2d163613063a763c0fac9f2`. The archive, including every rejected
+calibration and per-file SHA256, was published before editing business CSS.
+The final runner waits for the async connector icon and focuses the existing
+chat region in closed-picker states to avoid the unrelated composer caret.
+
+All three native emoji spans now use
+`font-(family-name:--font-family-emoji)`, reusing the existing App-owned font
+stack without a new alias. The final `.okou-emoji` rule and only its legacy
+baseline entries are removed. DOM, events and size utilities are unchanged.
+Screenshot rename/reload uses a stateful TEST fixture; separate real-page
+selection and reload also passed with an empty TEST thread created using the
+allowed `deepseek-v4-pro` model. No Agent run or paid action was required.
+
+The first AFTER build also included upstream voice-composer fix #33058
+(`724dc63d33064e66f8a41e0bef6ad54e345ef94a`), which was absent from the initial
+BEFORE. All emoji control observations matched, but the complete frames
+correctly failed on unrelated composer pixels. That failed AFTER is retained.
+Main was synchronized to `b440c7b27c62b2b79afe88a9762cc51c790bfb95`; the three
+legacy consumers and their rule are temporarily restored for a refreshed
+BEFORE/A-A deployment. The frozen runner, fixtures, cases and limits are
+unchanged. Publish the refreshed baseline before reapplying the same migration.
+
+The [refreshed BEFORE/A-A archive](https://a.okou.io/z6rgfsqp0b.zip) passed all
+28 states with zero changed pixels, on source
+`4e18c07e3eb936da5778207e5a81508cfce9aaa0` and App/API build
+`e9e64de2da25bbd5514c02f1db0766490b6d9904`. It retains the rejected initial
+AFTER and the source-parent diagnosis. That rejected AFTER also matches the
+refreshed legacy BEFORE exactly in all 28 frames, isolating the upstream
+composer change. After the refreshed baseline was uploaded, the original
+three-consumer font migration and its shrink-only ratchet patch were reapplied.
+
+The [AFTER archive](https://a.okou.io/b1j7myrczw.zip) records all 28 states
+passing with zero raw changed pixels and identical observations on source
+`0c52bbddd94dbefa9451d2bae92af6581a85abe4`, App/API build
+`57e0a0676fcfbd40d2ca8c1c630027ab2de02014`. The 19 focused emoji/header tests,
+App/E2E types, affected lint, Knip, formatting and shrink-only style checks
+passed. Real TEST API selection, reload, removal, reload and restoration also
+passed with zero chat event rows. TEST state must be recreated after a preview
+database reset; authentication material remains private. The batch remains
+`implemented` until current-head CI also passes: the tested source had a
+sidebar test failure and Runner setup HTTP 500 failures outside the changed
+files. The PR records the latest deployment and CI status.
+
+The three consumers now use the shorter named utility `font-family-emoji`.
+Tailwind generates the same `font-family: var(--font-family-emoji)` declaration
+from the existing App theme token; no token rename or alias is required.
+The original frozen BEFORE/A-A evidence, runner and pixel limits remain the
+comparison contract for this syntax simplification.
+
+The [named-utility evidence archive](https://a.okou.io/tuxdll7vug.zip) and
+[comparison image](https://a.okou.io/0ari27pv9w.png) record all 28 states passing
+with zero raw changed pixels and identical computed styles, geometry and
+control observations on source `242fcfd3261fb8f0aa994ecfe78671f9fa67f70b`,
+App/API build `751dc257ecea3ba7c8830c9efd5e90e740aff81e`. All 19 focused tests,
+affected static checks and the [source CI pipeline](https://github.com/vm0-ai/vm0/actions/runs/34433235841)
+passed. Real TEST API selection, removal and persistence across reloads also
+passed with zero chat event rows. The archive retains all prior failed evidence,
+the unchanged harness and per-file SHA256; its anonymous HTTPS download and
+archive hash were verified. The PR remains Draft.
 ## Tone preview surfaces
 
 The `tone-preview-surfaces` batch covers the user sample bubble and its enclosing

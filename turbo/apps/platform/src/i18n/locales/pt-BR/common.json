@@ -2577,6 +2577,7 @@
       "moreIdeas": "Mais ideias",
       "moreTemplates": "Mais modelos",
       "presentationTemplates": "Modelos de apresentação",
+      "removeTask": "Remover {{task}}",
       "tasks": {
         "image": "Imagem",
         "presentation": "Slides",
@@ -6552,6 +6553,7 @@
       "install": "Instalar",
       "installDescription": "Escolha um agente e preencha todos os parâmetros obrigatórios. Todas as automações incluídas serão instaladas.",
       "installed": "Fluxo de trabalho oficial instalado",
+      "installedStatus": "Instalado",
       "installErrorDescription": "Verifique o agente e os valores dos parâmetros e tente novamente.",
       "installErrorTitle": "Não foi possível instalar o fluxo de trabalho oficial",
       "installTitle": "Instalar {{name}}",

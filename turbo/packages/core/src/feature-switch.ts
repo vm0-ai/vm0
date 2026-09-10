@@ -100,6 +100,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Canva design connector",
     enabled: false,
   },
+  [FeatureSwitchKey.CalendlyOAuthConnector]: {
+    maintainer: "yuma@okou.ai",
+    description: "Enable Calendly OAuth connections",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.CalComConnector]: {
     maintainer: "yuma@okou.ai",
     description: "Enable the Cal.com scheduling connector",
@@ -379,6 +385,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Replace supported Codex and Claude Code limit errors with recovery actions in chat.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ReferenceImages]: {
+    maintainer: "bingjie@okou.ai",
+    description:
+      "Enable reusable private and organization-visible image references.",
+    enabled: false,
   },
   // Every artifact privacy slice in #32492 uses this same rollout switch.
   [FeatureSwitchKey.PrivateArtifacts]: {

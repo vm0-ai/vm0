@@ -157,19 +157,15 @@ export const createWelcomeChatThread$ = command(
     });
 
     const result = await db.transaction(async (tx) => {
-      const thread = await createChatThreadInTransaction(
-        tx,
-        {
-          ...args,
-          agentId: agent.id,
-          title: content.title,
-          eventId: undefined,
-          ...chatThreadModelPinColumns(pin),
-          codexServiceTier: pin.serviceTier === "priority" ? "fast" : null,
-          ...media,
-        },
-        "id",
-      );
+      const thread = await createChatThreadInTransaction(tx, {
+        ...args,
+        agentId: agent.id,
+        title: content.title,
+        eventId: undefined,
+        ...chatThreadModelPinColumns(pin),
+        codexServiceTier: pin.serviceTier === "priority" ? "fast" : null,
+        ...media,
+      });
       signal.throwIfAborted();
       if (thread.kind === "created") {
         await insertChatEvent(tx, {

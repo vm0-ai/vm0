@@ -1718,10 +1718,74 @@ test("Show Official Workflow discovery without requiring Morning Brief", async (
   expect(screen.getByText("Browse Official")).toBeVisible();
 });
 
+test.each(["sales-research", "morning-brief"])(
+  "Show %s as installed in the Official Workflow catalog",
+  async (definitionName) => {
+    const installedWorkflow =
+      definitionName === "morning-brief"
+        ? morningBriefWorkflow()
+        : officialSalesResearch();
+    const {
+      workflow: _workflow,
+      lifecycle: _lifecycle,
+      ...catalogEntry
+    } = officialCatalogDetail();
+    mockWorkflowApis([installedWorkflow]);
+    context.mocks.api(officialWorkflowsContract.list, ({ respond }) => {
+      return respond(200, [{ ...catalogEntry, name: definitionName }]);
+    });
+
+    await setupPage({
+      context,
+      path: "/workflows/official",
+      featureSwitches: { [FeatureSwitchKey.OfficialWorkflows]: true },
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Installed")).toBeDisabled();
+    });
+    expect(screen.queryByText("View and install")).not.toBeInTheDocument();
+  },
+);
+
+test("Retry the Official catalog when installation status is unavailable", async () => {
+  const {
+    workflow: _workflow,
+    lifecycle: _lifecycle,
+    ...catalogEntry
+  } = officialCatalogDetail();
+  let unavailable = true;
+  context.mocks.api(officialWorkflowsContract.list, ({ respond }) => {
+    return respond(200, [catalogEntry]);
+  });
+  context.mocks.api(workflowsCollectionContract.list, ({ respond }) => {
+    if (unavailable) {
+      return respond(403, {
+        error: { code: "FORBIDDEN", message: "Workflows unavailable" },
+      });
+    }
+    return respond(200, [summary(officialSalesResearch())]);
+  });
+
+  await setupPage({
+    context,
+    path: "/workflows/official",
+    featureSwitches: { [FeatureSwitchKey.OfficialWorkflows]: true },
+  });
+
+  await screen.findByText("Official Workflows could not be loaded");
+  expect(screen.queryByText("View and install")).not.toBeInTheDocument();
+  unavailable = false;
+  click(buttonByText("Try again"));
+  await waitFor(() => {
+    expect(buttonByText("Installed")).toBeDisabled();
+  });
+});
+
 test("Show the current status of a retired Official Workflow", async () => {
   const active = officialCatalogDetail("active");
   const { workflow: _workflow, lifecycle: _lifecycle, ...summary } = active;
-  mockWorkflowApis([officialSalesResearch()]);
+  mockWorkflowApis([salesResearch()]);
   context.mocks.api(officialWorkflowsContract.list, ({ respond }) => {
     return respond(200, [summary]);
   });
@@ -1765,16 +1829,26 @@ test("Show the current status of a retired Official Workflow", async () => {
 
 test("Install an Official Workflow with typed Blueprint settings", async () => {
   const definition = officialCatalogDetail();
+  const {
+    workflow: _workflow,
+    lifecycle: _lifecycle,
+    ...catalogEntry
+  } = definition;
+  const workflows: WorkflowDetailResponse[] = [];
   const installBodies: unknown[] = [];
   mockAgentPageApis();
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
   context.mocks.data.userPreferences({ timezone: "UTC" });
-  mockWorkflowApis([officialSalesResearch()]);
+  mockWorkflowApis(workflows);
+  context.mocks.api(officialWorkflowsContract.list, ({ respond }) => {
+    return respond(200, [catalogEntry]);
+  });
   context.mocks.api(officialWorkflowsContract.get, ({ respond }) => {
     return respond(200, definition);
   });
   context.mocks.api(officialWorkflowsContract.install, ({ body, respond }) => {
     installBodies.push(body);
+    workflows.push(officialSalesResearch());
     return respond(201, {
       workflow: officialSalesResearch(),
       definition: {
@@ -1788,9 +1862,11 @@ test("Install an Official Workflow with typed Blueprint settings", async () => {
 
   await setupPage({
     context,
-    path: "/workflows/official/sales-research",
+    path: "/workflows/official",
     featureSwitches: { [FeatureSwitchKey.OfficialWorkflows]: true },
   });
+  const viewAndInstall = await screen.findByText("View and install");
+  click(viewAndInstall);
   click(
     await waitFor(() => {
       return buttonByText("Install");
@@ -1840,6 +1916,13 @@ test("Install an Official Workflow with typed Blueprint settings", async () => {
   });
   await waitFor(() => {
     expect(pathname()).toBe(`/workflows/${SALES_WORKFLOW_ID}/automations`);
+  });
+  await screen.findByText("Official Workflow");
+  click(linkByText("Workflows"));
+  const browseOfficial = await screen.findByText("Browse Official");
+  click(browseOfficial);
+  await waitFor(() => {
+    expect(buttonByText("Installed")).toBeDisabled();
   });
 });
 
@@ -2453,50 +2536,73 @@ test("Reconfigure typed settings for an Official Workflow", async () => {
   });
 });
 
-test("Uninstall an Official Workflow", async () => {
-  const workflow = officialSalesResearch("retired");
-  const definition = officialCatalogDetail("retired");
-  const uninstalledWorkflowIds: string[] = [];
-  mockAgentPageApis();
-  mockWorkflowApis([workflow]);
-  context.mocks.api(
-    officialWorkflowInstallationsContract.get,
-    ({ respond }) => {
-      return respond(200, {
-        workflow,
-        definition: {
-          name: definition.name,
-          revision: definition.revision,
-          lifecycle: "retired",
-          blueprints: definition.blueprints,
-        },
-      });
-    },
-  );
-  context.mocks.api(
-    officialWorkflowInstallationsContract.uninstall,
-    ({ params, respond }) => {
-      uninstalledWorkflowIds.push(params.workflowId);
-      return respond(204);
-    },
-  );
+test.each(["active", "retired"] as const)(
+  "Uninstall an %s Official Workflow",
+  async (lifecycle) => {
+    const workflow = officialSalesResearch(lifecycle);
+    const workflows = [workflow];
+    const definition = officialCatalogDetail(lifecycle);
+    const {
+      workflow: _workflow,
+      lifecycle: _lifecycle,
+      ...catalogEntry
+    } = definition;
+    const uninstalledWorkflowIds: string[] = [];
+    mockAgentPageApis();
+    mockWorkflowApis(workflows);
+    context.mocks.api(officialWorkflowsContract.list, ({ respond }) => {
+      return respond(200, lifecycle === "active" ? [catalogEntry] : []);
+    });
+    context.mocks.api(
+      officialWorkflowInstallationsContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          workflow,
+          definition: {
+            name: definition.name,
+            revision: definition.revision,
+            lifecycle,
+            blueprints: definition.blueprints,
+          },
+        });
+      },
+    );
+    context.mocks.api(
+      officialWorkflowInstallationsContract.uninstall,
+      ({ params, respond }) => {
+        uninstalledWorkflowIds.push(params.workflowId);
+        workflows.splice(0, workflows.length);
+        return respond(204);
+      },
+    );
 
-  await setupWorkflowDetailPage(workflowDetailPath("info"));
+    await setupWorkflowDetailPage(workflowDetailPath("info"), {
+      [FeatureSwitchKey.OfficialWorkflows]: true,
+    });
 
-  const uninstall = await waitFor(() => {
-    return buttonByText("Uninstall");
-  });
-  click(uninstall);
-  const uninstallDialog = await screen.findByRole("dialog");
-  click(buttonByText("Uninstall", uninstallDialog));
+    const uninstall = await waitFor(() => {
+      return buttonByText("Uninstall");
+    });
+    click(uninstall);
+    const uninstallDialog = await screen.findByRole("dialog");
+    click(buttonByText("Uninstall", uninstallDialog));
 
-  await waitFor(() => {
-    expect(uninstalledWorkflowIds).toStrictEqual([SALES_WORKFLOW_ID]);
-  });
-  await waitFor(() => {
-    expect(pathname()).toBe("/workflows");
-  });
-});
+    await waitFor(() => {
+      expect(uninstalledWorkflowIds).toStrictEqual([SALES_WORKFLOW_ID]);
+    });
+    await waitFor(() => {
+      expect(pathname()).toBe("/workflows");
+    });
+    const browseOfficial = await screen.findByText("Browse Official");
+    click(browseOfficial);
+    await screen.findByText(
+      lifecycle === "active"
+        ? "View and install"
+        : "No Official Workflows are available.",
+    );
+    expect(queryButtonByText("Installed")).toBeNull();
+  },
+);
 
 test("Do not carry an Official reconfiguration draft to another installation", async () => {
   const definition = officialCatalogDetail("retired");

@@ -186,6 +186,7 @@ import { uploadsCompleteRoutes } from "./routes/uploads-complete";
 import { uploadsMultipartRoutes } from "./routes/uploads-multipart";
 import { uploadsPrepareRoutes } from "./routes/uploads-prepare";
 import { presentationTemplatesRoutes } from "./routes/presentation-templates";
+import { imageReferencesRoutes } from "./routes/image-references";
 import { usageMembersRoutes } from "./routes/usage-members";
 import { usageRecordRoutes } from "./routes/usage-record";
 import { userPreferencesRoutes } from "./routes/user-preferences";
@@ -403,6 +404,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...uploadsMultipartRoutes,
   ...uploadsPrepareRoutes,
   ...presentationTemplatesRoutes,
+  ...imageReferencesRoutes,
   ...registryResourceDownloadRoutes,
   ...usageMembersRoutes,
   ...usageRecordRoutes,
