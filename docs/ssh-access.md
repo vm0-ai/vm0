@@ -1,11 +1,14 @@
 # SSH access for owners and Agents
 
-SSH is a standalone capability behind the default-off `SshAccess` (`sshAccess`)
-feature switch. The switch is the only feature-eligibility gate; enabled
-organizations do not need staff membership. Owner, Agent grant and Run
-authorization checks remain mandatory. The Connectors entry and Agent control
-are hidden while the switch is off; this delivery does not activate it. SSH uses neither connector
-accounts nor connector permissions.
+SSH is a standalone capability behind the `SshAccess` (`sshAccess`) feature
+switch, enabled by default for staff organizations and disabled by default for
+other organizations. Explicit user overrides still take precedence, including
+disabling SSH for a staff user or enabling it for a non-staff user. The switch
+appears in Lab's Beta group and is the only feature-eligibility gate; there is no
+additional staff-membership check. Owner, Agent grant and Run authorization
+checks remain mandatory. The Connectors entry and Agent control are hidden
+while the switch is off. SSH uses neither connector accounts nor connector
+permissions.
 
 ## Owner setup
 

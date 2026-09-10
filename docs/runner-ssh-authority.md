@@ -1,9 +1,9 @@
 # Runner SSH authority API
 
-This is the API slice (#32386) of SSH execution (#32013, under #31932).
-It does not enable SSH. The [Runner execution slice](runner-ssh-execution.md)
-(#32387) consumes these routes through generated private Rust DTOs;
-Agent/CLI/UI and activation remain later delivery stages.
+The API slice (#32386) and [Runner execution](runner-ssh-execution.md) (#32387)
+deliver SSH authority under #31932. The Runner consumes these routes through
+generated private Rust DTOs. [Owner and Agent consumers](ssh-access.md), including
+the CLI and management UI, were delivered by #32014 / PR #32722.
 
 ## Authority and secret handoff
 
@@ -28,8 +28,9 @@ automations, goals, delegated Agents, webhooks, SDK/non-chat and test Runs use
 the same authority path. A chat thread or trigger metadata is not required;
 workflow automation and goal associations do not restrict access. The session
 identifies the Agent without using chat-thread state as an authorization gate.
-The default-off feature rollout and official-Runner credential boundary are
-unchanged; this does not activate SSH or expose credentials to local Runners.
+The switch defaults to enabled for staff organizations and disabled elsewhere;
+explicit user overrides remain effective. This rollout default does not replace
+authorization or expose credentials to local/PAT Runners.
 
 `POST /api/runners/runs/:runId/ssh/resolve` takes:
 
@@ -171,6 +172,6 @@ The observation table and endpoints are additive. Old Runners and clients do not
 use them and retain existing behavior. A new Runner treats an old API's missing
 observation endpoint as a dropped diagnostic; a new App shows diagnostic status
 unavailable without disabling configuration management. Migration precedes API
-promotion. This does not establish fleet convergence or authorize enabling SSH. See
-[deployment compatibility](deployment-compatibility.md) and
-[guest RPC transport](runner-rpc-transport.md) for the remaining boundaries.
+promotion. The staff-default switch configuration does not establish which
+artifacts are currently deployed. See [deployment compatibility](deployment-compatibility.md)
+and [guest RPC transport](runner-rpc-transport.md) for the cross-version boundaries.

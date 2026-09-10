@@ -77,6 +77,38 @@ function createBody(
 }
 
 describe("SSH connection routes", () => {
+  it.each([
+    { staff: true, override: undefined, enabled: true },
+    { staff: false, override: undefined, enabled: false },
+    { staff: true, override: false, enabled: false },
+    { staff: false, override: true, enabled: true },
+  ])(
+    "applies the SSH rollout to host management: staff=$staff, override=$override",
+    async ({ staff, override, enabled }) => {
+      const owner = actor(
+        "rollout",
+        staff ? "org_3ANttyrbWYJk6JKRSTRLEsbsDLe" : undefined,
+      );
+      authenticate(owner);
+      if (override !== undefined) {
+        await updateFeatureSwitchesForUser(context, owner, {
+          [FeatureSwitchKey.SshAccess]: override,
+        });
+      }
+
+      const result = await accept(
+        client().list({ headers: authHeaders() }),
+        [200, 404],
+      );
+      expect(result.status).toBe(enabled ? 200 : 404);
+      if (result.status === 404) {
+        expect(result.body.error.code).toBe("SSH_UNAVAILABLE");
+      } else {
+        expect(result.body.connections).toStrictEqual([]);
+      }
+    },
+  );
+
   it("notifies only the owner after every successful creation, even without visible Agents", async () => {
     useSecretKmsProbe();
     const owner = actor("browser-notice");
