@@ -232,6 +232,17 @@ async function run() {
         timezoneId: "UTC",
         reducedMotion: "reduce",
       });
+      const pendingRequests = new Map<
+        object,
+        { method: string; origin: string; path: string; resourceType: string }
+      >();
+      const failedRequests: {
+        method: string;
+        origin: string;
+        path: string;
+        error: string | null;
+      }[] = [];
+      const pageErrors: string[] = [];
       try {
         // Theme bootstrap and runtime share this cookie.
         await context.clearCookies({ name: "__Secure-okou-theme" });
@@ -261,6 +272,31 @@ async function run() {
           );
         }
         const page = await context.newPage();
+        page.on("request", (request) => {
+          const url = new URL(request.url());
+          pendingRequests.set(request, {
+            method: request.method(),
+            origin: url.origin,
+            path: url.pathname,
+            resourceType: request.resourceType(),
+          });
+        });
+        page.on("requestfinished", (request) => {
+          pendingRequests.delete(request);
+        });
+        page.on("requestfailed", (request) => {
+          pendingRequests.delete(request);
+          const url = new URL(request.url());
+          failedRequests.push({
+            method: request.method(),
+            origin: url.origin,
+            path: url.pathname,
+            error: request.failure()?.errorText ?? null,
+          });
+        });
+        page.on("pageerror", (error) => {
+          pageErrors.push(error.name);
+        });
         page.on("response", (response) => {
           const url = new URL(response.url());
           if (url.origin === apiOrigin && response.status() >= 400) {
@@ -460,6 +496,28 @@ async function run() {
               "All eight swatches must be visible",
             );
           }
+          async function selectPalette(
+            value: string,
+            activate: () => Promise<void>,
+          ) {
+            const [saved] = await Promise.all([
+              page.waitForResponse(async (response) => {
+                const url = new URL(response.url());
+                if (
+                  url.origin !== apiOrigin ||
+                  url.pathname !== "/api/user-preferences" ||
+                  response.request().method() !== "GET" ||
+                  response.status() !== 200
+                )
+                  return false;
+                const body: { colorTheme?: string } = await response.json();
+                return body.colorTheme === value;
+              }),
+              activate(),
+            ]);
+            // This read occurs after the preference POST and Clerk token refresh.
+            assert.equal((await saved.json()).colorTheme, value);
+          }
           await centerGroup();
           await page.mouse.move(0, 0);
           await capture("palette");
@@ -478,22 +536,22 @@ async function run() {
           await page.keyboard.press("Tab");
           await expect(citrus).toBeFocused();
           await capture("keyboard-focus");
-          await page.keyboard.press("Space");
+          await selectPalette("citrus-spark", () =>
+            page.keyboard.press("Space"),
+          );
           await expect(citrus).toHaveAttribute("aria-pressed", "true");
-          await expect.poll(() => preferences.colorTheme).toBe("citrus-spark");
           await capture("keyboard-selected");
           for (const palette of caseFile.palettes) {
             const control = group.getByRole("button", {
               name: palette.label,
               exact: true,
             });
-            await control.click();
+            await selectPalette(palette.value, () => control.click());
             await expect(control).toHaveAttribute("aria-pressed", "true");
             await expect(page.locator("html")).toHaveAttribute(
               "data-color-theme",
               palette.value,
             );
-            await expect.poll(() => preferences.colorTheme).toBe(palette.value);
             await centerGroup();
             await page.mouse.move(0, 0);
             // The previews resolve their own palette, independently of the selected root palette.
@@ -532,6 +590,30 @@ async function run() {
         console.error(failure);
         const failedPage = context.pages()[0];
         if (failedPage) {
+          await writeFile(
+            path.join(out, `${item.id}-diagnostics.json`),
+            JSON.stringify(
+              {
+                pendingRequests: [...pendingRequests.values()],
+                failedRequests,
+                pageErrors,
+                document: await failedPage.evaluate(() => ({
+                  path: location.pathname,
+                  readyState: document.readyState,
+                  build: document
+                    .querySelector('meta[name="okou-app-git-commit-sha"]')
+                    ?.getAttribute("content"),
+                  theme: document.documentElement.getAttribute("data-theme"),
+                  colorTheme:
+                    document.documentElement.getAttribute("data-color-theme"),
+                  bodyTextLength: document.body.innerText.length,
+                })),
+              },
+              null,
+              2,
+            ),
+            { flag: "wx" },
+          );
           await failedPage.screenshot({
             path: path.join(out, `${item.id}-failure.png`),
             fullPage: true,
