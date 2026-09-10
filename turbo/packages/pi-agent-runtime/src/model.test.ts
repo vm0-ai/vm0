@@ -167,6 +167,70 @@ describe("Pi agent model adapter", () => {
     },
   );
 
+  it.each([
+    {
+      name: "public Responses",
+      config: {
+        provider: "openai",
+        baseUrl: "https://api.openai.com/v1",
+        apiKey: "test-key",
+        model: "gpt-5.6-terra",
+        dialect: "openai-responses",
+      } as const,
+    },
+    {
+      name: "Codex Responses",
+      config: {
+        provider: "openai-codex",
+        baseUrl: "https://chatgpt.com/backend-api",
+        apiKey: "opaque-not-a-jwt",
+        accountId: "account-id-from-binding",
+        model: "gpt-5.6-terra",
+        dialect: "openai-codex-responses",
+        transport: "sse",
+      } as const,
+    },
+  ])(
+    "reports transport evidence instead of an upstream $name error page",
+    async ({ config }) => {
+      const page = [
+        "<html>",
+        "  <head><style global>body{font-family:Arial}.logo{color:#8e8ea0}</style></head>",
+        '  <body><svg viewBox="0 0 41 41"><path d="M37.5324 16.8707" /></svg></body>',
+        "</html>",
+      ].join("\n");
+      const providerFetch = vi.fn(() => {
+        return Promise.resolve(
+          new Response(page, {
+            status: 502,
+            statusText: "Bad Gateway",
+            headers: { "content-type": "text/html; charset=utf-8" },
+          }),
+        );
+      });
+      const model = resolvePiAgentModel(config);
+      if (!model) {
+        throw new Error("Expected a resolvable model");
+      }
+
+      const result = await piAgentStreamForConfig(config)(
+        model,
+        { messages: [{ role: "user", content: "hello", timestamp: 1 }] },
+        { apiKey: config.apiKey, fetch: providerFetch },
+      ).result();
+
+      expect(providerFetch).toHaveBeenCalled();
+      expect(result.stopReason).toBe("error");
+      const errorMessage = result.errorMessage ?? "";
+      expect(errorMessage).toContain("upstream_non_api_response");
+      expect(errorMessage).toContain("status=502");
+      expect(errorMessage).toContain("content_type=html");
+      expect(errorMessage).not.toContain("<html");
+      expect(errorMessage).not.toContain("<svg");
+      expect(errorMessage).not.toContain("8e8ea0");
+    },
+  );
+
   it("uses product admission instead of a second runtime model allowlist", () => {
     expect(
       resolvePiAgentModel({

@@ -2,11 +2,24 @@
 //!
 //! The Pi runtime already replaces a markup error body at its provider
 //! boundary (`turbo/packages/pi-agent-runtime/src/upstream-error-body.ts`), so
-//! a current CLI reports the observed status and content type. The sandbox
-//! resolves that CLI from a caller-supplied package URL, so an older build can
-//! still hand the guest a whole HTML page as its terminal `errorMessage`. This
-//! module keeps that case bounded and content-free, and reads the status back
-//! out of the marker the Pi runtime produced.
+//! a current CLI reports the observed status and content type. This module
+//! reads that status back out of the marker the Pi runtime produced, and bounds
+//! any model error that still arrives as a whole document.
+//!
+//! # Fallback
+//!
+//! The markup branch in [`project_model_error_text`] is a bounded cross-version
+//! rollout fallback (`docs/fallback.md` §6.1). The sandbox resolves its CLI from
+//! a caller-supplied package URL, so a build predating the provider boundary can
+//! still hand the guest an entire page as its terminal `errorMessage`.
+//!
+//! - Surface: existing runner / sandbox (`docs/fallback.md` §7).
+//! - Removal gate: old sandbox CLI artifacts finish draining and no pinnable
+//!   `CLI_PACKAGE_URL` artifact predates `guardPiUpstreamErrorBody`.
+//!
+//! It reports `status=unknown content_type=unknown` rather than claiming
+//! transport evidence the guest never observed, so an unproven failure stays
+//! unclassified and keeps its error-level report.
 
 use sha2::{Digest, Sha256};
 
