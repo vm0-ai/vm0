@@ -140,7 +140,7 @@ function getOAuthProviderTypes(model: SupportedRunModel): ModelProviderType[] {
 }
 
 const ZERO_BORDER = {
-  border: "0.7px solid hsl(var(--gray-400))",
+  border: "var(--border-width-surface) solid hsl(var(--gray-400))",
 } as const;
 
 function getOAuthRouteKind(
@@ -315,7 +315,7 @@ function DefaultModelRow({
     <div
       data-testid="default-model-row"
       className="flex flex-col gap-3 overflow-hidden rounded-xl bg-card px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
-      style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+      style={{ border: "var(--border-width-surface) solid hsl(var(--gray-400))" }}
     >
       <div className="min-w-0">
         <p className="text-sm font-medium text-foreground">
@@ -356,7 +356,7 @@ function DefaultModelRow({
         >
           <SelectTrigger
             className="h-9 w-full shrink-0 rounded-lg bg-card sm:w-[280px]"
-            style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+            style={{ border: "var(--border-width-surface) solid hsl(var(--gray-400))" }}
           >
             <SelectValue
               placeholder={t(($) => {
@@ -729,8 +729,8 @@ function RouteChoiceButton({
       onClick={onClick}
       style={{
         border: active
-          ? "0.7px solid hsl(var(--primary))"
-          : "0.7px solid hsl(var(--gray-400))",
+          ? "var(--border-width-surface) solid hsl(var(--primary))"
+          : "var(--border-width-surface) solid hsl(var(--gray-400))",
       }}
       className={cn(
         "flex flex-col gap-0.5 rounded-xl bg-card px-5 py-4 text-left transition-colors",
@@ -1838,7 +1838,7 @@ export function OrgModelPoliciesSection() {
         />
         <div
           className="overflow-hidden rounded-xl bg-card"
-          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+          style={{ border: "var(--border-width-surface) solid hsl(var(--gray-400))" }}
         >
           <div className="hidden grid-cols-[minmax(0,1fr)_236px_96px_36px] gap-3 border-b border-border/50 px-5 py-3 text-xs font-medium text-muted-foreground lg:grid">
             <span>

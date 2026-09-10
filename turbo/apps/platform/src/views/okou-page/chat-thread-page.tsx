@@ -5223,7 +5223,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
       <div
         className="inline-flex items-center gap-2 bg-muted/50 px-3 py-1.5 text-[0.9375rem] text-muted-foreground"
         style={{
-          border: "0.7px solid hsl(var(--border))",
+          border: "var(--border-width-surface) solid hsl(var(--border))",
           borderRadius: "12px",
         }}
       >

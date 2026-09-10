@@ -296,7 +296,7 @@ function PolicyPill({
             aria-pressed={policy === option}
             style={
               idx > 0
-                ? { borderLeft: "0.7px solid hsl(var(--gray-400))" }
+                ? { borderLeft: "var(--border-width-surface) solid hsl(var(--gray-400))" }
                 : undefined
             }
             onClick={(e) => {

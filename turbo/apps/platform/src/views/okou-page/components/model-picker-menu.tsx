@@ -439,11 +439,11 @@ function MediaModelList({
 
 /**
  * Both flyout panels wear the shared popover surface rather than a hand-rolled
- * card: same 0.7px gray-400 hairline, same radius, and no drop shadow, which
+ * card: same gray-400 hairline, same radius, and no drop shadow, which
  * the design system does not use for popovers.
  */
 const FLYOUT_PANEL_CLASS =
-  "rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-1 text-foreground outline-none";
+  "rounded-[12px] border border-[hsl(var(--gray-400))] bg-card p-1 text-foreground outline-none";
 
 /**
  * Flyout layout: model types on the left, that type's models in a panel beside

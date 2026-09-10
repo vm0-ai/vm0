@@ -133,7 +133,7 @@ export function ConnectorDetailPanel({
             return $.chat.connectors.directory.detailAccounts;
           })}
         </h3>
-        <div className="mb-5 rounded-xl border-[0.7px] border-[hsl(var(--gray-400))]">
+        <div className="mb-5 rounded-xl border border-[hsl(var(--gray-400))]">
           <div className="flex items-center gap-3 px-4 py-2.5 text-sm">
             <ConnectorAccountSummaryText
               summary={accountSummary}
@@ -150,7 +150,7 @@ export function ConnectorDetailPanel({
             return $.chat.connectors.directory.detailPermissions;
           })}
         </h3>
-        <div className="mb-5 rounded-xl border-[0.7px] border-[hsl(var(--gray-400))]">
+        <div className="mb-5 rounded-xl border border-[hsl(var(--gray-400))]">
           <div className="flex items-center gap-3 px-4 py-2.5">
             <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
               {t(
@@ -182,7 +182,7 @@ export function ConnectorDetailPanel({
             return $.chat.connectors.directory.detailConnection;
           })}
         </h3>
-        <div className="rounded-xl border-[0.7px] border-[hsl(var(--gray-400))]">
+        <div className="rounded-xl border border-[hsl(var(--gray-400))]">
           {authMethodLabel && (
             <DetailRow
               label={t(($) => {

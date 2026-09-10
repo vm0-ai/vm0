@@ -39,7 +39,7 @@ import { detach, Reason } from "../../../../signals/utils.ts";
 import { currentLocale } from "../../../../i18n/index.ts";
 import { formatUsd } from "../../../../i18n/format.ts";
 
-const cardBorder = { border: "0.7px solid hsl(var(--gray-400))" } as const;
+const cardBorder = { border: "var(--border-width-surface) solid hsl(var(--gray-400))" } as const;
 
 const ROW_GRID = "grid grid-cols-[1fr_8rem_6rem_3rem] gap-x-6 items-center";
 

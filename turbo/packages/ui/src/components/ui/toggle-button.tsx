@@ -11,7 +11,7 @@ import {
 const toggleButtonVariants = cva(
   [
     buttonBaseClassName,
-    "border-[0.7px] transition-all duration-200 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed",
+    "border transition-all duration-200 focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed",
   ],
   {
     variants: {

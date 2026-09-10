@@ -448,8 +448,8 @@ export function ChatFeedbackSelection({
             finalFocus={false}
             className={
               translationEnabled && translationResult
-                ? "w-[min(380px,calc(100vw-2rem))] rounded-xl border-[0.7px] border-[hsl(var(--gray-400))] bg-[hsl(var(--card)/0.96)] p-3 text-foreground shadow-lg"
-                : "w-auto max-w-[calc(100vw-2rem)] rounded-xl border-[0.7px] border-[hsl(var(--gray-400))] bg-[hsl(var(--card)/0.85)] p-1 text-foreground shadow-lg"
+                ? "w-[min(380px,calc(100vw-2rem))] rounded-xl border border-[hsl(var(--gray-400))] bg-[hsl(var(--card)/0.96)] p-3 text-foreground shadow-lg"
+                : "w-auto max-w-[calc(100vw-2rem)] rounded-xl border border-[hsl(var(--gray-400))] bg-[hsl(var(--card)/0.85)] p-1 text-foreground shadow-lg"
             }
           >
             {translationEnabled && translationResult ? (

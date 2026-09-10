@@ -13,7 +13,7 @@ const AUTH_V1_PRIMARY_ACTION_CLASS =
 // the shared Input boundary while adapting focus and error states through the
 // public attributes that Clerk exposes on each slot.
 const AUTH_V1_OTP_INPUT_CLASS =
-  "border-[0.7px] border-[hsl(var(--gray-400))] bg-input shadow-none data-[focus-within=true]:border-primary data-[focus-within=true]:ring-[3px] data-[focus-within=true]:ring-primary/10 aria-invalid:border-destructive data-[focus-within=true]:aria-invalid:border-destructive";
+  "border border-[hsl(var(--gray-400))] bg-input shadow-none data-[focus-within=true]:border-primary data-[focus-within=true]:ring-[3px] data-[focus-within=true]:ring-primary/10 aria-invalid:border-destructive data-[focus-within=true]:aria-invalid:border-destructive";
 
 /** Keep branding and the page shell; Clerk owns control styles and states. */
 export function getAuthV1ComponentAppearance(
