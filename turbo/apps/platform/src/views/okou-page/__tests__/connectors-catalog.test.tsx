@@ -258,7 +258,9 @@ test("Filter connectors by connection state and agent", async () => {
   await fill(screen.getByPlaceholderText("Find connectors"), "");
   click(getConnectorAction("button", "Filter connectors"));
   await waitFor(() => {
-    expect(getConnectorAction("menuitem", "Research Agent")).toBeInTheDocument();
+    expect(
+      getConnectorAction("menuitem", "Research Agent"),
+    ).toBeInTheDocument();
   });
   // One visibility means no split: the section keeps its own heading.
   expect(filterMenuRows()).toContain("Agents");
