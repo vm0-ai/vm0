@@ -2403,19 +2403,23 @@ test.each(["agent", "thread"] as const)(
       sharedWorkerTestTransport: "message-port",
     });
 
-    const nav = await waitFor(() => {
+    await waitFor(() => {
       const current = mobileSidebar();
       expect(within(current).getByText("Nova")).toBeInTheDocument();
-      return current;
     });
-    const row =
-      indicator === "agent"
-        ? agentRowByName(nav, "Nova")
-        : await waitFor(() => {
-            return threadRowByTitle("Remote unread conversation", nav);
-          });
+    // Both indicator consumers must finish loading before the external refresh.
     await waitFor(() => {
-      expect(within(row).queryByLabelText("Unread")).toBeNull();
+      expect(
+        threadRowByTitle("Remote unread conversation", mobileSidebar()),
+      ).toBeInTheDocument();
+    });
+    const indicatorRow = () => {
+      return indicator === "agent"
+        ? agentRowByName(mobileSidebar(), "Nova")
+        : threadRowByTitle("Remote unread conversation", mobileSidebar());
+    };
+    await waitFor(() => {
+      expect(within(indicatorRow()).queryByLabelText("Unread")).toBeNull();
     });
 
     hasUnread = true;
@@ -2425,7 +2429,9 @@ test.each(["agent", "thread"] as const)(
     // trailing bootstrap request. Observe that response before checking the UI.
     await unreadCatchUpReturned.promise;
     await waitFor(() => {
-      expect(within(row).getByLabelText("Unread")).toBeInTheDocument();
+      expect(
+        within(indicatorRow()).getByLabelText("Unread"),
+      ).toBeInTheDocument();
     });
   },
 );
