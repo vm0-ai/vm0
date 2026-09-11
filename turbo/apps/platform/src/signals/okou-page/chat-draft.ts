@@ -688,7 +688,7 @@ export type RestorableAttachment = Omit<PersistedAttachment, "url"> & {
 export function createRestoredAttachment(
   persisted: RestorableAttachment,
 ): ChatAttachment {
-  const fileInfo$ = computed(async (get): Promise<FileInfo | null> => {
+  const restored$ = computed(async (get) => {
     const client = get(apiClient$)(webFilesContract);
     const resolved = await accept(
       client.fileUrl({
@@ -699,10 +699,23 @@ export function createRestoredAttachment(
     return resolved.status === 404
       ? null
       : {
-          id: persisted.id,
-          url: persisted.url ?? resolved.body.url,
-          contentType: persisted.contentType,
+          fileInfo: {
+            id: persisted.id,
+            url: persisted.url ?? resolved.body.url,
+            contentType: persisted.contentType,
+          },
+          preview: createAttachmentPreviewSignals(
+            canonicalUserMessageFileUrl(persisted.id),
+            {
+              token: resolved.body.url,
+              expiresAt: resolved.body.expiresAt,
+              publicUrl: resolved.body.publicUrl,
+            },
+          ),
         };
+  });
+  const fileInfo$ = computed(async (get): Promise<FileInfo | null> => {
+    return (await get(restored$))?.fileInfo ?? null;
   });
   const annotation = createAttachmentAnnotationSignals({
     filename: persisted.filename,
@@ -734,7 +747,9 @@ export function createRestoredAttachment(
     size: persisted.size,
     imageLoad: createImageLoadSignals(),
     fileInfo$,
-    preview$: createComposerAttachmentPreview(fileInfo$),
+    preview$: computed(async (get) => {
+      return (await get(restored$))?.preview ?? null;
+    }),
     uploadPending$,
     sendReady$: annotation.annotationReady$,
     cancel$,

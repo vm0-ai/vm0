@@ -136,9 +136,16 @@ function createAttachmentPresignedToken$(
  * API URL for a temporary token after the API has checked ownership. Public
  * addresses need no token and pass through unchanged.
  */
-export function createAttachmentPreviewSignals(inputUrl: string) {
+export function createAttachmentPreviewSignals(
+  inputUrl: string,
+  resolvedToken?: AttachmentPresignedToken,
+) {
   const url = publicAttachmentUrl(inputUrl);
-  const presignedToken$ = createAttachmentPresignedToken$(url);
+  const presignedToken$ = resolvedToken
+    ? computed(() => {
+        return Promise.resolve(resolvedToken);
+      })
+    : createAttachmentPresignedToken$(url);
   const resourceUrl$ = computed(async (get) => {
     return (await get(presignedToken$))?.token ?? url;
   });

@@ -45,8 +45,10 @@ test.each(["upload", "restored public", "restored private"] as const)(
     });
     let resolvedUrl = ORIGINAL_URL;
     context.mocks.api(webFilesContract.fileUrl, ({ respond }) => {
+      const url = resolvedUrl;
+      resolvedUrl = NEXT_URL;
       return respond(200, {
-        url: resolvedUrl,
+        url,
         expiresAt: "2026-09-13T00:00:00.000Z",
         publicUrl: source === "restored private" ? null : PUBLIC_URL,
       });
@@ -84,7 +86,6 @@ test.each(["upload", "restored public", "restored private"] as const)(
       throw new Error("Expected the composer image thumbnail");
     }
     fireEvent.load(thumbnail);
-    resolvedUrl = NEXT_URL;
 
     click(openPreview);
     await waitFor(() => {
