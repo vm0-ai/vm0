@@ -44,6 +44,7 @@ function createThreadSummaryDemand(
   const internalReloadThreadSummaries$ = state(0);
   const summaryLoopRunId$ = state<string | null>(null);
   const resetSummaryDemand$ = resetSignal();
+  let latestSummaryLoop = Promise.resolve();
   const threadSummaries$ = computed(async (get) => {
     const runId = get(currentActiveRunId$);
     if (runId === null) {
@@ -106,7 +107,7 @@ function createThreadSummaryDemand(
       const loopSignal = set(resetSummaryDemand$, demandOwnerSignal);
       set(summaryLoopRunId$, runId);
       if (runId !== null) {
-        set(startSummaryLoop$, loopSignal);
+        latestSummaryLoop = set(startSummaryLoop$, loopSignal);
       }
     },
   );
@@ -126,9 +127,10 @@ function createThreadSummaryDemand(
         set(reconcileHydratedThreadSummaryDemand$, signal),
         subscriptionEnd.promise,
       ]),
-      () => {
+      async () => {
         set(summaryLoopRunId$, null);
         set(resetSummaryDemand$);
+        await latestSummaryLoop;
       },
     );
   });
