@@ -5109,6 +5109,40 @@ function AssistantRecoveryActions({
   );
 }
 
+function AssistantErrorCard({
+  icon: Icon,
+  title,
+  description,
+  actions,
+  testId,
+}: {
+  icon: LucideIcon;
+  title: string;
+  description: ReactNode;
+  actions?: ReactNode;
+  testId?: string;
+}) {
+  return (
+    <div
+      role="status"
+      data-testid={testId}
+      className="okou-chat-card grid min-h-[88px] w-full grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 gap-y-3 px-3.5 py-3 text-foreground @[640px]:grid-cols-[auto_minmax(0,1fr)_auto] @[640px]:content-center"
+    >
+      <Icon
+        size={16}
+        className="col-start-1 row-start-1 mt-1 shrink-0 self-start text-brand-text"
+      />
+      <div className="col-start-2 row-start-1 min-w-0">
+        <div className="text-[0.9375rem] font-medium leading-6">{title}</div>
+        <div className="mt-0.5 text-sm leading-5 text-muted-foreground">
+          {description}
+        </div>
+      </div>
+      {actions}
+    </div>
+  );
+}
+
 function AssistantErrorRecoveryCard({
   recovery,
   thread,
@@ -5167,32 +5201,17 @@ function AssistantErrorRecoveryCard({
             });
 
   return (
-    <div
-      role="status"
-      data-testid="assistant-error-recovery"
-      className="okou-chat-card grid min-h-[88px] w-full grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 gap-y-3 px-3.5 py-3 text-foreground @[640px]:grid-cols-[auto_minmax(0,1fr)_auto] @[640px]:content-center"
-    >
-      {recovery.kind === "usage-limit" ||
-      recovery.kind === "execution-timeout" ? (
-        <Clock
-          size={16}
-          className="col-start-1 row-start-1 mt-1 shrink-0 self-start text-brand-text"
-        />
-      ) : (
-        <Coffee
-          size={16}
-          className="col-start-1 row-start-1 mt-1 shrink-0 self-start text-brand-text"
-        />
-      )}
-      <div className="col-start-2 row-start-1 min-w-0">
-        <div className="text-[0.9375rem] font-medium leading-6">{title}</div>
-        <p className="mt-0.5 text-sm leading-5 text-muted-foreground">
-          {description}
-          {resetText ? ` ${resetText}` : null}
-        </p>
-      </div>
-      <AssistantRecoveryActions recovery={recovery} thread={thread} />
-    </div>
+    <AssistantErrorCard
+      icon={
+        recovery.kind === "usage-limit" || recovery.kind === "execution-timeout"
+          ? Clock
+          : Coffee
+      }
+      title={title}
+      description={`${description}${resetText ? ` ${resetText}` : ""}`}
+      actions={<AssistantRecoveryActions recovery={recovery} thread={thread} />}
+      testId="assistant-error-recovery"
+    />
   );
 }
 
@@ -5329,13 +5348,19 @@ function AssistantErrorFallback({ error }: { error: string }) {
   }
 
   return (
-    <div className="flex items-start gap-0 text-destructive">
-      <AssistantErrorLeadingIcon />
-      <Markdown
-        source={error}
-        style={{ fontSize: "inherit", lineHeight: "inherit" }}
-      />
-    </div>
+    <AssistantErrorCard
+      icon={AlertCircle}
+      title={t(($) => {
+        return $.chat.errors.genericTitle;
+      })}
+      description={
+        <Markdown
+          className="!text-muted-foreground"
+          source={error}
+          style={{ fontSize: "inherit", lineHeight: "inherit" }}
+        />
+      }
+    />
   );
 }
 
@@ -7227,8 +7252,11 @@ function PagedAssistantEventItem({
   const error = chatEventDisplayError(event);
   if (error) {
     return (
-      <ChatAssistantMessageBody
-        className={cn(workHistory && CHAT_THREAD_WORK_HISTORY_TEXT_CLASS)}
+      <div
+        className={cn(
+          "min-w-0 text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere]",
+          workHistory && CHAT_THREAD_WORK_HISTORY_TEXT_CLASS,
+        )}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >
@@ -7237,7 +7265,7 @@ function PagedAssistantEventItem({
           eventId={event.id}
           thread={thread}
         />
-      </ChatAssistantMessageBody>
+      </div>
     );
   }
 

@@ -2021,6 +2021,7 @@
     },
     "documentTitle": "Chat",
     "errors": {
+      "genericTitle": "This run couldn't finish",
       "loadMessages": "Failed to load messages",
       "noModelProviderAction": "Set one up in Workspace Settings",
       "noModelProviderPrefix": "No model provider configured yet.",

@@ -2056,6 +2056,7 @@
     },
     "documentTitle": "Chat",
     "errors": {
+      "genericTitle": "Non è stato possibile completare questa esecuzione",
       "loadMessages": "Impossibile caricare i messaggi",
       "noModelProviderAction": "Configurane uno nelle impostazioni dell'area di lavoro",
       "noModelProviderPrefix": "Nessun provider di modelli configurato.",
