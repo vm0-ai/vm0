@@ -66,39 +66,49 @@ describe("RunningIndicator", () => {
     render(<RunningIndicator />);
 
     const indicator = screen.getByLabelText("Running");
-    const center = indicator.querySelector(".running-indicator-center");
-    const ripple = indicator.querySelector(".running-indicator-ripple");
+    expect(indicator.children).toHaveLength(2);
 
-    expect(center).toBeInTheDocument();
-    expect(ripple).toBeInTheDocument();
+    for (const layer of indicator.children) {
+      expect(layer).toHaveAttribute("aria-hidden", "true");
+      expect(layer).toHaveClass("top-1/2", "left-1/2");
+      expect(layer.getAttribute("class")).toContain(
+        "[transform:translate(-50%,-50%)",
+      );
+    }
 
-    const centerRule = getCssBlock(".running-indicator-center");
-    const rippleRule = getCssBlock(".running-indicator-ripple");
     const centerKeyframes = getCssBlock("@keyframes running-indicator-center");
     const rippleKeyframes = getCssBlock("@keyframes running-indicator-ripple");
-
-    expect(centerRule).toContain("top: 50%");
-    expect(centerRule).toContain("left: 50%");
-    expect(rippleRule).toContain("top: 50%");
-    expect(rippleRule).toContain("left: 50%");
-    expect(centerRule).toContain("transform: translate(-50%, -50%)");
-    expect(rippleRule).toContain("transform: translate(-50%, -50%)");
     expect(centerKeyframes).not.toMatch(/transform:(?![^;]*translate\()/);
     expect(rippleKeyframes).not.toMatch(/transform:(?![^;]*translate\()/);
+  });
+
+  it("sets the resting offset through transform, not translate or scale", () => {
+    render(<RunningIndicator />);
+
+    // The keyframes animate `transform`. Tailwind's `translate-*` and `scale-*`
+    // utilities set the individual CSS properties, which compose on top of the
+    // animation instead of being replaced by it and double the centring offset
+    // for the whole cycle.
+    for (const layer of screen.getByLabelText("Running").children) {
+      expect(layer.getAttribute("class")).not.toMatch(
+        /(^|\s)-?translate-[xy]-/,
+      );
+      expect(layer.getAttribute("class")).not.toMatch(/(^|\s)scale-/);
+    }
   });
 
   it("keeps a distinct resting state before animations start", () => {
     render(<RunningIndicator />);
 
-    const centerRule = getCssBlock(".running-indicator-center");
-    const rippleRule = getCssBlock(".running-indicator-ripple");
-
-    expect(centerRule).toContain(
-      "transform: translate(-50%, -50%) scale(0.64)",
+    const [center, ripple] = screen.getByLabelText("Running").children;
+    expect(center).toHaveClass(
+      "[transform:translate(-50%,-50%)_scale(0.64)]",
+      "opacity-[0.34]",
     );
-    expect(centerRule).toContain("opacity: 0.34");
-    expect(rippleRule).toContain("transform: translate(-50%, -50%) scale(0.8)");
-    expect(rippleRule).toContain("opacity: 0");
+    expect(ripple).toHaveClass(
+      "[transform:translate(-50%,-50%)_scale(0.8)]",
+      "opacity-0",
+    );
   });
 
   it("keeps indicators mounted at different times on one pulse phase", () => {
