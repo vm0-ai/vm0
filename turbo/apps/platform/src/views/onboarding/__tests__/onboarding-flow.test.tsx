@@ -48,6 +48,20 @@ import { mockOAuthCompletions } from "../../okou-page/__tests__/connector-page-t
 
 const context = testContext();
 
+const DEFAULT_ONBOARDING_AGENT = {
+  agentId: "c0000000-0000-4000-a000-000000000001",
+  isDefaultAgent: true,
+  ownerId: "test-user-123",
+  displayName: "Okou",
+  description: null,
+  sound: null,
+  avatarUrl: DEFAULT_AGENT_AVATAR_URL,
+  modelProviderId: null,
+  selectedModel: null,
+  preferPersonalProvider: false,
+  visibility: "public",
+} satisfies AgentResponse;
+
 const MARKETING_PRESENTATION_PROMPT = [
   "/gen presentation with template `html-ppt-playful-launch`, create a 15-slide launch deck for SproutPop, a playful habit-building app for remote teams introducing a shared 30-day wellness challenge.",
   "Present it to people and culture leaders with cover, agenda, launch story, audience pain points, product vision, feature tour, rollout timeline, activation moments, team, early metrics, testimonials, pricing, and next steps.",
@@ -131,6 +145,22 @@ function mockOnboardingNeeded(currentContext = context): void {
   currentContext.mocks.data.onboardingStatus({
     needsOnboarding: true,
     onboardingComplete: false,
+  });
+}
+
+function mockPrefetchedAgents(agents: readonly AgentResponse[]): void {
+  // This response arrives in Worker-served HTML, before the browser runs.
+  // Page interactions cannot create this server-only initial document state.
+  const bootstrap = document.createElement("script");
+  bootstrap.type = "application/json";
+  bootstrap.dataset.okouApiBootstrap = "";
+  bootstrap.dataset.method = agentsMainContract.list.method;
+  bootstrap.dataset.path = encodeURIComponent(agentsMainContract.list.path);
+  bootstrap.dataset.contentType = "application/json";
+  bootstrap.textContent = JSON.stringify(agents);
+  document.head.append(bootstrap);
+  context.signal.addEventListener("abort", () => {
+    bootstrap.remove();
   });
 }
 
@@ -678,19 +708,7 @@ test("Okou's avatar appears after onboarding provisions the first agent", async 
   const initialAgentList = context.mocks.deferred<void>();
   let provisioned = false;
   let completed = false;
-  const agent = {
-    agentId: "c0000000-0000-4000-a000-000000000001",
-    isDefaultAgent: true,
-    ownerId: "test-user-123",
-    displayName: "Okou",
-    description: null,
-    sound: null,
-    avatarUrl: DEFAULT_AGENT_AVATAR_URL,
-    modelProviderId: null,
-    selectedModel: null,
-    preferPersonalProvider: false,
-    visibility: "public",
-  } satisfies AgentResponse;
+  const agent = DEFAULT_ONBOARDING_AGENT;
   context.mocks.api(agentsMainContract.list, ({ respond }) => {
     if (!provisioned) {
       initialAgentList.resolve();
@@ -740,6 +758,42 @@ test("Okou's avatar appears after onboarding provisions the first agent", async 
   await screen.findByRole("textbox", { name: "Message" });
   await waitFor(() => {
     expect(pathname()).toBe(`/agents/${agent.agentId}/chat`);
+    const profile = queryAllByRoleFast("link").find((link) => {
+      return link.getAttribute("aria-label") === "View agent profile";
+    });
+    expect(profile?.querySelector("img")).toBeVisible();
+  });
+});
+
+test("Exploring after onboarding shows Okou even when the initial HTML prefetched no agents", async () => {
+  const agent = DEFAULT_ONBOARDING_AGENT;
+  context.mocks.data.agents([agent]);
+  context.mocks.api(agentsByIdContract.get, ({ respond }) => {
+    return respond(200, agent);
+  });
+
+  mockPrefetchedAgents([]);
+
+  await openMakePage();
+  chooseMakeOption("I will explore on my own");
+
+  await screen.findByRole("textbox", { name: "Message" });
+  await waitFor(() => {
+    expect(pathname()).toBe(`/agents/${agent.agentId}/chat`);
+    const profile = queryAllByRoleFast("link").find((link) => {
+      return link.getAttribute("aria-label") === "View agent profile";
+    });
+    expect(profile?.querySelector("img")).toBeVisible();
+  });
+});
+
+test("An onboarded user sees Okou's prefetched avatar on the first visit", async () => {
+  context.mocks.data.agents([]);
+  mockPrefetchedAgents([DEFAULT_ONBOARDING_AGENT]);
+
+  await setupPage({ context, path: "/" });
+  await screen.findByRole("textbox", { name: "Message" });
+  await waitFor(() => {
     const profile = queryAllByRoleFast("link").find((link) => {
       return link.getAttribute("aria-label") === "View agent profile";
     });

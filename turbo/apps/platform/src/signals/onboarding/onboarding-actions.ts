@@ -61,8 +61,8 @@ export const completeOnboarding$ = command(
     if (role) {
       set(capturePaidOnboardingRoleConfirmed$, role);
     }
-    // A route rendered before onboarding can cache an empty agent list while
-    // the status endpoint is still provisioning the workspace's default agent.
+    // Both a prior route and the Worker's HTML prefetch can retain an empty
+    // list from before the status endpoint provisioned the default agent.
     set(reloadAgents$);
     set(reloadOnboardingStatus$);
     set(resetOnboardingDraft$);
