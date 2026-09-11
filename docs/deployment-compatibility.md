@@ -873,3 +873,27 @@ The App uses the exact attempt receipt, not account timestamps, account counts, 
 - The new table is additive and does not change existing OAuth-state or connector-account rows. No Runner protocol changes or immediate App minimum-version increase are required.
 
 The receipt-capable writer from [#32880](https://github.com/vm0-ai/vm0/pull/32880) shipped in release `3d58eaa4609967a4f655f7cd61d0d7cd454ba2a1`: API `1.575.2` completed [production promotion](https://github.com/vm0-ai/vm0/actions/runs/34335229479/job/102417239410) on 2026-09-09 at 09:48:46 UTC, followed by App `0.873.0` at 09:50:38 UTC. Cleanup [#32870](https://github.com/vm0-ai/vm0/issues/32870) retires the optional response field and absent-ID branch after that release. The maintainer explicitly excludes old API rollback compatibility; no rollback restriction is added or changed. Pre-receipt APIs are outside this cleanup's supported boundary. Existing App requests remain accepted, and already-loaded pre-receipt App bundles are not retired by this change; no App version floor increase is included.
+
+## PostHog CIMD OAuth
+
+PostHog OAuth uses a public client identified by
+`https://app.okou.ai/connectors/posthog/metadata.json`, with PKCE and no
+client secret. Deploy the API support for static public authorization-code
+clients and the updated public metadata before publishing the companion
+`vm0-ai/vm0-connectors` catalog change. Earlier API versions reject the public
+client during catalog relationship validation; catalog publication must wait
+until those versions no longer serve traffic. If the API must roll back below
+this support, restore a compatible catalog first through the normal catalog
+release process.
+
+The new API can load the old confidential-client catalog. Its capability
+filter hides only the incompatible PostHog OAuth method until the companion
+catalog is published; the personal API-key method remains available. The
+existing PostHog OAuth feature switch still controls exposure.
+
+OAuth storage version 2 adds the account's region and API base URL and changes
+the client identity. Version 1 OAuth accounts must reconnect through the
+existing storage-version lifecycle. US provider user IDs remain unchanged;
+EU IDs have an `eu:` prefix to distinguish independent regional ID namespaces.
+The personal API-key storage version stays at 1. No frontend, Runner, or
+production data migration is required.
