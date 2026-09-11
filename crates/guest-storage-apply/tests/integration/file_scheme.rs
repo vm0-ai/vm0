@@ -34,6 +34,40 @@ fn file_scheme_extraction_success() {
     assert!(staged.exists());
 }
 
+#[test]
+fn failed_parent_archive_does_not_skip_pending_children() {
+    let dir = tempfile::tempdir().unwrap();
+    let parent = dir.path().join("parent");
+    let staged = dir.path().join("valid.tar.gz");
+    let archive = create_tar_gz(&[("value.txt", b"required child contents")]).unwrap();
+    std::fs::write(&staged, &archive).unwrap();
+    let mut mounts = vec![json!({
+        "mountPath": parent,
+        "archiveUrl": format!("file://{}", dir.path().join("missing.tar.gz").display())
+    })];
+    for index in 0..9 {
+        mounts.push(json!({
+            "mountPath": parent.join(format!("child-{index}")),
+            "archiveUrl": format!("file://{}", staged.display())
+        }));
+    }
+    let manifest = dir.path().join("manifest.json");
+    std::fs::write(
+        &manifest,
+        serde_json::to_vec(&json!({"storageMounts": mounts})).unwrap(),
+    )
+    .unwrap();
+
+    assert!(!run_guest_storage_apply(manifest.to_str().unwrap()));
+    for index in 0..9 {
+        assert_eq!(
+            std::fs::read(parent.join(format!("child-{index}/value.txt"))).unwrap(),
+            b"required child contents"
+        );
+    }
+    assert_eq!(std::fs::read(staged).unwrap(), archive);
+}
+
 // Security regression: file:// archives use the same extraction path as HTTP,
 // but this is the production path for runner-staged storage cache tarballs.
 #[test]
