@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Locator, Page } from "@playwright/test";
 
 import { expect, test } from "../fixtures";
+import { expectClerkTestInstance } from "../lib/auth";
 import { openAuthV2 } from "../lib/auth-v2-ui";
 import {
   createUser,
@@ -16,10 +17,7 @@ async function openAuth(
 ): Promise<void> {
   await page.goto(path, { waitUntil: "domcontentloaded" });
   await expect(page.getByLabel("Email address", { exact: true })).toBeVisible();
-  // Never submit these fixtures against a production Clerk instance.
-  await expect(
-    page.locator("script[data-clerk-publishable-key]").first(),
-  ).toHaveAttribute("data-clerk-publishable-key", /^pk_test_/);
+  await expectClerkTestInstance(page);
   await page.evaluate(async () => {
     await document.fonts.ready;
   });
