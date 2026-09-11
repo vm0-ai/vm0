@@ -3,6 +3,8 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { Bug } from "lucide-react";
 import { Switch } from "@okouai/ui/components/ui/switch";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { featureSwitch$ } from "../../../../../signals/external/feature-switch.ts";
 
 import { pageSignal$ } from "../../../../../signals/page-signal.ts";
 import { detach, Reason } from "../../../../../signals/utils.ts";
@@ -17,6 +19,7 @@ import { WorkerConnectionDiagnosticsBlock } from "../worker-connection-diagnosti
 import { BuiltInModelCooldownDiagnosticsBlock } from "../built-in-model-cooldown-diagnostics-block.tsx";
 import { IndexedDbDiagnosticsBlock } from "../indexeddb-diagnostics-block.tsx";
 import { VoiceInputModelSettings } from "../voice-input-model-settings.tsx";
+import { WelcomeThreadCard } from "../welcome-thread-card.tsx";
 
 const CAPTURE_RUN_COUNT = 3;
 
@@ -79,9 +82,11 @@ function CaptureNetworkBodiesBlock() {
 }
 
 export function DebugSection() {
+  const features = useGet(featureSwitch$);
   return (
     <div className="flex flex-col gap-6">
       <BuildInfoBlock />
+      {features[FeatureSwitchKey.WelcomeThread] && <WelcomeThreadCard />}
       <VoiceInputModelSettings />
       <ConnectionDiagnosticsBlock />
       <WorkerConnectionDiagnosticsBlock />

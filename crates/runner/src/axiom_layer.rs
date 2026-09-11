@@ -60,6 +60,21 @@ const _: () = assert!(
 /// boundary with a visible marker. The marker is appended after this content
 /// cap, matching the existing bounded Debug-field behavior.
 const TEXT_FIELD_MAX_BYTES: usize = 4 * 1024;
+
+/// Preserve the causal suffix of an already-materialized error independently
+/// of the Axiom field's bounded prefix. Do not format arbitrary Debug values to
+/// obtain a tail: their formatting must still stop at the normal field limit.
+pub(crate) fn error_tail(error: &str) -> Option<&str> {
+    if error.len() <= TEXT_FIELD_MAX_BYTES {
+        return None;
+    }
+    let mut start = error.len() - TEXT_FIELD_MAX_BYTES;
+    while !error.is_char_boundary(start) {
+        start += 1;
+    }
+    Some(&error[start..])
+}
+
 /// Max native error sources retained after the top-level error message.
 const ERROR_SOURCE_MAX_DEPTH: usize = 8;
 const TRUNCATION_MARKER: &str = "…[truncated]";

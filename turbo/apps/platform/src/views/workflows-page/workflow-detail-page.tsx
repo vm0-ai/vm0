@@ -1135,7 +1135,7 @@ function DetailHeader({
                     <TooltipContent
                       side="bottom"
                       align="start"
-                      className="rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] p-3"
+                      className="rounded-lg border border-[hsl(var(--gray-400))] p-3"
                       style={{
                         backgroundColor: "hsl(var(--card))",
                         color: "hsl(var(--card-foreground))",
@@ -1705,7 +1705,7 @@ function OfficialWorkflowReconfigureDialog({
             disabled={reconfiguring}
           />
         ) : null}
-        {reconfigureLoadable.state === "hasError" ? (
+        {activeForm?.submitted && reconfigureLoadable.state === "hasError" ? (
           <Alert variant="destructive">
             <AlertTitle>
               {i18n.t(($) => {
@@ -1839,7 +1839,7 @@ function WorkflowMetadataFields({
         description={copy.agentDescription}
         wideControls
       >
-        <div className="flex h-9 w-full items-center rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-gray-50 px-3 text-sm text-muted-foreground">
+        <div className="flex h-9 w-full items-center rounded-lg border border-[hsl(var(--gray-400))] bg-gray-50 px-3 text-sm text-muted-foreground">
           <span className="truncate" title={ownerAgentLabel}>
             {ownerAgentLabel}
           </span>
@@ -4485,7 +4485,7 @@ function AutomationCreateOptionCard({
     <button
       type="button"
       onClick={onSelect}
-      className="flex min-h-[8rem] flex-col items-start gap-3.5 rounded-2xl border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-5 text-left transition-colors hover:border-[hsl(var(--gray-500))] hover:bg-card-hover"
+      className="flex min-h-[8rem] flex-col items-start gap-3.5 rounded-2xl border border-[hsl(var(--gray-400))] bg-card p-5 text-left transition-colors hover:border-[hsl(var(--gray-500))] hover:bg-card-hover"
     >
       <span
         className={cn(

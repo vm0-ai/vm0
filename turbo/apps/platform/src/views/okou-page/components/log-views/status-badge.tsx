@@ -6,6 +6,7 @@ import {
   ClockAlert,
   Ban,
 } from "lucide-react";
+import { Badge } from "@okouai/ui";
 import type { LogStatus } from "../../../../signals/okou-page/log-types.ts";
 import { i18n } from "../../../../i18n/index.ts";
 
@@ -106,18 +107,30 @@ export function StatusBadge({ status, shellStyle }: StatusBadgeProps) {
   const config = statusConfig[status];
   const Icon = config.icon;
 
-  return (
+  const content = (
+    <>
+      <Icon className={`h-3 w-3 ${config.iconClassName}`} />
+      {config.label}
+    </>
+  );
+
+  // The shell treatment is the shared badge; the standalone one is its own
+  // surface on the page background and is not a badge.
+  return shellStyle ? (
+    <Badge
+      data-testid="status-badge"
+      data-status={status}
+      className="text-xs font-medium text-muted-foreground"
+    >
+      {content}
+    </Badge>
+  ) : (
     <span
       data-testid="status-badge"
       data-status={status}
-      className={
-        shellStyle
-          ? "okou-pill inline-flex items-center gap-1.5 rounded-lg border px-1.5 py-1 text-xs font-medium"
-          : "inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
-      }
+      className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
     >
-      <Icon className={`h-3 w-3 ${config.iconClassName}`} />
-      {config.label}
+      {content}
     </span>
   );
 }

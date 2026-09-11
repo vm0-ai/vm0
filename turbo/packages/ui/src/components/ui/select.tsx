@@ -151,7 +151,7 @@ const SelectTrigger = React.forwardRef<
       ref={ref}
       data-slot="select-trigger"
       className={cn(
-        "flex h-9 w-full items-center justify-start gap-2 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50",
+        "flex h-9 w-full items-center justify-start gap-2 rounded-lg border border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}
       {...props}
@@ -276,7 +276,7 @@ const SelectContent = React.forwardRef<HTMLDivElement, SelectContentProps>(
             data-slot="select-content"
             className={cn(
               anchoredPopupTransitionClassName,
-              "relative max-h-[min(24rem,var(--available-height))] min-w-[max(8rem,var(--anchor-width))] overflow-x-hidden overflow-y-auto rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card text-foreground outline-none data-[side=none]:data-starting-style:opacity-100 data-[side=none]:data-starting-style:[transform:scale(1)] data-[side=none]:transition-none",
+              "relative max-h-[min(24rem,var(--available-height))] min-w-[max(8rem,var(--anchor-width))] overflow-x-hidden overflow-y-auto rounded-[12px] border border-[hsl(var(--gray-400))] bg-card text-foreground outline-none data-[side=none]:data-starting-style:opacity-100 data-[side=none]:data-starting-style:[transform:scale(1)] data-[side=none]:transition-none",
               className,
             )}
             style={

@@ -85,10 +85,7 @@ export const toggleUsagePackMemberAdditions$ = command(
 
 const PAGE_SIZE = 20;
 
-type LoadUsageRecordPage = (
-  page: number,
-  signal?: AbortSignal,
-) => Promise<UsageRecordResponse>;
+type LoadUsageRecordPage = (page: number) => Promise<UsageRecordResponse>;
 
 const usageRecordReload$ = state(0);
 const myUsageRecordPages$ = state<readonly UsageRecordResponse[]>([]);
@@ -140,7 +137,7 @@ export const setTeamUsageRange$ = command(
 const loadMyUsageRecordPage$ = computed((get): LoadUsageRecordPage => {
   const range = get(myUsageRangeState$);
   const client = get(apiClient$)(usageRecordContract);
-  return async (page, signal) => {
+  return async (page) => {
     const result = await accept(
       client.get({
         query: {
@@ -150,10 +147,8 @@ const loadMyUsageRecordPage$ = computed((get): LoadUsageRecordPage => {
           range,
           tz: currentTimeZone(),
         },
-        ...(signal ? { fetchOptions: { signal } } : {}),
       }),
       [200],
-      signal,
     );
     return result.body;
   };
@@ -206,7 +201,7 @@ export const loadMoreUsageRecord$ = command(
     });
 
     const loadPage = get(loadMyUsageRecordPage$);
-    const next = await onRejection(loadPage(nextPage, signal), () => {
+    const next = await onRejection(loadPage(nextPage), () => {
       set(releaseMyUsageRecordPageRequest$, nextPage, generation);
     });
     if (signal.aborted) {

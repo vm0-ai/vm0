@@ -84,12 +84,14 @@ import {
 } from "@okouai/api-contracts/contracts/chat-events";
 
 import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
+import { compatibleReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
 import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
 import { debounceCommand } from "../command-scheduling.ts";
 import {
   agentMessageMathEnabled$,
+  chatReasoningEffortEnabled$,
   codexFastModeEnabled$,
   featureSwitch$,
   initialFeatureSwitchHydration$,
@@ -481,6 +483,15 @@ function createModelSelection(
     },
   );
 
+  const reasoningEffort$ = computed((get) => {
+    return get(chatReasoningEffortEnabled$)
+      ? compatibleReasoningEffort(
+          get(selectedModel$),
+          get(threadMeta$)?.reasoningEffort,
+        )
+      : undefined;
+  });
+
   const codexFastModeActive$ = computed(async (get): Promise<boolean> => {
     if (!get(codexFastModeEnabled$)) {
       return false;
@@ -507,6 +518,7 @@ function createModelSelection(
   return {
     selectedModel$,
     codexFastModeActive$,
+    reasoningEffort$,
     selectedModelOauthAvailable$,
     configureSelectedModel$,
     setModelSelection$,
@@ -1485,6 +1497,7 @@ function thinkingIndicatorProjectionFromGroups(
   const running = runState !== null && !lastAssistantCancelled;
 
   if (
+    (!running && !lastAssistantEvent?.runId) ||
     shouldHideThinkingIndicator({
       lastIsAssistant,
       lastAssistantCancelled,
@@ -3054,6 +3067,7 @@ function createRunTracking({
     await set(setupChatEvents$, signal);
     signal.throwIfAborted();
 
+    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
     const onThreadDetailChanged$ = command(({ set }) => {
       L.debug("onThreadDetailChanged$ fired", { threadId });
       set(cancellationRecovery.reload$);
@@ -3061,17 +3075,20 @@ function createRunTracking({
       return false;
     });
 
+    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
     const onAutomationsChanged$ = command(({ set }) => {
       set(automationSignals.headerAutomations.reload$);
       return false;
     });
 
+    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
     const onArtifactsChanged$ = command(({ set }) => {
       L.debug("onArtifactsChanged$ fired", { threadId });
       set(reloadArtifacts$);
       return false;
     });
 
+    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
     const onWorkflowsChanged$ = command(
       async ({ set }, signal: AbortSignal): Promise<boolean> => {
         L.debug("onWorkflowsChanged$ fired", { threadId });
@@ -3829,9 +3846,14 @@ function createChatThreadComposerSignals(
       if (!isSupportedRunModel(selectedModel)) {
         return null;
       }
-      return (await get(modelSelection.codexFastModeActive$))
-        ? { selectedModel, codexServiceTier: "fast" }
-        : { selectedModel };
+      const reasoningEffort = get(modelSelection.reasoningEffort$);
+      return {
+        selectedModel,
+        ...((await get(modelSelection.codexFastModeActive$))
+          ? { codexServiceTier: "fast" as const }
+          : {}),
+        ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+      };
     },
   );
   return createComposerSignals({
@@ -3977,7 +3999,7 @@ function createChatPanelSignalsWithDraft(
     chatEvents.chatEvents$,
     threadMeta$,
   );
-  const container = createChatThreadContainerSignals(signal);
+  const container = createChatThreadContainerSignals();
   const threadOwned = createThreadOwnedSignals(threadId);
   const cancellationRecovery = createCancellationRecoverySignals(threadId);
   const composer = createThreadComposerSignalsWithContext(

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.88.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.88.2...guest-agent-v0.88.3) (2026-09-10)
+
+## [0.88.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.88.1...guest-agent-v0.88.2) (2026-09-10)
+
+
+### Bug Fixes
+
+* **guest-agent:** handle closed telemetry incident channels ([#33276](https://github.com/vm0-ai/vm0/issues/33276)) ([055afa8](https://github.com/vm0-ai/vm0/commit/055afa8a6b78c32ea4b10ef4fe5735ae33a9118e))
+* **pi:** keep model failures actionable when an upstream returns a document ([#33249](https://github.com/vm0-ai/vm0/issues/33249)) ([76eb46f](https://github.com/vm0-ai/vm0/commit/76eb46f0b78b846fc5a1f3a8a3e6a18a2b327aab))
+* **runner:** report the real termination reason for oom-killed agent runs ([#33240](https://github.com/vm0-ai/vm0/issues/33240)) ([f695c77](https://github.com/vm0-ai/vm0/commit/f695c77cd45566553f8b01d0c2f484909cebfc70))
+
 ## [0.88.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.88.0...guest-agent-v0.88.1) (2026-09-10)
 
 

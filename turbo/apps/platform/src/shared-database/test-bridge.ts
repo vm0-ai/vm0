@@ -192,7 +192,6 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
         this.events.workerUnavailable(event.reason);
         return;
       }
-      this.events.statusChanged(event.status);
     },
   );
 
@@ -279,6 +278,7 @@ class DirectSharedDatabaseBridge implements SharedDatabaseBridge {
     scope: SharedDatabaseRealtimeScope,
     topic: string,
     listener: (message: SharedDatabaseRealtimeMessage) => void,
+    _onResync: () => void,
   ): Promise<void> {
     if (this.realtimeSubscriptions.has(subscriptionId)) {
       throw new Error("Shared database realtime subscription already exists");
@@ -372,12 +372,14 @@ class TestSharedDatabaseBridge implements SharedDatabaseBridge {
     scope: SharedDatabaseRealtimeScope,
     topic: string,
     listener: (message: SharedDatabaseRealtimeMessage) => void,
+    onResync: () => void,
   ): Promise<void> {
     return this.bridge.subscribeRealtime(
       subscriptionId,
       scope,
       topic,
       listener,
+      onResync,
     );
   }
 

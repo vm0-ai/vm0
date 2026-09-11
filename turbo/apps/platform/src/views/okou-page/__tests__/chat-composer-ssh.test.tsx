@@ -22,6 +22,54 @@ const github = connectorSlugSchema.parse("github");
 const slack = connectorSlugSchema.parse("slack");
 const gmail = connectorSlugSchema.parse("gmail");
 
+test("SSH connection failures do not add Chat-only indicators or change order or authorization", async () => {
+  installComposerConnectorFixture({
+    catalog: [builtinConnector({ slug: github, label: "GitHub" })],
+    builtinAuthorizations: { [SCOUT_AGENT_ID]: [github] },
+  });
+  context.mocks.api(sshConnectionsContract.summary, ({ respond }) => {
+    return respond(200, { configuredCount: 2 });
+  });
+  context.mocks.api(agentSshAccessContract.get, ({ respond }) => {
+    return respond(200, { enabled: true });
+  });
+  context.mocks.api(sshConnectionsContract.observations, ({ respond }) => {
+    return respond(200, {
+      observations: [
+        {
+          connectionId: "b0000000-0000-4000-8000-000000000001",
+          generation: 1,
+          observedAt: "2026-09-10T08:00:00.000Z",
+          failureReason: "authentication_failed",
+        },
+      ],
+    });
+  });
+  await setupPage({
+    context,
+    path: `/agents/${SCOUT_AGENT_ID}/chat`,
+    featureSwitches: { [FeatureSwitchKey.SshAccess]: true },
+  });
+  const trigger = await findFastControl("button", "Connectors");
+  await within(trigger).findByRole("img", { name: "SSH" });
+  expect(within(trigger).queryByRole("status")).toBeNull();
+  expect(triggerIcons(trigger)).toStrictEqual([
+    "https://icons.example.test/github.svg",
+    "SSH",
+  ]);
+  click(trigger);
+  await screen.findByLabelText("Remove SSH");
+  const row = within(screen.getByRole("list", { name: "Connectors" }))
+    .getAllByRole("listitem")
+    .at(-1);
+  expect(row).toBeDefined();
+  if (!row) {
+    throw new Error("Missing SSH service row");
+  }
+  expect(within(row).queryByRole("status")).toBeNull();
+  expect(within(row).getByLabelText("Remove SSH")).toBeInTheDocument();
+});
+
 function triggerIcons(trigger: HTMLElement) {
   return [...trigger.querySelectorAll('img, svg[role="img"]')].map((icon) => {
     return icon.getAttribute("src") ?? icon.getAttribute("aria-label");

@@ -430,7 +430,12 @@ function isRunGroupInternalInput(event: EnrichedChatEvent): boolean {
 }
 
 function canAnchorGoalRun(unit: RunWorkUnit | undefined): boolean {
-  return unit !== undefined && !unit.isGoal && unit.runGroupId === undefined;
+  return (
+    unit !== undefined &&
+    unit.runIds.length > 0 &&
+    !unit.isGoal &&
+    unit.runGroupId === undefined
+  );
 }
 
 function runWorkUnits(events: readonly EnrichedChatEvent[]): RunWorkUnit[] {
@@ -474,9 +479,10 @@ function runWorkUnits(events: readonly EnrichedChatEvent[]): RunWorkUnit[] {
       continue;
     }
 
-    // Goal continuations are synthetic user turns. Attach their contiguous
-    // streak to the nearest preceding ungrouped run; an intervening run then
-    // naturally starts a new visual work section after an interruption.
+    // Historical goal continuations are synthetic user turns. Attach their
+    // contiguous streak to the nearest preceding ungrouped run; an intervening
+    // run then naturally starts a new visual work section after an
+    // interruption.
     const previousUnit = units[units.length - 1];
     const anchorUnit = canAnchorGoalRun(previousUnit) ? units.pop() : undefined;
     const groupedEvents = streak.flatMap((item) => {
@@ -576,7 +582,8 @@ interface RunWorkGroupFolding {
 }
 
 // A work group is bounded by visible user inputs, independently of execution:
-// one run can span several groups, and goal continuations can span several runs.
+// one run can span several groups, and historical goal continuations can span
+// several runs.
 interface RunWorkGroup {
   readonly unit: RunWorkUnit;
   readonly events: readonly EnrichedChatEvent[];
@@ -606,7 +613,11 @@ function foldRunWorkGroup(
     }),
   };
   const startTime = firstEventTime(events);
-  if (anchorEvent === undefined || startTime === null) {
+  if (
+    unit.runIds.length === 0 ||
+    anchorEvent === undefined ||
+    startTime === null
+  ) {
     return {
       visibleEvents: events.filter((event) => {
         return (

@@ -479,14 +479,14 @@
       "attach": "Adjuntar marcas",
       "draftOnly": "Las marcas se quedan en el borrador — puedes cambiarlas hasta enviar",
       "inkLabel": "Color {{color}}",
-      "notePlaceholder": "Di qué debería cambiar aquí",
+      "notePlaceholder": "¿Qué debería cambiar?",
       "open": "Anotar",
       "redo": "Rehacer",
       "removeMark": "Eliminar marca",
       "subtitle_one": "{{count}} marca",
       "subtitle_many": "{{count}} marcas",
       "subtitle_other": "{{count}} marcas",
-      "textPlaceholder": "Escribe la etiqueta",
+      "textPlaceholder": "Escribe aquí",
       "tools": {
         "arrow": "Flecha",
         "box": "Rectángulo",
@@ -2584,6 +2584,289 @@
         "video": "Vídeo",
         "website": "Sitio web",
         "workflow": "Flujo de trabajo"
+      },
+      "workflows": {
+        "back": "Explorar workflows",
+        "browse": "Explorar workflows",
+        "close": "Cerrar",
+        "contextPrefix": "Lo importante para mí: {{context}}",
+        "heading": "¿Qué tarea te gustaría delegar?",
+        "items": {
+          "competitors": {
+            "cadence": "A diario o semanalmente",
+            "description": "Vigila precios y funciones en las webs de la competencia, guarda los hallazgos en Notion y avisa en Slack.",
+            "name": "Monitor de competencia",
+            "next": "Prepara primero un borrador. Confirma las fuentes, el alcance, el horario y el destino antes de activarlo.",
+            "prompt": "Ayúdame a configurar este workflow: Monitor de competencia. Revisar periódicamente las páginas de competidores elegidas. Detectar cambios importantes en precios, ofertas o mensajes. Guardar hallazgos y fuentes en Notion y avisar por Slack si se desea. Prepara primero un borrador. Confirma las fuentes, el alcance, el horario y el destino antes de activarlo.",
+            "results": {
+              "one": "Comparación de antes y después",
+              "three": "Explicación breve de los cambios",
+              "two": "Enlaces a las fuentes de cada hallazgo"
+            },
+            "scope": "Vigila precios y funciones en las webs de la competencia, guarda los hallazgos en Notion y avisa en Slack.",
+            "steps": {
+              "one": "Revisar periódicamente las páginas de competidores elegidas",
+              "three": "Guardar hallazgos y fuentes en Notion y avisar por Slack si se desea",
+              "two": "Detectar cambios importantes en precios, ofertas o mensajes"
+            },
+            "title": "Detecta cambios de la competencia"
+          },
+          "inbox": {
+            "cadence": "Cuando llega un email",
+            "description": "Ordena tu bandeja de entrada y redacta las respuestas a los correos que las necesiten.",
+            "name": "Ordena Gmail y redacta las respuestas",
+            "next": "Prepara primero un borrador. Confirma las fuentes, el alcance, el horario y el destino antes de activarlo.",
+            "prompt": "Ayúdame a configurar este workflow: Ordena Gmail y redacta las respuestas. Leer los mensajes dentro del alcance elegido. Ordenarlos por urgencia y las reglas acordadas. Guardar propuestas de respuesta como borradores de Gmail. Prepara primero un borrador. Confirma las fuentes, el alcance, el horario y el destino antes de activarlo. Las respuestas a emails deben quedar como borradores que revisaré y enviaré personalmente.",
+            "results": {
+              "one": "Emails ordenados por urgencia",
+              "three": "Borradores de respuesta en Gmail",
+              "two": "Solicitudes importantes destacadas"
+            },
+            "scope": "Ordena tu bandeja de entrada y redacta las respuestas a los correos que las necesiten.",
+            "steps": {
+              "one": "Leer los mensajes dentro del alcance elegido",
+              "three": "Guardar propuestas de respuesta como borradores de Gmail",
+              "two": "Ordenarlos por urgencia y las reglas acordadas"
+            },
+            "title": "Avanza con los emails importantes"
+          },
+          "invoices": {
+            "cadence": "Cuando etiquetas una factura",
+            "description": "Archiva en Drive los correos con facturas y registra cada una en una hoja.",
+            "name": "Archivar facturas de Gmail en Google Drive",
+            "next": "Prepara primero un borrador. Confirma las fuentes, el alcance, el horario y el destino antes de activarlo.",
+            "prompt": "Ayúdame a configurar este workflow: Archivar facturas de Gmail en Google Drive. Identificar una factura mediante la etiqueta de Gmail elegida. Archivar el adjunto en la carpeta de Drive acordada. Registrar detalles en Google Sheets si se desea. Prepara primero un borrador. Confirma las fuentes, el alcance, el horario y el destino antes de activarlo.",
+            "results": {
+              "one": "Facturas en la carpeta correcta",
+              "three": "Registro opcional de facturas en Sheets",
+              "two": "Registro de archivo coherente"
+            },
+            "scope": "Archiva en Drive los correos con facturas y registra cada una en una hoja.",
+            "steps": {
+              "one": "Identificar una factura mediante la etiqueta de Gmail elegida",
+              "three": "Registrar detalles en Google Sheets si se desea",
+              "two": "Archivar el adjunto en la carpeta de Drive acordada"
+            },
+            "title": "Mantén las facturas organizadas"
+          },
+          "meetings": {
+            "cadence": "Cuando se añade una reunión",
+            "description": "Investiga a las personas que vas a conocer antes de cada evento del calendario.",
+            "name": "Investiga tus reuniones en el calendario",
+            "next": "Prepara primero un borrador. Confirma las fuentes, el alcance, el horario y el destino antes de activarlo.",
+            "prompt": "Ayúdame a configurar este workflow: Investiga tus reuniones en el calendario. Leer participantes y detalles de un nuevo evento. Investigar el contexto profesional y de las empresas. Preparar un informe con fuentes y temas de conversación. Prepara primero un borrador. Confirma las fuentes, el alcance, el horario y el destino antes de activarlo.",
+            "results": {
+              "one": "Contexto de asistentes y empresas",
+              "three": "Temas de conversación sugeridos",
+              "two": "Información relevante con fuentes"
+            },
+            "scope": "Investiga a las personas que vas a conocer antes de cada evento del calendario.",
+            "steps": {
+              "one": "Leer participantes y detalles de un nuevo evento",
+              "three": "Preparar un informe con fuentes y temas de conversación",
+              "two": "Investigar el contexto profesional y de las empresas"
+            },
+            "title": "Llega preparado a las reuniones"
+          },
+          "metrics": {
+            "cadence": "Cada mañana",
+            "description": "Publica cada día en Slack las cifras de visitantes, registros y activación.",
+            "name": "Publicar métricas diarias en Slack",
+            "next": "Prepara primero un borrador. Confirma las fuentes, el alcance, el horario y el destino antes de activarlo.",
+            "prompt": "Ayúdame a configurar este workflow: Publicar métricas diarias en Slack. Consultar las métricas web y de registro acordadas. Preparar una vista diaria con el periodo claramente indicado. Compartirla en el destino de Slack elegido. Prepara primero un borrador. Confirma las fuentes, el alcance, el horario y el destino antes de activarlo.",
+            "results": {
+              "one": "Visitantes diarios",
+              "three": "Periodo de medición claro",
+              "two": "Registros y activaciones cuando estén disponibles"
+            },
+            "scope": "Publica cada día en Slack las cifras de visitantes, registros y activación.",
+            "steps": {
+              "one": "Consultar las métricas web y de registro acordadas",
+              "three": "Compartirla en el destino de Slack elegido",
+              "two": "Preparar una vista diaria con el periodo claramente indicado"
+            },
+            "title": "Sigue la marcha de tu negocio"
+          },
+          "morning": {
+            "cadence": "Cada mañana",
+            "description": "Convierte las novedades de Gmail, Calendar y Notion en un plan diario breve en Slack.",
+            "name": "Resumen matinal",
+            "next": "Prepara primero un borrador. Confirma las fuentes, el alcance, el horario y el destino antes de activarlo.",
+            "prompt": "Ayúdame a configurar este workflow: Resumen matinal. Leer emails importantes y reuniones de hoy. Priorizar decisiones, seguimientos y tiempo de concentración. Enviar un breve plan matinal a Slack. Prepara primero un borrador. Confirma las fuentes, el alcance, el horario y el destino antes de activarlo.",
+            "results": {
+              "one": "Prioridades del día",
+              "three": "Respuestas y decisiones pendientes",
+              "two": "Reuniones y tiempo de concentración"
+            },
+            "scope": "Convierte las novedades de Gmail, Calendar y Notion en un plan diario breve en Slack.",
+            "steps": {
+              "one": "Leer emails importantes y reuniones de hoy",
+              "three": "Enviar un breve plan matinal a Slack",
+              "two": "Priorizar decisiones, seguimientos y tiempo de concentración"
+            },
+            "title": "Empieza el día con un plan claro"
+          },
+          "recap": {
+            "cadence": "Comprobación periódica de nuevas notas",
+            "description": "Comparte un resumen con las decisiones y acciones después de cada reunión.",
+            "name": "Recibir resúmenes de reuniones en Slack",
+            "next": "Prepara primero un borrador. Confirma las fuentes, el alcance, el horario y el destino antes de activarlo.",
+            "prompt": "Ayúdame a configurar este workflow: Recibir resúmenes de reuniones en Slack. Leer una nueva transcripción de reunión. Extraer decisiones, acciones, responsables y fechas indicados. Enviar un resumen breve al destino elegido. Prepara primero un borrador. Confirma las fuentes, el alcance, el horario y el destino antes de activarlo.",
+            "results": {
+              "one": "Decisiones de la conversación",
+              "three": "Datos faltantes claramente señalados",
+              "two": "Acciones y responsables indicados"
+            },
+            "scope": "Comparte un resumen con las decisiones y acciones después de cada reunión.",
+            "steps": {
+              "one": "Leer una nueva transcripción de reunión",
+              "three": "Enviar un resumen breve al destino elegido",
+              "two": "Extraer decisiones, acciones, responsables y fechas indicados"
+            },
+            "title": "Convierte las reuniones en acciones"
+          },
+          "reply": {
+            "cadence": "Cuando llega una respuesta coincidente",
+            "description": "Sigue una conversación y recibe los puntos clave de cada respuesta y los siguientes pasos.",
+            "name": "Seguimiento de respuestas por email",
+            "next": "Prepara primero un borrador. Confirma las fuentes, el alcance, el horario y el destino antes de activarlo.",
+            "prompt": "Ayúdame a configurar este workflow: Seguimiento de respuestas por email. Seguir una conversación y los remitentes acordados. Detectar una nueva respuesta y resumir sus puntos clave. Notificar una vez y preparar un borrador si hace falta. Prepara primero un borrador. Confirma las fuentes, el alcance, el horario y el destino antes de activarlo. Las respuestas a emails deben quedar como borradores que revisaré y enviaré personalmente.",
+            "results": {
+              "one": "Respuesta recibida y puntos clave",
+              "three": "Borrador de seguimiento cuando sea útil",
+              "two": "Acciones solicitadas o plazos"
+            },
+            "scope": "Sigue una conversación y recibe los puntos clave de cada respuesta y los siguientes pasos.",
+            "steps": {
+              "one": "Seguir una conversación y los remitentes acordados",
+              "three": "Notificar una vez y preparar un borrador si hace falta",
+              "two": "Detectar una nueva respuesta y resumir sus puntos clave"
+            },
+            "title": "No te pierdas la respuesta esperada"
+          },
+          "weekly": {
+            "cadence": "Cada semana",
+            "description": "Resume la actividad de GitHub, Gmail y Calendar en una actualización semanal en Slack.",
+            "name": "Resumen semanal personal",
+            "next": "Prepara primero un borrador. Confirma las fuentes, el alcance, el horario y el destino antes de activarlo.",
+            "prompt": "Ayúdame a configurar este workflow: Resumen semanal personal. Recopilar actividad de las fuentes elegidas. Agrupar logros, decisiones pendientes y seguimientos. Compartir el resumen semanal en el destino de Slack elegido. Prepara primero un borrador. Confirma las fuentes, el alcance, el horario y el destino antes de activarlo.",
+            "results": {
+              "one": "Logros de la semana",
+              "three": "Compromisos próximos",
+              "two": "Decisiones pendientes y seguimientos"
+            },
+            "scope": "Resume la actividad de GitHub, Gmail y Calendar en una actualización semanal en Slack.",
+            "steps": {
+              "one": "Recopilar actividad de las fuentes elegidas",
+              "three": "Compartir el resumen semanal en el destino de Slack elegido",
+              "two": "Agrupar logros, decisiones pendientes y seguimientos"
+            },
+            "title": "Cierra la semana con claridad"
+          }
+        },
+        "next": "Workflow siguiente",
+        "ownSources": "Tu workflow utilizará tus propias fuentes y contenidos.",
+        "placeholder": "Opcional — cuéntame qué es importante para ti",
+        "preview": {
+          "competitors": {
+            "changed": "Changed",
+            "footer": "Source page and change history included",
+            "heading": "One change worth a closer look.",
+            "label": "Monitor de competencia",
+            "now": "Now",
+            "plan": "Example company’s team plan",
+            "previous": "Previous",
+            "unit": "/ mo"
+          },
+          "inbox": {
+            "draft": "Reply draft",
+            "label": "Ordena Gmail y redacta las respuestas",
+            "later": "Your weekly digest",
+            "needsReply": "Needs reply",
+            "readLater": "Read later",
+            "review": "Review before sending",
+            "subject": "Re: Next steps",
+            "text": "Thanks for the details. I’ve reviewed the proposal and…"
+          },
+          "invoices": {
+            "amount": "Amount",
+            "example": "Example studio",
+            "file": "Invoice — September",
+            "filed": "Filed",
+            "footer": "An optional Sheet keeps the record together",
+            "label": "Archivar facturas de Gmail en Google Drive",
+            "path": "Finance / Invoices / Sep",
+            "second": "Sample supply co.",
+            "status": "Status",
+            "vendor": "Vendor"
+          },
+          "meetings": {
+            "heading": "Your next conversation.",
+            "initials": "JL",
+            "label": "Investiga tus reuniones en el calendario",
+            "note": "A useful place to begin",
+            "person": "Jordan Lee",
+            "question": "Ask how the team handles customer handoffs.",
+            "role": "Operations lead · Example company",
+            "tagOne": "Company context",
+            "tagTwo": "Discussion points"
+          },
+          "metrics": {
+            "activated": "Activated",
+            "footer": "A clear period. Only the metrics you choose.",
+            "label": "Publicar métricas diarias en Slack",
+            "period": "Yesterday vs. prior day",
+            "signups": "Signups",
+            "visitors": "Visitors"
+          },
+          "morning": {
+            "footer": "2 emails need your attention",
+            "heading": "A little clarity for your day.",
+            "label": "Resumen matinal",
+            "meetingOne": "Team check-in",
+            "meetingTwo": "Client discovery",
+            "priority": "First things first",
+            "task": "Review the proposal before your client call"
+          },
+          "recap": {
+            "assign": "To assign",
+            "decision": "Decision: move ahead with a pilot",
+            "due": "Due",
+            "friday": "Fri",
+            "label": "Recibir resúmenes de reuniones en Slack",
+            "monday": "Mon",
+            "one": "Send the revised brief",
+            "owner": "Owner",
+            "task": "Next step",
+            "team": "Team",
+            "three": "Book the next check-in",
+            "two": "Confirm the pilot scope",
+            "you": "You"
+          },
+          "reply": {
+            "heading": "The reply you were waiting for.",
+            "label": "Seguimiento de respuestas por email",
+            "next": "Next step",
+            "quote": "“Thursday works for us. Could you share a short agenda?”",
+            "subject": "Re: Our next conversation",
+            "task": "Confirm the time and prepare an agenda"
+          },
+          "weekly": {
+            "heading": "A week worth looking back on.",
+            "label": "Resumen semanal personal",
+            "next": "Carry into next week",
+            "one": "Shared the revised proposal",
+            "task": "Confirm the launch date with the team",
+            "two": "Wrapped up the onboarding guide"
+          }
+        },
+        "previous": "Workflow anterior",
+        "sample": "Ejemplo",
+        "tailor": "¿Qué te gustaría adaptar?",
+        "use": "Usar este workflow",
+        "whatHappens": "Qué ocurre en cada ejecución",
+        "whatYouGet": "Qué obtendrás",
+        "worksWith": "Aplicaciones utilizadas"
       }
     },
     "templates": {
@@ -3586,9 +3869,7 @@
       "requestFailed": "Solicitud fallida"
     },
     "realtime": {
-      "degraded": "Se produjo un problema con las actualizaciones en directo. Actualiza la página.",
-      "disconnected": "Conexión en tiempo real desconectada",
-      "reconnecting": "Reconectando la conexión en tiempo real"
+      "degraded": "Se produjo un problema con las actualizaciones en directo. Actualiza la página."
     }
   },
   "invitationRedirect": {
@@ -5261,6 +5542,9 @@
         "categoryImage": "Imagen",
         "categoryVideo": "Vídeo",
         "chatModels": "Modelos de chat",
+        "effort": "Esfuerzo de razonamiento",
+        "effortReset": "Restablecer valor predeterminado",
+        "effortUnavailable": "El esfuerzo no está disponible con esta conexión del modelo. Restablece el valor predeterminado para continuar.",
         "fast": "Rápido",
         "fastImpact": "1,5× velocidad del modelo · 2,5× uso de créditos",
         "generationPriceTiers": {
@@ -5493,6 +5777,14 @@
           "description": "Elige el modelo para la entrada de voz v2. Los modelos de transcripción usan {{model}} para pulir el texto.",
           "title": "Modelo de entrada de voz",
           "unavailable": "Modelo no disponible ({{model}})"
+        },
+        "welcomeThread": {
+          "create": "Crear chat de bienvenida",
+          "creating": "Creando…",
+          "defaultAgentNotReady": "Configura el agente predeterminado del espacio de trabajo e inténtalo de nuevo.",
+          "description": "Crea un chat de bienvenida con la introducción y los ejemplos.",
+          "failed": "No se pudo crear el chat de bienvenida. Inténtalo de nuevo.",
+          "title": "Chat de bienvenida"
         }
       },
       "emailSubscription": {
@@ -5777,6 +6069,23 @@
     "cancel": "Cancelar",
     "chooseFile": "Elegir archivo",
     "choosePrivateKeyFile": "Elegir archivo de clave privada",
+    "connectionStatus": {
+      "attention_one": "{{count}} host SSH requiere atención",
+      "attention_many": "{{count}} hosts SSH requieren atención",
+      "attention_other": "{{count}} hosts SSH requieren atención",
+      "authenticationFailed": "La autenticación SSH ha fallado. Comprueba el usuario, la clave privada y la autorización en el servidor; edita el host o sustituye las credenciales si es necesario.",
+      "credentialResourceLimit": "La clave privada supera los límites de procesamiento admitidos. Expórtala de nuevo con un cifrado compatible y sustituye las credenciales.",
+      "hostKeyMismatch": "La clave del host no coincide con la identidad guardada. Verifica el servidor de forma independiente antes de restablecer su clave.",
+      "invalidCredential": "No se ha podido leer la clave privada o su frase de contraseña. Sustituye las credenciales por la clave completa y la frase correcta.",
+      "networkFailure": "La última conexión SSH ha fallado. Comprueba el nombre del host, el puerto, la disponibilidad del servidor y el acceso desde el Runner a través del cortafuegos.",
+      "observedAt": "Observado: {{time}}",
+      "protocol": "El intercambio inicial SSH ha fallado. Comprueba que el puerto ofrece SSH y que el servidor admite algoritmos compatibles.",
+      "timedOut": "La última conexión SSH ha agotado el tiempo de espera antes de completar la autenticación. Comprueba el destino, el cortafuegos y la disponibilidad del servidor.",
+      "unavailable": "El estado de la conexión SSH no está disponible",
+      "unsafeDestination": "Este host no resuelve a una dirección pública permitida. Utiliza un destino SSH público.",
+      "unsupportedCredential": "El formato o algoritmo de la clave privada no es compatible. Sustitúyela por una clave OpenSSH, PKCS8 o RSA PEM compatible.",
+      "unsupportedHostKey": "La clave del host no es compatible. Configura una clave de host Ed25519, ECDSA o RSA compatible en el servidor."
+    },
     "credentialsHelp": "Las credenciales son de solo escritura y permanecen fuera del sandbox. Pega la clave completa; se conservan los espacios. Los campos se borran al enviar o cerrar el formulario.",
     "delete": "Eliminar host",
     "deleteHelp": "¿Eliminar este host y sus credenciales guardadas? Los Agents dejarán de verlo en el inventario actual.",
@@ -6553,6 +6862,7 @@
       "install": "Instalar",
       "installDescription": "Elige un agente y completa todos los parámetros obligatorios. Se instalarán todas las automatizaciones incluidas.",
       "installed": "Flujo de trabajo oficial instalado",
+      "installedStatus": "Instalado",
       "installErrorDescription": "Comprueba el agente y los valores de los parámetros e inténtalo de nuevo.",
       "installErrorTitle": "No se pudo instalar el flujo de trabajo oficial",
       "installTitle": "Instalar {{name}}",

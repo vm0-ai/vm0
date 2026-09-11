@@ -2,10 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 
-import {
-  queryAllByRoleFast,
-  setupPage,
-} from "../../../__tests__/page-helper.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@okouai/core/presentation-template-items";
 import { VIDEO_TEMPLATE_ITEMS } from "@okouai/core/video-template-items";
 import { WEBSITE_TEMPLATE_ITEMS } from "@okouai/core/website-template-items";
@@ -32,22 +29,6 @@ function builtInTemplate(index = 0) {
 
 function detailGroup(title: string): HTMLElement {
   return screen.getByRole("group", { name: `${title} slide preview` });
-}
-
-function activeButtonNamed(
-  name: string,
-  container: ParentNode = document.body,
-): HTMLElement {
-  const button = queryAllByRoleFast("button", container).find((candidate) => {
-    return (
-      candidate.getAttribute("aria-label") === name &&
-      candidate.closest('[inert], [aria-hidden="true"]') === null
-    );
-  });
-  if (!button) {
-    throw new Error(`Active button named "${name}" not found`);
-  }
-  return button;
 }
 
 function installImmediateAnimationFrames(): void {
@@ -104,9 +85,8 @@ test("Choose a presentation template theme", async () => {
   expect(themedFrame).toBeVisible();
 
   await user.click(
-    activeButtonNamed(
+    within(screen.getByRole("dialog")).getByLabelText(
       `Select template ${template.title}`,
-      screen.getByRole("dialog"),
     ),
   );
   await expectInlineTemplate(template.title);

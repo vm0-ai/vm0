@@ -37,10 +37,7 @@ import {
   setBridgeConnected$,
   sharedDatabaseBridgeInstalled$,
 } from "./shared-database-bridge-state.ts";
-import {
-  reloadComputedFromWorker$,
-  setSharedDatabaseConnectionStatus$,
-} from "./shared-database.ts";
+import { reloadComputedFromWorker$ } from "./shared-database.ts";
 import { createDeferredPromise, onDomEventFn, onRejection } from "./utils.ts";
 
 export interface SharedDatabaseBridgeHost {
@@ -209,9 +206,6 @@ const prepareSharedDatabaseBridge$ = command(
         },
         chatThreadReadCursorUpdated: (payload) => {
           set(applyChatThreadReadCursorUpdated$, payload);
-        },
-        statusChanged: (status) => {
-          set(setSharedDatabaseConnectionStatus$, status);
         },
       },
     });

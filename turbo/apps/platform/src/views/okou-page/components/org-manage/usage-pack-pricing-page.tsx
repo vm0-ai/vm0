@@ -14,6 +14,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  Badge,
 } from "@okouai/ui";
 import type {
   MemberUsagePack,
@@ -429,18 +430,18 @@ function MemberIdentity({ member }: { readonly member: MemberDisplay }) {
             {member.name}
           </span>
           {member.isCurrent && (
-            <span className="shrink-0 rounded px-1.5 py-0.5 text-sm leading-none text-muted-foreground okou-badge">
+            <Badge className="shrink-0 text-sm text-muted-foreground">
               {i18n.t(($) => {
                 return $.settings.workspace.members.you;
               })}
-            </span>
+            </Badge>
           )}
           {member.isPending && (
-            <span className="shrink-0 rounded px-1.5 py-0.5 text-sm leading-none text-muted-foreground okou-badge">
+            <Badge className="shrink-0 text-sm text-muted-foreground">
               {i18n.t(($) => {
                 return $.settings.workspace.members.pending;
               })}
-            </span>
+            </Badge>
           )}
         </span>
         {member.email && member.email !== member.name && (
@@ -459,7 +460,7 @@ function MemberIdentity({ member }: { readonly member: MemberDisplay }) {
    and a shared width is what keeps every amount on one right edge. */
 const LEDGER_ROW =
   "grid min-h-16 grid-cols-[minmax(0,1fr)_minmax(15rem,17rem)_9.5rem] items-center gap-3 py-2.5";
-const LEDGER_RULE = "border-t-[0.7px] border-[hsl(var(--gray-100))]";
+const LEDGER_RULE = "border-t border-[hsl(var(--gray-100))]";
 
 function LedgerPrice({
   fractionDigits = 0,
@@ -554,7 +555,7 @@ function LedgerTotalRow({
   readonly totalUsd: number;
 }) {
   return (
-    <div className={`${LEDGER_ROW} border-t-[0.7px] border-border py-4`}>
+    <div className={`${LEDGER_ROW} border-t border-border py-4`}>
       <span className="text-sm font-medium text-foreground">
         {i18n.t(($) => {
           return $.billing.plans.usagePacks.monthlyTotal;
@@ -823,7 +824,7 @@ function PlanPrice({
   const lowestPackageUsd = Math.min(...packagePrices);
   const highestPackageUsd = Math.max(...packagePrices);
   return (
-    <div className="-mx-6 mt-4 border-y-[0.7px] border-[hsl(var(--gray-200))] bg-[hsl(var(--gray-0))] px-6 py-4">
+    <div className="-mx-6 mt-4 border-y border-[hsl(var(--gray-200))] bg-[hsl(var(--gray-0))] px-6 py-4">
       <p className="text-2xl font-medium leading-tight tabular-nums text-foreground">
         <span className="text-sm font-normal text-muted-foreground">
           {i18n.t(($) => {
@@ -1056,7 +1057,7 @@ function PlanSelectionCard({
       )}
       className={`flex flex-col p-6 ${
         divided
-          ? "border-t-[0.7px] border-[hsl(var(--gray-200))] sm:border-l-[0.7px] sm:border-t-0"
+          ? "border-t border-[hsl(var(--gray-200))] sm:border-l sm:border-t-0"
           : ""
       }`}
     >
@@ -1229,7 +1230,7 @@ function PricingStepDialog({
         {/* The close button is an item in this row rather than a box pinned to
             the frame, so the title, the step counter and the close glyph share
             one centre line and one right inset. */}
-        <DialogHeader className="h-14 flex-row shrink-0 items-center gap-3 space-y-0 border-b-[0.7px] border-[hsl(var(--gray-200))] py-0 pl-6 pr-4 text-left">
+        <DialogHeader className="h-14 flex-row shrink-0 items-center gap-3 space-y-0 border-b border-[hsl(var(--gray-200))] py-0 pl-6 pr-4 text-left">
           {onBack && <PricingBackButton onBack={onBack} />}
           <DialogTitle className="min-w-0 flex-1 text-base font-medium leading-none">
             {title ?? pricingStepTitle(step)}
@@ -1417,7 +1418,7 @@ function PlanSelectionStep({
           );
         })}
       </div>
-      <p className="shrink-0 border-t-[0.7px] border-[hsl(var(--gray-200))] bg-[hsl(var(--gray-0))] px-6 py-5 text-sm leading-snug text-muted-foreground">
+      <p className="shrink-0 border-t border-[hsl(var(--gray-200))] bg-[hsl(var(--gray-0))] px-6 py-5 text-sm leading-snug text-muted-foreground">
         {i18n.t(($) => {
           return $.billing.plans.usagePacks.packagePerMemberNote;
         })}
@@ -1495,8 +1496,8 @@ function useUsagePackMembers(): readonly MemberDisplay[] | undefined {
    once. Rule weight carries the structure: gray-200 opens a block, gray-100
    separates rows inside it. */
 const REVIEW_ROW = "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3";
-const REVIEW_HAIRLINE = "border-t-[0.7px] border-[hsl(var(--gray-100))]";
-const REVIEW_RULE = "border-t-[0.7px] border-border";
+const REVIEW_HAIRLINE = "border-t border-[hsl(var(--gray-100))]";
+const REVIEW_RULE = "border-t border-border";
 
 /* A step's notice and action stay together on the frame's foot instead of
    scrolling away with the body they belong to: a long member list must never
@@ -1786,7 +1787,7 @@ function ManagedSubscriptionComparisonTooltip({
           collisionPadding={16}
           side="bottom"
           sideOffset={8}
-          className="w-[27.5rem] max-w-[calc(100vw-2rem)] rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] p-4 text-left font-normal"
+          className="w-[27.5rem] max-w-[calc(100vw-2rem)] rounded-[12px] border border-[hsl(var(--gray-400))] p-4 text-left font-normal"
           style={{
             backgroundColor: "hsl(var(--popover))",
             color: "hsl(var(--popover-foreground))",
@@ -2957,11 +2958,11 @@ function migrationPlanComparisonRows({
       current: (
         <span className="inline-flex items-center justify-end gap-1.5">
           <span>{planName(sourceTier)}</span>
-          <span className="rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground okou-badge">
+          <Badge className="text-[10px] font-medium text-muted-foreground">
             {i18n.t(($) => {
               return $.billing.plans.legacy;
             })}
-          </span>
+          </Badge>
         </span>
       ),
       next: planName(targetTier),

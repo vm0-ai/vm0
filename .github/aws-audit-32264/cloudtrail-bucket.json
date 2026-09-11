@@ -1,0 +1,87 @@
+{
+  "encryption": {
+    "Rules": [
+      {
+        "ApplyServerSideEncryptionByDefault": {
+          "SSEAlgorithm": "AES256"
+        }
+      }
+    ]
+  },
+  "publicAccess": {
+    "BlockPublicAcls": true,
+    "IgnorePublicAcls": true,
+    "BlockPublicPolicy": true,
+    "RestrictPublicBuckets": true
+  },
+  "ownership": {
+    "Rules": [
+      {
+        "ObjectOwnership": "BucketOwnerEnforced"
+      }
+    ]
+  },
+  "versioning": "Enabled",
+  "policy": {
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "DenyInsecureTransport",
+        "Effect": "Deny",
+        "Principal": "*",
+        "Action": "s3:*",
+        "Resource": [
+          "arn:aws:s3:::vm0-cloudtrail-logs-251964670836-us-west-2",
+          "arn:aws:s3:::vm0-cloudtrail-logs-251964670836-us-west-2/*"
+        ],
+        "Condition": {
+          "Bool": {
+            "aws:SecureTransport": "false",
+            "aws:PrincipalIsAWSService": "false"
+          }
+        }
+      },
+      {
+        "Sid": "AuditServiceBucketCheck",
+        "Effect": "Allow",
+        "Principal": {
+          "Service": "cloudtrail.amazonaws.com"
+        },
+        "Action": "s3:GetBucketAcl",
+        "Resource": "arn:aws:s3:::vm0-cloudtrail-logs-251964670836-us-west-2",
+        "Condition": {
+          "StringEquals": {
+            "AWS:SourceArn": "arn:aws:cloudtrail:us-west-2:251964670836:trail/vm0-drata-cloudtrail"
+          }
+        }
+      },
+      {
+        "Sid": "AuditServiceDelivery",
+        "Effect": "Allow",
+        "Principal": {
+          "Service": "cloudtrail.amazonaws.com"
+        },
+        "Action": "s3:PutObject",
+        "Resource": "arn:aws:s3:::vm0-cloudtrail-logs-251964670836-us-west-2/AWSLogs/251964670836/*",
+        "Condition": {
+          "StringEquals": {
+            "AWS:SourceArn": "arn:aws:cloudtrail:us-west-2:251964670836:trail/vm0-drata-cloudtrail",
+            "s3:x-amz-acl": "bucket-owner-full-control"
+          }
+        }
+      }
+    ]
+  },
+  "lifecycle": [
+    {
+      "ID": "AbortIncompleteUploads",
+      "Status": "Enabled",
+      "Filter": {
+        "Prefix": ""
+      },
+      "AbortIncompleteMultipartUpload": {
+        "DaysAfterInitiation": 7
+      }
+    }
+  ]
+}

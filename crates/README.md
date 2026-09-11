@@ -109,6 +109,23 @@ binary overrides must use flags and environment keys matching the runner revisio
 - [Multi-architecture rollout](../docs/runner-multi-architecture.md): select,
   build, deploy, and validate architecture-specific runner artifacts.
 
+### Local control socket limits
+
+Each sandbox's owner-only control socket admits at most 32 concurrent request
+handlers and 64 MiB of raw request payloads in aggregate. Declared lengths reserve
+that byte budget before payload allocation. Excess connections or requests that
+cannot reserve their full declared size are closed without a response.
+
+A request must deliver its entire length prefix and body within 5 seconds of
+acceptance. Timeout, EOF, and server shutdown release the pending receive resources.
+After parsing, the raw buffer and byte budget are released before executing the
+command or waiting for termination acknowledgment. Execution retains its own
+timeout; the existing 64 MiB per-frame ceiling and exec response limits still apply.
+
+Saturated or unusually slow local clients can therefore receive connection errors.
+These limits apply per socket. The payload budget does not include parsed commands,
+responses, allocator overhead, or kernel socket buffers, and does not bound host-wide RSS.
+
 ### Local active input
 
 `runner local input` requires a claimed local job with active-input forwarding

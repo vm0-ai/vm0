@@ -537,3 +537,89 @@ has it false. Both keep `modelPickerFlyout=false` and `_realAgentInPreview=false
 No live switch was changed. Earlier manual portal navigation attempts are
 explicitly unaccepted diagnostics, distinct from the four passing frozen portal
 states. The archive was anonymously downloaded and hash-verified.
+
+## Settings select surfaces
+
+The `settings-select-surfaces` batch owns the Language and Time zone triggers
+in Preferences. Each native shared `SelectTrigger` retains its dimensions,
+border width, foreground, ref and interaction contract. The two consumers
+compose existing `border-control-border`, `bg-control-surface` and
+`[&:hover]:bg-state-hover-overlay` utilities. The unconditional hover selector
+preserves the old touch-browser treatment. Other `okou-btn-morandi` consumers
+keep their legacy definition until they migrate.
+
+`data-slot="language-setting"` and `data-slot="timezone-setting"` identify the
+existing rows for scoped semantic control queries; neither slot carries styles.
+`settings-select-cases.json` and `run-settings-select.ts` independently cover
+four Light/Dark desktop/narrow DPR 2 cases, with 13 states each. Run
+`pnpm style:migration:settings-select` from `e2e`, supplying App/API origins,
+source/build SHAs, private storage state, `--fixture`, `--locale-assets`, `--out`
+and optional `--baseline`. The runner observes trigger and menu styles, geometry,
+focus, disabled and selected states, and captures full-page PNGs without masks.
+Mobile primary activations use touch; keyboard and hover are explicit additional
+states. A stateful preference response checks pending saves, language changes,
+timezone selection and reload. Default Agent list/detail, onboarding, member,
+organization, billing, feature and disconnected Slack responses are frozen before
+the baseline. Signup attribution returns its contract-valid already-recorded
+response; it does not write attribution or start a follow-up conversion request.
+Rejected runs with background API failures remain in the evidence archive.
+
+[Issue #33157](https://github.com/vm0-ai/vm0/issues/33157) records a pre-existing
+preview limitation discovered during calibration: public Japanese locale JSON
+returns a production-only CDN CORS header. The first attempt and its failure
+are retained. The separate locale fixture pins exactly three immutable URLs,
+original downloaded bytes and hashes; response access is supplied for the PR
+origin without changing the JSON. Those bytes also match the repository's
+Japanese agents/common and Clerk localization files. The runner rejects an
+unfrozen locale resource and changes to the asset fixture on replay. This
+establishes bounded rendering and client behavior under the recorded resource
+boundary; it does not certify or repair unmodified CDN access. Real API
+persistence and unmodified preview behavior are reported separately.
+
+The [frozen BEFORE/A/A archive](https://a.okou.io/e1c28c8g3y.zip) records
+52 passing states with zero raw pixel differences for source `c103ec9c` and
+App/API build `a2085986`. It was anonymously hash-verified and
+[posted before business edits](https://github.com/vm0-ai/vm0/pull/33154#issuecomment-5613793582).
+Retired calibrations, including the PR-closure database cleanup failure, remain
+in the archive. The [AFTER archive](https://a.okou.io/4jznraws1s.zip) records
+all 52 states with zero raw changed pixels and identical control observations
+for implementation source `afc52af7`, App/API build `81670300`. The
+[comparison image](https://a.okou.io/a26g028cl9.png) previews representative states;
+both artifacts were anonymously hash-verified. Actual timezone selection,
+reload persistence and restoration pass. Direct language preference writes,
+subsequent reads and restoration pass; unmodified language UI remains blocked
+by the separately tracked CDN CORS issue.
+
+The batch remains `implemented`: that source's Security and Crates gates pass,
+but Turbo is blocked by Runner SSH preparation for `dev-12.gcp.vm3.ai`. No
+Runner, workflow or timeout change is part of this migration. Latest-head CI
+and preview identity are recorded in the PR before handoff.
+
+## Deliberate geometry change in the badge batch
+
+The hairline badge batch removes `okou-badge`, `okou-pill`, and `okou-border-r`
+and replaces their 22 consumers with the shared `Badge` component. Unlike the
+earlier batches it is **not** pixel-neutral, so it is recorded as a geometry
+decision rather than an equivalence claim.
+
+The 22 consumers spelled eight class combinations that differed on radius,
+padding, display, gap, line height, typography, and foreground. Two of them were
+the same icon-plus-label badge at two radii and two paddings. Collapsing them to
+one shape required choosing canonical values, which is a visual change and is
+reviewed as one.
+
+Line height belongs to the badge because an arbitrary font-size utility carries
+no paired line height: Tailwind emits `font-size` alone for `text-[11px]`. Ten
+of the 22 badges declared only such a size, so an ancestor's `line-height`
+decided their box. Measured with `getBoundingClientRect` on one badge under four
+ancestors that differ only in `line-height`, the box was 22.00px, 26.00px,
+34.00px, and 22.50px tall before the change and 21.13px in all four after it.
+
+Per-consumer box deltas are recorded on the pull request. `align-middle` is part
+of the shared shape because flex and grid items ignore it, so it costs the
+flex-item consumers nothing while keeping the one genuinely inline badge aligned
+with the text beside it.
+
+A batch that changes geometry on purpose cannot be accepted by an unchanged-code
+replay. It needs the per-page runners, or an explicit reviewed delta list, or
+both.

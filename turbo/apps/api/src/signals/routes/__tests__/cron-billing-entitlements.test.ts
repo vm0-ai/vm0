@@ -11,7 +11,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import { mockEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { mockStripeClient } from "../../external/stripe-client";
 import { testBillingReconciliationStateRoutes } from "../test-billing-reconciliation-state";
@@ -182,6 +182,41 @@ function paidPlanSubscriptionSnapshot(args: {
           quantity: 1,
           current_period_start: periodStart,
           current_period_end: periodEnd,
+        },
+      ],
+    },
+  };
+}
+
+function paidAtomPlanInvoice(orgId: string) {
+  const periodEnd = Math.floor(now() / 1000) + 30 * 86_400;
+  return {
+    id: `in_${randomUUID()}`,
+    customer: `cus_${orgId}`,
+    metadata: {
+      purpose: "atom_grant",
+      type: "atom_grant",
+      orgId,
+      tier: "team",
+      duration: "forever",
+      planVersion: "usagePack",
+    },
+    amount_due: 0,
+    currency: "usd",
+    status: "paid",
+    paid: true,
+    subtotal: 0,
+    parent: null,
+    lines: {
+      has_more: false,
+      data: [
+        {
+          id: `il_${randomUUID()}`,
+          amount: 0,
+          price: { id: TEST_PRICE_ATOM_GRANT },
+          quantity: 1,
+          parent: null,
+          period: { start: periodEnd - 30 * 86_400, end: periodEnd },
         },
       ],
     },
@@ -711,7 +746,33 @@ describe("billing entitlement reconciliation", () => {
     });
   });
 
-  it("replays an undelivered Atom usage-pack plan invoice", async () => {
+  it("expires an Atom grant without reporting a reconciliation failure", async () => {
+    mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
+    const marker = randomUUID();
+    onTestFinished(async () => {
+      await stateAction({ action: "cleanup", marker });
+    });
+    const atom = seededFixture(await seedState(marker), "atom-grant");
+
+    const response = await accept(
+      apiClient().reconcile({ body: { orgIds: [atom.orgId] } }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ success: true, downgraded: 1 });
+    await expect(readState(marker)).resolves.toContainEqual({
+      kind: "atom-grant",
+      orgId: atom.orgId,
+      status: "expired",
+      tier: "limited-free-1",
+      credits: 0,
+      stripeSubscriptionId: null,
+    });
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+  });
+
+  it("idempotently replays an undelivered Atom usage-pack plan invoice without warnings", async () => {
     mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
     mockEnv("ATOM_GRANT_PRICE", TEST_PRICE_ATOM_GRANT);
     const marker = randomUUID();
@@ -720,38 +781,7 @@ describe("billing entitlement reconciliation", () => {
     });
     const fixtures = await seedState(marker, "unbound");
     const atom = seededFixture(fixtures, "atom-grant");
-    const periodEnd = Math.floor(now() / 1000) + 30 * 86_400;
-    const invoice = {
-      id: `in_${randomUUID()}`,
-      customer: `cus_${atom.orgId}`,
-      metadata: {
-        purpose: "atom_grant",
-        type: "atom_grant",
-        orgId: atom.orgId,
-        tier: "team",
-        duration: "forever",
-        planVersion: "usagePack",
-      },
-      amount_due: 0,
-      currency: "usd",
-      status: "paid",
-      paid: true,
-      subtotal: 0,
-      parent: null,
-      lines: {
-        has_more: false,
-        data: [
-          {
-            id: `il_${randomUUID()}`,
-            amount: 0,
-            price: { id: TEST_PRICE_ATOM_GRANT },
-            quantity: 1,
-            parent: null,
-            period: { start: periodEnd - 30 * 86_400, end: periodEnd },
-          },
-        ],
-      },
-    };
+    const invoice = paidAtomPlanInvoice(atom.orgId);
     const eventId = `evt_${randomUUID()}`;
     context.mocks.stripe.events.list.mockResolvedValue({
       data: [
@@ -769,16 +799,18 @@ describe("billing entitlement reconciliation", () => {
       has_more: false,
     });
 
-    const response = await accept(
-      apiClient().reconcile({
-        body: {
-          orgIds: [atom.orgId],
-          replayUndeliveredPaidInvoices: true,
-        },
-      }),
-      [200],
-    );
-    expect(response.body).toStrictEqual({ success: true, downgraded: 0 });
+    for (let replay = 0; replay < 2; replay += 1) {
+      const response = await accept(
+        apiClient().reconcile({
+          body: {
+            orgIds: [atom.orgId],
+            replayUndeliveredPaidInvoices: true,
+          },
+        }),
+        [200],
+      );
+      expect(response.body).toStrictEqual({ success: true, downgraded: 0 });
+    }
     expect(context.mocks.stripe.events.list).toHaveBeenCalledWith({
       delivery_success: false,
       type: "invoice.paid",
@@ -796,6 +828,143 @@ describe("billing entitlement reconciliation", () => {
       credits: 0,
       stripeSubscriptionId: null,
     });
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+  });
+
+  it("reports a failed invoice replay and continues with the next paid invoice", async () => {
+    mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
+    mockEnv("OKOU_PRICE_PRO", TEST_PRICE_PRO);
+    mockEnv("ATOM_GRANT_PRICE", TEST_PRICE_ATOM_GRANT);
+    const marker = randomUUID();
+    onTestFinished(async () => {
+      await stateAction({ action: "cleanup", marker });
+    });
+    const fixtures = await seedState(marker, "unbound");
+    const plan = seededFixture(fixtures, "plan-subscription");
+    const atom = seededFixture(fixtures, "atom-grant");
+    if (!plan.stripeSubscriptionId) {
+      throw new Error("Plan fixture requires its expected subscription ID");
+    }
+    const failedInvoice = paidPlanSubscriptionSnapshot({
+      priceId: TEST_PRICE_PRO,
+      orgId: plan.orgId,
+      customerId: `cus_${plan.orgId}`,
+      subscriptionId: plan.stripeSubscriptionId,
+    }).latest_invoice;
+    const failedEventId = `evt_${randomUUID()}`;
+    const failure = new Error("temporary Stripe subscription failure");
+    context.mocks.stripe.subscriptions.retrieve.mockRejectedValue(failure);
+    context.mocks.stripe.events.list.mockResolvedValue({
+      data: [
+        {
+          id: failedEventId,
+          type: "invoice.paid",
+          created: Math.floor(now() / 1000) - 1,
+          data: { object: failedInvoice },
+        },
+        {
+          id: `evt_${randomUUID()}`,
+          type: "invoice.paid",
+          created: Math.floor(now() / 1000),
+          data: { object: paidAtomPlanInvoice(atom.orgId) },
+        },
+      ],
+      has_more: false,
+    });
+
+    const response = await accept(
+      apiClient().reconcile({
+        body: {
+          orgIds: [plan.orgId, atom.orgId],
+          replayUndeliveredPaidInvoices: true,
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ success: true, downgraded: 0 });
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledExactlyOnceWith(
+      "undelivered Stripe paid invoice reconciliation failed",
+      expect.objectContaining({
+        eventId: failedEventId,
+        invoiceId: failedInvoice.id,
+        error: failure,
+      }),
+    );
+    await expect(readState(marker)).resolves.toContainEqual({
+      kind: "plan-subscription",
+      orgId: plan.orgId,
+      status: "missing",
+      tier: "limited-free-1",
+      credits: 0,
+      stripeSubscriptionId: null,
+    });
+    await expect(readState(marker)).resolves.toContainEqual({
+      kind: "atom-grant",
+      orgId: atom.orgId,
+      status: "atom_grant",
+      tier: "team",
+      credits: 0,
+      stripeSubscriptionId: null,
+    });
+  });
+
+  it("leaves another preview's paid invoice untouched without warnings", async () => {
+    mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
+    context.mocks.stripe.subscriptions.list.mockResolvedValue({
+      data: [],
+      has_more: false,
+    });
+    mockEnv("ENV", "preview");
+    mockOptionalEnv("OKOU_PREVIEW_JOB_REF", `pr-${randomUUID()}`);
+    mockOptionalEnv("USE_MOCK_CLAUDE", "true");
+    mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", randomUUID());
+    const marker = randomUUID();
+    onTestFinished(async () => {
+      await stateAction({ action: "cleanup", marker });
+    });
+    const atom = seededFixture(
+      await seedState(marker, "unbound"),
+      "atom-grant",
+    );
+    const before = await readState(marker);
+    const invoice = paidAtomPlanInvoice(atom.orgId);
+    context.mocks.stripe.events.list.mockResolvedValue({
+      data: [
+        {
+          id: `evt_${randomUUID()}`,
+          type: "invoice.paid",
+          created: Math.floor(now() / 1000),
+          data: {
+            object: {
+              ...invoice,
+              metadata: {
+                ...invoice.metadata,
+                vm0_environment: "preview",
+                job_ref: `pr-${randomUUID()}`,
+              },
+            },
+          },
+        },
+      ],
+      has_more: false,
+    });
+
+    const response = await accept(
+      apiClient().reconcile({
+        body: {
+          orgIds: [atom.orgId],
+          replayUndeliveredPaidInvoices: true,
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ success: true, downgraded: 0 });
+    await expect(readState(marker)).resolves.toStrictEqual(before);
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
   });
 
   it("idempotently replays an undelivered paid one-time campaign Checkout", async () => {

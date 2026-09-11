@@ -138,7 +138,7 @@ function GrowthEntry({ slackInstalled }: { slackInstalled: boolean }) {
       <div
         // 12px, not the Button default 8px: the split control and the menu it
         // opens read as one object when their outer radii agree.
-        className="inline-flex h-8 items-stretch rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card shadow-[var(--okou-card-shadow)]"
+        className="inline-flex h-8 items-stretch rounded-[12px] border border-[hsl(var(--gray-400))] bg-card shadow-[var(--okou-card-shadow)]"
       >
         <Button
           type="button"
@@ -176,7 +176,7 @@ function GrowthEntry({ slackInstalled }: { slackInstalled: boolean }) {
             aria-label={t(($) => {
               return $.chat.actions.more;
             })}
-            className="h-full w-9 rounded-l-none rounded-r-[11px] border-l-[0.7px] border-[hsl(var(--gray-300))] data-popup-open:bg-state-hover data-popup-open:text-foreground"
+            className="h-full w-9 rounded-l-none rounded-r-[11px] border-l border-[hsl(var(--gray-300))] data-popup-open:bg-state-hover data-popup-open:text-foreground"
             data-testid="growth-entry-menu"
           >
             <ChevronDown />

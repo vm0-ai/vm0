@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.60](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.59...guest-tool-exec-v0.1.60) (2026-09-10)
+
+## [0.1.59](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.58...guest-tool-exec-v0.1.59) (2026-09-10)
+
+
+### Bug Fixes
+
+* **rust:** bound guest tool placement connections under socket backpressure ([#33195](https://github.com/vm0-ai/vm0/issues/33195)) ([00de6d6](https://github.com/vm0-ai/vm0/commit/00de6d6572219d87a5664b9b79530cd4b426b187))
+
 ## [0.1.58](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.57...guest-tool-exec-v0.1.58) (2026-09-09)
 
 ## [0.1.57](https://github.com/vm0-ai/vm0/compare/guest-tool-exec-v0.1.56...guest-tool-exec-v0.1.57) (2026-09-09)

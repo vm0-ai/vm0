@@ -17,11 +17,9 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import {
-  seedGoalRetirementHistory,
-  applyGoalRetirementFixture,
+  seedLiteralGoalArchive,
   removeSnapshottedGoalFixtureEvents,
   seedFilteredGoalArchiveProjections,
-  recoverGoalArchiveSearchFixture,
   seedMalformedGoalArchiveFixture,
 } from "../../../test-fixtures/goal-retirement";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -154,22 +152,22 @@ describe("retired Goal logical history", () => {
   });
 
   it.each(["active", "paused", "blocked", "complete"] as const)(
-    "preserves one literal %s archive through hot/snapshot reads, repair, sharing, export and retry",
+    "preserves literal %s history",
     async (status) => {
       const actor = bdd.user({ orgId: `org_${randomUUID()}` });
       const agent = await bdd.createAgent(actor, {
         displayName: "Retirement history",
       });
-      const thread = await chat.createThread(actor, { agentId: agent.agentId });
+      const thread = await chat.createThread(actor, {
+        agentId: agent.agentId,
+      });
       const objective =
         " \n完整目标 🧭 e\u0301\t\r\nBefore <oai-mem-citation>archiveneedle</oai-mem-citation> after\n" +
         "Inline `<oai-mem-citation>` and ```xml\n<oai-mem-citation>fenced literal</oai-mem-citation>\n```\n" +
         "'quoted'; $$ | </tag>\nExplain <oai-mem-citation>unmatchedneedle and keep all later original text\n\n";
-      // S1 rejects Goal creation. This narrowly scoped historical fixture executes
-      // the actual migration; all observable assertions use production endpoints.
-      await seedGoalRetirementHistory(thread.id, objective, status);
-      await applyGoalRetirementFixture(thread.id);
-      await applyGoalRetirementFixture(thread.id);
+      // Current APIs cannot create retired Goal history. Seed only retained
+      // events; all observable assertions use production endpoints.
+      await seedLiteralGoalArchive(thread.id, objective, status);
       const before = await chat.listThreadEvents(actor, thread.id);
       const archives = before.events.filter((event) => {
         return event.eventType === "output.message";
@@ -225,40 +223,12 @@ describe("retired Goal logical history", () => {
           return result.matchedMessage.content;
         }),
       ).toStrictEqual([archive.content]);
-      // Also repair the old projector's hot-row window before retention.
-      await seedFilteredGoalArchiveProjections(thread.id);
-      const unexpectedSnapshot = () => {
-        throw new Error("Unexpected snapshot for hot history");
-      };
-      await recoverGoalArchiveSearchFixture(
-        thread.id,
-        unexpectedSnapshot,
-        false,
-      );
-      expect(
-        (await chat.searchChat(actor, "archiveneedle")).results,
-      ).toStrictEqual([]);
-      await recoverGoalArchiveSearchFixture(
-        thread.id,
-        unexpectedSnapshot,
-        true,
-      );
-      expect(
-        (await chat.searchChat(actor, "archiveneedle")).results.map(
-          (result) => {
-            return result.matchedMessage.content;
-          },
-        ),
-      ).toStrictEqual([archive.content]);
       const oldShareId = await seedFilteredGoalArchiveProjections(thread.id);
       const oldShare = await accept(
         shares.get({ params: { id: oldShareId } }),
         [200],
       );
       expect(oldShare.body.messages[0]?.content).not.toContain("archiveneedle");
-      expect(
-        (await chat.searchChat(actor, "archiveneedle")).results,
-      ).toStrictEqual([]);
 
       await accept(
         setupApp({ context, routes: testChatEventSnapshotRoutes })(
@@ -271,7 +241,6 @@ describe("retired Goal logical history", () => {
       expect(puts.length).toBeGreaterThan(0);
       await removeSnapshottedGoalFixtureEvents(thread.id);
       await chat.requestListThreadEvents(actor, thread.id, {}, [410]);
-      await applyGoalRetirementFixture(thread.id);
       routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
       const download = await accept(
         setupApp({ context, routes: chatThreadRoutes })(
@@ -302,30 +271,12 @@ describe("retired Goal logical history", () => {
           return chatEventRowSchema.parse(JSON.parse(line));
         });
       expect(projectChatEventRows(snapshotRows)).toStrictEqual(before.events);
-      const snapshotBytes = (key: string) => {
-        const put = puts.find((item) => {
-          return item.key === key;
-        });
-        if (!put) {
-          throw new Error("Expected canonical snapshot bytes");
-        }
-        return Promise.resolve(put.body);
-      };
-      await expect(
-        recoverGoalArchiveSearchFixture(
-          thread.id,
-          () => {
-            return Promise.resolve(Buffer.from("corrupt snapshot"));
-          },
-          true,
-        ),
-      ).rejects.toThrow("invalid_snapshot_digest");
-      await recoverGoalArchiveSearchFixture(thread.id, snapshotBytes, false);
-      expect(
-        (await chat.searchChat(actor, "archiveneedle")).results,
-      ).toStrictEqual([]);
-      await recoverGoalArchiveSearchFixture(thread.id, snapshotBytes, true);
-      await recoverGoalArchiveSearchFixture(thread.id, snapshotBytes, true);
+      await accept(
+        setupApp({ context, routes: testChatEventSearchProjectionRoutes })(
+          testChatEventSearchProjectionContract,
+        ).project({ body: { chat_thread_ids: [thread.id] } }),
+        [200],
+      );
       const repaired = await chat.searchChat(actor, "unmatchedneedle");
       expect(
         repaired.results.map((result) => {

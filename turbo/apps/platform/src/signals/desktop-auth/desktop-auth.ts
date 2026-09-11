@@ -165,11 +165,9 @@ const activateDesktopOrganization$ = command(
   },
 );
 
-function createDesktopMemberships(lifetime: AbortSignal) {
+function createDesktopMemberships() {
   return computed(async (get) => {
-    const signal = lifetime;
     const clerk = await get(clerk$);
-    signal.throwIfAborted();
     if (!clerk.user) {
       return [];
     }
@@ -178,14 +176,10 @@ function createDesktopMemberships(lifetime: AbortSignal) {
     const memberships = [];
     let offset = 0;
     for (;;) {
-      const page = await waitForDesktopOperation(
-        clerk.user.getOrganizationMemberships({
-          initialPage: Math.floor(offset / 100) + 1,
-          pageSize: 100,
-        }),
-        signal,
-      );
-      signal.throwIfAborted();
+      const page = await clerk.user.getOrganizationMemberships({
+        initialPage: Math.floor(offset / 100) + 1,
+        pageSize: 100,
+      });
       memberships.push(...page.data);
       offset += page.data.length;
       if (offset >= page.total_count || page.data.length === 0) {
@@ -316,7 +310,6 @@ function createDesktopSelection(
   phase$: State<DesktopAuthPhase>,
   memberships$: ReturnType<typeof createDesktopMemberships>,
   selectedOrganization$: State<string | null>,
-  lifetime: AbortSignal,
 ) {
   return command(
     async ({ get, set }, organizationId: string, signal: AbortSignal) => {
@@ -328,7 +321,6 @@ function createDesktopSelection(
         signal,
       );
       signal.throwIfAborted();
-      lifetime.throwIfAborted();
       if (get(selectedOrganization$)) {
         return;
       }
@@ -340,11 +332,7 @@ function createDesktopSelection(
         return;
       }
       set(selectedOrganization$, organizationId);
-      const attempt = AbortSignal.any([
-        signal,
-        lifetime,
-        AbortSignal.timeout(25_000),
-      ]);
+      const attempt = AbortSignal.any([signal, AbortSignal.timeout(25_000)]);
       const result = await settle(
         waitForDesktopOperation(
           set(
@@ -367,12 +355,11 @@ function createDesktopSelection(
 function createDesktopAuthSignals(
   mode: DesktopAuthRoute,
   params: URLSearchParams,
-  lifetime: AbortSignal,
 ) {
   const phase$ = state<DesktopAuthPhase>("connecting");
   const selectedOrganization$ = state<string | null>(null);
   const callbackUrl$ = state<string | null>(null);
-  const memberships$ = createDesktopMemberships(lifetime);
+  const memberships$ = createDesktopMemberships();
 
   const callback$ = createDesktopCallback(params, phase$, callbackUrl$);
 
@@ -421,12 +408,10 @@ function createDesktopAuthSignals(
     phase$,
     memberships$,
     selectedOrganization$,
-    lifetime,
   );
 
   const reopen$ = command(({ get }, signal: AbortSignal) => {
     signal.throwIfAborted();
-    lifetime.throwIfAborted();
     const url = get(callbackUrl$);
     if (url && get(phase$) === "pending") {
       location.assign(url);
@@ -434,7 +419,6 @@ function createDesktopAuthSignals(
   });
   const retry$ = command(({ get }, signal: AbortSignal) => {
     signal.throwIfAborted();
-    lifetime.throwIfAborted();
     if (mode === "callback" && get(phase$) === "failed") {
       location.replace(desktopAuthUrl("callback", params));
     }
@@ -455,7 +439,7 @@ export type DesktopAuthSignals = ReturnType<typeof createDesktopAuthSignals>;
 export function setupDesktopAuthPage(mode: DesktopAuthRoute) {
   return command(async ({ get, set }, signal: AbortSignal) => {
     const params = new URLSearchParams(get(searchParams$));
-    const signals = createDesktopAuthSignals(mode, params, signal);
+    const signals = createDesktopAuthSignals(mode, params);
     set(updatePage$, createElement(DesktopAuthPage, { signals, mode }));
     await set(hideAppSkeleton$, signal);
     signal.throwIfAborted();

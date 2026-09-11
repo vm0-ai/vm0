@@ -70,6 +70,7 @@ function rebaseApiPath(
  * }
  * ```
  */
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 export const apiClient$ = computed((get) => {
   const runtime = get(apiClientRuntime$);
   const clientVersion = get(appVersion$);

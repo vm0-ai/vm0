@@ -6,9 +6,9 @@ import {
   officialWorkflowInstallationsContract,
   officialWorkflowsContract,
   type OfficialWorkflowCatalogDetail,
-  type OfficialWorkflowCatalogSummary,
   type OfficialWorkflowInstallationResponse,
 } from "@okouai/api-contracts/contracts/official-workflows";
+import { workflowsCollectionContract } from "@okouai/api-contracts/contracts/workflows";
 import { command, computed, state } from "ccstate";
 
 import { accept } from "../../lib/accept.ts";
@@ -16,6 +16,7 @@ import { activeRoute$ } from "../active-route.ts";
 import { apiClient$ } from "../api-client.ts";
 import { pathParams$ } from "../route.ts";
 import { currentWorkflowId$, reloadWorkflows$ } from "./workflows-signals.ts";
+import { workflowReloadVersion$ } from "./workflow-reload.ts";
 
 const officialWorkflowReloadVersion$ = state(0);
 const internalOfficialWorkflowSearch$ = state("");
@@ -34,14 +35,29 @@ export const reloadOfficialWorkflows$ = command(({ set }) => {
   });
 });
 
-export const officialWorkflowCatalog$ = computed(
-  async (get): Promise<readonly OfficialWorkflowCatalogSummary[]> => {
-    get(officialWorkflowReloadVersion$);
-    const client = get(apiClient$)(officialWorkflowsContract);
-    const result = await accept(client.list(), [200]);
-    return result.body;
-  },
-);
+export const officialWorkflowCatalog$ = computed(async (get) => {
+  get(officialWorkflowReloadVersion$);
+  get(workflowReloadVersion$);
+  const client = get(apiClient$)(officialWorkflowsContract);
+  const workflowsClient = get(apiClient$)(workflowsCollectionContract);
+  const [catalog, workflows] = await Promise.all([
+    accept(client.list(), [200]),
+    accept(workflowsClient.list({ query: {} }), [200]),
+  ]);
+  const installedDefinitions = new Set(
+    workflows.body.flatMap((workflow) => {
+      return workflow.official?.installationState === "installed"
+        ? [workflow.official.definitionName]
+        : [];
+    }),
+  );
+  return catalog.body.map((workflow) => {
+    return {
+      ...workflow,
+      installed: installedDefinitions.has(workflow.name),
+    };
+  });
+});
 
 const currentOfficialWorkflowDefinitionName$ = computed((get) => {
   if (get(activeRoute$) !== "officialWorkflowDetail") {
@@ -93,6 +109,17 @@ export const installOfficialWorkflow$ = command(
     },
     signal: AbortSignal,
   ): Promise<OfficialWorkflowInstallationResponse> => {
+    signal.throwIfAborted();
+    const form = get(internalOfficialWorkflowConfigurationForm$);
+    if (
+      form?.target.operation === "install" &&
+      form.definitionName === input.definitionName
+    ) {
+      set(internalOfficialWorkflowConfigurationForm$, {
+        ...form,
+        submitted: true,
+      });
+    }
     const client = get(apiClient$)(officialWorkflowsContract);
     const result = await accept(
       client.install({
@@ -118,6 +145,17 @@ export const reconfigureOfficialWorkflow$ = command(
     },
     signal: AbortSignal,
   ): Promise<OfficialWorkflowInstallationResponse> => {
+    signal.throwIfAborted();
+    const form = get(internalOfficialWorkflowConfigurationForm$);
+    if (
+      form?.target.operation === "reconfigure" &&
+      form.target.workflowId === input.workflowId
+    ) {
+      set(internalOfficialWorkflowConfigurationForm$, {
+        ...form,
+        submitted: true,
+      });
+    }
     const client = get(apiClient$)(officialWorkflowInstallationsContract);
     const result = await accept(
       client.reconfigure({
@@ -148,6 +186,8 @@ export const uninstallOfficialWorkflow$ = command(
 );
 
 export interface OfficialWorkflowConfigurationForm {
+  /** Error feedback belongs to submissions made from this opening. */
+  readonly submitted: boolean;
   readonly target:
     | { readonly operation: "install" }
     | {

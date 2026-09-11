@@ -48,7 +48,7 @@
 //! returning the original spawn error.
 
 use crate::contained_command::{
-    CommandStdio, ContainedChild as Child, ContainedCommand as Command,
+    CommandStdio, ContainedChild as Child, ContainedCommand as Command, ContainedCommandExt,
 };
 use std::fs::{self, DirBuilder, File, OpenOptions};
 use std::io::{self, Read, Write};

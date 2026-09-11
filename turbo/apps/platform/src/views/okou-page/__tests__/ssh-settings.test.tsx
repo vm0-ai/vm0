@@ -215,6 +215,72 @@ test.each(["session", "organization"])(
   },
 );
 
+test("Connection warnings explain the failure and recover through notifications without changing grants", async () => {
+  context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+    return respond(200, {
+      connections: [
+        {
+          ...base,
+          learnedHostKey: {
+            algorithm: "ssh-ed25519",
+            fingerprint: "SHA256://////////////////////////////////////////8",
+          },
+        },
+      ],
+    });
+  });
+  let failed = true;
+  context.mocks.api(sshConnectionsContract.observations, ({ respond }) => {
+    return respond(200, {
+      observations: [
+        {
+          connectionId: id,
+          generation: 1,
+          observedAt: "2026-09-10T08:00:00.000Z",
+          failureReason: failed ? "host_key_mismatch" : null,
+        },
+      ],
+    });
+  });
+  await page();
+  await screen.findByText(/The server's host key does not match/u);
+  expect(
+    screen.getByText(/Independently verify the server before/u),
+  ).toBeInTheDocument();
+  expect(getAction("button", "Reset host key")).toBeEnabled();
+  expect(screen.queryByText(/connectivity not tested/u)).toBeNull();
+  failed = false;
+  context.mocks.ably.trigger("ssh:changed", { orgId });
+  await waitFor(() => {
+    expect(
+      screen.queryByText(/The server's host key does not match/u),
+    ).toBeNull();
+  });
+  expect(screen.getByText("Deployment")).toBeInTheDocument();
+});
+
+test.each([404, 500] as const)(
+  "Diagnostic read failure (%s) is not a host failure and keeps management available",
+  async (status) => {
+    context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+      return respond(200, { connections: [base] });
+    });
+    context.mocks.api(sshConnectionsContract.observations, ({ respond }) => {
+      return respond(status, {
+        error: {
+          code: status === 404 ? "NOT_FOUND" : "INTERNAL_SERVER_ERROR",
+          message: "private server error",
+        },
+      });
+    });
+    await page();
+    await screen.findByText("SSH connection status is unavailable");
+    expect(getAction("button", "Edit host")).toBeEnabled();
+    expect(screen.queryByText(/needs attention/u)).toBeNull();
+    expect(document.body.textContent).not.toContain("private server error");
+  },
+);
+
 test("Live notifications refresh hosts across reconnect without clearing an open credential form", async () => {
   let host = base;
   context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
@@ -854,6 +920,7 @@ test("Changing owner closes the credential form and clears its fields", async ()
 
 test("A visible shared Agent offers the current user's SSH authorization", async () => {
   const agent: AgentResponse = {
+    isDefaultAgent: false,
     agentId,
     ownerId: "another-owner",
     displayName: "Shared Agent",
@@ -894,6 +961,7 @@ test("A visible shared Agent offers the current user's SSH authorization", async
 
 test("Changing users hides the previous user's SSH grant while the new grant loads", async () => {
   const agent: AgentResponse = {
+    isDefaultAgent: false,
     agentId,
     ownerId: "shared-agent-owner",
     displayName: "Shared Agent",
@@ -943,6 +1011,7 @@ test("Changing users hides the previous user's SSH grant while the new grant loa
 
 test("A last-host deletion notification hides Authorization without clearing its retained grant", async () => {
   const agent: AgentResponse = {
+    isDefaultAgent: false,
     agentId,
     ownerId: auth.user.id,
     displayName: "SSH Research",
@@ -987,6 +1056,7 @@ test("Owner Authorization offers SSH access while Profile has no SSH controls", 
     return respond(200, { configuredCount: 1 });
   });
   const agent: AgentResponse = {
+    isDefaultAgent: false,
     agentId,
     ownerId: auth.user.id,
     displayName: "Research",
@@ -1057,6 +1127,7 @@ test.each([false, true])(
       return respond(200, { configuredCount: 1 });
     });
     const agent: AgentResponse = {
+      isDefaultAgent: false,
       agentId,
       ownerId: auth.user.id,
       displayName: "Research",

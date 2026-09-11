@@ -17,6 +17,7 @@ describe("chat reasoning effort capabilities", () => {
       "high",
       "xhigh",
       "max",
+      "ultra",
     ]);
     expect(getModelReasoningEfforts("claude-fable-5-1")).toStrictEqual([
       "low",
@@ -36,6 +37,8 @@ describe("chat reasoning effort capabilities", () => {
   it("resets incompatible choices on a model change", () => {
     expect(compatibleReasoningEffort("gpt-6-astra", "ultracode")).toBeNull();
     expect(compatibleReasoningEffort("gpt-5.5", "max")).toBeNull();
+    expect(compatibleReasoningEffort("gpt-5.6-luna", "ultra")).toBeNull();
+    expect(compatibleReasoningEffort("gpt-5.6-terra", "ultra")).toBe("ultra");
     expect(compatibleReasoningEffort("claude-sonnet-4-6", "extra")).toBeNull();
     expect(compatibleReasoningEffort("claude-sonnet-5", "xhigh")).toBeNull();
     expect(compatibleReasoningEffort("gpt-6-astra", "extra")).toBeNull();
@@ -75,6 +78,9 @@ describe("chat reasoning effort capabilities", () => {
       schema.safeParse({ model: "gpt-5.6-sol", reasoningEffort: "none" })
         .success,
     ).toBe(false);
+    expect(
+      schema.parse({ model: "gpt-6-astra", reasoningEffort: "ultra" }),
+    ).toMatchObject({ reasoningEffort: "ultra" });
     const message = {
       agentId: "agent-1",
       prompt: "Task",

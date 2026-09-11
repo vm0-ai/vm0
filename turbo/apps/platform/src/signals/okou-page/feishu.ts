@@ -354,6 +354,34 @@ export const reloadFeishuInstallations$ = command(({ set }) => {
   });
 });
 
+const onFeishuChanged$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const previous = get(internalInstallations$);
+  set(reloadFeishuInstallations$);
+  const next = await get(feishuInstallations$);
+  signal.throwIfAborted();
+  set(internalInstallations$, next);
+  if (
+    previous?.some((installation) => {
+      return (
+        !installation.isConnected &&
+        next.some((candidate) => {
+          return (
+            (candidate.id ?? candidate.appId) ===
+              (installation.id ?? installation.appId) && candidate.isConnected
+          );
+        })
+      );
+    })
+  ) {
+    toast.success(
+      i18n.t(($) => {
+        return $.connectors.providerSettings.toasts.feishuConnected;
+      }),
+    );
+  }
+  return false;
+});
+
 export const showFeishuSettingsResult$ = command(() => {
   const params = new URLSearchParams(window.location.search);
   const error = params.get("error");
@@ -376,35 +404,6 @@ export const startFeishuSettingsRealtime$ = command(
     const current = await get(feishuInstallations$);
     signal.throwIfAborted();
     set(internalInstallations$, current);
-
-    const onFeishuChanged$ = command(async ({ get, set }, sig: AbortSignal) => {
-      const previous = get(internalInstallations$);
-      set(reloadFeishuInstallations$);
-      const next = await get(feishuInstallations$);
-      sig.throwIfAborted();
-      set(internalInstallations$, next);
-      if (
-        previous?.some((installation) => {
-          return (
-            !installation.isConnected &&
-            next.some((candidate) => {
-              return (
-                (candidate.id ?? candidate.appId) ===
-                  (installation.id ?? installation.appId) &&
-                candidate.isConnected
-              );
-            })
-          );
-        })
-      ) {
-        toast.success(
-          i18n.t(($) => {
-            return $.connectors.providerSettings.toasts.feishuConnected;
-          }),
-        );
-      }
-      return false;
-    });
 
     await set(
       setAblyLoop$,

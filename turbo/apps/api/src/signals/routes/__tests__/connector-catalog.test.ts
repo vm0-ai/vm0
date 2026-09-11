@@ -616,6 +616,17 @@ describe("GET /api/connector-catalog", () => {
       expect(connector.category).toBe(category);
     }
 
+    // The category list describes the catalog, not the response. A client
+    // offers the other categories from it, so collapsing it to the one being
+    // browsed would leave no way to reach any of them.
+    expect(
+      (scoped.body.categoryMetadata?.categories ?? [])
+        .map((entry) => {
+          return entry.id;
+        })
+        .sort(),
+    ).toStrictEqual(Object.keys(counts).sort());
+
     // Still ranked, and still without the connectors Okou runs for itself.
     const ranks = scoped.body.connectors.map((connector) => {
       return connector.popularityRank ?? Number.MAX_SAFE_INTEGER;

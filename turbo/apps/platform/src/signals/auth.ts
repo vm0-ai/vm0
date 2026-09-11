@@ -301,6 +301,7 @@ export function buildSignInRedirectUrl(
   return redirectUrl?.toString() ?? resolveAppUrl();
 }
 
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const clerkRuntime$ = computed(async (get) => {
   const { clerkPublishableKey } = resolvePlatformRuntimeConfig();
   return await startClerkBrowserRuntime(

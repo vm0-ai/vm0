@@ -5,7 +5,7 @@
 export function fetchResource(
   url: string | URL,
   options: Omit<RequestInit, "credentials" | "signal">,
-  signal: AbortSignal | undefined,
+  signal?: AbortSignal,
 ): Promise<Response> {
   signal?.throwIfAborted();
   return fetch(url, { ...options, credentials: "omit", signal });

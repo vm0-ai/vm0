@@ -1,3 +1,10 @@
+import { Slider } from "@okouai/ui/components/ui/slider";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { featureSwitch$ } from "../../../signals/external/feature-switch.ts";
+import {
+  availableChatReasoningEfforts,
+  defaultChatReasoningEffort,
+} from "../../../signals/okou-page/model-reasoning-effort.ts";
 import type { KeyboardEvent, ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
 import {
@@ -15,6 +22,8 @@ import {
 } from "@okouai/api-contracts/contracts/model-providers";
 import { useTranslation } from "react-i18next";
 import type { ModelPickerMenuSignals } from "../../../signals/okou-page/model-picker-menu.ts";
+import { pageSignal$ } from "../../../signals/page-signal.ts";
+import { detach, Reason } from "../../../signals/utils.ts";
 import { PriceTierBadge } from "./model-picker-price-tier.tsx";
 import {
   getMediaModelPriceTierLabel,
@@ -22,6 +31,7 @@ import {
 } from "./settings/provider-ui-config.ts";
 import { ProviderIcon } from "./settings/provider-icons.tsx";
 import type {
+  MediaModelCategoryId,
   MediaModelPanelState,
   ModelProviderSelection,
 } from "./model-provider-picker.tsx";
@@ -167,6 +177,24 @@ interface ModelPickerMenuContentProps {
   onSelected?: (() => void) | undefined;
 }
 
+function formatChatEffort(
+  model: string | undefined,
+  effort: string | null | undefined,
+) {
+  return model?.startsWith("claude-") && effort
+    ? effort.charAt(0).toUpperCase() + effort.slice(1)
+    : effort;
+}
+
+function canAdjustChatSettings(
+  option: ModelPickerMenuOption | undefined,
+  hasEffortControls: boolean,
+) {
+  return (
+    option?.disabled === false && (option.fastAvailable || hasEffortControls)
+  );
+}
+
 function ModelPickerOverview({
   signals,
   value,
@@ -175,6 +203,11 @@ function ModelPickerOverview({
   mediaModelPanel,
 }: Omit<ModelPickerMenuContentProps, "onChange">) {
   const { t } = useTranslation();
+  const switches = useGet(featureSwitch$);
+  const efforts = availableChatReasoningEfforts(value?.selectedModel, switches);
+  const savedEffort = switches[FeatureSwitchKey.ChatReasoningEffort]
+    ? value?.reasoningEffort
+    : undefined;
   const showModels = useSet(signals.showModels$);
   const editSettings = useSet(signals.editSettings$);
   const selectedOption = options.find((option) => {
@@ -214,13 +247,24 @@ function ModelPickerOverview({
               <Cpu size={17} />
             )
           }
-          summary={selectedOption?.fastAvailable ? speedLabel : undefined}
+          summary={
+            [
+              selectedOption?.fastAvailable ? speedLabel : undefined,
+              formatChatEffort(value?.selectedModel, savedEffort),
+            ]
+              .filter(Boolean)
+              .join(" · ") || undefined
+          }
           onChange={() => {
             mediaModelPanel?.onActiveCategoryChange(null);
             showModels("chat");
           }}
           onSettings={
-            selectedOption?.fastAvailable && value
+            value &&
+            canAdjustChatSettings(
+              selectedOption,
+              efforts.length > 0 || Boolean(savedEffort),
+            )
               ? () => {
                   mediaModelPanel?.onActiveCategoryChange(null);
                   editSettings();
@@ -247,6 +291,88 @@ function ModelPickerOverview({
         })}
       </div>
     </>
+  );
+}
+
+function ChatReasoningEffortSettings({
+  selection,
+  disabled,
+  onChange,
+}: {
+  selection: ModelProviderSelection;
+  disabled: boolean;
+  onChange: ModelPickerMenuContentProps["onChange"];
+}) {
+  const { t } = useTranslation();
+  const switches = useGet(featureSwitch$);
+  const efforts = availableChatReasoningEfforts(
+    selection.selectedModel,
+    switches,
+  );
+  if (
+    !switches[FeatureSwitchKey.ChatReasoningEffort] ||
+    (efforts.length === 0 && !selection.reasoningEffort)
+  ) {
+    return null;
+  }
+  const label = t(($) => {
+    return $.settings.models.picker.effort;
+  });
+  const defaultEffort = defaultChatReasoningEffort(selection.selectedModel);
+  const value = selection.reasoningEffort ?? defaultEffort;
+  const displayValue = formatChatEffort(selection.selectedModel, value);
+  const index = efforts.findIndex((effort) => {
+    return effort === value;
+  });
+  return (
+    <div className="flex flex-col gap-3 border-b border-border/60 px-2 py-4">
+      <div className="flex items-baseline justify-between gap-3 text-[13px]">
+        <span>{label}</span>
+        <span className="font-medium text-foreground">{displayValue}</span>
+      </div>
+      {index !== -1 ? (
+        <Slider
+          ticks
+          min={0}
+          max={efforts.length - 1}
+          step={1}
+          value={index}
+          disabled={disabled}
+          aria-label={label}
+          aria-valuetext={displayValue ?? undefined}
+          onValueChange={(next) => {
+            const effort = efforts[next];
+            if (effort !== undefined) {
+              onChange({
+                ...selection,
+                reasoningEffort: effort,
+              });
+            }
+          }}
+        />
+      ) : (
+        <>
+          <p className="text-[11px] leading-relaxed text-muted-foreground">
+            {t(($) => {
+              return $.settings.models.picker.effortUnavailable;
+            })}
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="-ml-2 h-7 self-start px-2 text-xs text-muted-foreground hover:text-foreground"
+            disabled={disabled}
+            onClick={() => {
+              onChange({ ...selection, reasoningEffort: null });
+            }}
+          >
+            {t(($) => {
+              return $.settings.models.picker.effortReset;
+            })}
+          </Button>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -278,34 +404,41 @@ function ChatModelSettings({
         {option?.content ??
           getCanonicalModelDisplayName(selection.selectedModel)}
       </div>
-      <div className="flex items-center justify-between gap-3 px-2 py-4">
-        <div>
-          <span className="text-[13px]">
-            {t(($) => {
+      <ChatReasoningEffortSettings
+        selection={selection}
+        disabled={option?.disabled ?? true}
+        onChange={onChange}
+      />
+      {option?.fastAvailable && (
+        <div className="flex items-center justify-between gap-3 px-2 py-4">
+          <div>
+            <span className="text-[13px]">
+              {t(($) => {
+                return $.settings.models.picker.fast;
+              })}
+            </span>
+            <p className="mt-1 text-[11px] text-muted-foreground">
+              {t(($) => {
+                return $.settings.models.picker.fastImpact;
+              })}
+            </p>
+          </div>
+          <Switch
+            size="compact"
+            aria-label={t(($) => {
               return $.settings.models.picker.fast;
             })}
-          </span>
-          <p className="mt-1 text-[11px] text-muted-foreground">
-            {t(($) => {
-              return $.settings.models.picker.fastImpact;
-            })}
-          </p>
+            checked={selection.codexServiceTier === "fast"}
+            onCheckedChange={(fast) => {
+              onChange({
+                ...selection,
+                codexServiceTier: fast ? "fast" : undefined,
+              });
+            }}
+            disabled={option.disabled}
+          />
         </div>
-        <Switch
-          size="compact"
-          aria-label={t(($) => {
-            return $.settings.models.picker.fast;
-          })}
-          checked={selection.codexServiceTier === "fast"}
-          onCheckedChange={(fast) => {
-            onChange({
-              selectedModel: selection.selectedModel,
-              ...(fast ? { codexServiceTier: "fast" } : {}),
-            });
-          }}
-          disabled={!option?.fastAvailable || option.disabled}
-        />
-      </div>
+      )}
     </>
   );
 }
@@ -446,7 +579,7 @@ function MediaModelList({
  * and `shadow-lg` reproduces exactly.
  */
 const FLYOUT_PANEL_CLASS =
-  "rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-1 text-foreground shadow-lg outline-none";
+  "rounded-[12px] border border-[hsl(var(--gray-400))] bg-card p-1 text-foreground shadow-lg outline-none";
 
 /**
  * Flyout layout: model types on the left, that type's models in a panel beside
@@ -462,6 +595,8 @@ function ModelPickerFlyoutTypeRow({
   index,
   total,
   onActivate,
+  onHover,
+  onHoverEnd,
 }: {
   icon: ReactNode;
   label: string;
@@ -470,6 +605,8 @@ function ModelPickerFlyoutTypeRow({
   index: number;
   total: number;
   onActivate: () => void;
+  onHover: () => void;
+  onHoverEnd: () => void;
 }) {
   return (
     <Button
@@ -486,7 +623,10 @@ function ModelPickerFlyoutTypeRow({
         "h-11 w-full shrink-0 justify-start gap-2 px-2 text-left font-normal",
         active && "bg-state-hover",
       )}
-      onMouseEnter={onActivate}
+      // Hover waits for the pointer to settle; a click or a keyboard move is
+      // deliberate and swaps the panel straight away.
+      onMouseEnter={onHover}
+      onMouseLeave={onHoverEnd}
       onFocus={onActivate}
       onClick={onActivate}
     >
@@ -623,6 +763,153 @@ function ModelPickerFlyoutOptions({
   });
 }
 
+function ModelPickerFlyoutPanel({
+  activeMedia,
+  panelLabel,
+  ...props
+}: ModelPickerMenuContentProps & {
+  activeMedia: MediaModelPanelState["categories"][number] | undefined;
+  panelLabel: string;
+}) {
+  const { t } = useTranslation();
+  const switches = useGet(featureSwitch$);
+  const page = useGet(props.signals.page$);
+  const editSettings = useSet(props.signals.editSettings$);
+  const panelRef = useSet(props.signals.focusFlyoutPanelRef$);
+  const settingsRef = useSet(props.signals.focusPanelRef$);
+  const selectedOption = props.options.find((option) => {
+    return option.model === props.value?.selectedModel;
+  });
+  const efforts = availableChatReasoningEfforts(
+    props.value?.selectedModel,
+    switches,
+  );
+  const savedEffort = switches[FeatureSwitchKey.ChatReasoningEffort]
+    ? props.value?.reasoningEffort
+    : undefined;
+  if (!activeMedia && page.kind === "settings" && props.value) {
+    return (
+      <div
+        ref={settingsRef}
+        role="region"
+        className="max-h-[360px] overflow-y-auto overscroll-contain"
+        aria-label={t(($) => {
+          return $.settings.models.picker.menu.chatSettings;
+        })}
+      >
+        <ChatModelSettings {...props} selection={props.value} />
+      </div>
+    );
+  }
+  return (
+    <>
+      <div
+        ref={panelRef}
+        role="listbox"
+        aria-label={panelLabel}
+        className="flex max-h-[244px] flex-col gap-0.5 overflow-y-auto overscroll-contain"
+      >
+        <ModelPickerFlyoutOptions
+          {...props}
+          activeMedia={activeMedia}
+          onSelected={props.onSelected}
+        />
+        {props.options.length === 0 && !activeMedia && (
+          <p className="px-2 py-2 text-sm text-muted-foreground">
+            {t(($) => {
+              return $.settings.models.picker.noConfiguredModels;
+            })}
+          </p>
+        )}
+      </div>
+      {!activeMedia &&
+        props.value &&
+        selectedOption &&
+        canAdjustChatSettings(
+          selectedOption,
+          efforts.length > 0 || Boolean(savedEffort),
+        ) && (
+          <Button
+            variant="ghost"
+            className="h-9 shrink-0 justify-start gap-2 border-t border-border/60 px-2 text-xs text-muted-foreground"
+            aria-label={t(
+              ($) => {
+                return $.settings.models.picker.menu.adjustSettings;
+              },
+              { model: selectedOption.label },
+            )}
+            onClick={editSettings}
+          >
+            <SlidersHorizontal size={14} aria-hidden="true" />
+            {t(($) => {
+              return $.settings.models.picker.menu.chatSettings;
+            })}
+          </Button>
+        )}
+    </>
+  );
+}
+
+interface ModelPickerFlyoutType {
+  readonly id: "chat" | MediaModelCategoryId;
+  readonly label: string;
+  readonly current: string;
+  readonly icon: ReactNode;
+}
+
+/**
+ * The type rail owns hover intent for the whole flyout: a row opens its panel
+ * on a settled pointer, and a pointer that leaves before then opens nothing.
+ * Reaching the panel means crossing the rows between it and the pointer, and
+ * without the dwell each of those rows would swap the panel on the way past.
+ */
+function ModelPickerFlyoutTypeRail({
+  signals,
+  types,
+  activeType,
+}: {
+  signals: ModelPickerMenuSignals;
+  types: readonly ModelPickerFlyoutType[];
+  activeType: ModelPickerFlyoutType["id"];
+}) {
+  const { t } = useTranslation();
+  const setCategory = useSet(signals.setFlyoutCategory$);
+  const hoverCategory = useSet(signals.hoverFlyoutCategory$);
+  const cancelCategoryHover = useSet(signals.cancelFlyoutCategoryHover$);
+  const pageSignal = useGet(pageSignal$);
+  return (
+    <div
+      role="tablist"
+      aria-orientation="vertical"
+      aria-label={t(($) => {
+        return $.settings.models.picker.models;
+      })}
+      className="flex flex-col gap-0.5"
+    >
+      {types.map((type, index) => {
+        return (
+          <ModelPickerFlyoutTypeRow
+            key={type.id}
+            icon={type.icon}
+            label={type.label}
+            current={type.current}
+            active={type.id === activeType}
+            index={index}
+            total={types.length}
+            onActivate={() => {
+              setCategory(type.id);
+            }}
+            onHover={() => {
+              detach(hoverCategory(type.id, pageSignal), Reason.DomCallback);
+            }}
+            onHoverEnd={cancelCategoryHover}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 export function ModelPickerFlyoutContent({
   signals,
   value,
@@ -635,9 +922,7 @@ export function ModelPickerFlyoutContent({
   const { t } = useTranslation();
   const category = useGet(signals.flyoutCategory$);
   const side = useGet(signals.flyoutSide$);
-  const setCategory = useSet(signals.setFlyoutCategory$);
   const rootRef = useSet(signals.flyoutRootRef$);
-  const panelRef = useSet(signals.focusFlyoutPanelRef$);
   const selectedOption = options.find((option) => {
     return option.model === value?.selectedModel;
   });
@@ -687,41 +972,22 @@ export function ModelPickerFlyoutContent({
       }}
     >
       {types.length > 1 && (
-        <div
-          role="tablist"
-          aria-orientation="vertical"
-          aria-label={t(($) => {
-            return $.settings.models.picker.models;
-          })}
-          className="flex flex-col gap-0.5"
-        >
-          {types.map((type, index) => {
-            return (
-              <ModelPickerFlyoutTypeRow
-                key={type.id}
-                icon={type.icon}
-                label={type.label}
-                current={type.current}
-                active={type.id === activeType}
-                index={index}
-                total={types.length}
-                onActivate={() => {
-                  setCategory(type.id);
-                }}
-              />
-            );
-          })}
-        </div>
+        <ModelPickerFlyoutTypeRail
+          signals={signals}
+          types={types}
+          activeType={activeType}
+        />
       )}
       <div
-        ref={panelRef}
-        role="listbox"
-        aria-label={panelLabel}
         className={cn(
-          "flex max-h-[284px] flex-col gap-0.5 overflow-y-auto overscroll-contain",
+          "flex flex-col gap-0.5",
           types.length > 1
             ? cn(
-                "absolute bottom-0 w-[252px]",
+                // The two cards share a bottom edge. This box is anchored to
+                // the rail's content edge, which sits the popover's `p-1`
+                // (4px) plus the shared 0.5px hairline above the card's own
+                // bottom, so cancel both.
+                "absolute bottom-[-4.5px] w-[252px]",
                 FLYOUT_PANEL_CLASS,
                 side === "right"
                   ? "left-[calc(100%+6px)]"
@@ -730,20 +996,17 @@ export function ModelPickerFlyoutContent({
             : "w-full",
         )}
       >
-        <ModelPickerFlyoutOptions
+        <ModelPickerFlyoutPanel
+          signals={signals}
+          placeholder={placeholder}
+          mediaModelPanel={mediaModelPanel}
           activeMedia={activeMedia}
+          panelLabel={panelLabel}
           options={options}
           value={value}
           onChange={onChange}
           onSelected={onSelected}
         />
-        {options.length === 0 && !activeMedia && (
-          <p className="px-2 py-2 text-sm text-muted-foreground">
-            {t(($) => {
-              return $.settings.models.picker.noConfiguredModels;
-            })}
-          </p>
-        )}
       </div>
     </div>
   );
@@ -757,6 +1020,10 @@ function moveFlyoutFocus(
   const target = event.target as HTMLElement;
   const root = event.currentTarget;
   const onType = target.getAttribute("role") === "tab";
+  const onOption = target.getAttribute("role") === "option";
+  if (!onType && !onOption) {
+    return;
+  }
   const options = Array.from(
     root.querySelectorAll<HTMLElement>('[role="option"]'),
   );

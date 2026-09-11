@@ -12,6 +12,7 @@ const PRIMARY_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 function agent(agentId: string, displayName: string | null): AgentResponse {
   return {
+    isDefaultAgent: false,
     agentId,
     ownerId: "user_mock",
     displayName,

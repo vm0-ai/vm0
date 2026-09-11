@@ -39,19 +39,66 @@ expired transition validator must be deleted.
   and derived-status trigger remain only for serving and rollback compatibility;
   remove them with this validator after the gates in #32575 pass.
 
-- `scripts/test-goal-retirement-migration.ts` protects
-  `1093_goal_retirement_receipt` / `1094_archive_retired_goals` (#32797): real
-  PostgreSQL archival, settlement, ownership, transaction/retry and retention
-  behavior at the measured scale. Keep it through the deployed S5 contract in
-  #32653; retain surviving history invariants in permanent reader coverage.
-  See [the delivery and count-only acceptance guide](../../../docs/goal-retirement-archival.md).
-
 - `scripts/test-pi-memory-checkpoint-settlement.ts` protects migration
   `1079_pi_memory_checkpoint_settlement` (#31937): real PostgreSQL checks exact
   live legacy grandfathering, valid sandbox leases, unsafe-shape rollback and
   rejection of fresh null/null or mismatched claims from `1078_baseline`.
   Retire it only after the three transition conditions above are met; retain
   the current claim-shape invariants in permanent coverage.
+
+### Retired Goal transition validators (2026-09-10)
+
+[#33323](https://github.com/vm0-ai/vm0/issues/33323) retires the 1093/1094 and
+1105/1106 Goal validators and pre-contract API fixture branches after all three
+conditions above passed. The
+[S5 independent production acceptance](https://github.com/vm0-ai/vm0/issues/32653#issuecomment-5623079780)
+records the evidence and its limits:
+
+1. **Production journal frontier:** 1106 has `when=1789049110365` in the
+   [shipped journal](https://github.com/vm0-ai/vm0/blob/9c777819776d2bed0cfdb110653e46dcaffc0e8b/turbo/packages/db/src/migrations/meta/_journal.json#L201).
+   The controller byte-verified the actual production
+   [job 102972981101](https://github.com/vm0-ai/vm0/actions/runs/34507172081/job/102972981101),
+   separately from its smoke clone: 1106 DDL, helper deletion and timeout resets,
+   then the awaited journal INSERT, before `Migrations complete` at
+   **2026-09-10 17:21:49.5878347 UTC**. The unchanged
+   [runner](https://github.com/vm0-ai/vm0/blob/9c777819776d2bed0cfdb110653e46dcaffc0e8b/turbo/packages/db/scripts/migration-runner.ts#L43)
+   awaits each statement and insertion of the migration's timestamp before
+   [the entry point](https://github.com/vm0-ai/vm0/blob/9c777819776d2bed0cfdb110653e46dcaffc0e8b/turbo/packages/db/scripts/migrate.ts#L14)
+   reports completion. This acknowledged path establishes the required frontier
+   and its predecessors. MaskDB exposes neither the journal nor the constraint
+   and procedure catalogs; no direct SELECT of those rows is claimed. Acceptance
+   combines that execution evidence with fresh physical metadata under an
+   unchanged masking policy. It does not replace the frontier gate with a tag,
+   elapsed time, smoke result, or an assumed catalog read.
+2. **Completed compatibility cycle:** S1–S5 are independently code accepted,
+   released and production verified. Release
+   [#33253](https://github.com/vm0-ai/vm0/pull/33253) failed with DDL deadlock
+   `40P01`; its successful smoke clone did not complete production contraction.
+   The later [#33307](https://github.com/vm0-ai/vm0/pull/33307), merged by Ethan,
+   completed contraction and promoted API 1.582.0 / App 0.884.1 at
+   `9c777819776d2bed0cfdb110653e46dcaffc0e8b`. The accepted physical absence and
+   [S1 plus combined-S4 rollback floors](../../../docs/deployment-compatibility.md#okou-goal-retirement-rollback-floor)
+   close the Goal schema transition; those floors remain in force.
+3. **Permanent surviving coverage:**
+   [migration consistency](scripts/test-migration-consistency-schema.ts) retains
+   both validated metadata checks, all 18 optional-field partial-write failures,
+   discriminator requirements, autonomy bounds, valid nullable/current states,
+   schema equivalence, and complete trigger/function inventory. The
+   [current-schema API tests](../../apps/api/src/signals/routes/__tests__/goal-schema-contraction.test.ts)
+   retain real launches, callbacks, late billing and publication/retention races;
+   [literal history tests](../../apps/api/src/signals/routes/__tests__/goal-retirement-history.test.ts)
+   retain all four statuses, malformed provenance, hot/snapshot/search/export,
+   new and unchanged old shares, and ordinary continuation. Shared archive
+   contracts, Platform rendering and fail-closed security coverage remain.
+
+The expired [1093/1094 validator](https://github.com/vm0-ai/vm0/blob/1cd69b0219c6fe67b7d2fd15bcb7e914ffd8f52e/turbo/packages/db/scripts/test-goal-retirement-migration.ts)
+and [1105/1106 validator](https://github.com/vm0-ai/vm0/blob/1cd69b0219c6fe67b7d2fd15bcb7e914ffd8f52e/turbo/packages/db/scripts/test-goal-schema-contraction.ts)
+remain immutable historical evidence for replay, locks and the measured census.
+Keep shipped SQL, snapshots, journal and numbered external-data operation 014
+(including its original README/code/exports) unchanged. The
+[completed 014 record](../../../docs/goal-archive-search-recovery.md) is not an
+execution entry for the contracted schema. Unrelated transition validators and
+the complete migration consistency command remain active.
 
 ## Migration patterns
 

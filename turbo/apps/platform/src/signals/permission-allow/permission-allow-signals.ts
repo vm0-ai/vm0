@@ -17,7 +17,6 @@ import { agentById, currentAgentId$ } from "../agent.ts";
 import { firewallPermissionMetadataByConnector } from "../firewall-permission-metadata.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { retryTransientLoad } from "../utils.ts";
-import { rootSignal$ } from "../root-signal.ts";
 import { resolveActiveUserPermissionGrantPolicy } from "../user-permission-grants.ts";
 import { parseUserPermissionGrantExpiresIn } from "./permission-grant-expiration.ts";
 import { i18n } from "../../i18n/index.ts";
@@ -105,14 +104,15 @@ export function findPermissionInMetadata(
 
 const internalUserPermissionGrantsReload$ = state(0);
 
+const onPermissionUpdated$ = command(({ set }) => {
+  set(internalUserPermissionGrantsReload$, (version) => {
+    return version + 1;
+  });
+  return false;
+});
+
 export const subscribePermissionUpdate$ = command(
   async ({ set }, signal: AbortSignal) => {
-    const onPermissionUpdated$ = command(({ set }) => {
-      set(internalUserPermissionGrantsReload$, (version) => {
-        return version + 1;
-      });
-      return false;
-    });
     await set(
       setAblyLoop$,
       {
@@ -142,15 +142,14 @@ export function userPermissionGrantsByAgent(
   return computed(async (get) => {
     get(internalUserPermissionGrantsReload$);
     const client = get(apiClient$)(userPermissionGrantsContract);
-    const result = await retryTransientLoad((signal) => {
+    const result = await retryTransientLoad(() => {
       return accept(
         client.list({
           query: params,
-          fetchOptions: { signal },
         }),
         [200],
       );
-    }, get(rootSignal$));
+    });
     return result.body;
   });
 }
@@ -161,15 +160,14 @@ export function userPermissionGrantsByAgentIfExists(
   return computed(async (get) => {
     get(internalUserPermissionGrantsReload$);
     const client = get(apiClient$)(userPermissionGrantsContract);
-    const result = await retryTransientLoad((signal) => {
+    const result = await retryTransientLoad(() => {
       return accept(
         client.list({
           query: params,
-          fetchOptions: { signal },
         }),
         [200, 404],
       );
-    }, get(rootSignal$));
+    });
     return result.status === 404 ? null : result.body;
   });
 }

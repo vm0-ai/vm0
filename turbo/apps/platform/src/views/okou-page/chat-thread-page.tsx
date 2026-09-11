@@ -2822,9 +2822,8 @@ function ChatThread({
   thread: ChatPanelSignals;
 }) {
   const { t } = useTranslation();
-  const mainContainerRef = useGet(thread.mainContainerRef$);
   const setContainerRef = useSet(
-    isMain ? mainContainerRef : thread.setContainerRef$,
+    isMain ? thread.setMainContainerRef$ : thread.setContainerRef$,
   );
 
   return (
@@ -4222,7 +4221,8 @@ function ShimmerText({
   return (
     <p
       className={cn(
-        "okou-shimmer-text h-auto min-w-0 flex-1 truncate text-[0.8125rem] leading-[inherit]",
+        "okou-shimmer-text h-auto min-w-0 flex-1 truncate",
+        CHAT_THREAD_RESPONSE_SUPPORTING_TEXT_CLASS,
         className,
       )}
       aria-label={ariaLabel}
@@ -4299,7 +4299,9 @@ function ThinkingLoader({
         <img
           src={thinkingSpinnerImg}
           alt=""
-          className="okou-thinking-spinner size-4 max-w-none shrink-0 animate-spin motion-reduce:animate-none"
+          // The 48px asset has a 4px inset. A 17px canvas makes its visible
+          // mark match the perceived size of the 16px line icons.
+          className="okou-thinking-spinner size-[17px] max-w-none shrink-0 animate-spin motion-reduce:animate-none"
         />
       </span>
     );
@@ -5168,7 +5170,7 @@ function AssistantErrorRecoveryCard({
     <div
       role="status"
       data-testid="assistant-error-recovery"
-      className="okou-chat-card grid min-h-[88px] w-full grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 gap-y-3 px-3.5 py-3 text-foreground @[640px]:grid-cols-[auto_minmax(0,1fr)_auto] @[640px]:items-center"
+      className="okou-chat-card grid min-h-[88px] w-full grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 gap-y-3 px-3.5 py-3 text-foreground @[640px]:grid-cols-[auto_minmax(0,1fr)_auto] @[640px]:content-center"
     >
       {recovery.kind === "usage-limit" ||
       recovery.kind === "execution-timeout" ? (
@@ -5222,7 +5224,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
       <div
         className="inline-flex items-center gap-2 bg-muted/50 px-3 py-1.5 text-[0.9375rem] text-muted-foreground"
         style={{
-          border: "0.7px solid hsl(var(--border))",
+          border: "var(--border-width-surface) solid hsl(var(--border))",
           borderRadius: "12px",
         }}
       >
@@ -5596,8 +5598,9 @@ function PagedUserGroup({
   );
 }
 
-// A user event does not always render as a bubble: a workflow run, a goal, and
-// a rejected goal each render as their own card or as nothing at all.
+// A user event does not always render as a bubble: a workflow run, a historical
+// goal, and a rejected historical goal each render as their own card or as
+// nothing at all.
 function rendersUserBubble(event: EnrichedChatEvent): boolean {
   return (
     !isRejectedGoalUserMessage(event) &&

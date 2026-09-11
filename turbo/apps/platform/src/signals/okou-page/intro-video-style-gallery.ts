@@ -6,7 +6,6 @@ import {
 import { command, computed, state } from "ccstate";
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
-import { pageSignal$ } from "../page-signal.ts";
 import { onRef } from "../utils.ts";
 
 function createIntroVideoStyleGallerySignals() {
@@ -15,7 +14,6 @@ function createIntroVideoStyleGallerySignals() {
   return {
     catalog$: computed(async (get) => {
       get(internalReload$);
-      const signal = get(pageSignal$);
       const client = get(apiClient$)(introVideoPresenterContract, {
         apiBase: "api",
       });
@@ -30,10 +28,8 @@ function createIntroVideoStyleGallerySignals() {
               pageSize: 100,
               ...(token === null ? {} : { token }),
             },
-            fetchOptions: { signal },
           }),
           [200],
-          signal,
         );
         styles.push(...result.body.styles);
         token = result.body.hasMore ? result.body.nextToken : null;

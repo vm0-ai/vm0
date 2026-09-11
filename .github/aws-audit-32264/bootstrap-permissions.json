@@ -1,0 +1,22 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "InspectExistingGithubMigrationRole",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetRole",
+        "iam:GetRolePolicy",
+        "iam:ListRolePolicies",
+        "iam:ListAttachedRolePolicies"
+      ],
+      "Resource": "arn:aws:iam::251964670836:role/vm0-kms-migration-github-32264"
+    },
+    {
+      "Sid": "AttachAuditingPolicyToExistingMigrationRole",
+      "Effect": "Allow",
+      "Action": "iam:PutRolePolicy",
+      "Resource": "arn:aws:iam::251964670836:role/vm0-kms-migration-github-32264"
+    }
+  ]
+}

@@ -1,4 +1,3 @@
-import { rootSignal$ } from "./root-signal.ts";
 import { fetchResource } from "../lib/resource-fetch.ts";
 import { computed, type Computed } from "ccstate";
 import { createAttachmentResourceUrl$ } from "./attachment-resource-url.ts";
@@ -54,17 +53,10 @@ async function readLimitedText(response: Response): Promise<string> {
   return new TextDecoder().decode(bytes);
 }
 
-export async function fetchPreviewText(
-  url: string,
-  signal: AbortSignal,
-): Promise<string> {
-  const response = await fetchResource(
-    url,
-    {
-      headers: { Range: `bytes=0-${String(TEXT_PREVIEW_MAX_BYTES - 1)}` },
-    },
-    signal,
-  );
+export async function fetchPreviewText(url: string): Promise<string> {
+  const response = await fetchResource(url, {
+    headers: { Range: `bytes=0-${String(TEXT_PREVIEW_MAX_BYTES - 1)}` },
+  });
   if (!response.ok) {
     throw new Error(`HTTP ${String(response.status)}`);
   }
@@ -83,7 +75,7 @@ export function createTextPreviewComputed(
     if (!resourceUrl) {
       throw new Error("Attachment preview is unavailable");
     }
-    return fetchPreviewText(resourceUrl, get(rootSignal$));
+    return fetchPreviewText(resourceUrl);
   });
 }
 

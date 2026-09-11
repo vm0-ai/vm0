@@ -14,26 +14,12 @@ import type {
   IndexedDbSnapshotMeasurement,
   ListedComputerUseHost,
 } from "../shared-database/computed-key.ts";
-import type { SharedDatabaseConnectionStatus } from "../shared-database/protocol.ts";
 import type { ConnectionDiagnostics } from "./connection-diagnostics.ts";
 import {
   reloadChatIndicatorsCounter$,
   reloadChatIndicatorsLocally$,
 } from "./chat-thread-list-reload.ts";
 import { installedSharedDatabaseBridge$ } from "./shared-database-bridge-state.ts";
-
-const sharedDatabaseConnectionStatusState$ =
-  state<SharedDatabaseConnectionStatus>("disconnected");
-
-export const sharedDatabaseConnectionStatus$ = computed((get) => {
-  return get(sharedDatabaseConnectionStatusState$);
-});
-
-export const setSharedDatabaseConnectionStatus$ = command(
-  ({ set }, status: SharedDatabaseConnectionStatus): void => {
-    set(sharedDatabaseConnectionStatusState$, status);
-  },
-);
 
 const internalReloadComputerUseHostsFromWorker$ = state(0);
 

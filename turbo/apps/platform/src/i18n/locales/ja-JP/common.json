@@ -465,12 +465,12 @@
       "attach": "マークを添付",
       "draftOnly": "マークは下書きに残ります。送信するまで変更できます",
       "inkLabel": "色 {{color}}",
-      "notePlaceholder": "ここをどう変えたいか書いてください",
+      "notePlaceholder": "何を変えますか？",
       "open": "注釈",
       "redo": "やり直す",
       "removeMark": "マークを削除",
       "subtitle_other": "{{count}} 件のマーク",
-      "textPlaceholder": "ラベルを入力",
+      "textPlaceholder": "ここに入力",
       "tools": {
         "arrow": "矢印",
         "box": "矩形",
@@ -2531,6 +2531,289 @@
         "video": "動画",
         "website": "ウェブサイト",
         "workflow": "ワークフロー"
+      },
+      "workflows": {
+        "back": "ワークフローを見る",
+        "browse": "ワークフローを見る",
+        "close": "閉じる",
+        "contextPrefix": "重視したいこと：{{context}}",
+        "heading": "どの仕事を任せたいですか？",
+        "items": {
+          "competitors": {
+            "cadence": "毎日または毎週",
+            "description": "競合サイトの価格や機能の変化を監視し、内容を Notion に保存して Slack に通知します。",
+            "name": "競合モニタリング",
+            "next": "使用する情報、対象範囲、実行タイミング、通知先を確認してから有効にしてください。まず下書きを作成してください。",
+            "prompt": "次のワークフローの設定を手伝ってください：競合モニタリング. 選んだ競合ページを定期的に確認. 価格、プラン、訴求の重要な変化を検出. 情報源付きで Notion に保存し、必要なら Slack に通知. 使用する情報、対象範囲、実行タイミング、通知先を確認してから有効にしてください。まず下書きを作成してください。",
+            "results": {
+              "one": "変更前後の比較",
+              "three": "何が変わったかの短い説明",
+              "two": "各結果の情報源リンク"
+            },
+            "scope": "競合サイトの価格や機能の変化を監視し、内容を Notion に保存して Slack に通知します。",
+            "steps": {
+              "one": "選んだ競合ページを定期的に確認",
+              "three": "情報源付きで Notion に保存し、必要なら Slack に通知",
+              "two": "価格、プラン、訴求の重要な変化を検出"
+            },
+            "title": "競合の変化を把握する"
+          },
+          "inbox": {
+            "cadence": "新しいメールが届いたとき",
+            "description": "受信トレイを分類し、必要なメールへの返信の下書きを作成します。",
+            "name": "Gmail と返信の下書きを並べ替える",
+            "next": "使用する情報、対象範囲、実行タイミング、通知先を確認してから有効にしてください。まず下書きを作成してください。",
+            "prompt": "次のワークフローの設定を手伝ってください：Gmail と返信の下書きを並べ替える. 指定した受信範囲のメールを読む. 合意したルールで緊急度を分類. 返信案を Gmail の下書きに保存. 使用する情報、対象範囲、実行タイミング、通知先を確認してから有効にしてください。まず下書きを作成してください。 メールの返信は下書きにとどめ、私が確認して送信します。",
+            "results": {
+              "one": "緊急度で整理されたメール",
+              "three": "Gmail の返信下書き",
+              "two": "重要な依頼の一覧"
+            },
+            "scope": "受信トレイを分類し、必要なメールへの返信の下書きを作成します。",
+            "steps": {
+              "one": "指定した受信範囲のメールを読む",
+              "three": "返信案を Gmail の下書きに保存",
+              "two": "合意したルールで緊急度を分類"
+            },
+            "title": "重要なメールへの対応を進める"
+          },
+          "invoices": {
+            "cadence": "請求書にラベルを付けたとき",
+            "description": "請求書メールをドライブにファイルし、それぞれをシートに記録します。",
+            "name": "Gmail 請求書を Google Drive にファイルします",
+            "next": "使用する情報、対象範囲、実行タイミング、通知先を確認してから有効にしてください。まず下書きを作成してください。",
+            "prompt": "次のワークフローの設定を手伝ってください：Gmail 請求書を Google Drive にファイルします. 指定の Gmail ラベルから請求書を特定. 添付の請求書を指定の Drive フォルダに保存. 必要に応じて Google Sheets に詳細を記録. 使用する情報、対象範囲、実行タイミング、通知先を確認してから有効にしてください。まず下書きを作成してください。",
+            "results": {
+              "one": "正しいフォルダ内の請求書",
+              "three": "任意の Sheets 請求書台帳",
+              "two": "統一された保存記録"
+            },
+            "scope": "請求書メールをドライブにファイルし、それぞれをシートに記録します。",
+            "steps": {
+              "one": "指定の Gmail ラベルから請求書を特定",
+              "three": "必要に応じて Google Sheets に詳細を記録",
+              "two": "添付の請求書を指定の Drive フォルダに保存"
+            },
+            "title": "請求書を整理する"
+          },
+          "meetings": {
+            "cadence": "会議が追加されたとき",
+            "description": "カレンダーの各イベントの前に、会う人について調べてください。",
+            "name": "カレンダー上の会議を調査する",
+            "next": "使用する情報、対象範囲、実行タイミング、通知先を確認してから有効にしてください。まず下書きを作成してください。",
+            "prompt": "次のワークフローの設定を手伝ってください：カレンダー上の会議を調査する. 新しい予定の参加者と詳細を読む. 仕事や会社に関する背景を調べる. 情報源と話題を含む事前資料を作成. 使用する情報、対象範囲、実行タイミング、通知先を確認してから有効にしてください。まず下書きを作成してください。",
+            "results": {
+              "one": "参加者と会社の情報",
+              "three": "話し合うポイントの提案",
+              "two": "情報源付きの背景情報"
+            },
+            "scope": "カレンダーの各イベントの前に、会う人について調べてください。",
+            "steps": {
+              "one": "新しい予定の参加者と詳細を読む",
+              "three": "情報源と話題を含む事前資料を作成",
+              "two": "仕事や会社に関する背景を調べる"
+            },
+            "title": "準備を整えて会議に臨む"
+          },
+          "metrics": {
+            "cadence": "毎朝",
+            "description": "毎日の訪問者、サインアップ、アクティベーション番号を Slack に投稿します。",
+            "name": "毎日のメトリクスを Slack に投稿します",
+            "next": "使用する情報、対象範囲、実行タイミング、通知先を確認してから有効にしてください。まず下書きを作成してください。",
+            "prompt": "次のワークフローの設定を手伝ってください：毎日のメトリクスを Slack に投稿します. 合意したサイトと登録の指標を取得. 対象期間を明示して日次の概要を作成. 指定した Slack に概要を共有. 使用する情報、対象範囲、実行タイミング、通知先を確認してから有効にしてください。まず下書きを作成してください。",
+            "results": {
+              "one": "一日の訪問者数",
+              "three": "明確な集計期間",
+              "two": "取得可能な登録数と有効化数"
+            },
+            "scope": "毎日の訪問者、サインアップ、アクティベーション番号を Slack に投稿します。",
+            "steps": {
+              "one": "合意したサイトと登録の指標を取得",
+              "three": "指定した Slack に概要を共有",
+              "two": "対象期間を明示して日次の概要を作成"
+            },
+            "title": "事業の状況を毎日確認する"
+          },
+          "morning": {
+            "cadence": "毎朝",
+            "description": "Gmail、カレンダー、Notion の更新を短い一日の計画にして Slack に送ります。",
+            "name": "モーニングブリーフ",
+            "next": "使用する情報、対象範囲、実行タイミング、通知先を確認してから有効にしてください。まず下書きを作成してください。",
+            "prompt": "次のワークフローの設定を手伝ってください：モーニングブリーフ. 重要なメールと今日の予定を読む. 判断事項、フォローアップ、集中時間を優先順に整理. 短い朝の計画を Slack に届ける. 使用する情報、対象範囲、実行タイミング、通知先を確認してから有効にしてください。まず下書きを作成してください。",
+            "results": {
+              "one": "今日の優先事項",
+              "three": "返信や判断が必要な事項",
+              "two": "会議と集中時間"
+            },
+            "scope": "Gmail、カレンダー、Notion の更新を短い一日の計画にして Slack に送ります。",
+            "steps": {
+              "one": "重要なメールと今日の予定を読む",
+              "three": "短い朝の計画を Slack に届ける",
+              "two": "判断事項、フォローアップ、集中時間を優先順に整理"
+            },
+            "title": "明確な計画で一日を始める"
+          },
+          "recap": {
+            "cadence": "新しい会議メモを定期的に確認",
+            "description": "各会議の後に、決定事項と実行項目の要約を共有します。",
+            "name": "Slack で会議の概要を取得します",
+            "next": "使用する情報、対象範囲、実行タイミング、通知先を確認してから有効にしてください。まず下書きを作成してください。",
+            "prompt": "次のワークフローの設定を手伝ってください：Slack で会議の概要を取得します. 新しい会議の文字起こしを読む. 明示された決定、作業、担当者、期限を抽出. 指定先に短い議事録を届ける. 使用する情報、対象範囲、実行タイミング、通知先を確認してから有効にしてください。まず下書きを作成してください。",
+            "results": {
+              "one": "会議での決定事項",
+              "three": "不足している情報の明示",
+              "two": "作業と明示された担当者"
+            },
+            "scope": "各会議の後に、決定事項と実行項目の要約を共有します。",
+            "steps": {
+              "one": "新しい会議の文字起こしを読む",
+              "three": "指定先に短い議事録を届ける",
+              "two": "明示された決定、作業、担当者、期限を抽出"
+            },
+            "title": "会議を次の行動につなげる"
+          },
+          "reply": {
+            "cadence": "対象の返信が届いたとき",
+            "description": "一つのメールのやり取りを追跡し、新しい返信の要点と次の対応を知らせます。",
+            "name": "メール返信の見守り",
+            "next": "使用する情報、対象範囲、実行タイミング、通知先を確認してから有効にしてください。まず下書きを作成してください。",
+            "prompt": "次のワークフローの設定を手伝ってください：メール返信の見守り. 一つのメールスレッドと指定した送信者を追跡. 新しい返信を検出して要点をまとめる. 返信ごとに一度通知し、必要なら返信案を作成. 使用する情報、対象範囲、実行タイミング、通知先を確認してから有効にしてください。まず下書きを作成してください。 メールの返信は下書きにとどめ、私が確認して送信します。",
+            "results": {
+              "one": "届いた返信と要点",
+              "three": "必要に応じた返信下書き",
+              "two": "求められる対応や期限"
+            },
+            "scope": "一つのメールのやり取りを追跡し、新しい返信の要点と次の対応を知らせます。",
+            "steps": {
+              "one": "一つのメールスレッドと指定した送信者を追跡",
+              "three": "返信ごとに一度通知し、必要なら返信案を作成",
+              "two": "新しい返信を検出して要点をまとめる"
+            },
+            "title": "待っている返信を見逃さない"
+          },
+          "weekly": {
+            "cadence": "毎週",
+            "description": "GitHub、Gmail、カレンダーの動きを週次でまとめて Slack に送ります。",
+            "name": "個人の週次ダイジェスト",
+            "next": "使用する情報、対象範囲、実行タイミング、通知先を確認してから有効にしてください。まず下書きを作成してください。",
+            "prompt": "次のワークフローの設定を手伝ってください：個人の週次ダイジェスト. 選んだ情報源から活動を集める. 成果、未決事項、フォローアップを整理. 指定した Slack に週次まとめを届ける. 使用する情報、対象範囲、実行タイミング、通知先を確認してから有効にしてください。まず下書きを作成してください。",
+            "results": {
+              "one": "一週間の成果",
+              "three": "今後の予定",
+              "two": "未決事項とフォローアップ"
+            },
+            "scope": "GitHub、Gmail、カレンダーの動きを週次でまとめて Slack に送ります。",
+            "steps": {
+              "one": "選んだ情報源から活動を集める",
+              "three": "指定した Slack に週次まとめを届ける",
+              "two": "成果、未決事項、フォローアップを整理"
+            },
+            "title": "一週間の仕事をすっきり振り返る"
+          }
+        },
+        "next": "次のワークフロー",
+        "ownSources": "実際のワークフローには、ご自身の情報とコンテンツを使います。",
+        "placeholder": "任意 — 重視したいことを教えてください",
+        "preview": {
+          "competitors": {
+            "changed": "Changed",
+            "footer": "Source page and change history included",
+            "heading": "One change worth a closer look.",
+            "label": "競合モニタリング",
+            "now": "Now",
+            "plan": "Example company’s team plan",
+            "previous": "Previous",
+            "unit": "/ mo"
+          },
+          "inbox": {
+            "draft": "Reply draft",
+            "label": "Gmail と返信の下書きを並べ替える",
+            "later": "Your weekly digest",
+            "needsReply": "Needs reply",
+            "readLater": "Read later",
+            "review": "Review before sending",
+            "subject": "Re: Next steps",
+            "text": "Thanks for the details. I’ve reviewed the proposal and…"
+          },
+          "invoices": {
+            "amount": "Amount",
+            "example": "Example studio",
+            "file": "Invoice — September",
+            "filed": "Filed",
+            "footer": "An optional Sheet keeps the record together",
+            "label": "Gmail 請求書を Google Drive にファイルします",
+            "path": "Finance / Invoices / Sep",
+            "second": "Sample supply co.",
+            "status": "Status",
+            "vendor": "Vendor"
+          },
+          "meetings": {
+            "heading": "Your next conversation.",
+            "initials": "JL",
+            "label": "カレンダー上の会議を調査する",
+            "note": "A useful place to begin",
+            "person": "Jordan Lee",
+            "question": "Ask how the team handles customer handoffs.",
+            "role": "Operations lead · Example company",
+            "tagOne": "Company context",
+            "tagTwo": "Discussion points"
+          },
+          "metrics": {
+            "activated": "Activated",
+            "footer": "A clear period. Only the metrics you choose.",
+            "label": "毎日のメトリクスを Slack に投稿します",
+            "period": "Yesterday vs. prior day",
+            "signups": "Signups",
+            "visitors": "Visitors"
+          },
+          "morning": {
+            "footer": "2 emails need your attention",
+            "heading": "A little clarity for your day.",
+            "label": "モーニングブリーフ",
+            "meetingOne": "Team check-in",
+            "meetingTwo": "Client discovery",
+            "priority": "First things first",
+            "task": "Review the proposal before your client call"
+          },
+          "recap": {
+            "assign": "To assign",
+            "decision": "Decision: move ahead with a pilot",
+            "due": "Due",
+            "friday": "Fri",
+            "label": "Slack で会議の概要を取得します",
+            "monday": "Mon",
+            "one": "Send the revised brief",
+            "owner": "Owner",
+            "task": "Next step",
+            "team": "Team",
+            "three": "Book the next check-in",
+            "two": "Confirm the pilot scope",
+            "you": "You"
+          },
+          "reply": {
+            "heading": "The reply you were waiting for.",
+            "label": "メール返信の見守り",
+            "next": "Next step",
+            "quote": "“Thursday works for us. Could you share a short agenda?”",
+            "subject": "Re: Our next conversation",
+            "task": "Confirm the time and prepare an agenda"
+          },
+          "weekly": {
+            "heading": "A week worth looking back on.",
+            "label": "個人の週次ダイジェスト",
+            "next": "Carry into next week",
+            "one": "Shared the revised proposal",
+            "task": "Confirm the launch date with the team",
+            "two": "Wrapped up the onboarding guide"
+          }
+        },
+        "previous": "前のワークフロー",
+        "sample": "サンプル",
+        "tailor": "調整したいことはありますか？",
+        "use": "このワークフローを使う",
+        "whatHappens": "毎回の処理",
+        "whatYouGet": "得られるもの",
+        "worksWith": "使用するアプリ"
       }
     },
     "templates": {
@@ -3521,9 +3804,7 @@
       "requestFailed": "リクエストが失敗しました"
     },
     "realtime": {
-      "degraded": "ライブアップデートで問題が発生しました。ページを更新してください。",
-      "disconnected": "リアルタイム接続が切断されました",
-      "reconnecting": "リアルタイム接続を再接続中"
+      "degraded": "ライブアップデートで問題が発生しました。ページを更新してください。"
     }
   },
   "invitationRedirect": {
@@ -5192,6 +5473,9 @@
         "categoryImage": "画像",
         "categoryVideo": "動画",
         "chatModels": "チャットモデル",
+        "effort": "推論の強度",
+        "effortReset": "モデルのデフォルトに戻す",
+        "effortUnavailable": "このモデル接続では推論の強度を変更できません。続けるにはデフォルトに戻してください。",
         "fast": "速い",
         "fastImpact": "モデル速度 1.5× · クレジット消費 2.5×",
         "generationPriceTiers": {
@@ -5420,6 +5704,14 @@
           "description": "音声入力 v2 のモデルを選択します。文字起こしモデルは {{model}} で文章を整えます。",
           "title": "音声入力モデル",
           "unavailable": "利用できないモデル（{{model}}）"
+        },
+        "welcomeThread": {
+          "create": "ウェルカムチャットを作成",
+          "creating": "作成中…",
+          "defaultAgentNotReady": "ワークスペースのデフォルトエージェントを設定してから、もう一度お試しください。",
+          "description": "紹介とサンプルを含むウェルカムチャットを作成します。",
+          "failed": "ウェルカムチャットを作成できませんでした。もう一度お試しください。",
+          "title": "ウェルカムチャット"
         }
       },
       "emailSubscription": {
@@ -5704,6 +5996,21 @@
     "cancel": "キャンセル",
     "chooseFile": "ファイルを選択",
     "choosePrivateKeyFile": "秘密鍵ファイルを選択",
+    "connectionStatus": {
+      "attention_other": "{{count}} 個の SSH ホストで対応が必要です",
+      "authenticationFailed": "SSH 認証に失敗しました。ユーザー名、秘密鍵、サーバー上の権限を確認し、必要に応じてホストの編集や認証情報の置き換えを行ってください。",
+      "credentialResourceLimit": "秘密鍵が対応する処理上限を超えています。対応する暗号化設定で再エクスポートし、認証情報を置き換えてください。",
+      "hostKeyMismatch": "サーバーのホスト鍵が保存済みの識別情報と一致しません。ホスト鍵をリセットする前に、別の方法でサーバーの正当性を確認してください。",
+      "invalidCredential": "秘密鍵またはパスフレーズを読み取れませんでした。完全な秘密鍵と正しいパスフレーズで認証情報を置き換えてください。",
+      "networkFailure": "直近の SSH 接続に失敗しました。ホスト名、ポート、サーバーの稼働状況、Runner からのファイアウォール経由のアクセスを確認してください。",
+      "observedAt": "観測日時: {{time}}",
+      "protocol": "SSH ハンドシェイクに失敗しました。このポートで SSH が提供され、サーバーが互換性のあるアルゴリズムに対応しているか確認してください。",
+      "timedOut": "認証の完了前に直近の SSH 接続がタイムアウトしました。接続先、ファイアウォール、サーバーの稼働状況を確認してください。",
+      "unavailable": "SSH 接続の状態を取得できません",
+      "unsafeDestination": "このホストは許可されたパブリックアドレスに解決されません。公開 SSH 接続先に変更してください。",
+      "unsupportedCredential": "秘密鍵の形式またはアルゴリズムに対応していません。対応する OpenSSH、PKCS8、または RSA PEM 形式の鍵に置き換えてください。",
+      "unsupportedHostKey": "サーバーのホスト鍵に対応していません。サーバーで対応する Ed25519、ECDSA、または RSA のホスト鍵を設定してください。"
+    },
     "credentialsHelp": "認証情報は書き込み専用で、サンドボックスの外部に保持されます。鍵全体を貼り付けてください。空白はそのまま保持されます。送信時またはフォームを閉じたときに入力欄を消去します。",
     "delete": "ホストを削除",
     "deleteHelp": "このホストと保存された認証情報を削除しますか？Agent の最新の一覧に表示されなくなります。",
@@ -6472,6 +6779,7 @@
       "install": "インストール",
       "installDescription": "エージェントを選択し、必須パラメーターをすべて入力してください。含まれるすべての自動化がインストールされます。",
       "installed": "公式ワークフローをインストールしました",
+      "installedStatus": "インストール済み",
       "installErrorDescription": "エージェントとパラメーター値を確認して、もう一度お試しください。",
       "installErrorTitle": "公式ワークフローをインストールできませんでした",
       "installTitle": "{{name}} をインストール",

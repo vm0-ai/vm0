@@ -649,9 +649,9 @@ mod tests {
     }
 
     #[test]
-    fn response_validation_rejects_wrong_transaction_and_answer() {
+    fn response_validation_rejects_wrong_transaction() {
         let query = build_dns_query(0x1234, DNS_READINESS_HOSTNAME).unwrap();
-        let response = response_for_query(&query, Ipv4Addr::new(192, 0, 2, 2));
+        let response = response_for_query(&query, DNS_READINESS_IPV4);
 
         assert!(
             validate_dns_response(
@@ -662,6 +662,13 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn response_validation_rejects_wrong_answer() {
+        let query = build_dns_query(0x1234, DNS_READINESS_HOSTNAME).unwrap();
+        let response = response_for_query(&query, Ipv4Addr::new(192, 0, 2, 2));
+
         assert!(validate_readiness_response(&response).is_err());
     }
 

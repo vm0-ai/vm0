@@ -6,7 +6,6 @@ import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
 
 import { env } from "../../lib/env";
 import {
-  buildArtifactKey,
   buildArtifactKeyV2,
   buildArtifactPrefix,
   buildArtifactPrefixV2,
@@ -16,7 +15,6 @@ import {
   OKOU_CDN_ARTIFACTS_ORIGIN,
   OKOU_SHORT_ARTIFACTS_ORIGIN,
   publicArtifactsBaseUrlForBrand,
-  sanitizeArtifactFilename,
 } from "../../lib/file-url";
 import { inferMimetype } from "../../lib/mimetype";
 import {
@@ -544,21 +542,15 @@ export const resolveArtifactMultipartUpload$ = command(
     },
     signal: AbortSignal,
   ): Promise<ResolvedArtifactMultipartUpload | null> => {
-    const sanitizedFilename = sanitizeArtifactFilename(args.filename);
-    const v1Key = buildArtifactKey(args.userId, args.id, sanitizedFilename);
-    const v2Key = buildArtifactKeyV2(args.id, args.filename);
-    // Accept multipart uploads started by previous clients while they drain.
-    const keys = [v2Key, v1Key];
-    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-    for (const key of keys) {
-      const parts = await get(
-        tryListMultipartS3Parts(bucket, key, args.uploadId),
-      );
-      signal.throwIfAborted();
-      if (parts !== null) {
-        return { key, parts };
-      }
-    }
-    return null;
+    const key = buildArtifactKeyV2(args.id, args.filename);
+    const parts = await get(
+      tryListMultipartS3Parts(
+        env("R2_USER_ARTIFACTS_BUCKET_NAME"),
+        key,
+        args.uploadId,
+      ),
+    );
+    signal.throwIfAborted();
+    return parts === null ? null : { key, parts };
   },
 );

@@ -26,6 +26,7 @@ use crate::test_fixtures::ignored_child::{
 };
 
 const PERMISSIVE_UMASK_CHILD_ENV: &str = "OKOU_RUN_WORKSPACE_CACHE_PERMISSIVE_UMASK_TEST";
+const PUBLICATION_UMASK_ENV: &str = "OKOU_WORKSPACE_CACHE_PUBLICATION_UMASK";
 
 fn mode(path: &Path) -> u32 {
     std::fs::metadata(path).unwrap().permissions().mode() & 0o777
@@ -476,24 +477,42 @@ async fn consumed_cache_hit_promotion_moves_active_image_back_to_cache() {
 
 #[tokio::test]
 async fn promotion_enforces_private_permissions_under_permissive_umask() {
-    run_ignored_child_test(
-        "workspace_image_cache::tests::promotion::promotion_enforces_private_permissions_under_permissive_umask_child",
-        (PERMISSIVE_UMASK_CHILD_ENV, "1"),
-        &[],
-        Duration::from_secs(60),
-    )
-    .await;
+    for mask in ["0022", "0002", "0000"] {
+        run_ignored_child_test(
+            "workspace_image_cache::tests::promotion::promotion_enforces_private_permissions_under_permissive_umask_child",
+            (PERMISSIVE_UMASK_CHILD_ENV, "1"),
+            &[(PUBLICATION_UMASK_ENV, Some(mask))],
+            Duration::from_secs(60),
+        )
+        .await;
+    }
 }
 
-#[tokio::test]
+#[test]
 #[ignore]
-async fn promotion_enforces_private_permissions_under_permissive_umask_child() {
+fn promotion_enforces_private_permissions_under_permissive_umask_child() {
     if !ignored_child_test_env_guard_enabled((PERMISSIVE_UMASK_CHILD_ENV, "1")) {
         return;
     }
 
-    let _umask = UmaskGuard::set(Mode::from_bits_truncate(0o022));
-    let (_dir, paths, cache) = local_cache().await;
+    let mask = u32::from_str_radix(&std::env::var(PUBLICATION_UMASK_ENV).unwrap(), 8).unwrap();
+    let _umask = UmaskGuard::set(Mode::from_bits_truncate(mask));
+    let source_mode = if mask == 0o022 { 0o644 } else { 0o600 };
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(assert_promotion_private_permissions(source_mode));
+}
+
+async fn assert_promotion_private_permissions(source_mode: u32) {
+    let (dir, paths, cache) = local_cache().await;
+    fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700))
+        .await
+        .unwrap();
+    fs::set_permissions(paths.base_dir(), std::fs::Permissions::from_mode(0o700))
+        .await
+        .unwrap();
     let run_id = RunId::new_v4();
     let sandbox_id = sandbox::SandboxId::new_v4();
     let reuse_key = "sess-private-permissions";
@@ -512,11 +531,14 @@ async fn promotion_enforces_private_permissions_under_permissive_umask_child() {
         })
         .await;
     let active_image = paths.active_workspace_image(&sandbox_id);
-    fs::create_dir_all(active_image.parent().unwrap())
-        .await
-        .unwrap();
+    crate::host_file::ensure_dir(
+        active_image.parent().unwrap(),
+        crate::host_file::DirMode::Private,
+        "test workspace directory",
+    )
+    .unwrap();
     fs::write(&active_image, image).await.unwrap();
-    fs::set_permissions(&active_image, std::fs::Permissions::from_mode(0o644))
+    fs::set_permissions(&active_image, std::fs::Permissions::from_mode(source_mode))
         .await
         .unwrap();
     let active_metadata = fs::metadata(&active_image).await.unwrap();
@@ -552,6 +574,22 @@ async fn promotion_enforces_private_permissions_under_permissive_umask_child() {
     assert_eq!(mode(&entry_dir), 0o700);
     assert_eq!(mode(&current), 0o600);
     assert_eq!(mode(&metadata), 0o600);
+
+    let next_lease = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id: RunId::new_v4(),
+                sandbox_id: sandbox::SandboxId::new_v4(),
+                profile_name: TEST_PROFILE_NAME,
+                reuse_key: Some(reuse_key),
+                working_dir: "/workspace",
+                image_size_bytes: image.len() as u64,
+            },
+            workspace_drive_required: false,
+        })
+        .await;
+    assert_eq!(next_lease.result(), WorkspaceCacheCheckoutResult::Hit);
+    assert_eq!(fs::read(&current).await.unwrap(), image);
 }
 
 #[tokio::test]

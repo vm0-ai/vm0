@@ -33,6 +33,10 @@ Token names describe meaning rather than a page or component. A reusable interac
 
 Components must not introduce local CSS variables as an alternate token registry. A runtime value that is genuinely computed by the component may use a narrowly named custom property as data, while its visual semantics still come from Tailwind utilities and registered tokens.
 
+One hairline serves the whole product. `--default-border-width` in the shared `@theme` is 0.5px, and Tailwind's bare `border`, `border-t`, `border-x`, `divide-y`, and their siblings all read it, so a component asks for "a border" and the system decides how thick it is. Components must not hand-write a width: an arbitrary width such as `border-[0.7px]`, or a literal width inside a `style` prop, is a second registry for a decision this token already owns. `border-0` and the deliberate emphasis widths such as `border-2` stay available, because they express a different decision rather than a competing value for the same one.
+
+The sub-pixel value is a declaration of intent as much as a measurement. Blink and Gecko round a non-zero border up to one device pixel, so it renders exactly like 1px there and layout is unchanged in every engine; WebKit can draw the true hairline on a high-density display. Do not treat a width below 1px as a way to make a border visibly lighter in Chromium — reach for the border color for that.
+
 Color-theme presets in the App stylesheet share their anchor and companion colors between picker swatches and workspace ambience. Daydream uses cool blue and violet, while Cotton sky uses pastel pink and blue. Each preset's hue and ring values keep semantic surfaces, selected states, and focus indicators aligned with that palette in Light/Dark.
 
 ## Token and variant governance
@@ -80,7 +84,7 @@ remain available without hovering.
 | Decision        | Shared token / utility                                    | Theme contract                                                                                       |
 | --------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | Fill            | `bg-card`                                                 | Existing semantic card fill in each theme                                                            |
-| Border          | `--color-surface-border`, `--border-width-surface`        | Gray 400 at 0.7 CSS pixels; the browser rounds for its device scale                                  |
+| Border          | `--color-surface-border`, `--border-width-surface`        | Gray 400 at the shared `--default-border-width` hairline; the browser rounds for its device scale    |
 | Radius          | `rounded-surface`, `rounded-surface-compact`              | 1.25rem and a fixed 12px respectively in every theme                                                 |
 | Elevation       | `shadow-surface` via `--surface-shadow`                   | Neutral lift in Light/Dark; the gradient theme uses the canonical state-layer hue with reduced alpha |
 | Pointer overlay | `bg-state-hover-overlay`                                  | The shared interaction-state overlay painted above the opaque card fill                              |
@@ -93,6 +97,28 @@ The pointer overlay reuses the shared `bg-state-hover-overlay` token rather than
 Integration and connector tests scope controls through the documented `data-slot="integration-card"` and `data-slot="connector-card"` component boundaries. These slots carry no styles; tests must not locate surfaces through utility or legacy class names.
 
 The `okou-card` selector and its consumers have been removed. This equivalent migration also removes background, border, shadow, and focus-ring overrides that the old unlayered selector had suppressed; activating those overrides would be a separate visual change. Existing `--okou-card-*` variables still consumed by other legacy components remain frozen until those components migrate; they are not a supported API for new surfaces.
+
+### Inline badges
+
+`Badge` from `@okouai/ui` owns the shared inline badge and tag treatment: role labels, status pills, version chips, and diagnostic key/value chips. It renders a `span`; pass `render={<code />}` for another host element. It adds no wrapper and takes no size or tone props.
+
+| Decision    | Shared token / utility                        | Contract                                                                                  |
+| ----------- | --------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Fill        | `bg-gray-0`                                   | The neutral base of the gray scale in each theme                                          |
+| Border      | `border`, `--color-surface-border`            | Gray 400 at the shared `--default-border-width` hairline                                  |
+| Radius      | `rounded-md`                                  | One radius for every badge                                                                |
+| Padding     | `px-2 py-0.5`                                 | One inset for every badge                                                                 |
+| Line height | `leading-snug`                                | 1.375 of the badge's own font size, never an ancestor's                                   |
+| Layout      | `inline-flex items-center gap-1 align-middle` | Icon and label share one row; `align-middle` applies where the badge is a real inline box |
+| Icon        | `[&>svg]:size-3`                              | A direct child icon is 12px; call sites pass no size                                      |
+
+The badge owns geometry and nothing else. Typography and foreground stay with the caller, because a badge reads as secondary beside body text in one place and as the value itself in another; pass `text-xs font-medium text-muted-foreground` or let the badge inherit its context. Width constraints and flex behaviour (`max-w-full`, `break-all`, `min-w-0`, `shrink-0`) also stay with the caller.
+
+Tests scope badges through `data-slot="badge"`, which carries no styles. The icon rule and that slot follow shadcn's badge, which this package's components come from; the rest of shadcn's badge does not fit, because it bakes in `text-xs font-medium` that the diagnostic chips inherit from their row instead, and `whitespace-nowrap overflow-hidden` that would stop the long key/value chips from wrapping.
+
+Line height belongs to the badge because a font-size utility with an arbitrary value carries no paired line height. A badge that declared only `text-[11px]` therefore took its box from whatever `line-height` an ancestor happened to set: the same badge measured 22px, 26px, or 34px tall across four ancestors. It reuses the page-surface border tokens rather than declaring badge-specific aliases, so one hairline decision keeps one owner.
+
+The `okou-badge`, `okou-pill`, and `okou-border-r` selectors and their consumers have been removed. `okou-pill` was scoped to `.okou-app` and set the muted foreground; its only consumer now spells that foreground itself. `okou-border-r` was a single settings-dialog divider and became `border-r border-r-gray-300` on that nav, keeping its lighter Gray 300 stroke while its width joins the shared hairline token.
 
 ## Exception boundary
 

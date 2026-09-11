@@ -1,5 +1,5 @@
 import type { ReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
-import { and, asc, eq, exists, gt, gte, notExists, sql } from "drizzle-orm";
+import { and, asc, eq, exists, gt, notExists, sql } from "drizzle-orm";
 import { alias, unionAll } from "drizzle-orm/pg-core";
 import type {
   ChatThreadEvent,
@@ -277,6 +277,8 @@ async function getChatThreadEventRowsAfterCursor(
             eq(cursorChatThreadEvent.userId, args.userId),
             eq(cursorChatThreadEvent.orgId, args.orgId),
             eq(cursorChatThreadEvent.seqId, args.sinceSeqId),
+            // Snapshot advancement must not invalidate retained event cursors.
+            // Exclude only the exact watermark so the union branches stay disjoint.
             notExists(
               db
                 .select({ userId: chatThreadSnapshots.userId })
@@ -285,7 +287,7 @@ async function getChatThreadEventRowsAfterCursor(
                   and(
                     eq(chatThreadSnapshots.userId, args.userId),
                     eq(chatThreadSnapshots.orgId, args.orgId),
-                    gte(chatThreadSnapshots.latestEventSeqId, args.sinceSeqId),
+                    eq(chatThreadSnapshots.latestEventSeqId, args.sinceSeqId),
                   ),
                 ),
             ),

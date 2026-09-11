@@ -58,6 +58,7 @@ function setupAuthV2Page(mode: AuthV2PageMode) {
     let signInSignals: AuthV2SignInSignals | null = null;
     let initializedSignInSignals: AuthV2SignInSignals | null = null;
     let signUpSignals: AuthV2SignUpSignals | null = null;
+    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
     const retryInvitation$ = command(
       async ({ set }, retrySignal: AbortSignal) => {
         if (await set(redeemAuthV2Invitation$, retrySignal)) {

@@ -1,4 +1,4 @@
-import { ClerkProvider as BaseClerkProvider, useClerk } from "@clerk/react";
+import { ClerkProvider as BaseClerkProvider } from "@clerk/react";
 import type { BrowserClerk } from "@clerk/shared/types";
 import type { ui } from "@clerk/ui";
 import { useGet, useSet } from "ccstate-react";
@@ -29,23 +29,12 @@ function ClerkRuntimeBoundary({
   children,
   signals,
 }: Pick<ClerkProviderProps, "children" | "signals">) {
-  const clerk = useClerk();
   const ready = useGet(signals.ready$);
   const attach = useSet(signals.attach$);
 
   return (
     <>
-      <span
-        hidden
-        ref={(element) => {
-          // The public hook supplies this provider's runtime. Bind it only
-          // after commit and forward the onRef cleanup to React.
-          if (element) {
-            return attach(element, clerk);
-          }
-          return undefined;
-        }}
-      />
+      <span hidden ref={attach} />
       {ready ? children : null}
     </>
   );

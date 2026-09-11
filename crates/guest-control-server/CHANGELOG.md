@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.21.2](https://github.com/vm0-ai/vm0/compare/guest-control-server-v0.21.1...guest-control-server-v0.21.2) (2026-09-10)
+
+## [0.21.1](https://github.com/vm0-ai/vm0/compare/guest-control-server-v0.21.0...guest-control-server-v0.21.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **guest-control:** classify oom metadata apart from terminal diagnostics ([#33238](https://github.com/vm0-ai/vm0/issues/33238)) ([7e0a677](https://github.com/vm0-ai/vm0/commit/7e0a67723010f1088d5365e8dcce1801217e772c))
+
+
+### Performance Improvements
+
+* **sandbox-firecracker:** share direct cgroup process launches ([#33141](https://github.com/vm0-ai/vm0/issues/33141)) ([61f225c](https://github.com/vm0-ai/vm0/commit/61f225cf47679330cd2be973addd8723b9e3fbf9))
+
 ## [0.21.0](https://github.com/vm0-ai/vm0/compare/guest-control-server-v0.20.6...guest-control-server-v0.21.0) (2026-09-09)
 
 

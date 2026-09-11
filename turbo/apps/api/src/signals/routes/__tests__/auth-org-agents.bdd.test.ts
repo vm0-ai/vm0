@@ -518,70 +518,141 @@ describe("ORG-03 onboarding status mapping", () => {
     });
   });
 
-  it("locks the system default assistant name as Okou", async () => {
-    const admin = api.user();
-    api.acceptAgentStorageWrites();
+  it.each(["admin", "member"] as const)(
+    "protects the default Okou for its %s owner",
+    async (role) => {
+      const admin = api.user();
+      api.acceptAgentStorageWrites();
+      const onboarding = await api.readOnboardingStatus(admin);
+      const defaultAgentId = onboarding.defaultAgentId;
+      if (!defaultAgentId) {
+        throw new Error("Expected the workspace default agent");
+      }
+      const owner =
+        role === "admin"
+          ? admin
+          : api.user({
+              userId: admin.userId,
+              orgId: admin.orgId,
+              orgRole: "org:member",
+            });
+      const before = await api.readAgent(owner, defaultAgentId);
+      expect(before).toMatchObject({
+        isDefaultAgent: true,
+        displayName: "Okou",
+        visibility: "public",
+      });
+      await expect(api.listAgents(owner)).resolves.toContainEqual(before);
 
-    const onboarding = await api.readOnboardingStatus(admin);
-    expect(onboarding.defaultAgentMetadata?.displayName).toBe("Okou");
-    const defaultAgentId = onboarding.defaultAgentId;
-    if (!defaultAgentId) {
-      throw new Error("Expected lazy onboarding to create the default agent");
-    }
+      for (const update of [
+        { displayName: "Renamed default", code: "DEFAULT_AGENT_NAME_LOCKED" },
+        { avatarUrl: "preset:4", code: "DEFAULT_AGENT_AVATAR_LOCKED" },
+        {
+          visibility: "private" as const,
+          code: "DEFAULT_AGENT_VISIBILITY_LOCKED",
+        },
+      ]) {
+        const { code, ...fields } = update;
+        const body = {
+          ...fields,
+          isDefaultAgent: false,
+          description: "Must not be saved",
+          sound: "friendly",
+        };
+        const patched = await api.requestUpdateAgentMetadata(
+          owner,
+          defaultAgentId,
+          body,
+          [400],
+        );
+        expect(patched.body).toMatchObject({ error: { code } });
+        const replaced = await api.requestUpdateAgent(
+          owner,
+          defaultAgentId,
+          body,
+          [400],
+        );
+        expect(replaced.body).toMatchObject({ error: { code } });
+        await expect(
+          api.readAgent(owner, defaultAgentId),
+        ).resolves.toStrictEqual(before);
+      }
+      const clearedAvatar = await api.requestUpdateAgentMetadata(
+        owner,
+        defaultAgentId,
+        { avatarUrl: null },
+        [400],
+      );
+      expect(clearedAvatar.body).toMatchObject({
+        error: { code: "DEFAULT_AGENT_AVATAR_LOCKED" },
+      });
+      const deletion = await api.requestDeleteAgent(
+        owner,
+        defaultAgentId,
+        [400],
+      );
+      expect(deletion.body).toMatchObject({
+        error: { code: "DEFAULT_AGENT_DELETE_LOCKED" },
+      });
+      await expect(api.readAgent(owner, defaultAgentId)).resolves.toStrictEqual(
+        before,
+      );
+      expect((await api.readOnboardingStatus(owner)).defaultAgentId).toBe(
+        defaultAgentId,
+      );
 
-    await expect(api.readAgent(admin, defaultAgentId)).resolves.toMatchObject({
-      displayName: "Okou",
-    });
+      const permitted = {
+        displayName: "Okou",
+        avatarUrl: DEFAULT_AGENT_AVATAR_URL,
+        visibility: "public" as const,
+        description: "Workspace role",
+        sound: "friendly",
+      };
+      await expect(
+        api.updateAgent(owner, defaultAgentId, permitted),
+      ).resolves.toMatchObject(permitted);
+      await expect(
+        api.updateAgentMetadata(owner, defaultAgentId, {
+          description: "Updated role",
+          sound: "direct",
+        }),
+      ).resolves.toMatchObject({
+        description: "Updated role",
+        sound: "direct",
+        isDefaultAgent: true,
+      });
+      await expect(
+        bdd.updateAgentInstructions(
+          owner,
+          defaultAgentId,
+          "Workspace-specific instructions",
+        ),
+      ).resolves.toMatchObject({ isDefaultAgent: true });
+      const member = api.user({ orgId: admin.orgId, orgRole: "org:member" });
+      await expect(
+        api.readAgent(member, defaultAgentId),
+      ).resolves.toMatchObject({
+        isDefaultAgent: true,
+        visibility: "public",
+      });
 
-    const agents = await api.listAgents(admin);
-    expect(
-      agents.find((agent) => {
-        return agent.agentId === defaultAgentId;
-      })?.displayName,
-    ).toBe("Okou");
-    const customZero = await api.createAgent(admin, { displayName: "Zero" });
-    expect(customZero.displayName).toBe("Zero");
-    await expect(
-      api.readAgent(admin, customZero.agentId),
-    ).resolves.toMatchObject({ displayName: "Zero" });
-
-    const patched = await api.updateAgentMetadata(admin, defaultAgentId, {
-      displayName: "Renamed default agent",
-      description: "Patched from Okou",
-      avatarUrl: "preset:4",
-    });
-    expect(patched).toMatchObject({
-      displayName: "Okou",
-      description: "Patched from Okou",
-      avatarUrl: DEFAULT_AGENT_AVATAR_URL,
-    });
-    await expect(api.readAgent(admin, defaultAgentId)).resolves.toMatchObject({
-      displayName: "Okou",
-      description: "Patched from Okou",
-    });
-
-    const replaced = await api.updateAgent(admin, defaultAgentId, {
-      displayName: "Another default name",
-      description: "Replaced from Okou",
-      avatarUrl: "preset:3",
-    });
-    expect(replaced).toMatchObject({
-      displayName: "Okou",
-      description: "Replaced from Okou",
-      avatarUrl: DEFAULT_AGENT_AVATAR_URL,
-    });
-    await expect(api.readAgent(admin, defaultAgentId)).resolves.toMatchObject({
-      displayName: "Okou",
-      description: "Replaced from Okou",
-    });
-
-    await api.updateAgentMetadata(admin, defaultAgentId, {
-      displayName: "Research Lead",
-    });
-    await expect(api.readAgent(admin, defaultAgentId)).resolves.toMatchObject({
-      displayName: "Okou",
-    });
-  });
+      const custom = await api.createAgent(owner, { displayName: "Okou" });
+      expect(custom.isDefaultAgent).toBeFalsy();
+      await expect(
+        api.updateAgent(owner, custom.agentId, {
+          displayName: "Research",
+          avatarUrl: "preset:2",
+          visibility: "private",
+        }),
+      ).resolves.toMatchObject({
+        displayName: "Research",
+        avatarUrl: "preset:2",
+        visibility: "private",
+        isDefaultAgent: false,
+      });
+      await api.deleteAgent(owner, custom.agentId);
+    },
+  );
 
   it("maps onboarding status across the setup, payment, entitlement, and agent-deletion journey", async () => {
     const noOrg = api.user({ orgId: null });
@@ -677,7 +748,7 @@ describe("ORG-03 onboarding status mapping", () => {
       },
     });
 
-    await api.deleteAgent(admin, agentId);
+    await api.requestDeleteAgent(admin, agentId, [400]);
     const orphaned = await api.readOnboardingStatus(admin);
     expect(orphaned).toMatchObject({
       needsOnboarding: false,
@@ -692,7 +763,7 @@ describe("ORG-03 onboarding status mapping", () => {
       },
     });
     expect(orphaned.defaultAgentId).toBeTruthy();
-    expect(orphaned.defaultAgentId).not.toBe(agentId);
+    expect(orphaned.defaultAgentId).toBe(agentId);
     const preservedPaidBilling = await runsApi.readBillingStatus(admin);
     expect(preservedPaidBilling).toMatchObject({
       tier: "pro",

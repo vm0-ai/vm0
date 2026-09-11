@@ -503,13 +503,6 @@ body {
   user-select: text;
 }
 
-/* Pill/tag (e.g. status badge, "Super agent") */
-.okou-app .okou-pill {
-  background-color: hsl(var(--gray-0));
-  border: 0.7px solid hsl(var(--gray-400));
-  color: hsl(var(--muted-foreground));
-}
-
 /* Reusable 0.7px border utilities — replaces inline style={{ border: "0.7px solid ..." }} */
 .okou-border {
   border: 0.7px solid hsl(var(--gray-400));
@@ -517,55 +510,11 @@ body {
 .okou-border-t {
   border-top: 0.7px solid hsl(var(--gray-400));
 }
-.okou-border-r {
-  border-right: 0.7px solid hsl(var(--gray-300));
-}
 
 /* Avatar / logo thumbnails: a hairline lighter than okou-border, so the edge of
    a picture stays readable without the stroke reading as a frame. */
 .okou-thumb-border {
   border: 0.5px solid hsl(var(--gray-400));
-}
-
-.okou-realtime-status-reconnecting {
-  opacity: 0;
-  animation: okou-realtime-status-reveal 160ms cubic-bezier(0.16, 1, 0.3, 1)
-    300ms forwards;
-}
-
-.okou-realtime-cloud-flow {
-  stroke-dasharray: 3 6;
-  animation: okou-realtime-cloud-flow 1.05s linear infinite;
-}
-
-@keyframes okou-realtime-status-reveal {
-  to {
-    opacity: 0.8;
-  }
-}
-
-@keyframes okou-realtime-cloud-flow {
-  to {
-    stroke-dashoffset: -18;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .okou-realtime-status-reconnecting {
-    opacity: 0.8;
-    animation: none;
-  }
-
-  .okou-realtime-cloud-flow {
-    stroke-dasharray: none;
-    animation: none;
-  }
-}
-
-/* Role / status badge: pill with 0.7px border on neutral background */
-.okou-badge {
-  border: 0.7px solid hsl(var(--gray-400));
-  background-color: hsl(var(--gray-0));
 }
 
 /* Left nav */

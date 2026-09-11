@@ -846,6 +846,26 @@ function discoveryCategoryCounts(
     : undefined;
 }
 
+/**
+ * The categories the filter offers. They come from the catalog's own category
+ * list rather than from the connectors that came back, because inside a
+ * category the response holds only that category and a filter offering
+ * nothing else is a dead end.
+ */
+function categoryFilterSections(
+  categoryMetadata: PublicConnectorCatalogCategoryMetadata | undefined,
+): ConnectorCategorySection<PlatformConnectorCatalogStatusItem>[] {
+  return (categoryMetadata?.categories ?? []).map((category) => {
+    return {
+      category: category.id,
+      label: category.label,
+      menuLabel: category.menuLabel,
+      groupId: category.groupId,
+      connectors: [],
+    };
+  });
+}
+
 interface ConnectorsBrowseModel {
   readonly showShelves: boolean;
   /**
@@ -871,7 +891,6 @@ interface ConnectorsBrowseModel {
  */
 function buildConnectorsBrowseModel({
   catalogItems,
-  allConnectors,
   categoryMetadata,
   categoryCounts,
   otherCategoryLabel,
@@ -884,7 +903,6 @@ function buildConnectorsBrowseModel({
   remoteAccessLabel,
 }: {
   readonly catalogItems: readonly PlatformConnectorCatalogStatusItem[];
-  readonly allConnectors: readonly PlatformConnectorCatalogStatusItem[];
   readonly categoryMetadata: PublicConnectorCatalogCategoryMetadata | undefined;
   readonly categoryCounts: Readonly<Record<string, number>> | undefined;
   readonly otherCategoryLabel: string;
@@ -922,7 +940,10 @@ function buildConnectorsBrowseModel({
     // The page's card grid is three wide, so six is two whole rows.
     previewSize: 6,
   });
-  const chipSections = sectionsOf(allConnectors);
+  // The filter lists the catalog's categories, not the ones the current
+  // response happens to contain: inside a category the response holds only
+  // that category, and a filter that offers nothing else is a dead end.
+  const chipSections = categoryFilterSections(categoryMetadata);
   if (sshAvailable) {
     chipSections.push({
       category: REMOTE_ACCESS_CATEGORY,
@@ -1531,7 +1552,6 @@ export function ConnectorsPage() {
   );
   const browse = buildConnectorsBrowseModel({
     catalogItems: filteredConnectors,
-    allConnectors,
     categoryMetadata,
     categoryCounts: discoveryCategoryCounts(catalogStatusLoadable),
     otherCategoryLabel,

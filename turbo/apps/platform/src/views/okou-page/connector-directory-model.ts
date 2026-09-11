@@ -30,6 +30,12 @@ export interface ConnectorDirectoryModel {
   readonly discover: readonly PlatformConnectorCatalogStatusItem[];
   readonly custom: readonly CustomConnectorResponse[];
   readonly categorySections: readonly ConnectorCategorySection<PlatformConnectorCatalogStatusItem>[];
+  /**
+   * The categories the chip row offers. They come from the browse response
+   * rather than from what is currently shown, because a chip row that empties
+   * itself when you pick a chip cannot be used to pick another one.
+   */
+  readonly chipSections: readonly ConnectorCategorySection<PlatformConnectorCatalogStatusItem>[];
   /** Shelves for the default browse view: no search, no chosen category. */
   readonly shelfLayout: ConnectorShelfLayout<PlatformConnectorCatalogStatusItem>;
   readonly discoverSlugs: readonly ConnectorSlug[];
@@ -80,6 +86,7 @@ function slugsOf(
 export function buildConnectorDirectoryModel({
   connected,
   unconnected,
+  chipCatalog,
   connectedCustom,
   unconnectedCustom,
   search,
@@ -91,6 +98,8 @@ export function buildConnectorDirectoryModel({
 }: {
   readonly connected: readonly PlatformConnectorCatalogStatusItem[];
   readonly unconnected: readonly PlatformConnectorCatalogStatusItem[];
+  /** Every connector the browse response carried, for the chip row. */
+  readonly chipCatalog: readonly PlatformConnectorCatalogStatusItem[];
   readonly connectedCustom: readonly CustomConnectorResponse[];
   readonly unconnectedCustom: readonly CustomConnectorResponse[];
   readonly search: string;
@@ -118,13 +127,20 @@ export function buildConnectorDirectoryModel({
       return matchesCustomConnectorSearch(search, connector);
     },
   );
-  const categorySections = groupConnectorsByCategory(
-    unconnected,
-    localizeConnectorCategoryMetadata(categoryMetadata),
-    otherCategoryLabel,
-  ).flatMap((group) => {
-    return group.sections;
-  });
+  const localizedMetadata = localizeConnectorCategoryMetadata(categoryMetadata);
+  const sectionsOf = (
+    items: readonly PlatformConnectorCatalogStatusItem[],
+  ): ConnectorCategorySection<PlatformConnectorCatalogStatusItem>[] => {
+    return groupConnectorsByCategory(
+      items,
+      localizedMetadata,
+      otherCategoryLabel,
+    ).flatMap((group) => {
+      return group.sections;
+    });
+  };
+  const categorySections = sectionsOf(unconnected);
+  const chipSections = sectionsOf(chipCatalog);
   const shelfLayout = buildConnectorShelves({
     sections: categorySections,
     categoryCounts,
@@ -144,6 +160,7 @@ export function buildConnectorDirectoryModel({
     discover,
     custom,
     categorySections,
+    chipSections,
     shelfLayout,
     discoverSlugs:
       search.trim() || category !== null || shelfLayout.shelves.length === 0

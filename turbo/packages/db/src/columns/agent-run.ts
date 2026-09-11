@@ -23,7 +23,7 @@ import type {
   AgentRunVars,
 } from "@okouai/db/jsonb-contracts/agent-run-session-conversation";
 
-/** Shared physical and runtime column builders; Goal state is migration-only. */
+/** Shared physical and runtime column builders. */
 export function agentRunColumns(sessionId: () => AnyPgColumn) {
   return {
     id: uuid("id").defaultRandom().primaryKey(),

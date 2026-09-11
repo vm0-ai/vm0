@@ -45,6 +45,11 @@ export interface FeatureSwitchContext {
  * Registry of all feature switches
  */
 const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
+  [FeatureSwitchKey.WelcomeThread]: {
+    maintainer: "lancy@okou.ai",
+    description: "Manually create a welcome conversation with fixed examples",
+    enabled: false,
+  },
   [FeatureSwitchKey.ThreadActivitySummary]: {
     maintainer: "lancy@okou.ai",
     description:
@@ -94,6 +99,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "yuma@okou.ai",
     description: "Enable the Canva design connector",
     enabled: false,
+  },
+  [FeatureSwitchKey.CalendlyOAuthConnector]: {
+    maintainer: "yuma@okou.ai",
+    description: "Enable Calendly OAuth connections",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.CalComConnector]: {
     maintainer: "yuma@okou.ai",
@@ -188,7 +199,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.MailchimpConnector]: {
     maintainer: "yuma@okou.ai",
     description: "Enable the Mailchimp email marketing connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.ResendConnector]: {
     maintainer: "yuma@okou.ai",
@@ -314,11 +325,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Choose model reasoning effort for Codex and Claude Code chats.",
     enabled: false,
+    enabledUserHashes: ["032a75d8"], // Bingjie's account, including API contexts without email
+    enabledEmailHashes: ["6490c77f"], // bingjie@okou.ai
   },
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "lancy@okou.ai",
     description:
-      "Run owned chat threads with the official Pi runtime, native session persistence, and shared memory learning across interactive, Automation, and Goal turns.",
+      "Run owned chat threads with the official Pi runtime, native session persistence, and shared memory learning across interactive and automation turns.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -374,6 +387,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Replace supported Codex and Claude Code limit errors with recovery actions in chat.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ReferenceImages]: {
+    maintainer: "bingjie@okou.ai",
+    description:
+      "Enable reusable private and organization-visible image references.",
+    enabled: false,
   },
   // Every artifact privacy slice in #32492 uses this same rollout switch.
   [FeatureSwitchKey.PrivateArtifacts]: {
@@ -475,6 +494,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "liangyou@okou.ai",
     description: "Enable standalone Runner-mediated SSH configuration",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ConnectorDirectory]: {
     maintainer: "tongx@okou.ai",
@@ -487,6 +507,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@okou.ai",
     description:
       "Pin chats from the desktop title and keep Pin, Share, and More visible in the mobile thread header.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ComposerTemplateChipCover]: {
+    maintainer: "tongx@okou.ai",
+    description:
+      "Show the chosen template's cover image on the composer's inline template chip instead of a generic glyph.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

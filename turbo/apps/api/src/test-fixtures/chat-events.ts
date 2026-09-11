@@ -32,7 +32,6 @@ import { githubInstallations } from "@okouai/db/schema/github-installation";
 import { runOutputLegacyPiEvents } from "@okouai/db/schema/run-output-legacy-pi-event";
 import { runOutputMaterializations } from "@okouai/db/schema/run-output-materialization";
 import { runOutputMemoryCitations } from "@okouai/db/schema/run-output-memory-citation";
-import { threadGoals } from "@okouai/db/schema/thread-goal";
 import { usageEvent } from "@okouai/db/schema/usage-event";
 import {
   and,
@@ -2918,16 +2917,6 @@ export async function insertCanonicalChatEventWritesFixture(args: {
       sessionId: interruptTargetSessionId,
       status: "queued",
       prompt: "canonical interrupt target",
-    });
-    await tx.insert(threadGoals).values({
-      id: single.goalId,
-      orgId: args.orgId,
-      ownerUserId: args.userId,
-      agentId: args.agentId,
-      chatThreadId: args.threadId,
-      status: "active",
-      objective: "canonical storage goal",
-      objectiveBrief: "canonical storage goal",
     });
     await insertCanonicalSingleWrites(tx, args.threadId, single);
     await insertCanonicalBatchWrites(tx, args.threadId, batch);

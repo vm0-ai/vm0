@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import http.client
+import socket
 import threading
 import urllib.parse
 from collections.abc import Mapping
 from dataclasses import dataclass
+from http.server import ThreadingHTTPServer
 from types import TracebackType
 from unittest.mock import patch
+
+import pytest
 
 from tests.auth_endpoint_helpers import FakeAuthEndpoint
 from tests.thread_helpers import ThreadUnderTest, wait_for_event
@@ -156,6 +160,56 @@ def _start_post(
     thread = ThreadUnderTest(target=post, name=f"http-test-helper-{key}")
     thread.start()
     return thread
+
+
+@pytest.mark.parametrize("failure_point", ["__init__", "start"])
+@pytest.mark.parametrize("failure_type", [RuntimeError, OSError])
+def test_threaded_http_server_closes_listener_after_startup_failure(
+    failure_point: str,
+    failure_type: type[Exception],
+) -> None:
+    server = ThreadedHttpTestServer(
+        request_factory=_CapturedRequest,
+        default_status=204,
+        thread_name="startup-failure-http-test-server",
+    )
+    failure = failure_type("injected thread startup failure")
+    listener: socket.socket | None = None
+
+    def fail_startup(*args: object, **kwargs: object) -> None:
+        nonlocal listener
+        assert server._server is not None
+        listener = server._server.socket
+        raise failure
+
+    try:
+        with (
+            patch.object(threading.Thread, failure_point, side_effect=fail_startup),
+            # An incorrect rollback must fail rather than block in shutdown().
+            patch.object(
+                ThreadingHTTPServer,
+                "shutdown",
+                side_effect=AssertionError("cannot shut down an unstarted server"),
+            ),
+            pytest.raises(failure_type, match="injected thread startup failure") as caught,
+            server.run(),
+        ):
+            pytest.fail("failed startup unexpectedly yielded")
+
+        assert caught.value is failure
+        assert listener is not None
+        assert listener.fileno() == -1
+        with pytest.raises(AssertionError):
+            _ = server.api_url
+    finally:
+        if listener is not None:
+            listener.close()
+
+    with server.run():
+        assert _post(f"{server.api_url}/recovered") == (204, b"")
+
+    with pytest.raises(AssertionError):
+        _ = server.api_url
 
 
 def test_threaded_http_server_aligns_responses_with_recorded_order():

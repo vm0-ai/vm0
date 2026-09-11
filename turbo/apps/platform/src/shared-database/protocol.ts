@@ -260,26 +260,21 @@ const chatThreadReadCursorUpdatedMessageSchema = z
   })
   .strict();
 
-export const sharedDatabaseConnectionStatusSchema = z.enum([
-  "connecting",
-  "connected",
-  "disconnected",
-]);
-
-export type SharedDatabaseConnectionStatus = z.infer<
-  typeof sharedDatabaseConnectionStatusSchema
->;
-
-const statusMessageSchema = z
-  .object({
-    type: z.literal("status"),
-    status: sharedDatabaseConnectionStatusSchema,
-  })
-  .strict();
-
 const realtimeSubscribedMessageSchema = z
   .object({
     type: z.literal("realtime-subscribed"),
+    subscriptionId: requestIdSchema,
+  })
+  .strict();
+
+/**
+ * Ably reported a continuity gap for this subscription. The Worker owns the
+ * channel, so it is the only side that sees `ChannelStateChange.resumed`; the
+ * tab reacts exactly as it would to an unseen event on the topic.
+ */
+const realtimeResyncMessageSchema = z
+  .object({
+    type: z.literal("realtime-resync"),
     subscriptionId: requestIdSchema,
   })
   .strict();
@@ -308,8 +303,8 @@ export const sharedDatabaseWorkerMessageSchema = z.discriminatedUnion("type", [
   workerUnavailableMessageSchema,
   reloadComputedMessageSchema,
   chatThreadReadCursorUpdatedMessageSchema,
-  statusMessageSchema,
   realtimeSubscribedMessageSchema,
+  realtimeResyncMessageSchema,
   realtimeEventMessageSchema,
   realtimeSubscriptionErrorMessageSchema,
 ]);

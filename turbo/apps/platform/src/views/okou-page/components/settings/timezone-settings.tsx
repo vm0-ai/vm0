@@ -121,7 +121,7 @@ export function TimezoneSettings() {
     : [currentTimezone, ...COMMON_TIMEZONES];
 
   return (
-    <div className="flex flex-col gap-3">
+    <div data-slot="timezone-setting" className="flex flex-col gap-3">
       <PreferenceCardRow
         icon={Clock}
         title={t(($) => {
@@ -137,7 +137,7 @@ export function TimezoneSettings() {
             onValueChange={handleChange}
             disabled={loading}
           >
-            <SelectTrigger className="okou-btn-morandi">
+            <SelectTrigger className="border-control-border bg-control-surface [&:hover]:bg-state-hover-overlay">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

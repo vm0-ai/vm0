@@ -44,10 +44,7 @@ const sha256HexSchema = z
 
 const piMemoryPhase2CheckpointAttestationSchema = z
   .object({
-    // New Guests require receipt-aware prepare/commit. Old APIs reject v2
-    // before upload. Read v1 while pinned Guests drain (up to two hours);
-    // remove v1 under #31067 after that drain and the API rollback window.
-    schemaVersion: z.number().int().min(1).max(2),
+    schemaVersion: z.literal(2),
     leaseToken: z.uuid(),
     claimedRevision: z.number().int().positive(),
     claimedBaseVersionId: sha256HexSchema,
@@ -876,7 +873,11 @@ export const webhookHeartbeatContract = c.router({
  * Metric data point schema
  */
 const metricDataSchema = z.object({
-  memory: oomEvidenceSchema.optional(),
+  // A periodic memory snapshot rides along with ordinary metrics. Rejecting it
+  // must never discard the system logs, metrics, network logs, and sandbox
+  // operations batched in the same request; the dedicated `oomEvidence` field
+  // below stays strict because it decides the delivery acknowledgement.
+  memory: oomEvidenceSchema.optional().catch(undefined),
   ts: z.string(),
   cpu: z.number(),
   cpu_steal_percent: z.number().optional(),

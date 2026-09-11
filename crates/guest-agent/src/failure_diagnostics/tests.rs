@@ -965,6 +965,32 @@ fn cli_failure_reason_classifies_pi_provider_http_unavailability() {
 }
 
 #[test]
+fn cli_failure_reason_classifies_pi_upstream_non_api_response_by_observed_status() {
+    for (status, expected_reason) in [
+        (429, Some(FailureReason::ProviderRateLimited)),
+        (500, Some(FailureReason::ProviderServerError)),
+        (502, Some(FailureReason::ProviderServerError)),
+        (529, Some(FailureReason::ProviderOverloaded)),
+        // A client-side status is not an expected upstream condition, so it
+        // stays unclassified and keeps its error-level report.
+        (403, None),
+        (404, None),
+    ] {
+        let message = format!(
+            "upstream_non_api_response status={status} content_type=html bytes=4711 digest=1a2b3c4d"
+        );
+
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::Pi,
+            FailureDetailSource::PiResult,
+            &message,
+        );
+
+        assert_eq!(reason, expected_reason, "message: {message}");
+    }
+}
+
+#[test]
 fn cli_failure_reason_rejects_untrusted_pi_provider_http_contexts() {
     const MESSAGE: &str = "provider HTTP 503: no healthy upstream";
 
@@ -998,6 +1024,42 @@ fn cli_failure_reason_rejects_untrusted_pi_provider_http_contexts() {
         );
 
         assert_eq!(reason, None, "message: {message}");
+    }
+}
+
+#[test]
+fn cli_failure_reason_rejects_pi_upstream_status_without_runtime_evidence() {
+    for message in [
+        // The guest-side fallback never observed the transport.
+        "upstream_non_api_response status=unknown content_type=unknown bytes=4711 digest=1a2b3c4d",
+        // Model prose must never be read as a transport status.
+        "The upstream returned status=502 to my request",
+        "API Error: Overloaded",
+    ] {
+        let reason = super::classify_cli_failure_reason(
+            AgentFramework::Pi,
+            FailureDetailSource::PiResult,
+            message,
+        );
+
+        assert_eq!(reason, None, "message: {message}");
+    }
+
+    // Only the Pi result boundary produces this marker.
+    let marker =
+        "upstream_non_api_response status=502 content_type=html bytes=4711 digest=1a2b3c4d";
+    for (framework, source) in [
+        (AgentFramework::Pi, FailureDetailSource::Stderr),
+        (
+            AgentFramework::ClaudeCode,
+            FailureDetailSource::ClaudeResult,
+        ),
+        (AgentFramework::Codex, FailureDetailSource::CodexJsonl),
+    ] {
+        assert_eq!(
+            super::classify_cli_failure_reason(framework, source, marker),
+            None
+        );
     }
 }
 
@@ -1929,4 +1991,116 @@ fn pi_memory_phase2_terminal_diagnostics_survive_guest_error_persistence() {
         assert!(log.contains(stderr));
         assert!(!log.contains("PRIVATE_"));
     }
+}
+
+const PI_MEMORY_RECALL_DIAGNOSTIC_LINE: &str = concat!(
+    r#"{"type":"pi_memory_recall_outcome","runId":"run-1","mode":"sandbox","#,
+    r#""status":"miss","parity":"frozen-no-content","reason":"frozen-no-content","#,
+    r#""injectedTokenCount":0}"#
+);
+
+#[test]
+fn cli_failure_message_reports_the_termination_line_without_memory_diagnostics() {
+    let _system_log_state_guard = crate::lock_system_log_test_state();
+    let tmp = tempfile::tempdir().unwrap();
+    let system_log_path = tmp.path().join("system.log");
+    let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
+
+    let stderr_lines = vec![
+        PI_MEMORY_RECALL_DIAGNOSTIC_LINE.to_string(),
+        "Killed".to_string(),
+    ];
+    let msg = cli_failure_message(137, &stderr_lines, None);
+
+    assert_eq!(msg.source, FailureDetailSource::Stderr);
+    assert_eq!(msg.message, "Killed");
+    assert!(!msg.message.contains("pi_memory_recall_outcome"));
+
+    let system_log = std::fs::read_to_string(&system_log_path).unwrap();
+    assert!(
+        system_log.contains("pi_memory_recall_outcome"),
+        "the structured diagnostic must stay in the guest log"
+    );
+}
+
+#[test]
+fn cli_failure_message_keeps_a_real_error_alongside_memory_diagnostics() {
+    let stderr_lines = vec![
+        PI_MEMORY_RECALL_DIAGNOSTIC_LINE.to_string(),
+        "TypeError: cannot read properties of undefined".to_string(),
+    ];
+    let msg = cli_failure_message(1, &stderr_lines, None);
+
+    assert_eq!(msg.source, FailureDetailSource::Stderr);
+    assert_eq!(
+        msg.message,
+        "TypeError: cannot read properties of undefined"
+    );
+}
+
+#[test]
+fn cli_failure_message_falls_back_when_only_memory_diagnostics_remain() {
+    let _system_log_state_guard = crate::lock_system_log_test_state();
+    let tmp = tempfile::tempdir().unwrap();
+    let system_log_path = tmp.path().join("system.log");
+    let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
+
+    let stderr_lines = vec![
+        PI_MEMORY_RECALL_DIAGNOSTIC_LINE.to_string(),
+        r#"{"type":"pi_memory_tool_source_use","runId":"run-1","sessionId":"s-1"}"#.to_string(),
+    ];
+    let msg = cli_failure_message(137, &stderr_lines, None);
+
+    assert_eq!(msg.source, FailureDetailSource::FallbackExitCode);
+    assert_eq!(msg.message, "Agent exited with code 137");
+
+    let system_log = std::fs::read_to_string(&system_log_path).unwrap();
+    assert!(system_log.contains("pi_memory_tool_source_use"));
+}
+
+#[test]
+fn cli_failure_message_preserves_agent_output_that_is_not_a_known_diagnostic() {
+    for line in [
+        r#"{"type":"user_output","message":"build failed"}"#,
+        r#"{"error":"boom"}"#,
+        r#"{"type":42}"#,
+        "{not json}",
+        r#"["pi_memory_recall_outcome"]"#,
+        r#"prefix {"type":"pi_memory_recall_outcome"}"#,
+    ] {
+        let stderr_lines = vec![line.to_string()];
+        let msg = cli_failure_message(1, &stderr_lines, None);
+
+        assert_eq!(
+            msg.source,
+            FailureDetailSource::Stderr,
+            "line must stay user visible: {line}"
+        );
+        assert_eq!(msg.message, line);
+    }
+}
+
+#[test]
+fn cli_failure_message_keeps_an_incomplete_diagnostic_envelope_visible() {
+    // A cut-off envelope is no longer parseable. It must stay visible rather
+    // than silently removing the only failure detail the user would see.
+    let incomplete = r#"{"type":"pi_memory_recall_outcome","runId":"run-1""#;
+    let stderr_lines = vec![incomplete.to_string()];
+    let msg = cli_failure_message(137, &stderr_lines, None);
+
+    assert_eq!(msg.source, FailureDetailSource::Stderr);
+    assert_eq!(msg.message, incomplete);
+}
+
+#[test]
+fn cli_failure_message_drops_a_long_diagnostic_envelope_before_display_truncation() {
+    let long_diagnostic = format!(
+        r#"{{"type":"pi_memory_recall_outcome","runId":"{}"}}"#,
+        "x".repeat(MAX_LOGGED_CLI_STDERR_LINE_BYTES)
+    );
+    let stderr_lines = vec![long_diagnostic, "Killed".to_string()];
+    let msg = cli_failure_message(137, &stderr_lines, None);
+
+    assert_eq!(msg.source, FailureDetailSource::Stderr);
+    assert_eq!(msg.message, "Killed");
 }

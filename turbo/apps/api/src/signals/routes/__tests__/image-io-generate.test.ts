@@ -90,6 +90,10 @@ const FAL_INVALID_ASPECT_RATIO_MESSAGE =
   "Input should be 'auto', '21:9', '16:9', '3:2', '4:3', '5:4', '1:1', '4:5', '3:4', '2:3', '9:16', '4:1', '1:4', '8:1' or '1:8'";
 const FAL_FAILURE_LOG_MESSAGE =
   "Fal built-in generation webhook reported failed generation";
+const OPENAI_FAILURE_LOG_MESSAGE = "OpenAI image generation request failed";
+const OPENAI_PRIVATE_PROVIDER_REQUEST_ID =
+  "req_private0openai0request0identifier";
+const OPENAI_PRIVATE_PROVIDER_MESSAGE = `Invalid image file or mode for image 1, please check your image file. If you believe this is an error, contact us at help.openai.com and include the request ID ${OPENAI_PRIVATE_PROVIDER_REQUEST_ID}.`;
 const FAL_QWEN_IMAGE_URL = "https://queue.fal.run/fal-ai/qwen-image";
 const FAL_MEDIA_URL = "https://fal.media/files/test/qwen.jpg";
 const FAL_FLUX_REDUX_URL = "https://queue.fal.run/fal-ai/flux-pro/v1.1/redux";
@@ -347,6 +351,14 @@ function readAcceptedGenerationId(
     },
   });
   return body.generationId;
+}
+
+function openAiFailureLogs(
+  loggingMock: typeof context.mocks.axiomLogging.info,
+): unknown[][] {
+  return loggingMock.mock.calls.filter(([message]) => {
+    return message === OPENAI_FAILURE_LOG_MESSAGE;
+  });
 }
 
 function readGenerationResult(body: unknown): unknown {
@@ -985,6 +997,335 @@ describe("POST /api/image-io/generate", () => {
         error: { code },
       });
       await expect(orgCredits(fixture)).resolves.toBe(1000);
+    },
+  );
+
+  it.each([
+    {
+      caseName: "invalid input media",
+      model: "gpt-image-2.5-sunburst",
+      editing: true,
+      providerErrorCode: "invalid_image_file",
+      moderationDetails: undefined,
+      failureKind: "input_media_invalid",
+      failureStage: "input",
+      retryPolicy: "after_input_change",
+      publicError: {
+        message: "An input image could not be read by the generation provider.",
+        code: "GENERATION_INPUT_MEDIA_INVALID",
+      },
+    },
+    {
+      caseName: "invalid input media without references",
+      model: "gpt-image-2.5-flare",
+      editing: false,
+      providerErrorCode: "invalid_image_file",
+      moderationDetails: undefined,
+      failureKind: "input_media_invalid",
+      failureStage: "input",
+      retryPolicy: "after_input_change",
+      publicError: {
+        message: "An input image could not be read by the generation provider.",
+        code: "GENERATION_INPUT_MEDIA_INVALID",
+      },
+    },
+    {
+      caseName: "input moderation block",
+      model: "gpt-image-2.5-sunburst",
+      editing: true,
+      providerErrorCode: "moderation_blocked",
+      moderationDetails: {
+        moderation_stage: "input",
+        categories: ["violence"],
+      },
+      failureKind: "input_safety_rejected",
+      failureStage: "input",
+      retryPolicy: "after_input_change",
+      publicError: {
+        message:
+          "The prompt or reference image was blocked by the safety filter.",
+        code: "GENERATION_INPUT_SAFETY_REJECTED",
+      },
+    },
+    {
+      caseName: "output moderation block",
+      model: "gpt-image-2.5-flare",
+      editing: false,
+      providerErrorCode: "moderation_blocked",
+      moderationDetails: { moderation_stage: "output", categories: ["sexual"] },
+      failureKind: "output_safety_blocked",
+      failureStage: "output",
+      retryPolicy: "manual_once",
+      publicError: {
+        message: "The generated image was blocked by the safety filter.",
+        code: "GENERATION_OUTPUT_SAFETY_BLOCKED",
+      },
+    },
+    {
+      caseName: "moderation block without a stage",
+      model: "gpt-image-2.5-flare",
+      editing: false,
+      providerErrorCode: "moderation_blocked",
+      moderationDetails: {},
+      failureKind: "input_safety_rejected",
+      failureStage: "input",
+      retryPolicy: "after_input_change",
+      publicError: {
+        message:
+          "The prompt or reference image was blocked by the safety filter.",
+        code: "GENERATION_INPUT_SAFETY_REJECTED",
+      },
+    },
+  ])(
+    "reports OpenAI $caseName as an expected input failure without charging",
+    async ({
+      model,
+      editing,
+      providerErrorCode,
+      moderationDetails,
+      failureKind,
+      failureStage,
+      retryPolicy,
+      publicError,
+    }) => {
+      const fixture = await seedImageFixture({ credits: 1000 });
+      const pricingFixture = await createScopedImagePricing({
+        configured: GPT_IMAGE_2_5_PRICING,
+      });
+      mocks.clerk.session(fixture.userId, fixture.orgId);
+      server.use(
+        http.post(
+          editing ? OPENAI_IMAGE_EDITS_URL : OPENAI_IMAGE_GENERATIONS_URL,
+          () => {
+            return HttpResponse.json(
+              {
+                error: {
+                  message: OPENAI_PRIVATE_PROVIDER_MESSAGE,
+                  type: "image_generation_user_error",
+                  param: null,
+                  code: providerErrorCode,
+                  ...(moderationDetails
+                    ? { moderation_details: moderationDetails }
+                    : {}),
+                },
+              },
+              { status: 400 },
+            );
+          },
+        ),
+      );
+
+      const app = createImageIoTestApp(pricingFixture.resolution);
+      const response = await app.request("/api/image-io/generate", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          model,
+          prompt: "a product illustration",
+          ...(editing ? { imageUrls: [MOCKUP_IMAGE_URL] } : {}),
+        }),
+      });
+      expect(response.status).toBe(202);
+      const generationId = readAcceptedGenerationId(
+        await response.json(),
+        "image",
+        fixture.userId,
+      );
+      await flushWaitUntilForTest();
+
+      const status = await app.request(
+        `/api/built-in-generations/${generationId}`,
+        { headers: authHeaders() },
+      );
+      expect(status.status).toBe(200);
+      const statusBody: unknown = await status.json();
+      expect(statusBody).toMatchObject({
+        status: "failed",
+        error: publicError,
+      });
+      await expect(orgCredits(fixture)).resolves.toBe(1000);
+
+      const debugLogs = openAiFailureLogs(context.mocks.axiomLogging.debug);
+      expect(debugLogs).toStrictEqual([
+        [
+          OPENAI_FAILURE_LOG_MESSAGE,
+          expect.objectContaining({
+            context: "ImageGeneration",
+            provider: "openai",
+            model,
+            providerStatus: 400,
+            providerErrorType: "image_generation_user_error",
+            providerErrorCode,
+            failureKind,
+            failureStage,
+            publicErrorCode: publicError.code,
+            retryPolicy,
+            billingDisposition: "not_charged",
+            expected: true,
+          }),
+        ],
+      ]);
+      for (const silentMock of [
+        context.mocks.axiomLogging.error,
+        context.mocks.axiomLogging.warn,
+        context.mocks.axiomLogging.info,
+      ]) {
+        expect(openAiFailureLogs(silentMock)).toHaveLength(0);
+      }
+
+      const publicAndLogSurfaces = JSON.stringify({
+        status: statusBody,
+        debugLogs,
+      });
+      for (const privateValue of [
+        OPENAI_PRIVATE_PROVIDER_MESSAGE,
+        OPENAI_PRIVATE_PROVIDER_REQUEST_ID,
+        "a product illustration",
+        MOCKUP_IMAGE_URL,
+      ]) {
+        expect(publicAndLogSurfaces).not.toContain(privateValue);
+      }
+    },
+  );
+
+  it.each([
+    {
+      caseName: "rate limiting",
+      upstreamStatus: 429,
+      responseBody: {
+        error: {
+          message: OPENAI_PRIVATE_PROVIDER_MESSAGE,
+          type: "rate_limit_error",
+          code: "rate_limit_exceeded",
+        },
+      },
+    },
+    {
+      caseName: "provider faults",
+      upstreamStatus: 500,
+      responseBody: {
+        error: {
+          message: OPENAI_PRIVATE_PROVIDER_MESSAGE,
+          type: "server_error",
+          code: "internal_error",
+        },
+      },
+    },
+    {
+      caseName: "authentication failures",
+      upstreamStatus: 401,
+      responseBody: {
+        error: {
+          message: OPENAI_PRIVATE_PROVIDER_MESSAGE,
+          type: "invalid_request_error",
+          code: "invalid_api_key",
+        },
+      },
+    },
+    {
+      caseName: "non-user request errors",
+      upstreamStatus: 400,
+      responseBody: {
+        error: {
+          message: OPENAI_PRIVATE_PROVIDER_MESSAGE,
+          type: "invalid_request_error",
+          code: "unknown_parameter",
+        },
+      },
+    },
+    {
+      caseName: "unrecognized user error codes",
+      upstreamStatus: 400,
+      responseBody: {
+        error: {
+          message: OPENAI_PRIVATE_PROVIDER_MESSAGE,
+          type: "image_generation_user_error",
+          code: "some_future_code",
+        },
+      },
+    },
+    {
+      caseName: "unparseable error bodies",
+      upstreamStatus: 400,
+      responseBody: "not json at all",
+    },
+  ])(
+    "keeps OpenAI $caseName an unexpected provider failure",
+    async ({ upstreamStatus, responseBody }) => {
+      const fixture = await seedImageFixture({ credits: 1000 });
+      const pricingFixture = await createScopedImagePricing({
+        configured: GPT_IMAGE_2_5_PRICING,
+      });
+      mocks.clerk.session(fixture.userId, fixture.orgId);
+      server.use(
+        http.post(OPENAI_IMAGE_EDITS_URL, () => {
+          return typeof responseBody === "string"
+            ? new HttpResponse(responseBody, { status: upstreamStatus })
+            : HttpResponse.json(responseBody, { status: upstreamStatus });
+        }),
+      );
+
+      const app = createImageIoTestApp(pricingFixture.resolution);
+      const response = await app.request("/api/image-io/generate", {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({
+          model: "gpt-image-2.5-sunburst",
+          prompt: "a product illustration",
+          imageUrls: [MOCKUP_IMAGE_URL],
+        }),
+      });
+      expect(response.status).toBe(202);
+      const generationId = readAcceptedGenerationId(
+        await response.json(),
+        "image",
+        fixture.userId,
+      );
+      await flushWaitUntilForTest();
+
+      const status = await app.request(
+        `/api/built-in-generations/${generationId}`,
+        { headers: authHeaders() },
+      );
+      expect(status.status).toBe(200);
+      const statusBody: unknown = await status.json();
+      expect(statusBody).toMatchObject({
+        status: "failed",
+        error: {
+          message: "Image generation failed",
+          code: "OPENAI_IMAGE_REQUEST_FAILED",
+        },
+      });
+      await expect(orgCredits(fixture)).resolves.toBe(1000);
+
+      const errorLogs = openAiFailureLogs(context.mocks.axiomLogging.error);
+      expect(errorLogs).toStrictEqual([
+        [
+          OPENAI_FAILURE_LOG_MESSAGE,
+          expect.objectContaining({
+            context: "ImageGeneration",
+            provider: "openai",
+            providerStatus: upstreamStatus,
+            providerErrorType: "unknown",
+            providerErrorCode: "unknown",
+            failureKind: "unknown",
+            failureStage: "provider",
+            publicErrorCode: "OPENAI_IMAGE_REQUEST_FAILED",
+            retryPolicy: "retry_once",
+            billingDisposition: "not_charged",
+            expected: false,
+          }),
+        ],
+      ]);
+      for (const silentMock of [
+        context.mocks.axiomLogging.debug,
+        context.mocks.axiomLogging.info,
+      ]) {
+        expect(openAiFailureLogs(silentMock)).toHaveLength(0);
+      }
+      expect(JSON.stringify({ status: statusBody, errorLogs })).not.toContain(
+        OPENAI_PRIVATE_PROVIDER_MESSAGE,
+      );
     },
   );
 

@@ -488,7 +488,7 @@ describe("Pi memory Phase 2 sandbox dispatcher", () => {
           parentVersionId: scope.baseVersion.versionId,
           files: invalidFiles,
           maintenanceAttestation: {
-            schemaVersion: 1,
+            schemaVersion: 2,
             leaseToken,
             claimedRevision,
             claimedBaseVersionId: scope.baseVersion.versionId,

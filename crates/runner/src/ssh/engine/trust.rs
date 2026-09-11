@@ -10,7 +10,10 @@ use russh::{
     client::{self, ChannelOpenHandle},
     keys::{Algorithm, EcdsaCurve, HashAlg, PublicKeyOrCertificate},
 };
-use std::sync::{Arc, Mutex};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 
 use super::super::{
     FailureReason, Scope,
@@ -26,6 +29,7 @@ pub(super) struct HostTrust {
     credential: Arc<PreparedCredential>,
     scope: Scope,
     pub(super) failure: Arc<Mutex<Option<FailureReason>>>,
+    pub(super) authority_pending: Arc<AtomicBool>,
 }
 
 impl HostTrust {
@@ -43,6 +47,7 @@ impl HostTrust {
             credential,
             scope,
             failure: Arc::new(Mutex::new(None)),
+            authority_pending: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -90,6 +95,9 @@ impl HostTrust {
             }
             trust.generation
         };
+        // Retain this phase on failure so an outer deadline cannot blame the
+        // SSH target for time spent waiting for our first-use authority API.
+        self.authority_pending.store(true, Ordering::Release);
         self.scope
             .wait(self.authority.pin(
                 self.run,
@@ -119,6 +127,7 @@ impl HostTrust {
             algorithm: pinned_algorithm,
             fingerprint,
         });
+        self.authority_pending.store(false, Ordering::Release);
         Ok(())
     }
 }

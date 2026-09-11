@@ -40,7 +40,6 @@ import { validateOfficialAutomationResultEmailSchema } from "./test-official-aut
 import { validatePermanentBuiltInModelCooldownState } from "./test-built-in-model-cooldown-permanent";
 import { validatePermanentBuiltInModelKeyState } from "./test-built-in-model-keys-permanent";
 import { validatePermanentSlackPublicBrandState } from "./test-slack-public-brand-permanent";
-import { validatePermanentComputerUseHostProductState } from "./test-computer-use-host-product-permanent";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_DIR = path.join(dirname, "..");
@@ -2049,7 +2048,6 @@ async function validatePermanentAgentRunMetadataState(
       "trigger_source",
       "autonomy_budget",
       "workflow_automation_id",
-      "goal_id",
       "model_provider",
       "model_provider_id",
       "model_provider_credential_scope",
@@ -2075,6 +2073,27 @@ async function validatePermanentAgentRunMetadataState(
     assert.ok(
       metadataPresence.definition.includes("autonomy_budget IS NOT NULL"),
     );
+
+    assert.equal(metadataPresence.definition.match(/ IS NULL/gu)?.length, 18);
+    assert.equal(
+      metadataPresence.definition.match(/ IS NOT NULL/gu)?.length,
+      2,
+    );
+    const goalObjects = await client.query(`SELECT
+      to_regclass('public.thread_goals') IS NULL AS table_absent,
+      to_regclass('public.idx_agent_runs_goal') IS NULL AS index_absent,
+      NOT EXISTS (SELECT 1 FROM pg_attribute WHERE attrelid = 'agent_runs'::regclass
+        AND attname = 'goal_id' AND NOT attisdropped) AS column_absent,
+      NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname IN (
+        'agent_runs_goal_id_thread_goals_id_fk', 'agent_runs_metadata_without_goal_check')) AS transitional_constraints_absent`);
+    assert.deepEqual(goalObjects.rows, [
+      {
+        table_absent: true,
+        index_absent: true,
+        column_absent: true,
+        transitional_constraints_absent: true,
+      },
+    ]);
 
     const discriminators = await client.query<{
       columnDefault: string | null;
@@ -2268,6 +2287,37 @@ async function validatePermanentAgentRunMetadataState(
         fixture.orgId,
       ],
     });
+
+    // Every remaining optional metadata term must reject partial SQL writes.
+    // Valid values for each type ensure the constraint, not a cast, rejects it.
+    const metadataValues = {
+      trigger_source: "'chat'",
+      autonomy_budget: "1",
+      workflow_automation_id: "gen_random_uuid()",
+      model_provider: "'fixture'",
+      model_provider_id: "gen_random_uuid()",
+      model_provider_credential_scope: "'user'",
+      selected_model: "'fixture'",
+      model_runtime_provider: "'fixture'",
+      model_runtime_model: "'fixture'",
+      built_in_model_key_id: "gen_random_uuid()",
+      codex_service_tier: "'priority'",
+      selected_video_model: "'fixture'",
+      selected_image_model: "'fixture'",
+      chat_thread_id: "gen_random_uuid()",
+      api_started_at: "now()",
+      first_assistant_event_acknowledged_at: "now()",
+      summary: "'fixture'",
+      trigger_brief: "'fixture'",
+    } as const;
+    for (const column of metadataColumns) {
+      await expectDatabaseError(client, {
+        code: "23514",
+        messageIncludes: "agent_runs_metadata_presence_check",
+        query: `UPDATE agent_runs SET "${column}" = ${metadataValues[column]} WHERE id = $1`,
+        values: [fixture.lifecycleRunId],
+      });
+    }
 
     const validStates = await client.query<{
       autonomyBudget: number | null;
@@ -3638,7 +3688,6 @@ async function main(): Promise<void> {
     await validatePermanentBuiltInModelCooldownState(dbUrl1);
     await validatePermanentBuiltInModelKeyState(dbUrl1);
     await validatePermanentSlackPublicBrandState(dbUrl1);
-    await validatePermanentComputerUseHostProductState(dbUrl1);
     await validateAgentRunLaunchSnapshotSchema(dbUrl1);
     await validateAgentRunOfficialWorkflowProvenanceSchema(dbUrl1);
     await validateOfficialAutomationResultEmailSchema(dbUrl1);
@@ -3663,7 +3712,6 @@ async function main(): Promise<void> {
     await validatePermanentBuiltInModelCooldownState(dbUrl2);
     await validatePermanentBuiltInModelKeyState(dbUrl2);
     await validatePermanentSlackPublicBrandState(dbUrl2);
-    await validatePermanentComputerUseHostProductState(dbUrl2);
     await validateAgentRunLaunchSnapshotSchema(dbUrl2);
     await validateAgentRunOfficialWorkflowProvenanceSchema(dbUrl2);
     await validateOfficialAutomationResultEmailSchema(dbUrl2);

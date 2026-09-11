@@ -162,8 +162,6 @@ pub struct CowLayer {
     dirty: BitVec,
     /// Pending writes: block index -> block data.
     write_buffer: BTreeMap<u64, Vec<u8>>,
-    /// Current buffer usage in bytes.
-    buffer_bytes: usize,
     /// Report that flushing is needed when buffer usage reaches or exceeds this
     /// threshold.
     flush_threshold: usize,
@@ -273,7 +271,6 @@ impl CowLayer {
             cow_fd,
             dirty,
             write_buffer: BTreeMap::new(),
-            buffer_bytes: 0,
             flush_threshold,
             block_size,
             size,
@@ -355,10 +352,7 @@ impl CowLayer {
             self.write_buffer.insert(span.block_idx, block_data);
         }
 
-        // Recalculate buffer bytes
-        self.buffer_bytes = self.write_buffer.len() * self.block_size;
-
-        Ok(self.buffer_bytes >= self.flush_threshold)
+        Ok(self.buffer_bytes() >= self.flush_threshold)
     }
 
     /// Flush the write buffer to the COW file.
@@ -385,8 +379,8 @@ impl CowLayer {
     /// Drain `write_buffer` through `write_fn` in contiguous batches. The
     /// writer returns the number of bytes accepted from the concatenated
     /// buffers. On failure, restores the first incomplete block and all
-    /// unprocessed blocks to `write_buffer`, recomputes `buffer_bytes`, and
-    /// returns the error. Dirty bits are set only for complete blocks.
+    /// unprocessed blocks to `write_buffer` and returns the error. Dirty bits
+    /// are set only for complete blocks.
     ///
     /// The writer boundary is a closure so tests can cover short writes and
     /// partial-success-then-fail at arbitrary byte offsets, which real-I/O
@@ -447,13 +441,11 @@ impl CowLayer {
                         }
                     }
                     self.write_buffer.extend(blocks);
-                    self.buffer_bytes = self.write_buffer.len() * block_size;
                     return Err(error.into());
                 }
             }
         }
 
-        self.buffer_bytes = 0;
         Ok(())
     }
 
@@ -478,7 +470,7 @@ impl CowLayer {
 
     /// Current write buffer size in bytes.
     pub fn buffer_bytes(&self) -> usize {
-        self.buffer_bytes
+        self.write_buffer.len() * self.block_size
     }
 
     fn check_bounds(&self, offset: u64, length: u64) -> Result<()> {

@@ -43,6 +43,48 @@ pub(super) struct Trust {
 }
 
 impl Authority {
+    pub(super) async fn observe(
+        &self,
+        run: RunId,
+        connection: uuid::Uuid,
+        observation: super::observation::Observation,
+    ) {
+        let body = ObservationRequest {
+            connection_id: connection.to_string(),
+            runner_identity: ObservationRequestRunnerIdentity {
+                runner_id: self.identity.runner_id().to_string(),
+                heartbeat_generation: self.identity.heartbeat_generation() as i64,
+            },
+            expected_generation: observation.generation,
+            observed_at: observation
+                .observed_at
+                .to_rfc3339_opts(chrono::SecondsFormat::Micros, true),
+            failure_reason: observation.failure,
+        };
+        let report = async {
+            let request = self
+                .http
+                .request_resolved_route(
+                    routes::observations::route(routes::observations::Params {
+                        run_id: &run.to_string(),
+                    }),
+                    &self.token,
+                )
+                .json(&body)
+                .build()
+                .ok()?;
+            let response = self.transport.execute(request).await.ok()?;
+            response.status().is_success().then_some(())
+        };
+        if !tokio::time::timeout(std::time::Duration::from_secs(1), report)
+            .await
+            .is_ok_and(|result| result.is_some())
+        {
+            // No raw response/error, credentials, command or output at this boundary.
+            tracing::info!(run_id = %run, connection_id = %connection, "SSH observation report not confirmed");
+        }
+    }
+
     pub(super) fn new(
         http: HttpClient,
         token: String,
