@@ -24,7 +24,7 @@ function navigate(path: string) {
   });
 }
 
-test("An older list refresh cannot finish a newer welcome reader, including after reader navigation", async () => {
+async function setupWelcomeSync() {
   const welcome = createMarkdownChatFixture(context);
   const row = {
     ...welcome.outputMessage("Welcome history in the second pane", {
@@ -68,7 +68,7 @@ test("An older list refresh cannot finish a newer welcome reader, including afte
     });
   });
   context.mocks.api(chatThreadsContract.events, async ({ query, respond }) => {
-    if (!refreshing) {
+    if (!refreshing && !committed) {
       return respond(200, { events: [], hasMore: false });
     }
     // Hold the older response before the worker persists its rename, so the
@@ -131,48 +131,76 @@ test("An older list refresh cannot finish a newer welcome reader, including afte
     },
   });
   // The cold route proves the initial list sync finished and opens Debug
-  // directly, without spending this race test on unrelated menu interactions.
+  // directly, without spending these race tests on unrelated menu interactions.
   await screen.findByRole("heading", { name: "Chat thread not found" });
   await screen.findByRole("dialog", { name: "Settings" });
-  await waitFor(() => {
-    expect(
-      context.mocks.ably.hasChannelSubscriptionOnChannel(
-        `user-org:user_${context.resourceId}:org_${context.resourceId}`,
-      ),
-    ).toBeTruthy();
-  });
-  refreshing = true;
-  context.mocks.ably.trigger("threadListChanged");
-  await olderRequested.promise;
-  click(fastButton("Create welcome thread"));
-  await newerRequested.promise;
-  click(screen.getByLabelText("Close"));
-  await waitFor(() => {
-    expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
-  });
 
-  navigate(sidebarPath);
-  await screen.findByText("Primary conversation", {
-    selector: '[data-testid="chat-thread-header-title"]',
-  });
-  await metadataRequested.promise;
-  // Abandon one cold reader while the shared welcome synchronization continues.
-  navigate(primaryPath);
-  await screen.findByRole("textbox", { name: "Message" });
-  metadataRequested = context.mocks.deferred<void>();
-  navigate(sidebarPath);
-  await metadataRequested.promise;
+  return {
+    primaryPath,
+    welcomeThreadId: welcome.threadId,
+    releaseOlder,
+    releaseNewer,
+    async startOlderRefresh() {
+      await waitFor(() => {
+        expect(
+          context.mocks.ably.hasChannelSubscriptionOnChannel(
+            `user-org:user_${context.resourceId}:org_${context.resourceId}`,
+          ),
+        ).toBeTruthy();
+      });
+      refreshing = true;
+      context.mocks.ably.trigger("threadListChanged");
+      await olderRequested.promise;
+    },
+    async createWelcome() {
+      click(fastButton("Create welcome thread"));
+      await newerRequested.promise;
+      click(screen.getByLabelText("Close"));
+      await waitFor(() => {
+        expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
+      });
+    },
+    async openReader() {
+      metadataRequested = context.mocks.deferred<void>();
+      navigate(sidebarPath);
+      await screen.findByText("Primary conversation", {
+        selector: '[data-testid="chat-thread-header-title"]',
+      });
+      await metadataRequested.promise;
+    },
+  };
+}
 
-  releaseOlder.resolve();
+test("An older list refresh cannot finish a newer welcome reader", async () => {
+  const welcome = await setupWelcomeSync();
+  await welcome.startOlderRefresh();
+  await welcome.createWelcome();
+  await welcome.openReader();
+
+  welcome.releaseOlder.resolve();
   await screen.findByText("Primary conversation refreshed", {
     selector: '[data-testid="chat-thread-header-title"]',
   });
   expect(
     screen.queryByRole("heading", { name: "Chat thread not found" }),
   ).toBeNull();
-  releaseNewer.resolve();
+  welcome.releaseNewer.resolve();
   // An incorrectly completed not-found pane does not retry merely because a
   // later list result includes this thread. Its ordinary history must appear.
+  await screen.findByText("Welcome history in the second pane");
+});
+
+test("Leaving a welcome reader does not cancel synchronization for the next reader", async () => {
+  const welcome = await setupWelcomeSync();
+  await welcome.createWelcome();
+  await welcome.openReader();
+
+  // Abandon one cold reader while the shared welcome synchronization continues.
+  navigate(welcome.primaryPath);
+  await screen.findByRole("textbox", { name: "Message" });
+  await welcome.openReader();
+
+  welcome.releaseNewer.resolve();
   await screen.findByText("Newly committed welcome", {
     selector: '[data-testid="chat-thread-header-title"]',
   });
@@ -180,9 +208,9 @@ test("An older list refresh cannot finish a newer welcome reader, including afte
     2,
   );
   await screen.findByText("Welcome history in the second pane");
-  expect(window.location.pathname).toBe(primaryPath);
+  expect(window.location.pathname).toBe(welcome.primaryPath);
   expect(new URL(window.location.href).searchParams.get("sidebar")).toBe(
-    welcome.threadId,
+    welcome.welcomeThreadId,
   );
   expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
   expect(
