@@ -35,7 +35,7 @@ import {
   openRouterFailureReason,
   type OpenRouterFailureReason,
 } from "../external/openrouter-failure";
-import { settleIncludingAbort } from "../utils";
+import { settleIncludingAbort, type Settled } from "../utils";
 import {
   canonicalChatEventContent,
   canonicalChatEventUserMessage,
@@ -323,19 +323,17 @@ async function claimSummary(db: Db, identity: ActivityRunIdentity) {
   });
 }
 
-/**
- * Completion outcomes an operator cannot act on. The response stays truthful,
- * the caller keeps its last usable phrase, and the shared cooldown or the
- * attempt interval bounds recovery.
- */
-function expectedOutcome(outcome: string): boolean {
-  return (
-    outcome === "success" || outcome === "timeout" || outcome === "cancelled"
-  );
-}
+type CompletionOutcome =
+  | "success"
+  | "cancelled"
+  | "timeout"
+  | "provider_failure"
+  | "unconfigured"
+  | "unusable_output"
+  | OpenRouterFailureReason;
 
 interface CompletionRecord {
-  readonly outcome: string;
+  readonly outcome: CompletionOutcome;
   readonly durationMs: number;
   readonly cooldownMs: number;
   /** Present only for an `OpenRouterRequestError`; never a provider body. */
@@ -385,6 +383,75 @@ function realProviderFailure(completion: CompletionRecord): boolean {
 }
 
 /**
+ * The level one completion deserves, or `null` when it deserves none.
+ *
+ * A provider-request failure is decided first, by the shared classifier: the
+ * transient set is absorbed and everything else is a real failure. The silent
+ * outcomes below are the residual ones this endpoint's optional fallback
+ * already absorbs: the response stays truthful, the caller keeps its last
+ * usable phrase, and the shared cooldown or the attempt interval bounds
+ * recovery. Recording any of them at any level only trains an operator to
+ * ignore the record, so they are omitted rather than moved to a quieter level
+ * or re-emitted as an equivalent event. The rate they used to make queryable is
+ * gone with them.
+ *
+ * Everything else falls through to `error`: a response the strict contract
+ * cannot accept, and an exception the shared classifier could not name. A
+ * reason added to that classifier later therefore surfaces instead of
+ * disappearing into silence. No completion is reported at `warn`: a provider
+ * failure is either absorbed or a real failure, and the residual arm is either
+ * absorbed or a defect.
+ *
+ * The silent cases name only reasons this residual arm can actually receive.
+ * `auth`, `invalid_request`, `rate_limited` and `provider_unavailable` belong
+ * to the shared reason union but are recorded exclusively while constructing an
+ * `OpenRouterRequestError`, so they arrive as `provider_failure` and are
+ * decided by the two predicates above.
+ */
+function completionLevel(
+  completion: CompletionRecord,
+): "info" | "error" | null {
+  if (absorbedCompletion(completion)) {
+    return null;
+  }
+  if (realProviderFailure(completion)) {
+    return "error";
+  }
+  switch (completion.outcome) {
+    case "success": {
+      return "info";
+    }
+    case "cancelled":
+    case "timeout":
+    case "unconfigured":
+    case "unusable_output":
+    case "output_truncated":
+    case "unexpected_tool_calls":
+    case "network":
+    case "upstream_timeout": {
+      return null;
+    }
+    default: {
+      return "error";
+    }
+  }
+}
+
+/**
+ * The residual result, kept distinguishable instead of collapsed into one
+ * opaque outcome. A successful `null` is the optional enrichment's documented
+ * return when no API key is configured; a successful value reached the strict
+ * phrase contract and lost there; anything else threw, and the shared
+ * classifier already recorded what it was without retaining any payload.
+ */
+function residualOutcome(result: Settled<string | null>): CompletionOutcome {
+  if (!result.ok) {
+    return openRouterFailureReason(result.error);
+  }
+  return result.value === null ? "unconfigured" : "unusable_output";
+}
+
+/**
  * The content-free record of one generation attempt. The caller reads `outcome`
  * and `reason` to pick a level and `cooldownMs` to write the next attempt, so
  * the diagnostic and the stored backoff can never disagree. No prompt, phrase,
@@ -395,8 +462,9 @@ function completionRecord(
   phrase: string | null,
   abandoned: boolean,
   deadlineReached: boolean,
-  failure: unknown,
+  result: Settled<string | null>,
 ): CompletionRecord {
+  const failure = result.ok ? undefined : result.error;
   const request =
     failure instanceof OpenRouterRequestError ? failure : undefined;
   const cooldown = Math.min(
@@ -412,7 +480,7 @@ function completionRecord(
           ? "timeout"
           : request
             ? "provider_failure"
-            : "invalid_or_unconfigured",
+            : residualOutcome(result),
     durationMs: Math.round(performance.now() - started),
     cooldownMs: phrase || abandoned ? 0 : cooldown,
     ...(request
@@ -472,25 +540,21 @@ async function generateSummary(
   const abandoned = !phrase && signal.aborted;
   const completion = {
     runId: identity.runId,
-    ...completionRecord(
-      started,
-      phrase,
-      abandoned,
-      deadline.aborted,
-      result.ok ? null : result.error,
-    ),
+    ...completionRecord(started, phrase, abandoned, deadline.aborted, result),
   };
   // Only the diagnostic is skipped. The cooldown this attempt charged, the
   // stored summary and the final reread below all still run, so an absorbed
   // failure degrades exactly like a reported one.
-  if (!absorbedCompletion(completion)) {
-    if (realProviderFailure(completion)) {
-      log.error("Activity summary completion", completion);
-    } else if (expectedOutcome(completion.outcome)) {
-      log.info("Activity summary completion", completion);
-    } else {
-      log.warn("Activity summary completion", completion);
-    }
+  //
+  // Each level is dispatched through its own static member access. `api/no-logger-info`
+  // only inspects a non-computed callee, so a computed `log[level](...)` would
+  // quietly exempt this file's allowlisted info record from the rule that
+  // governs it.
+  const level = completionLevel(completion);
+  if (level === "info") {
+    log.info("Activity summary completion", completion);
+  } else if (level === "error") {
+    log.error("Activity summary completion", completion);
   }
   // An abandoned attempt must not spend the shared cooldown on the next
   // viewer's behalf. Its lease expires like any owner that stopped reporting,
