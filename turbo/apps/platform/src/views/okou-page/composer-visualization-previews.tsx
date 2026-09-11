@@ -1,6 +1,14 @@
 import type { ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import type { VisualizationChart } from "../../signals/okou-page/composer-visualization.ts";
+import {
+  FLIGHT_ROUTE_CITIES,
+  FLIGHT_ROUTE_PATHS,
+  POPULATION_CHOROPLETH_TIERS,
+  WORD_CLOUD_TERMS,
+  WORLD_GRATICULE_PATH,
+  WORLD_LAND_PATH,
+} from "./composer-visualization-preview-data.ts";
 
 const PLOT = { left: 25, right: 153, top: 9, bottom: 69 } as const;
 const X_LABELS = ["01", "02", "03", "04", "05", "06"] as const;
@@ -956,99 +964,62 @@ function NestedDonutChartArtwork() {
 
 function MapGraticule() {
   return (
-    <g
+    <path
+      d={WORLD_GRATICULE_PATH}
       fill="none"
       className="stroke-border"
-      strokeOpacity="0.48"
-      strokeWidth="0.6"
-    >
-      <path d="M10 27H151M7 45H154M10 63H151" />
-      <path d="M42 8C30 30 30 60 42 80M80 6C73 30 73 61 80 83M118 8C130 30 130 60 118 80" />
-    </g>
-  );
-}
-
-function WorldOutline() {
-  return (
-    <g
-      className="fill-chart-blue-100 stroke-chart-blue-200"
-      fillOpacity="0.9"
-      strokeWidth="0.8"
-      strokeLinejoin="round"
-    >
-      <path d="M10 30C15 18 25 11 39 11L52 17L48 24L40 27L35 36L27 40L22 43L17 37Z" />
-      <path d="M47 10L56 6L65 10L61 16L53 17Z" />
-      <path d="M35 49L42 44L52 48L57 56L53 69L47 82L43 74L41 61Z" />
-      <path d="M67 23L77 16L91 18L95 23L88 28L77 27Z" />
-      <path d="M89 20C105 13 124 16 140 23L151 31L145 39L130 40L121 47L109 43L99 35L87 29Z" />
-      <path d="M77 31L91 29L101 40L96 57L87 70L79 60L73 44Z" />
-      <path d="M124 59L139 55L151 63L145 73L130 74L120 68Z" />
-    </g>
+      strokeOpacity="0.5"
+      strokeWidth="0.5"
+    />
   );
 }
 
 function RouteMapChartArtwork() {
-  const endpoints = [
-    { className: "fill-chart-blue-600", cx: 27, cy: 29 },
-    { className: "fill-chart-blue-600", cx: 132, cy: 32 },
-    { className: "fill-chart-orange", cx: 48, cy: 61 },
-    { className: "fill-chart-orange", cx: 81, cy: 25 },
-    { className: "fill-chart-green", cx: 137, cy: 64 },
-  ] as const;
   return (
-    <>
+    // The route preview carries no legend, so the map sits lower than in the
+    // choropleth to stay vertically centred.
+    <g transform="translate(0 6)">
       <MapGraticule />
-      <WorldOutline />
       <path
-        d="M27 29C56 2 102 4 132 32"
-        fill="none"
-        className="stroke-chart-blue-600"
-        strokeWidth="1.8"
-        strokeLinecap="round"
+        d={WORLD_LAND_PATH}
+        className="fill-chart-blue-100 stroke-chart-blue-200"
+        strokeWidth="0.35"
+        strokeLinejoin="round"
       />
-      <path
-        d="M48 61C53 37 64 26 81 25"
-        fill="none"
-        className="stroke-chart-orange"
-        strokeWidth="1.35"
-        strokeLinecap="round"
-      />
-      <path
-        d="M81 25C106 27 123 42 137 64"
-        fill="none"
-        className="stroke-chart-green"
-        strokeDasharray="2.5 2"
-        strokeWidth="1.2"
-        strokeLinecap="round"
-      />
-      {endpoints.map(({ className, cx, cy }) => {
+      {FLIGHT_ROUTE_PATHS.map(({ d, tone }) => {
         return (
-          <g key={`${cx}-${cy}`}>
+          <path
+            key={d}
+            d={d}
+            fill="none"
+            className={tone}
+            strokeWidth="1.3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        );
+      })}
+      {FLIGHT_ROUTE_CITIES.map(({ x, y }) => {
+        return (
+          <g key={`${x}-${y}`}>
             <circle
-              cx={cx}
-              cy={cy}
-              r="4.2"
-              className={className}
-              fillOpacity="0.16"
+              cx={x}
+              cy={y}
+              r="3.4"
+              className="fill-chart-blue-600"
+              fillOpacity="0.15"
             />
             <circle
-              cx={cx}
-              cy={cy}
-              r="2"
-              className={`${className} stroke-background`}
-              strokeWidth="0.8"
+              cx={x}
+              cy={y}
+              r="1.8"
+              className="fill-chart-blue-600 stroke-background"
+              strokeWidth="0.7"
             />
           </g>
         );
       })}
-      <circle
-        cx="78"
-        cy="12"
-        r="2.2"
-        className="fill-chart-blue-600 stroke-background"
-        strokeWidth="0.8"
-      />
-    </>
+    </g>
   );
 }
 
@@ -1056,80 +1027,43 @@ function ChoroplethMapChartArtwork() {
   return (
     <>
       <MapGraticule />
-      <g className="stroke-background" strokeWidth="0.9" strokeLinejoin="round">
-        <path
-          d="M10 30C15 18 25 11 39 11L52 17L48 24L40 27L35 36L27 40L22 43L17 37Z"
-          className="fill-chart-blue-300"
-        />
-        <path
-          d="M47 10L56 6L65 10L61 16L53 17Z"
-          className="fill-chart-blue-100"
-        />
-        <path
-          d="M35 49L42 44L52 48L57 56L53 69L47 82L43 74L41 61Z"
-          className="fill-chart-blue-500"
-        />
-        <path
-          d="M67 23L77 16L91 18L95 23L88 28L77 27Z"
-          className="fill-chart-blue-400"
-        />
-        <path
-          d="M89 20C105 13 124 16 140 23L151 31L145 39L130 40L121 47L109 43L99 35L87 29Z"
-          className="fill-chart-blue-200"
-        />
-        <path
-          d="M77 31L91 29L101 40L96 57L87 70L79 60L73 44Z"
-          className="fill-chart-blue-600"
-        />
-        <path
-          d="M124 59L139 55L151 63L145 73L130 74L120 68Z"
-          className="fill-chart-blue-400"
-        />
-      </g>
-      <g
-        fill="none"
-        className="stroke-background"
-        strokeOpacity="0.85"
-        strokeWidth="0.65"
-      >
-        <path d="M18 28L35 27L42 18M27 40L32 29L47 24" />
-        <path d="M41 53L52 49M42 62L54 59" />
-        <path d="M78 18L81 27M89 20L106 28L121 20M99 35L113 28L130 40" />
-        <path d="M79 42L98 42M82 58L96 51" />
-      </g>
-      <g transform="translate(105 82)">
-        <text x="-8" y="3" className="fill-muted-foreground" fontSize="5">
+      {/* Countries without a population reading fall back to this land base so
+          the map has no holes. */}
+      <path d={WORLD_LAND_PATH} className="fill-muted" />
+      {POPULATION_CHOROPLETH_TIERS.map(({ d, tone }) => {
+        return (
+          <path
+            key={tone}
+            d={d}
+            className={`${tone} stroke-background`}
+            strokeWidth="0.3"
+            strokeLinejoin="round"
+          />
+        );
+      })}
+      <g transform="translate(49 78)">
+        <text
+          x="-3"
+          y="3"
+          textAnchor="end"
+          className="fill-muted-foreground"
+          fontSize="5"
+        >
           0
         </text>
-        <rect
-          x="0"
-          y="0"
-          width="8"
-          height="3"
-          className="fill-chart-blue-100"
-        />
-        <rect
-          x="8"
-          y="0"
-          width="8"
-          height="3"
-          className="fill-chart-blue-300"
-        />
-        <rect
-          x="16"
-          y="0"
-          width="8"
-          height="3"
-          className="fill-chart-blue-400"
-        />
-        <rect
-          x="24"
-          y="0"
-          width="8"
-          height="3"
-          className="fill-chart-blue-600"
-        />
-        <text x="36" y="3" className="fill-muted-foreground" fontSize="5">
+        {POPULATION_CHOROPLETH_TIERS.map(({ tone }, index) => {
+          return (
+            <rect
+              key={tone}
+              x={index * 8}
+              y="0"
+              width="8"
+              height="3"
+              className={tone}
+            />
+          );
+        })}
+        <text x="43" y="3" className="fill-muted-foreground" fontSize="5">
           100
         </text>
       </g>
@@ -1147,114 +1081,26 @@ function WordCloudChartArtwork() {
   );
   return (
     <>
-      <text
-        x="80"
-        y="49"
-        textAnchor="middle"
-        className="fill-chart-blue-600"
-        fontSize="16"
-        fontWeight="700"
-      >
-        {charts.bar}
-      </text>
-      <text
-        x="80"
-        y="23"
-        textAnchor="middle"
-        className="fill-chart-blue-400"
-        fontSize="8.5"
-        fontWeight="600"
-      >
-        {charts.line}
-      </text>
-      <text
-        x="125"
-        y="31"
-        textAnchor="middle"
-        className="fill-chart-blue-500"
-        fontSize="6.5"
-        fontWeight="600"
-        transform="rotate(8 125 31)"
-      >
-        {charts.pie}
-      </text>
-      <text
-        x="38"
-        y="59"
-        textAnchor="middle"
-        className="fill-muted-foreground"
-        fillOpacity="0.8"
-        fontSize="6.5"
-        fontWeight="600"
-        transform="rotate(8 38 59)"
-      >
-        {charts.area}
-      </text>
-      <text
-        x="121"
-        y="61"
-        textAnchor="middle"
-        className="fill-chart-blue-300"
-        fontSize="6.5"
-        fontWeight="600"
-        transform="rotate(-8 121 61)"
-      >
-        {charts.radar}
-      </text>
-      <text
-        x="80"
-        y="71"
-        textAnchor="middle"
-        className="fill-chart-orange"
-        fontSize="6.5"
-        fontWeight="600"
-      >
-        {charts.heatmap}
-      </text>
-      <text
-        x="35"
-        y="30"
-        textAnchor="middle"
-        className="fill-chart-blue-500"
-        fillOpacity="0.72"
-        fontSize="5.5"
-        transform="rotate(-8 35 30)"
-      >
-        {charts.bubble}
-      </text>
-      <text
-        x="126"
-        y="77"
-        textAnchor="middle"
-        className="fill-muted-foreground"
-        fillOpacity="0.72"
-        fontSize="5.5"
-        transform="rotate(7 126 77)"
-      >
-        {charts.scatter}
-      </text>
-      <text
-        x="35"
-        y="76"
-        textAnchor="middle"
-        className="fill-chart-green"
-        fontSize="5.5"
-        fontWeight="600"
-        transform="rotate(-6 35 76)"
-      >
-        {charts.gantt}
-      </text>
-      <text
-        x="128"
-        y="48"
-        textAnchor="middle"
-        className="fill-muted-foreground"
-        fillOpacity="0.65"
-        fontSize="5"
-        transform="rotate(-7 128 48)"
-      >
-        {charts.funnel}
-      </text>
+      {WORD_CLOUD_TERMS.map(
+        ({ chart, fontSize, rotated, textLength, tone, x, y }) => {
+          return (
+            <text
+              key={chart}
+              x={x}
+              y={y}
+              textAnchor="middle"
+              textLength={textLength}
+              lengthAdjust="spacingAndGlyphs"
+              className={tone}
+              fontSize={fontSize}
+              fontWeight="600"
+              transform={rotated ? `rotate(-90 ${x} ${y})` : undefined}
+            >
+              {charts[chart]}
+            </text>
+          );
+        },
+      )}
     </>
   );
 }
