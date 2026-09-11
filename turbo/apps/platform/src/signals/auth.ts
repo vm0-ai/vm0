@@ -406,11 +406,12 @@ export const setupClerkUser$ = command(
     const clerk = await get(clerk$);
     signal.throwIfAborted();
 
-    let published: UserResource | null | undefined;
+    let publishedUserId: string | null | undefined;
 
-    // Token refreshes emit here too. They never clear `user`, so the identity
-    // comparison keeps them from republishing an already settled value and
-    // re-running every consumer of `clerkUser$`.
+    // Token, profile and session refreshes all emit here, often with a fresh
+    // `UserResource` for the same account. Compare the account instead of the
+    // object so they do not republish and re-run every consumer of
+    // `clerkUser$`; `clerkVersion$` already covers mutable Clerk state.
     const publish = (): void => {
       const user = clerk.user;
       if (user === undefined) {
@@ -421,7 +422,7 @@ export const setupClerkUser$ = command(
         set(internalClerkUser$, pending.promise);
         return;
       }
-      published = user;
+      publishedUserId = user?.id ?? null;
       if (pending) {
         const deferred = pending;
         pending = null;
@@ -432,7 +433,11 @@ export const setupClerkUser$ = command(
     };
 
     const unsubscribe = clerk.addListener(() => {
-      if (clerk.user !== undefined && clerk.user === published && !pending) {
+      if (
+        clerk.user !== undefined &&
+        (clerk.user?.id ?? null) === publishedUserId &&
+        !pending
+      ) {
         return;
       }
       publish();
@@ -638,10 +643,15 @@ export const authenticatedIdentity$ = computed(async (get) => {
  */
 export const currentUserInfo$ = computed(async (get) => {
   get(clerkVersion$);
-  const user = await get(clerkUser$);
-  if (!user) {
+  const settled = await get(clerkUser$);
+  if (!settled) {
     return undefined;
   }
+  // `clerkUser$` only republishes when the account changes, so read the live
+  // resource for field values: `clerkVersion$` drives the refresh when Clerk
+  // replaces the same account's profile.
+  const clerk = await get(clerk$);
+  const user = clerk.user ?? settled;
   return {
     id: user.id,
     fullName: user.fullName,
