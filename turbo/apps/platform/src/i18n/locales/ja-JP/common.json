@@ -3108,6 +3108,19 @@
       "categoriesAria": "コネクタのカテゴリ",
       "description": "エージェントが使用できるようにサードパーティのサービスを接続します。",
       "descriptionWithCount": "エージェントが使用できる{{value}}個のサービスを接続します。",
+      "directory": {
+        "browse": "参照",
+        "builtin": "組み込みコネクター",
+        "builtinLoadFailed": "組み込みコネクターを読み込めませんでした。",
+        "custom": "カスタムコネクター",
+        "customLoadFailed": "カスタムコネクターを読み込めませんでした。",
+        "emptyCustom": "組織で使用する HTTP API または MCP サーバーを追加します。",
+        "loading": "コネクターを読み込み中…",
+        "noCategoryMatches": "このカテゴリに一致するコネクターはありません。",
+        "noCustomMatches": "検索に一致するカスタムコネクターはありません。",
+        "retry": "再試行",
+        "searchAll": "すべてのコネクターを検索"
+      },
       "empty": {
         "agent": "このエージェントにはコネクタがありません",
         "connected": "コネクタが接続されていません",

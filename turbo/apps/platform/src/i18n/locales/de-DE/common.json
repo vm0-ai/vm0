@@ -3120,6 +3120,19 @@
       "categoriesAria": "Integration-Kategorien",
       "description": "Verbinden Sie Dienste von Drittanbietern, damit Ihre Agenten sie nutzen können.",
       "descriptionWithCount": "Verbinden Sie {{value}} Dienste, damit Ihre Agenten sie nutzen können.",
+      "directory": {
+        "browse": "Durchsuchen",
+        "builtin": "Integrierte Konnektoren",
+        "builtinLoadFailed": "Integrierte Konnektoren konnten nicht geladen werden.",
+        "custom": "Benutzerdefinierte Konnektoren",
+        "customLoadFailed": "Benutzerdefinierte Konnektoren konnten nicht geladen werden.",
+        "emptyCustom": "Fügen Sie eine HTTP-API oder einen MCP-Server für Ihre Organisation hinzu.",
+        "loading": "Konnektoren werden geladen…",
+        "noCategoryMatches": "Keine passenden Konnektoren in dieser Kategorie.",
+        "noCustomMatches": "Keine benutzerdefinierten Konnektoren entsprechen Ihrer Suche.",
+        "retry": "Erneut versuchen",
+        "searchAll": "Alle Konnektoren durchsuchen"
+      },
       "empty": {
         "agent": "Keine Integrationen für diesen Agenten",
         "connected": "Keine verbundenen Integrationen",

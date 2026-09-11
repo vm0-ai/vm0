@@ -3169,6 +3169,19 @@
       "categoriesAria": "Catégories de connecteurs",
       "description": "Connectez des services tiers pour que vos agents puissent les utiliser.",
       "descriptionWithCount": "Connectez {{value}} services pour que vos agents puissent les utiliser.",
+      "directory": {
+        "browse": "Parcourir",
+        "builtin": "Connecteurs intégrés",
+        "builtinLoadFailed": "Impossible de charger les connecteurs intégrés.",
+        "custom": "Connecteurs personnalisés",
+        "customLoadFailed": "Impossible de charger les connecteurs personnalisés.",
+        "emptyCustom": "Ajoutez une API HTTP ou un serveur MCP pour votre organisation.",
+        "loading": "Chargement des connecteurs…",
+        "noCategoryMatches": "Aucun connecteur correspondant dans cette catégorie.",
+        "noCustomMatches": "Aucun connecteur personnalisé ne correspond à votre recherche.",
+        "retry": "Réessayer",
+        "searchAll": "Rechercher dans tous les connecteurs"
+      },
       "empty": {
         "agent": "Aucun connecteur pour cet agent",
         "connected": "Aucun connecteur connecté",
