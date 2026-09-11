@@ -390,58 +390,75 @@ body {
 }
 
 /* Each named theme pairs one anchor with one companion; the same pair drives
-   the picker swatch and the low-concentration workspace ambience below. */
+   picker swatches, primary actions, and the workspace ambience below. The HSL
+   primary value also feeds the shared semantic token without duplicating it. */
 [data-color-theme="golden-hour"] {
-  --okou-color-theme-anchor: #f7a102;
+  --okou-color-theme-primary: 38.9 98.4% 48.8%;
+  --okou-color-theme-primary-foreground: 40 4.3% 13.5%;
+  --okou-color-theme-anchor: hsl(var(--okou-color-theme-primary));
   --okou-color-theme-companion: #f4e33c;
   --okou-color-theme-hue: 38.9;
   --okou-color-theme-ring: 39.1 73.6% 52.5%;
 }
 
 [data-color-theme="citrus-spark"] {
-  --okou-color-theme-anchor: #f4e33c;
+  --okou-color-theme-primary: 54.5 89.3% 59.6%;
+  --okou-color-theme-primary-foreground: 40 4.3% 13.5%;
+  --okou-color-theme-anchor: hsl(var(--okou-color-theme-primary));
   --okou-color-theme-companion: #b5d329;
   --okou-color-theme-hue: 54.5;
   --okou-color-theme-ring: 65.4 58.7% 40.8%;
 }
 
 [data-color-theme="berry-blush"] {
-  --okou-color-theme-anchor: #e24e4a;
+  --okou-color-theme-primary: 1.6 72.4% 58.8%;
+  --okou-color-theme-primary-foreground: 0 0% 0%;
+  --okou-color-theme-anchor: hsl(var(--okou-color-theme-primary));
   --okou-color-theme-companion: #e4abc8;
   --okou-color-theme-hue: 1.6;
   --okou-color-theme-ring: 351 39.7% 57.1%;
 }
 
 [data-color-theme="cotton-sky"] {
-  --okou-color-theme-anchor: #e4abc8;
+  --okou-color-theme-primary: 329.5 51.4% 78.2%;
+  --okou-color-theme-primary-foreground: 40 4.3% 13.5%;
+  --okou-color-theme-anchor: hsl(var(--okou-color-theme-primary));
   --okou-color-theme-companion: #b5d4e5;
   --okou-color-theme-hue: 329.5;
   --okou-color-theme-ring: 319.6 20.7% 56.5%;
 }
 
 [data-color-theme="blue-horizon"] {
-  --okou-color-theme-anchor: #3758a1;
+  --okou-color-theme-primary: 221.3 49.1% 42.4%;
+  --okou-color-theme-primary-foreground: 0 0% 100%;
+  --okou-color-theme-anchor: hsl(var(--okou-color-theme-primary));
   --okou-color-theme-companion: #b5d4e5;
   --okou-color-theme-hue: 221.3;
   --okou-color-theme-ring: 221.3 35.4% 55.7%;
 }
 
 [data-color-theme="daydream"] {
-  --okou-color-theme-anchor: #8aaaf0;
+  --okou-color-theme-primary: 221.2 77.3% 74.1%;
+  --okou-color-theme-primary-foreground: 40 4.3% 13.5%;
+  --okou-color-theme-anchor: hsl(var(--okou-color-theme-primary));
   --okou-color-theme-companion: #9c78d8;
   --okou-color-theme-hue: 232;
   --okou-color-theme-ring: 232 38% 55%;
 }
 
 [data-color-theme="deep-lagoon"] {
-  --okou-color-theme-anchor: #017562;
+  --okou-color-theme-primary: 170.2 98.3% 23.1%;
+  --okou-color-theme-primary-foreground: 0 0% 100%;
+  --okou-color-theme-anchor: hsl(var(--okou-color-theme-primary));
   --okou-color-theme-companion: #3758a1;
   --okou-color-theme-hue: 170.2;
   --okou-color-theme-ring: 171.8 47.1% 33.3%;
 }
 
 [data-color-theme="limelight"] {
-  --okou-color-theme-anchor: #b5d329;
+  --okou-color-theme-primary: 70.6 67.5% 49.4%;
+  --okou-color-theme-primary-foreground: 40 4.3% 13.5%;
+  --okou-color-theme-anchor: hsl(var(--okou-color-theme-primary));
   --okou-color-theme-companion: #f4e33c;
   --okou-color-theme-hue: 70.6;
   --okou-color-theme-ring: 74.2 53.8% 41.6%;
@@ -1792,6 +1809,21 @@ details > summary {
 
 /* Colour themes realigned to the permanent palette's lightness steps. */
 :root[data-gradient-color-themes][data-color-theme] {
+  --primary: var(--okou-color-theme-primary);
+  --primary-foreground: var(--okou-color-theme-primary-foreground);
+  /* Blend toward the companion so filled actions stay in the selected palette
+     and retain label contrast in both light and dark modes. */
+  --color-primary-hover: color-mix(
+    in srgb,
+    var(--okou-color-theme-anchor),
+    var(--okou-color-theme-companion) var(--state-on-filled-hover-alpha)
+  );
+  --color-primary-pressed: color-mix(
+    in srgb,
+    var(--okou-color-theme-anchor),
+    var(--okou-color-theme-companion) var(--state-on-filled-pressed-alpha)
+  );
+
   --gray-0: var(--okou-color-theme-hue) 24% 98.3%;
   --gray-50: var(--okou-color-theme-hue) 22% 97.7%;
   --gray-100: var(--okou-color-theme-hue) 20% 96.7%;
