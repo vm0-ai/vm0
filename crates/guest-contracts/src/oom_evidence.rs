@@ -292,7 +292,15 @@ pub fn read_evidence(stream: &UnixStream) -> io::Result<OomEvidence> {
     }
     let mut bytes = vec![0; length];
     read_exact_until(stream, &mut bytes, deadline)?;
-    let evidence: OomEvidence = serde_json::from_slice(&bytes)?;
+    decode_evidence(&bytes)
+}
+
+/// Decode a response body with the same byte and count limits for every transport.
+pub fn decode_evidence(bytes: &[u8]) -> io::Result<OomEvidence> {
+    if bytes.len() > MAX_EVIDENCE_BYTES {
+        return Err(io::Error::other("evidence response exceeds byte limit"));
+    }
+    let evidence: OomEvidence = serde_json::from_slice(bytes)?;
     if evidence.incidents.len() > MAX_INCIDENTS
         || evidence
             .incidents
