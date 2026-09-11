@@ -9,8 +9,8 @@ use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 
 use async_trait::async_trait;
-use guest_control_client::GuestControlClient;
-use sandbox::{AcceptedGuestRpc, GuestRpcAcceptor, GuestRpcOperation, GuestRpcStream};
+use guest_control_client::{ExternalOperationReservation, GuestControlClient};
+use sandbox::{AcceptedGuestRpc, GuestRpcAcceptor, GuestRpcStream};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::net::{UnixListener, UnixStream};
 use tokio_util::sync::{CancellationToken, WaitForCancellationFutureOwned};
@@ -157,7 +157,7 @@ impl GuestRpcAcceptor for Acceptor {
             sandbox_id: self.shared.context.sandbox_id.clone(),
             stream: Box::new(ReservedStream {
                 stream,
-                operation: GuestRpcOperation::new(reservation),
+                _reservation: reservation,
                 read_cancelled: Box::pin(cancelled.clone().cancelled_owned()),
                 write_cancelled: Box::pin(cancelled.clone().cancelled_owned()),
             }),
@@ -168,16 +168,12 @@ impl GuestRpcAcceptor for Acceptor {
 
 struct ReservedStream {
     stream: UnixStream,
-    operation: GuestRpcOperation,
+    _reservation: ExternalOperationReservation,
     read_cancelled: Pin<Box<WaitForCancellationFutureOwned>>,
     write_cancelled: Pin<Box<WaitForCancellationFutureOwned>>,
 }
 
-impl GuestRpcStream for ReservedStream {
-    fn retain_operation(&self) -> GuestRpcOperation {
-        self.operation.clone()
-    }
-}
+impl GuestRpcStream for ReservedStream {}
 
 impl AsyncRead for ReservedStream {
     fn poll_read(

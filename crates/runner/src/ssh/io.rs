@@ -1,6 +1,6 @@
-//! Work retains provider admission and capacity independently of guest I/O.
+//! Host work retains capacity independently of guest I/O and its park reservation.
 
-use sandbox::{GuestRpcOperation, GuestRpcStream};
+use sandbox::GuestRpcStream;
 use std::{
     io,
     pin::Pin,
@@ -13,18 +13,12 @@ use tokio::{
 };
 
 pub(super) struct Lease {
-    _operation: GuestRpcOperation,
     _sandbox: OwnedSemaphorePermit,
     _runner: OwnedSemaphorePermit,
 }
 impl Lease {
-    pub(super) fn new(
-        operation: GuestRpcOperation,
-        sandbox: OwnedSemaphorePermit,
-        runner: OwnedSemaphorePermit,
-    ) -> Self {
+    pub(super) fn new(sandbox: OwnedSemaphorePermit, runner: OwnedSemaphorePermit) -> Self {
         Self {
-            _operation: operation,
             _sandbox: sandbox,
             _runner: runner,
         }

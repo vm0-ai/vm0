@@ -277,7 +277,7 @@ async fn sandbox_admission_precedes_parsing_and_jit_and_shutdown_releases_stream
 }
 
 #[tokio::test]
-async fn cancelled_dns_keeps_the_real_stream_and_admission_until_worker_finishes() {
+async fn cancelled_dns_keeps_host_capacity_without_blocking_guest_park() {
     let mut h = Harness::new(Reply::default()).await;
     let gate = Arc::new(tokio::sync::Semaphore::new(0));
     *h.network.resolve_gate.lock().unwrap() = Some(Arc::clone(&gate));
@@ -289,23 +289,28 @@ async fn cancelled_dns_keeps_the_real_stream_and_admission_until_worker_finishes
             _ = &mut request => panic!("DNS should be held"),
             () = wait_for(|| !h.observed.queries.lock().unwrap().is_empty()) => (),
         }
-        h.cancel.cancel();
-        // Detached resolver work still owns the actual accepted stream, not only a counter.
-        assert_eq!(h.observed.reservations.load(Ordering::SeqCst), 1);
         assert_eq!(
-            h.runtime.permits.available_permits(),
-            super::RUNNER_CAPACITY - 1
+            h.control.try_fence_normal_operations().err(),
+            Some(guest_control_client::NormalOperationFenceRejection::Busy)
         );
-        assert!(h.control.try_fence_normal_operations().is_err());
-        gate.add_permits(1);
+        h.cancel.cancel();
+        // The request must deliver terminal+EOF while its DNS task is still held.
         request.await
     };
     assert_eq!(terminal(&frames)["failure_reason"], "cancelled");
     assert_eq!(terminal(&frames)["effects"], "not_started");
     h.shutdown().await;
-    assert_eq!(h.observed.reservations.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        h.runtime.permits.available_permits(),
+        super::RUNNER_CAPACITY - 1
+    );
+    let fence = h.control.try_fence_normal_operations().unwrap();
+    gate.add_permits(1);
+    wait_for(|| h.runtime.permits.available_permits() == super::RUNNER_CAPACITY).await;
+    assert_eq!(h.observed.auth.load(Ordering::SeqCst), 0);
     assert!(h.observed.attempts.lock().unwrap().is_empty());
-    drop(h.control.try_fence_normal_operations().unwrap());
+    assert!(h.observed.commands.lock().unwrap().is_empty());
+    drop(fence);
 }
 
 #[tokio::test]

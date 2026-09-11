@@ -46,7 +46,7 @@ pub use factory::{
     SandboxCreateObserver, SandboxCreateStage, SandboxFactory, SandboxNbdCowCreateOutcome,
     SandboxNbdCowCreateStage, SandboxNbdNetlinkConnectStage,
 };
-pub use guest_rpc::{AcceptedGuestRpc, GuestRpcAcceptor, GuestRpcOperation, GuestRpcStream};
+pub use guest_rpc::{AcceptedGuestRpc, GuestRpcAcceptor, GuestRpcStream};
 pub use runtime::{RuntimeProvider, SandboxRuntime};
 pub use sandbox::{
     GuestMemorySnapshot, Sandbox, SandboxFinalExecParkHandoff, SandboxFinalExecParkHandoffOutcome,

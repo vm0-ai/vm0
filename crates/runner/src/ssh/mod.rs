@@ -208,11 +208,7 @@ impl SshRuntime {
                 sandbox_cancelled: accepted.cancelled,
                 deadline: Instant::now() + Duration::from_secs(60),
             };
-            let lease = Arc::new(Lease::new(
-                accepted.stream.retain_operation(),
-                local,
-                global,
-            ));
+            let lease = Arc::new(Lease::new(local, global));
             let registration = Arc::clone(&registration);
             tasks.spawn(async move {
                 runtime
@@ -466,7 +462,8 @@ impl SshRuntime {
             command,
         } = request;
         // System DNS can own blocking resolver work after its waiter is dropped.
-        // Retain the admitted operation/permits until resolution completes.
+        // Retain host capacity until resolution completes, independently of
+        // the guest stream and its park reservation.
         let network = Arc::clone(&self.network);
         let host = credential.host.clone();
         let port = credential.port;
