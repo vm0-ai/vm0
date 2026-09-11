@@ -144,6 +144,12 @@ ruby -e '
     "--issuer \"#{dollar}OKOU_DESKTOP_NOTARIZE_API_ISSUER\"",
   ]
   raise "Desktop DMG notarization must consume the canonical API credential triple" unless canonical_notarytool_arguments.all? { |argument| notarize_run.include?(argument) }
+  raise "Desktop DMG notarization must submit through a single canonical invocation" unless notarize_run.scan("xcrun notarytool submit").length == 1
+  raise "Desktop DMG notarization must survive a transient notary poll failure" unless notarize_run.include?("for attempt in 1 2 3")
+  raise "Desktop DMG notarization must bound notary retries" unless notarize_run.include?("Notarization did not complete after 3 attempts")
+  raise "Desktop DMG notarization must not retry a terminal Apple verdict" unless notarize_run.include?("status: (Invalid|Rejected)")
+  raise "Desktop DMG notarization must not let tee mask a notarytool failure" unless notarize_run.include?("set -o pipefail")
+  raise "Desktop DMG stapling must follow a successful notarization" unless notarize_run.index("stapler staple") > notarize_run.index("notarize_status")
   raise "Desktop promotion must not rebuild the app" if promote_text.include?("pnpm -F @okouai/desktop build")
   raise "Desktop promotion must sign the downloaded app" unless promote_text.include?("sign-and-notarize-packaged-app.mjs")
   raise "Desktop promotion must publish an independent Okou release" unless promote_text.include?("OKOU_RELEASE_TAG: okou-desktop-v")
