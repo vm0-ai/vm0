@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.323.12](https://github.com/vm0-ai/vm0/compare/cli-v9.323.11...cli-v9.323.12) (2026-09-11)
+
+
+### Refactoring
+
+* **test:** replace residual retired-brand fixtures and a missed comment ([#33489](https://github.com/vm0-ai/vm0/issues/33489)) ([5877266](https://github.com/vm0-ai/vm0/commit/58772661b6889713ed3b090f04adc22e0e28d711)), closes [#33475](https://github.com/vm0-ai/vm0/issues/33475)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.428.1
+    * @okouai/core bumped to 8.653.0
+    * @okouai/pi-agent-runtime bumped to 1.25.1
+
 ## [9.323.11](https://github.com/vm0-ai/vm0/compare/cli-v9.323.10...cli-v9.323.11) (2026-09-11)
 
 

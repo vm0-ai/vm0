@@ -11,6 +11,36 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.887.0](https://github.com/vm0-ai/vm0/compare/app-v0.886.0...app-v0.887.0) (2026-09-11)
+
+
+### Features
+
+* **app:** add the two-pane slash template panel behind a switch ([#33405](https://github.com/vm0-ai/vm0/issues/33405)) ([5a9d5e8](https://github.com/vm0-ai/vm0/commit/5a9d5e8022e17b4db5236c98e49e6ff7a8c7693a))
+* **platform:** split the connectors page into discover and your-connectors scopes ([#33435](https://github.com/vm0-ai/vm0/issues/33435)) ([ef3a544](https://github.com/vm0-ai/vm0/commit/ef3a544e2aae690cb2b724b42a46d39896b77e77))
+
+
+### Bug Fixes
+
+* **app:** update primary buttons with the selected color theme ([#33466](https://github.com/vm0-ai/vm0/issues/33466)) ([5b41b64](https://github.com/vm0-ai/vm0/commit/5b41b6487c1c4d6d30a20453f56d1632b56d5400))
+* **platform:** align pinned agent collars with okou ([#33453](https://github.com/vm0-ai/vm0/issues/33453)) ([3e4a5d0](https://github.com/vm0-ai/vm0/commit/3e4a5d0c1957d0673d3774dd585630bcde0f2833))
+* **platform:** align workflow errors with recovery cards ([#33350](https://github.com/vm0-ai/vm0/issues/33350)) ([1cb0817](https://github.com/vm0-ai/vm0/commit/1cb0817c9227759e1dd04b208034f0a302f1a4bf))
+* **platform:** let flyout rows clip at the panel's own edge ([#33480](https://github.com/vm0-ai/vm0/issues/33480)) ([f158889](https://github.com/vm0-ai/vm0/commit/f158889d9fc2bfbc9058eebf369753f9367b718c))
+* **ssh:** allow multiple login configurations per endpoint ([#33473](https://github.com/vm0-ai/vm0/issues/33473)) ([54efc25](https://github.com/vm0-ai/vm0/commit/54efc258e9b0d6df4b9c49ed7cedb92fbe4fec44))
+
+
+### Refactoring
+
+* **test:** replace residual retired-brand fixtures and a missed comment ([#33489](https://github.com/vm0-ai/vm0/issues/33489)) ([5877266](https://github.com/vm0-ai/vm0/commit/58772661b6889713ed3b090f04adc22e0e28d711)), closes [#33475](https://github.com/vm0-ai/vm0/issues/33475)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.428.1
+    * @okouai/core bumped to 8.653.0
+
 ## [0.886.0](https://github.com/vm0-ai/vm0/compare/app-v0.885.0...app-v0.886.0) (2026-09-11)
 
 

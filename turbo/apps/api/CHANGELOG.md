@@ -8,6 +8,28 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.584.1](https://github.com/vm0-ai/vm0/compare/api-v1.584.0...api-v1.584.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **ssh:** allow multiple login configurations per endpoint ([#33473](https://github.com/vm0-ai/vm0/issues/33473)) ([54efc25](https://github.com/vm0-ai/vm0/commit/54efc258e9b0d6df4b9c49ed7cedb92fbe4fec44))
+
+
+### Refactoring
+
+* **test:** replace residual retired-brand fixtures and a missed comment ([#33489](https://github.com/vm0-ai/vm0/issues/33489)) ([5877266](https://github.com/vm0-ai/vm0/commit/58772661b6889713ed3b090f04adc22e0e28d711)), closes [#33475](https://github.com/vm0-ai/vm0/issues/33475)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.428.1
+    * @okouai/core bumped to 8.653.0
+    * @okouai/db bumped to 1.252.1
+    * @okouai/pi-agent-runtime bumped to 1.25.1
+
 ## [1.584.0](https://github.com/vm0-ai/vm0/compare/api-v1.583.0...api-v1.584.0) (2026-09-11)
 
 

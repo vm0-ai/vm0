@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.190.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.190.3...runner-rs-v0.190.4) (2026-09-11)
+
+
+### Bug Fixes
+
+* **runner:** retry transient builtin catalog read failures ([#33461](https://github.com/vm0-ai/vm0/issues/33461)) ([6c7314b](https://github.com/vm0-ai/vm0/commit/6c7314bd8e8ac780fb24141f4dce0e442fed07dd))
+
+
+### Documentation
+
+* **runner:** clarify oversized background fill failure boundary ([#33454](https://github.com/vm0-ai/vm0/issues/33454)) ([266e707](https://github.com/vm0-ai/vm0/commit/266e707f5f7fc26892ccf6541166098ccd41a96c))
+
+
+### Performance Improvements
+
+* **python:** bound json nesting guard string scanning ([#33460](https://github.com/vm0-ai/vm0/issues/33460)) ([f222d69](https://github.com/vm0-ai/vm0/commit/f222d6930ff95ac74739f877566366f29fc3c36a))
+* **runner:** bound retry-after header inspection ([#33455](https://github.com/vm0-ai/vm0/issues/33455)) ([9ada863](https://github.com/vm0-ai/vm0/commit/9ada86363d7e1606c625b4caf1a6e9976d7fd4c9))
+
 ## [0.190.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.190.2...runner-rs-v0.190.3) (2026-09-11)
 
 
