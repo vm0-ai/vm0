@@ -26,9 +26,10 @@ adaptation uses `createDeferredPromise`; it does not justify a file exemption.
 
 Within ESLint's application scope, `new AbortController` is reserved for
 `signals/utils.ts`, the browser polyfill, and the shared test context that owns
-the root test lifetime. Individual tests use `context.signal`, `resetSignal`,
-or `createChildAbortController`. Child cancellation removes its parent listener
-immediately.
+the root test lifetime. Individual tests inherit `context.signal` or use a
+stable `resetSignal()` command. `createChildAbortController()` is prohibited;
+existing calls carry targeted `ccstate/no-create-child-abort-controller`
+suppressions until they migrate to the signal hierarchy.
 
 Polling and timed retries use `setLoop`. Do not implement a loop containing
 `sleep`, `delay`, or a timer, including through an import alias. Tests
@@ -38,9 +39,10 @@ iteration, and a loop waiting for an explicit event are not timed polling.
 
 The existing global ESLint exclusions for `src/__tests__` and `src/mocks` also
 exclude those files from these rules. They still follow the polling policy;
-their current loops iterate data or dispatch events. Startup cancellation tests
-also use child signals. Raw primitives remain in the Web Animations, MSW, and
-Ably adapters that model external browser/protocol lifetimes. These broad
+their current loops iterate data or dispatch events. Existing startup
+cancellation tests with child signals carry the same targeted debt marker. Raw
+primitives remain in the Web Animations, MSW, and Ably adapters that model
+external browser/protocol lifetimes. These broad
 exclusions are separate from the explicit primitive exceptions above.
 
 The multipart upload retry uses `setLoop` with its existing bounded attempt

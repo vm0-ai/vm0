@@ -849,6 +849,7 @@ function createScheduleExpiryCommand(
         set(atoms.verificationExpired$, true);
         return;
       }
+      // eslint-disable-next-line ccstate/no-create-child-abort-controller -- migrate this lifetime to the ccstate signal hierarchy
       const controller = createChildAbortController(signal);
       set(runtime.expiryController$, controller);
       controller.signal.addEventListener(

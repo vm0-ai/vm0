@@ -96,6 +96,7 @@ export default [
       "ccstate/setup-page-render": "off",
       "ccstate/no-side-effect-in-render": "error",
       "ccstate/no-new-abort-controller": "error",
+      "ccstate/no-create-child-abort-controller": "error",
       "ccstate/no-new-promise": "error",
       "ccstate/no-direct-local-storage": "error",
       "ccstate/no-direct-session-storage": "error",

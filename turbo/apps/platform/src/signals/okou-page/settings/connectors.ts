@@ -45,7 +45,6 @@ import {
   type ApiClientFactory,
 } from "../../api-client.ts";
 import {
-  createChildAbortController,
   resetSignal,
   setLoop,
   settle,
@@ -2198,6 +2197,8 @@ async function waitForOAuthAuthCodePopupClosed(
   return "popupClosed";
 }
 
+const resetOAuthAuthCodeWaitSignal$ = resetSignal();
+
 type ActiveConnectorOAuthAuthCodeWaitState = {
   readonly flowId: string;
   readonly connectorSlug: ConnectorSlug;
@@ -2490,8 +2491,7 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
       oauthAttemptId: oauthStart.oauthAttemptId,
     });
 
-    const waitController = createChildAbortController(signal);
-    const waitSignal = waitController.signal;
+    const waitSignal = set(resetOAuthAuthCodeWaitSignal$, signal);
     const changedPromise = (async () => {
       await set(
         setAblyPayloadLoop$,
@@ -2512,7 +2512,7 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
             waitForOAuthAuthCodePopupClosed(oauthStart.authWindow, waitSignal),
           ]),
       () => {
-        waitController.abort();
+        set(resetOAuthAuthCodeWaitSignal$, signal);
       },
     );
     signal.throwIfAborted();
