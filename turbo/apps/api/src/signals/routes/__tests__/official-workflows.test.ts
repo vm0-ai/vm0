@@ -65,10 +65,7 @@ import { verifyOkouToken } from "../../auth/tokens";
 import { testChatEventSearchProjectionRoutes } from "../test-chat-event-search-projection";
 import { testChatEventSnapshotRoutes } from "../test-chat-event-snapshot";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
-import {
-  readMorningBriefDefaultEligibilityFixture,
-  withMorningBriefDefaultActivationFixture,
-} from "../../../test-fixtures/morning-brief-default";
+import { readMorningBriefDefaultEligibilityFixture } from "../../../test-fixtures/morning-brief-default";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import {
@@ -1720,6 +1717,27 @@ async function deliverClerkOrganizationCreated(
   await flushWaitUntilForTest();
 }
 
+async function deliverClerkOrganizationMembershipCreated(
+  actor: ApiTestUser,
+  createdAt: Date,
+): Promise<void> {
+  if (!actor.orgId || !actor.orgRole) {
+    throw new Error("Expected organization-scoped Clerk member");
+  }
+  webhooks.configureClerkWebhookSecret();
+  webhooks.verifyNextClerkWebhook({
+    type: "organizationMembership.created",
+    data: {
+      organization: { id: actor.orgId },
+      public_user_data: { user_id: actor.userId },
+      role: actor.orgRole,
+      created_at: createdAt.getTime(),
+    },
+  });
+  await webhooks.requestClerkWebhook("{}", {}, [200]);
+  await flushWaitUntilForTest();
+}
+
 async function listMorningBriefInstallations(actor: ApiTestUser) {
   const response = await accept(
     workflowCollectionClient().list({
@@ -2386,48 +2404,29 @@ describe.sequential("Morning Brief preference", () => {
 });
 
 describe.sequential("Morning Brief default onboarding", () => {
-  it("emits scoped installed and not-eligible outcomes with Official Workflows off", async () => {
+  it("installs for a new organization creator with Official Workflows off", async () => {
     installCatalogStorageFixture();
     await syncDeployedCatalog();
-    const activationAt = new Date("2026-09-07T01:00:00.000Z");
-    const beforeActivation = new Date(activationAt.getTime() - 1);
-    const preActivationActor = bdd.user();
-    const eligibleCreator = bdd.user();
+    const createdAt = new Date("2026-09-07T01:00:00.000Z");
+    const actor = bdd.user();
     onTestFinished(async () => {
       installCatalogStorageFixture();
       await cleanupCatalog();
     });
 
-    for (const actor of [preActivationActor, eligibleCreator]) {
-      await setMorningBriefEnabled(actor, true);
-      await setOfficialWorkflowsEnabled(actor, false);
-    }
-
-    await withMorningBriefDefaultActivationFixture(activationAt, async () => {
-      await deliverClerkOrganizationCreated(
-        preActivationActor,
-        beforeActivation,
-      );
-      await deliverClerkOrganizationCreated(eligibleCreator, activationAt);
-    });
-
+    await setOfficialWorkflowsEnabled(actor, false);
+    await deliverClerkOrganizationCreated(actor, createdAt);
     await expect(
       readMorningBriefDefaultEligibilityFixture({
-        orgId: preActivationActor.orgId ?? "",
-        userId: preActivationActor.userId,
+        orgId: actor.orgId ?? "",
+        userId: actor.userId,
       }),
-    ).resolves.toBeNull();
-    await expect(
-      readMorningBriefDefaultEligibilityFixture({
-        orgId: eligibleCreator.orgId ?? "",
-        userId: eligibleCreator.userId,
-      }),
-    ).resolves.toStrictEqual(activationAt);
+    ).resolves.toStrictEqual(createdAt);
 
     context.mocks.axiomLogging.info.mockClear();
     expect(
       (
-        await bdd.completeOnboarding(preActivationActor, {
+        await bdd.completeOnboarding(actor, {
           timezone: "Asia/Shanghai",
         })
       ).status,
@@ -2441,40 +2440,8 @@ describe.sequential("Morning Brief default onboarding", () => {
         "Morning Brief onboarding provisioning outcome",
         expect.objectContaining({
           context: "onboarding.service",
-          orgId: preActivationActor.orgId,
-          userId: preActivationActor.userId,
-          firstCompletion: true,
-          timezone: "stored",
-          provisioning: {
-            outcome: "skipped",
-            reason: "not-eligible",
-          },
-        }),
-      ],
-    ]);
-    await expect(
-      listMorningBriefInstallations(preActivationActor),
-    ).resolves.toHaveLength(0);
-
-    context.mocks.axiomLogging.info.mockClear();
-    expect(
-      (
-        await bdd.completeOnboarding(eligibleCreator, {
-          timezone: "Asia/Shanghai",
-        })
-      ).status,
-    ).toBe(200);
-    expect(
-      context.mocks.axiomLogging.info.mock.calls.filter(([message]) => {
-        return message === "Morning Brief onboarding provisioning outcome";
-      }),
-    ).toStrictEqual([
-      [
-        "Morning Brief onboarding provisioning outcome",
-        expect.objectContaining({
-          context: "onboarding.service",
-          orgId: eligibleCreator.orgId,
-          userId: eligibleCreator.userId,
+          orgId: actor.orgId,
+          userId: actor.userId,
           firstCompletion: true,
           timezone: "stored",
           provisioning: {
@@ -2484,7 +2451,7 @@ describe.sequential("Morning Brief default onboarding", () => {
         }),
       ],
     ]);
-    const installations = await listMorningBriefInstallations(eligibleCreator);
+    const installations = await listMorningBriefInstallations(actor);
     expect(installations).toHaveLength(1);
     const installation = installations[0];
     if (!installation) {
@@ -2492,7 +2459,7 @@ describe.sequential("Morning Brief default onboarding", () => {
     }
     const detail = await accept(
       installationClient().get({
-        headers: authHeaders(eligibleCreator),
+        headers: authHeaders(actor),
         params: { workflowId: installation.id },
       }),
       [200],
@@ -2509,113 +2476,100 @@ describe.sequential("Morning Brief default onboarding", () => {
     ]);
   });
 
-  it("marks only post-activation organization creators and preserves the first source timestamp", async () => {
+  it("enrolls every new user-org membership regardless of event order", async () => {
     installCatalogStorageFixture();
     await syncDeployedCatalog();
-    const activationAt = new Date("2026-09-02T08:00:00.000Z");
-    const beforeActivation = new Date(activationAt.getTime() - 1);
-    const laterDelivery = new Date(activationAt.getTime() + 60_000);
-    const unsetActor = bdd.user();
-    const preActivationActor = bdd.user();
-    const eligibleCreator = bdd.user();
-    const membershipActor = bdd.user();
-    const invitationActor = bdd.user();
+    const createdAt = new Date("2026-09-07T02:00:00.000Z");
+    const laterDelivery = new Date(createdAt.getTime() + 60_000);
+    const owner = bdd.user();
+    const memberBeforeTimezone = bdd.user({
+      orgId: owner.orgId,
+      orgRole: "org:member",
+    });
+    const memberBeforeWebhook = bdd.user({
+      orgId: owner.orgId,
+      orgRole: "org:member",
+    });
+    const existingMember = bdd.user({
+      orgId: owner.orgId,
+      orgRole: "org:member",
+    });
     onTestFinished(async () => {
       installCatalogStorageFixture();
       await cleanupCatalog();
     });
 
-    for (const actor of [unsetActor, preActivationActor]) {
-      await setMorningBriefEnabled(actor, true);
-      await setOfficialWorkflowsEnabled(actor, false);
-    }
+    await deliverClerkOrganizationCreated(owner, createdAt);
 
-    await deliverClerkOrganizationCreated(unsetActor, laterDelivery);
-    await withMorningBriefDefaultActivationFixture(activationAt, async () => {
-      await deliverClerkOrganizationCreated(
-        preActivationActor,
-        beforeActivation,
-      );
-      await deliverClerkOrganizationCreated(eligibleCreator, activationAt);
-      await deliverClerkOrganizationCreated(eligibleCreator, laterDelivery);
+    await deliverClerkOrganizationMembershipCreated(
+      memberBeforeTimezone,
+      createdAt,
+    );
+    await bdd.updateUserTimezone(memberBeforeTimezone, "Asia/Shanghai");
+    await flushWaitUntilForTest();
 
-      if (!membershipActor.orgId || !invitationActor.orgId) {
-        throw new Error("Expected organization-scoped Clerk actors");
-      }
-      webhooks.configureClerkWebhookSecret();
-      webhooks.verifyNextClerkWebhook({
-        type: "organizationMembership.created",
-        data: {
-          organization: { id: membershipActor.orgId },
-          public_user_data: { user_id: membershipActor.userId },
-          role: "org:admin",
-          created_at: laterDelivery.getTime(),
-        },
-      });
-      await webhooks.requestClerkWebhook("{}", {}, [200]);
-      await flushWaitUntilForTest();
+    await bdd.updateUserTimezone(memberBeforeWebhook, "America/Los_Angeles");
+    await flushWaitUntilForTest();
+    await expect(
+      listMorningBriefInstallations(memberBeforeWebhook),
+    ).resolves.toHaveLength(0);
+    await deliverClerkOrganizationMembershipCreated(
+      memberBeforeWebhook,
+      createdAt,
+    );
 
-      webhooks.verifyNextClerkWebhook({
-        type: "organizationInvitation.accepted",
-        data: {
-          id: `invitation_${randomUUID()}`,
-          organization_id: invitationActor.orgId,
-          user_id: invitationActor.userId,
-          email_address: invitationActor.email,
-          updated_at: laterDelivery.getTime(),
-        },
-      });
-      await webhooks.requestClerkWebhook("{}", {}, [200]);
-      await flushWaitUntilForTest();
-    });
+    await bdd.updateUserTimezone(existingMember, "Asia/Tokyo");
+    await flushWaitUntilForTest();
 
     await expect(
       readMorningBriefDefaultEligibilityFixture({
-        orgId: unsetActor.orgId ?? "",
-        userId: unsetActor.userId,
+        orgId: memberBeforeTimezone.orgId ?? "",
+        userId: memberBeforeTimezone.userId,
       }),
-    ).resolves.toBeNull();
+    ).resolves.toStrictEqual(createdAt);
     await expect(
       readMorningBriefDefaultEligibilityFixture({
-        orgId: preActivationActor.orgId ?? "",
-        userId: preActivationActor.userId,
+        orgId: memberBeforeWebhook.orgId ?? "",
+        userId: memberBeforeWebhook.userId,
       }),
-    ).resolves.toBeNull();
+    ).resolves.toStrictEqual(createdAt);
     await expect(
       readMorningBriefDefaultEligibilityFixture({
-        orgId: eligibleCreator.orgId ?? "",
-        userId: eligibleCreator.userId,
-      }),
-    ).resolves.toStrictEqual(activationAt);
-    await expect(
-      readMorningBriefDefaultEligibilityFixture({
-        orgId: membershipActor.orgId ?? "",
-        userId: membershipActor.userId,
-      }),
-    ).resolves.toBeNull();
-    await expect(
-      readMorningBriefDefaultEligibilityFixture({
-        orgId: invitationActor.orgId ?? "",
-        userId: invitationActor.userId,
+        orgId: existingMember.orgId ?? "",
+        userId: existingMember.userId,
       }),
     ).resolves.toBeNull();
 
-    for (const actor of [unsetActor, preActivationActor]) {
-      const completed = await bdd.completeOnboarding(actor, {
-        timezone: "Asia/Shanghai",
-      });
-      expect(completed.status).toBe(200);
-      await expect(listMorningBriefInstallations(actor)).resolves.toHaveLength(
-        0,
-      );
-    }
+    await expect(
+      listMorningBriefInstallations(memberBeforeTimezone),
+    ).resolves.toHaveLength(1);
+    await expect(
+      listMorningBriefInstallations(memberBeforeWebhook),
+    ).resolves.toHaveLength(1);
+    await expect(
+      listMorningBriefInstallations(existingMember),
+    ).resolves.toHaveLength(0);
+
+    await deliverClerkOrganizationMembershipCreated(
+      memberBeforeTimezone,
+      laterDelivery,
+    );
+    await expect(
+      readMorningBriefDefaultEligibilityFixture({
+        orgId: memberBeforeTimezone.orgId ?? "",
+        userId: memberBeforeTimezone.userId,
+      }),
+    ).resolves.toStrictEqual(createdAt);
+    await expect(
+      listMorningBriefInstallations(memberBeforeTimezone),
+    ).resolves.toHaveLength(1);
   });
 
   it("installs once on concurrent first completion with only MorningBrief enabled", async () => {
     installCatalogStorageFixture();
     await syncDeployedCatalog();
     const actor = bdd.user();
-    const activationAt = new Date("2026-09-02T08:00:00.000Z");
+    const createdAt = new Date("2026-09-02T08:00:00.000Z");
     if (!actor.orgId) {
       throw new Error("Expected organization-scoped actor");
     }
@@ -2623,11 +2577,8 @@ describe.sequential("Morning Brief default onboarding", () => {
       installCatalogStorageFixture();
       await cleanupCatalog();
     });
-    await setMorningBriefEnabled(actor, true);
     await setOfficialWorkflowsEnabled(actor, false);
-    await withMorningBriefDefaultActivationFixture(activationAt, async () => {
-      await deliverClerkOrganizationCreated(actor, activationAt);
-    });
+    await deliverClerkOrganizationCreated(actor, createdAt);
 
     const completions = await Promise.all([
       bdd.completeOnboarding(actor, { timezone: "Asia/Shanghai" }),
@@ -2679,10 +2630,10 @@ describe.sequential("Morning Brief default onboarding", () => {
     });
   });
 
-  it("keeps legacy and invalid-timezone completions additive without later installation retries", async () => {
+  it("waits for a valid timezone and installs when the member preference receives one", async () => {
     installCatalogStorageFixture();
     await syncDeployedCatalog();
-    const activationAt = new Date("2026-09-02T08:00:00.000Z");
+    const createdAt = new Date("2026-09-02T08:00:00.000Z");
     const missingTimezone = bdd.user();
     const invalidTimezone = bdd.user();
     onTestFinished(async () => {
@@ -2691,11 +2642,8 @@ describe.sequential("Morning Brief default onboarding", () => {
     });
 
     for (const actor of [missingTimezone, invalidTimezone]) {
-      await setMorningBriefEnabled(actor, true);
       await setOfficialWorkflowsEnabled(actor, false);
-      await withMorningBriefDefaultActivationFixture(activationAt, async () => {
-        await deliverClerkOrganizationCreated(actor, activationAt);
-      });
+      await deliverClerkOrganizationCreated(actor, createdAt);
     }
 
     expect((await bdd.completeOnboarding(missingTimezone)).status).toBe(200);
@@ -2712,33 +2660,22 @@ describe.sequential("Morning Brief default onboarding", () => {
       );
     }
 
-    expect(
-      (
-        await bdd.completeOnboarding(invalidTimezone, {
-          timezone: "Asia/Shanghai",
-        })
-      ).status,
-    ).toBe(200);
+    await bdd.updateUserTimezone(missingTimezone, "Asia/Shanghai");
+    await flushWaitUntilForTest();
+    await bdd.updateUserTimezone(invalidTimezone, "America/Los_Angeles");
+    await flushWaitUntilForTest();
+    await expect(
+      listMorningBriefInstallations(missingTimezone),
+    ).resolves.toHaveLength(1);
     await expect(
       listMorningBriefInstallations(invalidTimezone),
-    ).resolves.toHaveLength(0);
-    const preference = await accept(
-      morningBriefPreferenceClient().get({
-        headers: authHeaders(invalidTimezone),
-      }),
-      [200],
-    );
-    expect(preference.body).toMatchObject({
-      enabled: false,
-      timezone: "Asia/Shanghai",
-      unavailableReason: null,
-    });
+    ).resolves.toHaveLength(1);
   });
 
   it("preserves existing enabled and disabled installations and stored timezones", async () => {
     installCatalogStorageFixture();
     await syncDeployedCatalog();
-    const activationAt = new Date("2026-09-02T08:00:00.000Z");
+    const createdAt = new Date("2026-09-02T08:00:00.000Z");
     onTestFinished(async () => {
       installCatalogStorageFixture();
       await cleanupCatalog();
@@ -2746,20 +2683,11 @@ describe.sequential("Morning Brief default onboarding", () => {
 
     for (const initiallyEnabled of [true, false]) {
       const actor = bdd.user();
-      await setMorningBriefEnabled(actor, true);
       await setOfficialWorkflowsEnabled(actor, false);
-      await withMorningBriefDefaultActivationFixture(activationAt, async () => {
-        await deliverClerkOrganizationCreated(actor, activationAt);
-      });
+      await deliverClerkOrganizationCreated(actor, createdAt);
       await bdd.updateUserTimezone(actor, "Asia/Shanghai");
+      await flushWaitUntilForTest();
       const headers = authHeaders(actor);
-      await accept(
-        morningBriefPreferenceClient().update({
-          headers,
-          body: { enabled: true },
-        }),
-        [200],
-      );
       if (!initiallyEnabled) {
         await accept(
           morningBriefPreferenceClient().update({
@@ -2814,7 +2742,7 @@ describe.sequential("Morning Brief default onboarding", () => {
 
   it("reports installer failure while committing onboarding and never retries it", async () => {
     installCatalogStorageFixture();
-    const activationAt = new Date("2026-09-02T08:00:00.000Z");
+    const createdAt = new Date("2026-09-02T08:00:00.000Z");
     const actor = bdd.user();
     if (!actor.orgId) {
       throw new Error("Expected organization-scoped actor");
@@ -2823,11 +2751,8 @@ describe.sequential("Morning Brief default onboarding", () => {
       installCatalogStorageFixture();
       await cleanupCatalog();
     });
-    await setMorningBriefEnabled(actor, true);
     await setOfficialWorkflowsEnabled(actor, false);
-    await withMorningBriefDefaultActivationFixture(activationAt, async () => {
-      await deliverClerkOrganizationCreated(actor, activationAt);
-    });
+    await deliverClerkOrganizationCreated(actor, createdAt);
     context.mocks.axiomLogging.warn.mockClear();
 
     expect(

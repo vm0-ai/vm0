@@ -39,22 +39,39 @@ export const updateUserPreference$ = command(
   async (
     { get, set },
     update: UpdateUserPreferencesRequest,
-    _signal: AbortSignal,
+    signal: AbortSignal,
   ) => {
     const createClient = get(apiClient$);
     const client = createClient(userPreferencesContract);
     await accept(
       client.update({
         body: update,
-        fetchOptions: { signal: _signal },
+        fetchOptions: { signal },
       }),
       [200],
     );
+    signal.throwIfAborted();
 
     // Force JWT refresh so updated membership metadata is available immediately
     const clerk = await get(clerk$);
+    signal.throwIfAborted();
     await clerk.session?.getToken({ skipCache: true });
+    signal.throwIfAborted();
 
     set(reloadUserPreferences$);
+  },
+);
+
+export const initializeUserTimezone$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const preferences = await get(userPreferences$);
+    signal.throwIfAborted();
+    if (preferences.timezone !== null) {
+      return;
+    }
+
+    const timezone =
+      new Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    await set(updateUserPreference$, { timezone }, signal);
   },
 );

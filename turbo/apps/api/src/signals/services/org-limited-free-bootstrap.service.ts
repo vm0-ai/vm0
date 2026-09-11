@@ -8,7 +8,7 @@ import { orgMetadataCanonicalWrites } from "@okouai/db/operations/org-metadata-c
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { orgMembersCache } from "@okouai/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { writeDb$ } from "../external/db";
@@ -38,7 +38,7 @@ import {
 } from "./org-plan-entitlements.service";
 import type { Tx } from "../../lib/db-types";
 import { onRejection } from "../utils";
-import { morningBriefDefaultEligibleAt } from "./morning-brief-default-eligibility.service";
+import { recordMorningBriefDefaultEligibility } from "./morning-brief-default-eligibility.service";
 
 const L = logger("org-limited-free-bootstrap.service");
 
@@ -119,24 +119,22 @@ async function upsertBootstrapOwnerMembership(
       set: { role: "admin", cachedAt },
     });
 
-  const metadataInsert = tx.insert(orgMembersMetadata).values({
-    orgId: args.orgId,
-    userId: args.ownerUserId,
-    morningBriefDefaultEligibleAt: args.morningBriefDefaultEligibleAt,
-    createdAt: cachedAt,
-    updatedAt: cachedAt,
-  });
   if (args.morningBriefDefaultEligibleAt === null) {
-    await metadataInsert.onConflictDoNothing();
+    await tx
+      .insert(orgMembersMetadata)
+      .values({
+        orgId: args.orgId,
+        userId: args.ownerUserId,
+        createdAt: cachedAt,
+        updatedAt: cachedAt,
+      })
+      .onConflictDoNothing();
     return;
   }
-  await metadataInsert.onConflictDoUpdate({
-    target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
-    set: {
-      morningBriefDefaultEligibleAt: args.morningBriefDefaultEligibleAt,
-      updatedAt: cachedAt,
-    },
-    setWhere: isNull(orgMembersMetadata.morningBriefDefaultEligibleAt),
+  await recordMorningBriefDefaultEligibility(tx, {
+    orgId: args.orgId,
+    userId: args.ownerUserId,
+    eligibleAt: args.morningBriefDefaultEligibleAt,
   });
 }
 
@@ -274,11 +272,7 @@ export const ensureOrgLimitedFreeBootstrap$ = command(
   ): Promise<EnsureOrgLimitedFreeBootstrapResult> => {
     const writeDb = set(writeDb$);
     const agentId = randomUUID();
-    const eligibleAt = args.morningBriefEligibilitySourceCreatedAt
-      ? morningBriefDefaultEligibleAt(
-          args.morningBriefEligibilitySourceCreatedAt,
-        )
-      : null;
+    const eligibleAt = args.morningBriefEligibilitySourceCreatedAt ?? null;
     const reservation = await writeDb.transaction(async (tx) => {
       return await reserveBootstrapAgent(tx, {
         ...args,

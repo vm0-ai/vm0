@@ -69,7 +69,6 @@ export type EnsureMorningBriefDefaultEnabledResult =
   | {
       readonly outcome: "skipped";
       readonly reason:
-        | "not-admin"
         | "not-eligible"
         | "feature-disabled"
         | "missing-timezone"
@@ -370,10 +369,6 @@ export const ensureMorningBriefDefaultEnabled$ = command(
           reason: "existing-installation",
           installationCount: installations.length,
         };
-      }
-
-      if (args.member.role !== "admin" && args.member.role !== "org:admin") {
-        return { outcome: "skipped", reason: "not-admin" };
       }
 
       if (!(await hasMorningBriefDefaultEligibility(db, args))) {

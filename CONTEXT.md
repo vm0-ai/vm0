@@ -211,6 +211,24 @@ then the browser language list. It is used only when the workspace locale
 preference is absent.
 _Avoid_: Workspace preference, forced locale
 
+# Morning Brief Context
+
+This context separates a member's organization-scoped delivery settings from
+their identity in other organizations.
+
+## Language
+
+**Member timezone preference**:
+The authoritative IANA timezone stored for one user in one organization. The
+same user can have a different timezone in another organization.
+_Avoid_: Organization timezone, global user timezone
+
+**Default Morning Brief enrollment**:
+A one-time private Morning Brief installation for a newly created user-org
+membership after that membership has a valid timezone. An existing Morning
+Brief installation, including a user-disabled one, always takes precedence.
+_Avoid_: Organization Morning Brief, existing-member backfill
+
 # Product Identity Context
 
 This context names the product identity used in application presentation.

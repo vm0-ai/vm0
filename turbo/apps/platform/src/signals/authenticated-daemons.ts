@@ -19,6 +19,7 @@ import {
   bridgeConnected$,
   installedSharedDatabaseBridge$,
 } from "./shared-database-bridge-state.ts";
+import { initializeUserTimezone$ } from "./okou-page/settings/user-preferences.ts";
 
 const runAppRealtimeDaemons$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
@@ -77,6 +78,9 @@ export const setupAuthenticatedBootstrapData$ = command(
     }
     await get(bridgeConnected$);
     signal.throwIfAborted();
-    await set(subscribeEventDrivenChatThreads$, signal);
+    await Promise.all([
+      set(subscribeEventDrivenChatThreads$, signal),
+      set(initializeUserTimezone$, signal),
+    ]);
   },
 );

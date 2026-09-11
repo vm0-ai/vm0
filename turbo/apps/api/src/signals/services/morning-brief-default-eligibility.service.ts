@@ -1,35 +1,65 @@
-import { AsyncLocalStorage } from "node:async_hooks";
+import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
+import { command } from "ccstate";
+import { isNull } from "drizzle-orm";
 
-import { singleton } from "../../lib/singleton";
+import { nowDate } from "../../lib/time";
+import { writeDb$, type Db } from "../external/db";
+import {
+  ensureMorningBriefDefaultEnabled$,
+  type EnsureMorningBriefDefaultEnabledResult,
+} from "./morning-brief-preference.service";
+import type { WorkflowMember } from "./workflow-data.service";
 
-// Default enrollment remains inert until a separately reviewed rollout.
-const MORNING_BRIEF_DEFAULT_ACTIVATION_AT: Date | null = null;
+type MorningBriefEligibilityWriter = Pick<Db, "insert">;
 
-interface ScopedActivationInstant {
-  readonly value: Date | null;
+interface RecordMorningBriefDefaultEligibilityArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly eligibleAt: Date;
 }
 
-const scopedActivationInstant = singleton(() => {
-  return new AsyncLocalStorage<ScopedActivationInstant>();
-});
-
-function morningBriefDefaultActivationAt(): Date | null {
-  const scoped = scopedActivationInstant.peek()?.getStore();
-  return scoped ? scoped.value : MORNING_BRIEF_DEFAULT_ACTIVATION_AT;
+/**
+ * Records the first verified membership event that makes one user-org pair
+ * eligible for default Morning Brief installation.
+ */
+export async function recordMorningBriefDefaultEligibility(
+  db: MorningBriefEligibilityWriter,
+  args: RecordMorningBriefDefaultEligibilityArgs,
+): Promise<void> {
+  const recordedAt = nowDate();
+  await db
+    .insert(orgMembersMetadata)
+    .values({
+      orgId: args.orgId,
+      userId: args.userId,
+      morningBriefDefaultEligibleAt: args.eligibleAt,
+      createdAt: recordedAt,
+      updatedAt: recordedAt,
+    })
+    .onConflictDoUpdate({
+      target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
+      set: {
+        morningBriefDefaultEligibleAt: args.eligibleAt,
+        updatedAt: recordedAt,
+      },
+      setWhere: isNull(orgMembersMetadata.morningBriefDefaultEligibleAt),
+    });
 }
 
-export function morningBriefDefaultEligibleAt(
-  organizationCreatedAt: Date,
-): Date | null {
-  const activationAt = morningBriefDefaultActivationAt();
-  return activationAt && organizationCreatedAt >= activationAt
-    ? organizationCreatedAt
-    : null;
-}
-
-export async function withMorningBriefDefaultActivationAtForTest<T>(
-  value: Date | null,
-  work: () => Promise<T>,
-): Promise<T> {
-  return await scopedActivationInstant().run({ value }, work);
-}
+export const provisionNewMembershipMorningBrief$ = command(
+  async (
+    { set },
+    args: RecordMorningBriefDefaultEligibilityArgs & {
+      readonly member: WorkflowMember;
+    },
+    signal: AbortSignal,
+  ): Promise<EnsureMorningBriefDefaultEnabledResult> => {
+    await recordMorningBriefDefaultEligibility(set(writeDb$), args);
+    signal.throwIfAborted();
+    return await set(
+      ensureMorningBriefDefaultEnabled$,
+      { orgId: args.orgId, member: args.member },
+      signal,
+    );
+  },
+);
