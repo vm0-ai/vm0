@@ -1115,7 +1115,7 @@ def test_retry_after_checks_late_duplicate_before_inspection(
 
 
 @pytest.mark.parametrize("excess_fields", [False, True], ids=["oversized-name", "excess-fields"])
-def test_retry_after_observer_checks_budgets_before_normalizing_names(
+def test_retry_after_response_hook_checks_budgets_before_normalizing_names(
     tmp_path, real_flow, model_provider_failure_api, *, excess_fields
 ):
     fields = (
@@ -1133,14 +1133,12 @@ def test_retry_after_observer_checks_budgets_before_normalizing_names(
     if not excess_fields:
         expected["retryAfterSeconds"] = 120
 
-    # Guard the reporting observer itself: later body decoding independently reads
-    # Content-Encoding through mitmproxy's general header lookup.
-    model_provider_failure.admit_flow(flow)
-    model_provider_failure.configure_response_observer(flow)
+    _assert_retry_after_header_report(flow, model_provider_failure_api, expected)
 
-    assert _reported_payloads(model_provider_failure_api) == [expected]
+    assert flow.response.status_code == 429
     assert flow.response.headers.fields == fields
-    model_provider_failure.release_flow(flow)
+    assert response_stream(flow)(b"upstream-error") == b"upstream-error"
+    assert response_stream(flow)(b"") == b""
 
 
 def test_later_success_does_not_retract_report(
