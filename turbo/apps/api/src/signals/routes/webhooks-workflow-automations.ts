@@ -5,10 +5,6 @@ import { command } from "ccstate";
 
 import { request$ } from "../context/hono";
 import { pathParamsOf } from "../context/request";
-import {
-  readSignatureHeaders,
-  reportLegacySignatureHeaderUse,
-} from "../../lib/event-consumer/signature-headers";
 import { now } from "../../lib/time";
 import type { RouteEntry } from "../route-entry";
 import {
@@ -46,33 +42,19 @@ const postWorkflowAutomationWebhook$ = command(
       return jsonError("Payload too large", 413);
     }
 
-    const signatureHeaders = readSignatureHeaders((name) => {
-      return request.raw.headers.get(name);
-    });
     const result = await set(
       dispatchWorkflowWebhook$,
       {
         token: params.token,
         rawBody,
         headers: Object.fromEntries(request.raw.headers.entries()),
-        signature: signatureHeaders.signature,
-        timestamp: signatureHeaders.timestamp,
+        signature: request.raw.headers.get("X-Okou-Signature"),
+        timestamp: request.raw.headers.get("X-Okou-Timestamp"),
         apiStartTime: now(),
       },
       signal,
     );
     signal.throwIfAborted();
-    // The dispatcher decides `not_found` before it checks the signature and
-    // `unauthorized` is that check failing, so any other outcome means the
-    // signature — and the header name it arrived under — was accepted.
-    if (
-      signatureHeaders.legacy &&
-      result.kind !== "not_found" &&
-      result.kind !== "unauthorized" &&
-      result.kind !== "payload_too_large"
-    ) {
-      reportLegacySignatureHeaderUse("workflow-webhook");
-    }
 
     switch (result.kind) {
       case "ok": {
