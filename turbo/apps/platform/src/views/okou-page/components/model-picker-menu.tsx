@@ -787,6 +787,14 @@ function ModelPickerFlyoutPanel({
   const savedEffort = switches[FeatureSwitchKey.ChatReasoningEffort]
     ? props.value?.reasoningEffort
     : undefined;
+  const showSettingsRow =
+    !activeMedia &&
+    Boolean(props.value) &&
+    Boolean(selectedOption) &&
+    canAdjustChatSettings(
+      selectedOption,
+      efforts.length > 0 || Boolean(savedEffort),
+    );
   if (!activeMedia && page.kind === "settings" && props.value) {
     return (
       <div
@@ -807,7 +815,19 @@ function ModelPickerFlyoutPanel({
         ref={panelRef}
         role="listbox"
         aria-label={panelLabel}
-        className="flex max-h-[244px] flex-col gap-0.5 overflow-y-auto overscroll-contain"
+        className={cn(
+          // Rows have to appear and disappear at the card's own edge. The card
+          // insets this box by `p-1`, which left a blank band where a row was
+          // cut short of the border, so pull the box back over that inset and
+          // restate it as scroll padding: the list still rests clear of the
+          // border at either end, but a row mid-scroll runs to the edge.
+          // The heights keep the visible area at 244px either way.
+          "-mt-1 flex flex-col gap-0.5 overflow-y-auto overscroll-contain pt-1",
+          showSettingsRow
+            ? "max-h-[248px]"
+            : // Nothing follows, so the bottom reaches the card's edge too.
+              "-mb-1 max-h-[252px] pb-1",
+        )}
       >
         <ModelPickerFlyoutOptions
           {...props}
@@ -822,30 +842,24 @@ function ModelPickerFlyoutPanel({
           </p>
         )}
       </div>
-      {!activeMedia &&
-        props.value &&
-        selectedOption &&
-        canAdjustChatSettings(
-          selectedOption,
-          efforts.length > 0 || Boolean(savedEffort),
-        ) && (
-          <Button
-            variant="ghost"
-            className="h-9 shrink-0 justify-start gap-2 border-t border-border/60 px-2 text-xs text-muted-foreground"
-            aria-label={t(
-              ($) => {
-                return $.settings.models.picker.menu.adjustSettings;
-              },
-              { model: selectedOption.label },
-            )}
-            onClick={editSettings}
-          >
-            <SlidersHorizontal size={14} aria-hidden="true" />
-            {t(($) => {
-              return $.settings.models.picker.menu.chatSettings;
-            })}
-          </Button>
-        )}
+      {showSettingsRow && selectedOption && (
+        <Button
+          variant="ghost"
+          className="h-9 shrink-0 justify-start gap-2 border-t border-border/60 px-2 text-xs text-muted-foreground"
+          aria-label={t(
+            ($) => {
+              return $.settings.models.picker.menu.adjustSettings;
+            },
+            { model: selectedOption.label },
+          )}
+          onClick={editSettings}
+        >
+          <SlidersHorizontal size={14} aria-hidden="true" />
+          {t(($) => {
+            return $.settings.models.picker.menu.chatSettings;
+          })}
+        </Button>
+      )}
     </>
   );
 }
