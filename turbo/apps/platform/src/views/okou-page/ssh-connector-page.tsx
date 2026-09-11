@@ -273,6 +273,7 @@ function CredentialFields({
               })}
             </span>
             <SegmentControl
+              className="justify-self-start"
               aria-labelledby="ssh-auth-method-label"
               value={editor.method}
               onValueChange={chooseMethod}
