@@ -118,6 +118,11 @@ async fn startup_finalization_classifies_cache_failures_and_preserves_healthy_ca
         assert_eq!(overrides.stop_call_count(), 1);
         assert_eq!(overrides.destroy_call_count(), 1);
         assert_eq!(env.idle_pool.lock().await.len(), 0);
+
+        // Budget release does not drain heartbeat cache scans. Stop the runner
+        // before inspecting the cache so its nonblocking scan cannot skip a
+        // healthy entry whose lock is held by a concurrent heartbeat refresh.
+        shutdown(&env, run_handle).await;
         let states = cache.held_workspace_states().await;
         assert_eq!(states.len(), usize::from(failure.is_none()));
 
@@ -141,6 +146,5 @@ async fn startup_finalization_classifies_cache_failures_and_preserves_healthy_ca
                 })
             );
         }
-        shutdown(&env, run_handle).await;
     }
 }
