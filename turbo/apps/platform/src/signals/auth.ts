@@ -390,9 +390,9 @@ export const clerkUser$ = computed((get): Promise<UserResource | null> => {
 });
 
 /**
- * Owns the Clerk listener behind {@link clerkUser$}. `bootstrap$` starts this
- * before the daemons and route setups that read it; without an owner
- * `clerkUser$` never settles.
+ * Owns the Clerk listener behind {@link clerkUser$}. `bootstrap$` starts it in
+ * its synchronous prologue, before the daemons and route setups that read the
+ * signal; without an owner `clerkUser$` never settles.
  */
 export const setupClerkUser$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
