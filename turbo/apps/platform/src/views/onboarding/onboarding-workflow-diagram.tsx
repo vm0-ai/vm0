@@ -11,6 +11,18 @@ const OKOU_AVATAR_IMG = platformStaticAssetUrl(
   "views/onboarding/assets/okou-avatar-2df72642115f.webp",
 );
 
+function WorkflowDiagramOkouAvatar() {
+  return (
+    <img
+      data-slot="onboarding-okou-avatar"
+      className="block size-full object-contain"
+      src={OKOU_AVATAR_IMG}
+      alt=""
+      aria-hidden
+    />
+  );
+}
+
 export function WorkflowConnectorIcon({
   connectorSlug,
   size,
@@ -363,13 +375,7 @@ export function WorkflowPreviewDiagram({
           iconClassName="owf-diagram-avatar"
         >
           <span className="owf-diagram-okou-icon" aria-hidden="true">
-            <img
-              data-slot="onboarding-okou-avatar"
-              className="block size-full object-contain"
-              src={OKOU_AVATAR_IMG}
-              alt=""
-              aria-hidden
-            />
+            <WorkflowDiagramOkouAvatar />
           </span>
         </WorkflowDiagramNode>
         {diagram.destinationConnectorSlug ? (
