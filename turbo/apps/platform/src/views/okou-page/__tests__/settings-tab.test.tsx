@@ -461,7 +461,7 @@ test("Keep incompatible hairstyle previews stable after selecting another style"
   }
 });
 
-test("Create and save a composer avatar from the profile page", async () => {
+async function openNewComposerAvatar(): Promise<HTMLElement> {
   prepareAgentProfile(null);
   await setupPage({
     context,
@@ -477,6 +477,11 @@ test("Create and save a composer avatar from the profile page", async () => {
     name: "Give your agent a face",
   });
   expect(within(dialog).getByText("Face")).toBeVisible();
+  return dialog;
+}
+
+test("Replace randomized avatar face choices with visible selection feedback", async () => {
+  const dialog = await openNewComposerAvatar();
   click(within(dialog).getByLabelText("Randomize avatar"));
   await waitForAvatarFeedback(dialog);
   click(within(dialog).getByLabelText("Round"));
@@ -491,6 +496,16 @@ test("Create and save a composer avatar from the profile page", async () => {
     "aria-pressed",
     "false",
   );
+  expect(within(dialog).getByLabelText("Oval")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+});
+
+test("Create, save, and reopen a composed avatar from the profile page", async () => {
+  const dialog = await openNewComposerAvatar();
+  click(within(dialog).getByLabelText("Oval"));
+  await waitForAvatarFeedback(dialog);
   expect(within(dialog).getByLabelText("Oval")).toHaveAttribute(
     "aria-pressed",
     "true",

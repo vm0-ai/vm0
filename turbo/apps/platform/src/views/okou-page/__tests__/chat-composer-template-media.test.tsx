@@ -89,7 +89,7 @@ function voice(options: {
   };
 }
 
-test("Find and choose an avatar template", async () => {
+async function openAvatarCatalog() {
   mockTemplateChat();
   const media = mockPlayableMedia();
   const firstPage = [
@@ -123,7 +123,13 @@ test("Find and choose an avatar template", async () => {
       within(dialog).getByLabelText("Select template Social Sam"),
     ).toBeVisible();
   });
+  return { user, dialog, media };
+}
 
+async function filterProfessionalAvatars(
+  user: ReturnType<typeof userEvent.setup>,
+  dialog: HTMLElement,
+): Promise<HTMLElement> {
   const filterControl = buttonNamed("Filters", dialog);
   await user.click(filterControl);
   const filters = await waitFor(() => {
@@ -144,7 +150,12 @@ test("Find and choose an avatar template", async () => {
       within(dialog).queryByLabelText("Select template Social Sam"),
     ).not.toBeInTheDocument();
   });
+  return filters;
+}
 
+test("Filter and preview avatar templates before restoring the full catalog", async () => {
+  const { user, dialog, media } = await openAvatarCatalog();
+  const filters = await filterProfessionalAvatars(user, dialog);
   await user.hover(
     within(dialog).getByLabelText("Select template Motion Maya"),
   );
@@ -152,6 +163,18 @@ test("Find and choose an avatar template", async () => {
   expect(within(dialog).getByAltText("Still Sara")).toBeVisible();
 
   await user.click(buttonNamed("Clear", filters));
+  await expect(
+    within(dialog).findByLabelText("Select template Social Sam"),
+  ).resolves.toBeVisible();
+});
+
+test("Choose a paginated avatar and voice after clearing its style filter", async () => {
+  const { user, dialog } = await openAvatarCatalog();
+  const filters = await filterProfessionalAvatars(user, dialog);
+  await user.click(buttonNamed("Clear", filters));
+  await expect(
+    within(dialog).findByLabelText("Select template Social Sam"),
+  ).resolves.toBeVisible();
   const catalog = dialog.querySelector<HTMLElement>(
     "[data-avatar-template-grid-scroll]",
   );

@@ -162,8 +162,7 @@ function limitedFreeBillingStatus(): BillingStatusResponse {
   };
 }
 
-test("Choose Standard or Fast Codex execution", async () => {
-  const user = userEvent.setup({ delay: null });
+async function openCodexExecutionChat(): Promise<void> {
   installNewChat(["gpt-5.6-sol", "gpt-5.6-luna"], "gpt-5.6-sol");
 
   await setupPage({
@@ -176,6 +175,11 @@ test("Choose Standard or Fast Codex execution", async () => {
   });
 
   await readyComposer();
+}
+
+test("Show and dismiss Fast Codex speed and credit guidance on hover", async () => {
+  const user = userEvent.setup({ delay: null });
+  await openCodexExecutionChat();
   await user.click(await modelPicker("GPT 5.6 Sol"));
   const fastOption = await screen.findByRole("option", {
     name: "GPT 5.6 Sol Fast",
@@ -190,8 +194,12 @@ test("Choose Standard or Fast Codex execution", async () => {
       screen.queryByText("Fast · 1.5× model speed · 2.5× credit usage"),
     ).not.toBeInTheDocument();
   });
+});
 
-  await user.click(fastOption);
+test("Choose Fast then Standard Codex execution before changing models", async () => {
+  const user = userEvent.setup({ delay: null });
+  await openCodexExecutionChat();
+  await chooseModel(user, "GPT 5.6 Sol", "GPT 5.6 Sol Fast");
   await expect(modelPicker("GPT 5.6 Sol Fast")).resolves.toBeVisible();
 
   await user.click(await modelPicker("GPT 5.6 Sol Fast"));
