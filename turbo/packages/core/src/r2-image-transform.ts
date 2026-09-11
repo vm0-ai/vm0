@@ -68,10 +68,22 @@ function parseAbsoluteUrl(url: string): URL | null {
 export function r2ImageTransformUrl(
   url: string,
   options: R2ImageTransformOptions,
+  remoteImageOrigin?: string,
 ): string {
   const parsed = parseAbsoluteUrl(url);
   if (parsed === null) {
     return url;
+  }
+
+  if (
+    remoteImageOrigin &&
+    parsed.protocol === "https:" &&
+    parsed.hostname.endsWith(".r2.cloudflarestorage.com") &&
+    parsed.searchParams.has("X-Amz-Signature")
+  ) {
+    // The signature covers the source URL. Preserve its encoded path and query
+    // byte for byte instead of reconstructing it with URLSearchParams.
+    return `${remoteImageOrigin}${R2_IMAGE_TRANSFORM_PREFIX}${r2ImageTransformDirectives(options)}/${url}`;
   }
 
   if (

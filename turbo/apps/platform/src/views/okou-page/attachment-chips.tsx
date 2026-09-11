@@ -1114,6 +1114,7 @@ function ArtifactPreviewDialogThreadResolver({
           })
         : undefined,
       filename: navigationItem.filename,
+      preview: navigationItem.preview,
       threadId: thread.threadId,
       url: navigationItem.url,
     });

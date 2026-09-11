@@ -1,4 +1,6 @@
 import { computed, type Computed } from "ccstate";
+import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
+import { resolvePublicArtifactsBaseUrl } from "../lib/platform-host.ts";
 import { publicAttachmentUrl } from "../views/okou-page/attachment-url.ts";
 import {
   artifactReferencesContract,
@@ -144,12 +146,27 @@ export function createAttachmentPreviewSignals(inputUrl: string) {
     const presigned = await get(presignedToken$);
     return presigned === null ? url : presigned.publicUrl;
   });
+  const thumbnailUrl$ = computed(async (get) => {
+    const presigned = await get(presignedToken$);
+    const source =
+      presigned === null ? url : (presigned.publicUrl ?? presigned.token);
+    return r2ImageTransformUrl(
+      source,
+      { width: 800, height: 720 },
+      resolvePublicArtifactsBaseUrl(),
+    );
+  });
   return {
     presignedToken$,
     resourceUrl$,
     shareUrl$,
+    thumbnailUrl$,
   };
 }
+
+export type AttachmentPreviewSignals = ReturnType<
+  typeof createAttachmentPreviewSignals
+>;
 
 export function createAttachmentResourceUrl$(url: string) {
   return createAttachmentPreviewSignals(url).resourceUrl$;
