@@ -77,7 +77,6 @@ export interface PiMemoryRecallOutcome {
     | "size-mismatch"
     | "symlink"
     | "token-mismatch"
-    | "token-overflow"
     | "v1";
   readonly memoryStorageId?: string;
   readonly storageVersionId?: string;

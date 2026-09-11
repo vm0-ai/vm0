@@ -844,14 +844,15 @@ function readyProjectionIsAuthentic(
   const tokenCount = safeSync(() => {
     return encode(projection.content).length;
   });
+  // `tokenCount` describes the full stored source. The prompt budget is applied
+  // by the runtime renderer, so a larger authentic source is not corrupt here.
   return (
     "ok" in tokenCount &&
     projection.content.trim().length > 0 &&
     content.length === projection.sourceSize &&
     hashFileContent(content) === projection.sourceHash &&
     content.length <= PI_MEMORY_SUMMARY_MAX_BYTES &&
-    tokenCount.ok === projection.tokenCount &&
-    projection.tokenCount <= PI_MEMORY_SUMMARY_MAX_TOKENS
+    tokenCount.ok === projection.tokenCount
   );
 }
 
