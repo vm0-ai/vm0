@@ -18,7 +18,9 @@ import { activeInputDeliveries } from "@okouai/db/schema/active-input-delivery";
 import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { blobs } from "@okouai/db/schema/blob";
 import {
-  materializePiAgentModelConfig,
+  materializePiExecutionRoute,
+  normalizePiExecutionRoute,
+  type PiExecutionRoute,
   type PiAgentCredentialReference,
   type PiAgentModelConfig,
 } from "@okouai/pi-agent-runtime";
@@ -690,6 +692,10 @@ interface ApiFirstTurnContext {
   readonly activation: PiApiFirstTurnActivation;
 }
 
+interface ApiFirstTurnModelContext extends ApiFirstTurnContext {
+  readonly route: PiExecutionRoute;
+}
+
 interface PreparedApiFirstTurn {
   readonly apiStartTime: number;
   readonly auth: SandboxAuth;
@@ -714,6 +720,8 @@ type ApiFirstTurnLaunchConfig =
 function piApiFirstTurnOutcomeTelemetry(
   executionContext: ApiFirstTurnExecutionContext,
 ) {
+  // Observe the original wire vocabulary for the reader drain in #31085.
+  // Execution uses the normalized route, including Gen1 public Responses.
   const config = executionContext.piModelConfig;
   const dialect =
     "schemaVersion" in config
@@ -979,15 +987,13 @@ function sameCredentialSource(
 function codexSubscriptionCredentialReferences(args: {
   readonly activation: PiApiFirstTurnActivation;
   readonly executionContext: ApiFirstTurnExecutionContext;
+  readonly route: PiExecutionRoute;
 }): {
   readonly accessToken: CodexSubscriptionCredentialReference;
   readonly accountId: CodexSubscriptionCredentialReference;
 } | null {
-  const config = args.executionContext.piModelConfig;
-  if (
-    !("schemaVersion" in config) ||
-    config.dialect !== "openai-codex-responses"
-  ) {
+  const config = args.route;
+  if (config.dialect !== "openai-codex-responses") {
     return null;
   }
   const reference = (
@@ -1132,14 +1138,15 @@ async function resolveCodexSubscriptionCredentials(
 }
 
 async function apiFirstTurnModelConfig(
-  args: ApiFirstTurnContext,
+  args: ApiFirstTurnModelContext,
   executionContext: ApiFirstTurnExecutionContext,
   signal: AbortSignal,
 ): Promise<PiAgentModelConfig> {
-  const modelConfig = executionContext.piModelConfig;
+  const modelConfig = args.route;
   const subscriptionReferences = codexSubscriptionCredentialReferences({
     activation: args.activation,
     executionContext,
+    route: modelConfig,
   });
   const subscriptionCredentials = subscriptionReferences
     ? await resolveCodexSubscriptionCredentials(
@@ -1164,8 +1171,8 @@ async function apiFirstTurnModelConfig(
     );
   }
   const secrets: Record<string, string> | null = decrypted.value;
-  return await materializePiAgentModelConfig({
-    config: modelConfig,
+  return await materializePiExecutionRoute({
+    route: modelConfig,
     target: "direct",
     async resolveCredential(binding: PiAgentCredentialReference) {
       let value = subscriptionCredentials?.get(binding.secretName);
@@ -1181,8 +1188,8 @@ async function apiFirstTurnModelConfig(
       const metadata =
         executionContext.secretConnectorMetadataMap?.[binding.secretName];
       if (
-        "schemaVersion" in modelConfig &&
-        modelConfig.schemaVersion === 4 &&
+        (modelConfig.dialect === "anthropic-messages" ||
+          modelConfig.dialect === "bedrock-converse-stream") &&
         providerKey === "claude-code-oauth-token"
       ) {
         throw piApiFirstTurnError(
@@ -1226,7 +1233,7 @@ async function apiFirstTurnModelConfig(
 }
 
 async function recordApiFirstTurnUsage(
-  context: ApiFirstTurnContext,
+  context: ApiFirstTurnModelContext,
   turn: PiApiFirstTurnResult,
 ): Promise<void> {
   const { activation } = context;
@@ -1236,23 +1243,22 @@ async function recordApiFirstTurnUsage(
     userId: activation.userId,
     billableFirewalls: activation.executionContext.billableFirewalls,
     modelUsageProvider: activation.executionContext.modelUsageProvider,
-    piProvider: activation.executionContext.piModelConfig.provider,
+    piProvider: context.route.provider,
+    // Adapt captured native meaning to the unchanged billing input contract.
+    // This object is not persisted or forwarded as a launch/claim payload.
     nativeModelConfig:
-      "schemaVersion" in activation.executionContext.piModelConfig &&
-      activation.executionContext.piModelConfig.schemaVersion === 4
-        ? activation.executionContext.piModelConfig
+      context.route.dialect === "anthropic-messages" ||
+      context.route.dialect === "bedrock-converse-stream"
+        ? { ...context.route, schemaVersion: 4 }
         : undefined,
-    requestedServiceTier:
-      "serviceTier" in activation.executionContext.piModelConfig
-        ? activation.executionContext.piModelConfig.serviceTier
-        : undefined,
+    requestedServiceTier: context.route.serviceTier,
     turn,
   });
 }
 
 async function observeDiscardedProviderResult(
   operation: Promise<PiApiFirstTurnResult>,
-  args: ApiFirstTurnContext,
+  args: ApiFirstTurnModelContext,
   ownership: PiApiFirstTurnOwnership,
   reason: "api_attempt_timed_out" | "aborted_execution",
 ): Promise<void> {
@@ -1271,7 +1277,7 @@ async function observeDiscardedProviderResult(
 
 async function discardCompletedProviderResult(
   turn: PiApiFirstTurnResult,
-  args: ApiFirstTurnContext,
+  args: ApiFirstTurnModelContext,
   ownership: PiApiFirstTurnOwnership,
 ): Promise<void> {
   L.info("Pi API first-turn outcome", {
@@ -1304,7 +1310,7 @@ function validateApiModelTurnOutcome(turn: PiApiFirstTurnResult): void {
 
 interface ExecuteApiModelTurnArgs {
   readonly activation: PiApiFirstTurnActivation;
-  readonly context: ApiFirstTurnContext;
+  readonly context: ApiFirstTurnModelContext;
   readonly commitIdentity: ApiFirstTurnCommitIdentity;
   readonly model: PiAgentModelConfig;
   readonly resourceSnapshot: PiResourceSnapshot;
@@ -1717,7 +1723,15 @@ const prepareApiFirstTurn$ = command(async function prepareApiFirstTurn(
     signal,
   );
   signal.throwIfAborted();
-  const model = await apiFirstTurnModelConfig(args, executionContext, signal);
+  const modelContext: ApiFirstTurnModelContext = {
+    ...args,
+    route: normalizePiExecutionRoute(executionContext.piModelConfig),
+  };
+  const model = await apiFirstTurnModelConfig(
+    modelContext,
+    executionContext,
+    signal,
+  );
   signal.throwIfAborted();
   const loadedSession = await set(
     loadResumeSessionJsonl$,
@@ -1740,7 +1754,7 @@ const prepareApiFirstTurn$ = command(async function prepareApiFirstTurn(
   const { startedAt, turn } = await executeApiModelTurn(
     {
       activation: args.activation,
-      context: args,
+      context: modelContext,
       commitIdentity,
       model,
       resourceSnapshot,

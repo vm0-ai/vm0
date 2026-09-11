@@ -26,6 +26,7 @@ const TERRA_MODEL = {
   apiKey: "test-key",
   model: "gpt-5.6-terra",
   dialect: "openai-responses" as const,
+  transport: "sse" as const,
   thinkingLevel: "max" as const,
 };
 
@@ -1332,6 +1333,7 @@ describe("official Pi AgentSession runtime", () => {
             ? {}
             : { thinkingLevel: "max" as const }),
           dialect: "openai-responses",
+          transport: "sse",
           requestHeaders,
         },
         appendSystemPrompt: null,

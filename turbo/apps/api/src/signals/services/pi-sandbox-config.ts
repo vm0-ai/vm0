@@ -339,6 +339,7 @@ function resolveCustomGatewayPiModelConfig(
     catalogModel: config.catalogModel,
     apiKey: "sandbox-secret",
     dialect: "openai-responses",
+    transport: "sse",
     ...runtimeContract,
   })
     ? config
@@ -507,6 +508,7 @@ function resolveResponsesPiModelConfig(
     model: config.model,
     apiKey: "sandbox-secret",
     dialect: "openai-responses",
+    transport: "sse",
     ...runtimeContract,
   })
     ? config
