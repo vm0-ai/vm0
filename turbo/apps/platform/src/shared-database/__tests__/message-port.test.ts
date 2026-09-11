@@ -804,13 +804,11 @@ function chatEventInvalidations(threadId: string): {
   readonly events: SharedDatabaseBridgeEvents;
   readonly next: () => Promise<void>;
 } {
-  const base = bridgeEvents();
   let pending: ReturnType<typeof context.mocks.deferred<void>> | null = null;
   return {
     events: {
-      ...base,
+      ...bridgeEvents(),
       databaseInvalidated: (invalidated: SharedDatabaseDataKey) => {
-        base.databaseInvalidated(invalidated);
         if (
           invalidated.kind === "chat-event" &&
           invalidated.threadId === threadId
