@@ -198,7 +198,7 @@ test("Visualization starts with no selected preferences", async () => {
     name: "Output format",
   });
   const outputOptions = queryAllByRoleFast("button", outputPicker);
-  expect(outputOptions).toHaveLength(5);
+  expect(outputOptions).toHaveLength(4);
   for (const output of outputOptions) {
     expect(output).toHaveAttribute("aria-pressed", "false");
   }
