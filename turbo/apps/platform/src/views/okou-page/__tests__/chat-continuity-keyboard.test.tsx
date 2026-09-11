@@ -114,7 +114,7 @@ function expectPaneTitle(
   expect(threadContainer(thread.id)).toHaveTextContent(title);
 }
 
-test("Move between neighboring chats from the focused pane", async () => {
+async function openNeighboringChatPanes(mainThread: "current" | "newest") {
   const oldest = continuityThread(16, 1, "Oldest neighboring chat");
   const current = continuityThread(16, 2, "Current keyboard chat");
   const side = continuityThread(16, 3, "Side keyboard chat");
@@ -124,17 +124,23 @@ test("Move between neighboring chats from the focused pane", async () => {
     threads: [oldest, current, side, newest],
   });
 
+  const main = mainThread === "current" ? current : newest;
   await setupPage({
     context,
-    path: `/chats/${current.id}?sidebar=${side.id}`,
+    path: `/chats/${main.id}?sidebar=${side.id}`,
     ...workspace.pageOptions,
   });
 
   await waitFor(() => {
-    expect(composerIn(current.id)).toBeVisible();
+    expect(composerIn(main.id)).toBeVisible();
     expect(composerIn(side.id)).toBeVisible();
     expect(threadContainer(side.id)).toBeVisible();
   });
+  return { current, side, newest };
+}
+
+test("Move to a newer chat from the main pane without changing the side pane", async () => {
+  const { current, side, newest } = await openNeighboringChatPanes("current");
   const mainComposer = composerIn(current.id);
   mainComposer.focus();
   await userEvent.keyboard("{Control>}{Shift>}{ArrowUp}{/Shift}{/Control}");
@@ -151,7 +157,14 @@ test("Move between neighboring chats from the focused pane", async () => {
     "page",
   );
   expectPaneTitle(side, "Side keyboard chat");
+});
 
+test("Move to an older chat from the side pane without changing the main pane", async () => {
+  const { current, side, newest } = await openNeighboringChatPanes("newest");
+  expect(continuitySidebarLink(newest.id)).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   const sideContainer = threadContainer(side.id);
   sideContainer.focus();
   await userEvent.keyboard("{Control>}{Shift>}{ArrowDown}{/Shift}{/Control}");

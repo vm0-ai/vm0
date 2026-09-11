@@ -2,6 +2,7 @@
 """Exercise AWS response boundaries, delivered evidence and the entry-point guards."""
 
 import contextlib
+import copy
 import datetime as dt
 import gzip
 import importlib.util
@@ -146,6 +147,45 @@ class AuditSetupTests(unittest.TestCase):
         self.assertEqual(result, 1)
         self.assertEqual(report["failure"], "unexpected_oidc_url")
         self.assertEqual(report["created"], [])
+
+    def test_existing_trail_bucket_accepts_s3_policy_readback(self):
+        settings = audit.expected("cloudtrail-bucket.json")
+        policy = copy.deepcopy(settings["policy"])
+        # S3 returns this single action as a string, even when written as a list.
+        for statement in policy["Statement"]:
+            if statement["Sid"] == "AuditServiceBucketCheck":
+                statement["Action"] = "s3:GetBucketAcl"
+        owner = {"Bucket": audit.TRAIL_BUCKET, "ExpectedBucketOwner": audit.ACCOUNT}
+        s3 = self.stubs["s3"]
+        s3.add_response("list_buckets", {"Buckets": [{"Name": audit.TRAIL_BUCKET}]})
+        responses = [
+            ("get_bucket_tagging", {"TagSet": audit.TAGS}),
+            (
+                "get_bucket_encryption",
+                {"ServerSideEncryptionConfiguration": settings["encryption"]},
+            ),
+            (
+                "get_public_access_block",
+                {"PublicAccessBlockConfiguration": settings["publicAccess"]},
+            ),
+            (
+                "get_bucket_ownership_controls",
+                {"OwnershipControls": settings["ownership"]},
+            ),
+            ("get_bucket_versioning", {"Status": settings["versioning"]}),
+            ("get_bucket_policy", {"Policy": json.dumps(policy)}),
+            ("get_bucket_lifecycle_configuration", {"Rules": settings["lifecycle"]}),
+            ("get_bucket_location", {"LocationConstraint": audit.REGION}),
+            ("get_bucket_policy_status", {"PolicyStatus": {"IsPublic": False}}),
+        ]
+        for operation, response in responses:
+            s3.add_response(operation, response, owner)
+        report = {"created": [], "buckets": []}
+        audit.configure_bucket(self.clients["s3"], audit.TRAIL_BUCKET, settings, report)
+        self.assertEqual(report["created"], [])
+        self.assertEqual(report["buckets"][0]["name"], audit.TRAIL_BUCKET)
+        self.assertTrue(report["buckets"][0]["verified"])
+        s3.assert_no_pending_responses()
 
     def test_new_trail_matches_multi_region_audit_contract(self):
         desired = {
