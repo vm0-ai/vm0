@@ -195,6 +195,14 @@ import {
   type WorkflowTemplateItem,
 } from "@okouai/core/workflow-template-items";
 import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
+import {
+  defaultPresentationTemplateThemeId,
+  presentationTemplateColorSystemId,
+  toIllustrationGenerationTemplate,
+  toPresentationGenerationTemplate,
+  toVideoGenerationTemplate,
+  toWebsiteGenerationTemplate,
+} from "./composer-template-catalog.ts";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type {
   ConnectorAccountConnection,
@@ -699,22 +707,6 @@ function isSelectedPresentationTemplate(
   );
 }
 
-function toPresentationGenerationTemplate(
-  item: PresentationTemplateItem,
-  colorSystemId = presentationTemplateColorSystemId(
-    defaultPresentationTemplateThemeId(item),
-  ),
-): GenerationTemplateRequest {
-  return {
-    type: "presentation",
-    selection: {
-      templateId: item.templateId,
-      colorSystemId,
-      previewUrl: item.embedUrl,
-    },
-  };
-}
-
 function toImportedPresentationGenerationTemplate(
   template: PresentationTemplateSummary,
 ): GenerationTemplateRequest {
@@ -763,17 +755,6 @@ function isSelectedIllustrationTemplate(
   );
 }
 
-function toIllustrationGenerationTemplate(
-  item: IllustrationTemplateItem,
-): GenerationTemplateRequest {
-  return {
-    type: "illustration",
-    selection: {
-      illustrationStyleId: item.illustrationStyleId,
-    },
-  };
-}
-
 function selectedIllustrationTemplateItem(
   value: GenerationTemplateRequest | undefined,
 ): IllustrationTemplateItem | undefined {
@@ -801,17 +782,6 @@ function isSelectedVideoTemplate(
  * pin and the member default, and the rest from the composer's own settings
  * chip, so nothing about a run is frozen into the message that started it.
  */
-function toVideoGenerationTemplate(
-  item: VideoTemplateItem,
-): GenerationTemplateRequest {
-  return {
-    type: "video",
-    selection: {
-      stylePresetId: item.id,
-    },
-  };
-}
-
 function selectedVideoTemplateItem(
   value: GenerationTemplateRequest | undefined,
 ): VideoTemplateItem | undefined {
@@ -878,15 +848,6 @@ function isSelectedWebsiteTemplate(
     value?.type === "website" &&
     findWebsiteTemplateItem(value.selection.websiteTemplateId)?.id === item.id
   );
-}
-
-function toWebsiteGenerationTemplate(
-  item: WebsiteTemplateItem,
-): GenerationTemplateRequest {
-  return {
-    type: "website",
-    selection: { websiteTemplateId: item.id },
-  };
 }
 
 function selectedWebsiteTemplateItem(
@@ -2207,16 +2168,6 @@ function presentationTemplateThemeName(
   theme: PresentationTemplateTheme,
 ): string {
   return PRESENTATION_TEMPLATE_THEME_NAMES[theme.id]();
-}
-
-function defaultPresentationTemplateThemeId(
-  item: PresentationTemplateItem,
-): string {
-  return item.colorSystemId?.replace("color-system:", "") ?? "warm-sand";
-}
-
-function presentationTemplateColorSystemId(themeId: string): string {
-  return `color-system:${themeId}`;
 }
 
 function findPresentationTemplateTheme(

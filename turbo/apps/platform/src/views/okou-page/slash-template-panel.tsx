@@ -1,0 +1,368 @@
+// The two-pane slash panel. The left column indexes what you can make and the
+// workflows you have; the right pane previews the highlighted type's covers.
+// Kept beside the flat menu in slash-workflow.tsx so both can render from the
+// same suggestion state while the feature switch decides which one is shown.
+import {
+  ChevronRight,
+  Globe,
+  Image,
+  Presentation,
+  Route,
+  Video,
+  Workflow,
+} from "lucide-react";
+import { cn } from "@okouai/ui";
+import { useTranslation } from "react-i18next";
+import { i18n } from "../../i18n/index.ts";
+import type { ComposerSlashWorkflowMatch } from "../../signals/okou-page/workflow-composer-domain.ts";
+import {
+  isSlashTemplatePreviewCategory,
+  slashTemplatePreviewGroup,
+  type SlashTemplateCategory,
+  type SlashTemplatePreview,
+} from "./composer-template-catalog.ts";
+
+const SLASH_TEMPLATE_CATEGORY_ICONS = {
+  slides: Presentation,
+  illustration: Image,
+  video: Video,
+  website: Globe,
+  workflow: Workflow,
+} as const satisfies Record<SlashTemplateCategory, typeof Presentation>;
+
+export interface SlashTemplatePanelProps {
+  /** Already filtered by the typed slash query. */
+  readonly categories: readonly SlashTemplateCategory[];
+  readonly workflows: readonly ComposerSlashWorkflowMatch[];
+  readonly workflowsLoading: boolean;
+  /** The highlighted row, owned by the editor's keyboard handling. */
+  readonly highlighted: SlashTemplateCategory | null;
+  readonly onHighlight: (category: SlashTemplateCategory | null) => void;
+  readonly onSelectCategory: (category: SlashTemplateCategory) => void;
+  readonly onSelectTemplate: (preview: SlashTemplatePreview) => void;
+  readonly onSelectWorkflow: (workflow: ComposerSlashWorkflowMatch) => void;
+  readonly onBrowseAll: () => void;
+  readonly workflowOptionId: (workflowId: string) => string;
+  readonly categoryOptionId: (category: SlashTemplateCategory) => string;
+}
+
+export function slashTemplateCategoryLabel(
+  category: SlashTemplateCategory,
+): string {
+  switch (category) {
+    case "slides": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.presentation;
+      });
+    }
+    case "illustration": {
+      return i18n.t(($) => {
+        return $.artifacts.templates.illustration;
+      });
+    }
+    case "video": {
+      return i18n.t(($) => {
+        return $.artifacts.kinds.video;
+      });
+    }
+    case "website": {
+      return i18n.t(($) => {
+        return $.artifacts.templates.website;
+      });
+    }
+    case "workflow": {
+      return i18n.t(($) => {
+        return $.artifacts.templates.workflow;
+      });
+    }
+  }
+}
+
+function categoryDescription(category: SlashTemplateCategory): string {
+  switch (category) {
+    case "slides": {
+      return i18n.t(($) => {
+        return $.chat.composer.slashPanel.slidesDescription;
+      });
+    }
+    case "illustration": {
+      return i18n.t(($) => {
+        return $.chat.composer.slashPanel.illustrationDescription;
+      });
+    }
+    case "video": {
+      return i18n.t(($) => {
+        return $.chat.composer.slashPanel.videoDescription;
+      });
+    }
+    case "website": {
+      return i18n.t(($) => {
+        return $.chat.composer.slashPanel.websiteDescription;
+      });
+    }
+    case "workflow": {
+      return i18n.t(($) => {
+        return $.chat.composer.slashPanel.workflowDescription;
+      });
+    }
+  }
+}
+
+function SectionLabel({ children }: { readonly children: string }) {
+  return (
+    <div className="px-2.5 pt-2.5 pb-1 text-xs font-medium text-muted-foreground">
+      {children}
+    </div>
+  );
+}
+
+function SlashTemplateDetailPane({
+  category,
+  onSelectTemplate,
+}: {
+  readonly category: SlashTemplateCategory;
+  readonly onSelectTemplate: (preview: SlashTemplatePreview) => void;
+}) {
+  const { t } = useTranslation();
+  if (!isSlashTemplatePreviewCategory(category)) {
+    return null;
+  }
+  const group = slashTemplatePreviewGroup(category);
+  const Icon = SLASH_TEMPLATE_CATEGORY_ICONS[category];
+  return (
+    <div
+      className="w-[400px] shrink-0"
+      data-slot="slash-template-detail"
+      data-category={category}
+    >
+      <div className="flex h-full flex-col p-4">
+        <div className="flex items-center gap-2.5">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
+            <Icon size={18} className="text-muted-foreground" aria-hidden />
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-[14px] font-medium">
+              {slashTemplateCategoryLabel(category)}
+            </span>
+            <span className="block truncate text-[12px] text-muted-foreground">
+              {t(
+                ($) => {
+                  return $.chat.composer.slashPanel.templateCount;
+                },
+                { count: group.total },
+              )}
+            </span>
+          </span>
+        </div>
+        <p className="mt-3 text-[13px] leading-6 text-muted-foreground">
+          {categoryDescription(category)}
+        </p>
+        <div className="mt-3 grid grid-cols-2 gap-2.5">
+          {group.previews.map((preview) => {
+            return (
+              <button
+                key={preview.slug}
+                type="button"
+                className="group min-w-0 text-left"
+                aria-label={t(
+                  ($) => {
+                    return $.chat.composer.slashPanel.useTemplate;
+                  },
+                  { title: preview.title },
+                )}
+                onMouseDown={(event) => {
+                  // Keep the editor focused; the panel never takes selection.
+                  event.preventDefault();
+                  onSelectTemplate(preview);
+                }}
+              >
+                <span className="block aspect-video overflow-hidden rounded-lg bg-muted ring-1 ring-border/60">
+                  <img
+                    src={preview.coverUrl}
+                    alt=""
+                    loading="lazy"
+                    className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.04]"
+                  />
+                </span>
+                <span className="mt-1 block truncate text-[12px] text-muted-foreground">
+                  {preview.title}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SlashPanelWorkflowList({
+  workflows,
+  loading,
+  onHighlight,
+  onSelect,
+  workflowOptionId,
+}: {
+  readonly workflows: readonly ComposerSlashWorkflowMatch[];
+  readonly loading: boolean;
+  readonly onHighlight: (category: SlashTemplateCategory | null) => void;
+  readonly onSelect: (workflow: ComposerSlashWorkflowMatch) => void;
+  readonly workflowOptionId: (workflowId: string) => string;
+}) {
+  const { t } = useTranslation();
+  if (loading) {
+    return (
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5 text-sm text-muted-foreground">
+        {t(($) => {
+          return $.chat.composer.workflows.loading;
+        })}
+      </div>
+    );
+  }
+  if (workflows.length === 0) {
+    return (
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5 text-sm text-muted-foreground">
+        {t(($) => {
+          return $.chat.composer.workflows.empty;
+        })}
+      </div>
+    );
+  }
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-1.5">
+      {workflows.map((workflow) => {
+        return (
+          <button
+            key={workflow.id}
+            id={workflowOptionId(workflow.id)}
+            type="button"
+            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left transition-colors hover:bg-state-hover"
+            onMouseEnter={() => {
+              // A workflow has nothing to preview, so highlighting one closes
+              // the pane rather than leaving a stale type open.
+              onHighlight(null);
+            }}
+            onMouseDown={(event) => {
+              event.preventDefault();
+              onSelect(workflow);
+            }}
+          >
+            <Route
+              size={16}
+              className="shrink-0 text-muted-foreground"
+              aria-hidden
+            />
+            <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-foreground">
+              <span className="text-brand-text">/</span>
+              {workflow.name}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+export function SlashTemplatePanel({
+  categories,
+  workflows,
+  workflowsLoading,
+  highlighted,
+  onHighlight,
+  onSelectCategory,
+  onSelectTemplate,
+  onSelectWorkflow,
+  onBrowseAll,
+  workflowOptionId,
+  categoryOptionId,
+}: SlashTemplatePanelProps) {
+  const { t } = useTranslation();
+  const showDetail =
+    highlighted !== null && isSlashTemplatePreviewCategory(highlighted);
+  return (
+    <div className="flex h-[380px] overflow-hidden" data-slot="slash-panel">
+      <div className="flex min-h-0 w-[320px] shrink-0 flex-col border-r border-border/60">
+        <div className="shrink-0">
+          <SectionLabel>
+            {t(($) => {
+              return $.chat.composer.slashPanel.make;
+            })}
+          </SectionLabel>
+          <div className="px-1.5">
+            {categories.map((category) => {
+              const Icon = SLASH_TEMPLATE_CATEGORY_ICONS[category];
+              const label = slashTemplateCategoryLabel(category);
+              return (
+                <button
+                  key={category}
+                  id={categoryOptionId(category)}
+                  type="button"
+                  aria-label={label}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-foreground transition-colors",
+                    highlighted === category
+                      ? "bg-state-hover"
+                      : "hover:bg-state-hover",
+                  )}
+                  onMouseEnter={() => {
+                    onHighlight(category);
+                  }}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    onSelectCategory(category);
+                  }}
+                >
+                  <Icon
+                    size={16}
+                    className="shrink-0 text-muted-foreground"
+                    aria-hidden
+                  />
+                  <span className="min-w-0 flex-1 truncate">{label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <SectionLabel>
+            {t(($) => {
+              return $.chat.composer.workflows.title;
+            })}
+          </SectionLabel>
+        </div>
+        <SlashPanelWorkflowList
+          workflows={workflows}
+          loading={workflowsLoading}
+          onHighlight={onHighlight}
+          onSelect={onSelectWorkflow}
+          workflowOptionId={workflowOptionId}
+        />
+        <div className="shrink-0 border-t border-border/60 p-1">
+          <button
+            type="button"
+            className="flex h-8 w-full items-center justify-between rounded px-2 text-sm text-foreground transition-colors hover:bg-state-hover"
+            onMouseDown={(event) => {
+              event.preventDefault();
+              onBrowseAll();
+            }}
+          >
+            <span className="truncate">
+              {t(($) => {
+                return $.chat.composer.slashPanel.browseAll;
+              })}
+            </span>
+            <ChevronRight
+              size={16}
+              className="shrink-0 text-muted-foreground"
+              aria-hidden
+            />
+          </button>
+        </div>
+      </div>
+      {showDetail && (
+        <SlashTemplateDetailPane
+          category={highlighted}
+          onSelectTemplate={onSelectTemplate}
+        />
+      )}
+    </div>
+  );
+}

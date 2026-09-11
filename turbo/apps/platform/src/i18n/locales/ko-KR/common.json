@@ -1910,6 +1910,17 @@
       "selectedModelUnavailable": "선택한 모델을 사용할 수 없습니다. 전송 전에 구성하세요.",
       "selectedModelUnavailableToast": "선택한 모델을 사용할 수 없습니다",
       "selectModel": "모델 선택",
+      "slashPanel": {
+        "browseAll": "모든 템플릿 보기",
+        "illustrationDescription": "선택한 스타일로 이미지 한 장을 만듭니다",
+        "make": "만들기",
+        "slidesDescription": "바로 발표할 수 있는 HTML 슬라이드",
+        "templateCount_other": "템플릿 {{count}}개",
+        "useTemplate": "템플릿 {{title}} 사용",
+        "videoDescription": "텍스트로 영상을 만들며 매개변수는 선택한 모델을 따릅니다",
+        "websiteDescription": "게시할 수 있는 정적 사이트",
+        "workflowDescription": "작성 창에서 실행할 수 있는 저장된 워크플로"
+      },
       "temporarilySwitchTo": "임시로 전환할 모델",
       "threadSuggestions": "채팅 스레드",
       "useForFutureChats": "향후 채팅에도 사용",

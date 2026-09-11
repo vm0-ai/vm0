@@ -1913,6 +1913,18 @@
       "selectedModelUnavailable": "The selected model is not available. Configure it before sending.",
       "selectedModelUnavailableToast": "The selected model is not available",
       "selectModel": "Select model",
+      "slashPanel": {
+        "browseAll": "Browse all templates",
+        "illustrationDescription": "A single image, in the style you pick",
+        "make": "Make",
+        "slidesDescription": "An HTML slide deck you can present",
+        "templateCount_one": "{{count}} template",
+        "templateCount_other": "{{count}} templates",
+        "useTemplate": "Use template {{title}}",
+        "videoDescription": "Text to video, with parameters from the chosen model",
+        "websiteDescription": "A static site you can publish",
+        "workflowDescription": "A saved workflow you can run from the composer"
+      },
       "temporarilySwitchTo": "Temporarily switch to",
       "threadSuggestions": "Chat threads",
       "useForFutureChats": "Use this for future chats",
