@@ -153,15 +153,19 @@ async function filterProfessionalAvatars(
   return filters;
 }
 
-test("Filter and preview avatar templates before restoring the full catalog", async () => {
+test("Preview avatar templates within the selected style", async () => {
   const { user, dialog, media } = await openAvatarCatalog();
-  const filters = await filterProfessionalAvatars(user, dialog);
+  await filterProfessionalAvatars(user, dialog);
   await user.hover(
     within(dialog).getByLabelText("Select template Motion Maya"),
   );
   expect(media.play).toHaveBeenCalledWith();
   expect(within(dialog).getByAltText("Still Sara")).toBeVisible();
+});
 
+test("Clearing an avatar style restores the full catalog", async () => {
+  const { user, dialog } = await openAvatarCatalog();
+  const filters = await filterProfessionalAvatars(user, dialog);
   await user.click(buttonNamed("Clear", filters));
   await expect(
     within(dialog).findByLabelText("Select template Social Sam"),
