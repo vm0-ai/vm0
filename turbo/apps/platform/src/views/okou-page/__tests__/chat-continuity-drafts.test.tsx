@@ -268,7 +268,7 @@ async function typePersistentDraft() {
   });
 
   const composer = await messageComposer();
-  await userEvent.type(composer, "Unsent launch checklist");
+  await fill(composer, "Unsent launch checklist");
   await waitFor(() => {
     expect(
       workspace.draftPatches.some((patch) => {

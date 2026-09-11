@@ -2195,95 +2195,113 @@ describe("CHAT-02: thread connector account selection", () => {
     );
   });
 
-  it("uses the current default connector account without persisting an override", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    if (!actor.orgId) {
-      throw new Error("Expected an organization-scoped chat actor");
-    }
-    const connection = await connectors.connectManualGrant(
-      actor,
-      "openai",
-      "api-token",
-      { apiKey: "thread-selected-openai-key" },
-      agentId,
-    );
-
-    context.mocks.ably.publish.mockClear();
-    const run = await sendChatRun(actor, {
-      agentId,
-      prompt: "Use my OpenAI connector account",
-    });
-    const { claim, sandboxHeaders } = await claimChatRun(
-      runnerGroup,
-      run.runId,
-    );
-    expect(claim.secretConnectorMetadataMap?.OPENAI_TOKEN).toMatchObject({
-      sourceId: connection.id,
-    });
-
-    const selections = await accept(
-      chatThreadConnectorSelectionsClient().get({
-        headers: sessionHeaders(actor),
-        params: { id: run.threadId },
-      }),
-      [200],
-    );
-    expect(selections.body.selections).toStrictEqual([]);
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadDetailChanged:${run.threadId}`,
-      null,
-    );
-
-    await completeChatRunOk(run.runId, sandboxHeaders);
-    await flushWaitUntilForTest();
-    await api.enableAgentConnectors(actor, agentId, []);
-    const unauthorizedResponse = await chat.requestSendEvent(
-      actor,
-      {
+  it.each(["revocation", "reauthorization"] as const)(
+    "uses the default connector account across %s without an override",
+    async (transition) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      if (!actor.orgId) {
+        throw new Error("Expected an organization-scoped chat actor");
+      }
+      const connection = await connectors.connectManualGrant(
+        actor,
+        "openai",
+        "api-token",
+        { apiKey: "thread-selected-openai-key" },
         agentId,
-        threadId: run.threadId,
-        prompt: "Continue while OpenAI is unauthorized",
-      },
-      [201],
-    );
-    if (unauthorizedResponse.status !== 201) {
-      throw new Error("Expected the unauthorized-connector send to succeed");
-    }
-    if (!unauthorizedResponse.body.runId) {
-      throw new Error("Expected the unauthorized-connector run to start");
-    }
-    const unauthorized = {
-      runId: unauthorizedResponse.body.runId,
-      threadId: unauthorizedResponse.body.threadId,
-    };
-    const unauthorizedClaim = await claimChatRun(
-      runnerGroup,
-      unauthorized.runId,
-    );
-    expect(
-      unauthorizedClaim.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
-    ).toBeUndefined();
-    await completeChatRunOk(
-      unauthorized.runId,
-      unauthorizedClaim.sandboxHeaders,
-    );
-    await flushWaitUntilForTest();
+      );
 
-    await api.enableAgentConnectors(actor, agentId, ["openai"]);
-    const reauthorized = await sendChatRun(actor, {
-      agentId,
-      threadId: run.threadId,
-      prompt: "Continue after OpenAI is authorized again",
-    });
-    const reauthorizedClaim = await claimChatRun(
-      runnerGroup,
-      reauthorized.runId,
-    );
-    expect(
-      reauthorizedClaim.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
-    ).toMatchObject({ sourceId: connection.id });
-    await cancelChatRun(actor, reauthorized.runId);
-  });
+      let threadId: string;
+      if (transition === "revocation") {
+        context.mocks.ably.publish.mockClear();
+        const authorized = await sendChatRun(actor, {
+          agentId,
+          prompt: "Use my OpenAI connector account",
+        });
+        const { claim, sandboxHeaders } = await claimChatRun(
+          runnerGroup,
+          authorized.runId,
+        );
+        expect(claim.secretConnectorMetadataMap?.OPENAI_TOKEN).toMatchObject({
+          sourceId: connection.id,
+        });
+
+        const selections = await accept(
+          chatThreadConnectorSelectionsClient().get({
+            headers: sessionHeaders(actor),
+            params: { id: authorized.threadId },
+          }),
+          [200],
+        );
+        expect(selections.body.selections).toStrictEqual([]);
+        expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+          `chatThreadDetailChanged:${authorized.threadId}`,
+          null,
+        );
+
+        await completeChatRunOk(authorized.runId, sandboxHeaders);
+        await flushWaitUntilForTest();
+        threadId = authorized.threadId;
+      } else {
+        const thread = await chat.createThread(actor, {
+          agentId,
+          title: "Connector reauthorization",
+        });
+        threadId = thread.id;
+      }
+
+      await api.enableAgentConnectors(actor, agentId, []);
+      const unauthorizedResponse = await chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId,
+          prompt: "Continue while OpenAI is unauthorized",
+        },
+        [201],
+      );
+      if (unauthorizedResponse.status !== 201) {
+        throw new Error("Expected the unauthorized-connector send to succeed");
+      }
+      if (!unauthorizedResponse.body.runId) {
+        throw new Error("Expected the unauthorized-connector run to start");
+      }
+      const unauthorized = {
+        runId: unauthorizedResponse.body.runId,
+        threadId: unauthorizedResponse.body.threadId,
+      };
+      const unauthorizedClaim = await claimChatRun(
+        runnerGroup,
+        unauthorized.runId,
+      );
+      expect(
+        unauthorizedClaim.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
+      ).toBeUndefined();
+      await completeChatRunOk(
+        unauthorized.runId,
+        unauthorizedClaim.sandboxHeaders,
+      );
+      await flushWaitUntilForTest();
+
+      if (transition === "revocation") {
+        return;
+      }
+
+      await api.enableAgentConnectors(actor, agentId, ["openai"]);
+      const reauthorized = await sendChatRun(actor, {
+        agentId,
+        threadId,
+        prompt: "Continue after OpenAI is authorized again",
+      });
+      const reauthorizedClaim = await claimChatRun(
+        runnerGroup,
+        reauthorized.runId,
+      );
+      expect(
+        reauthorizedClaim.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
+      ).toMatchObject({ sourceId: connection.id });
+      await cancelChatRun(actor, reauthorized.runId);
+    },
+  );
 
   it("does not persist connector overrides during concurrent first sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
