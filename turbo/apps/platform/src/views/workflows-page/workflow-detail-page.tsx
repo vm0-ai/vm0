@@ -96,7 +96,6 @@ import {
   BrandGithub,
   BrandNotion,
   BrandStripe,
-  NeutralControl,
 } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
@@ -4539,9 +4538,10 @@ function AutomationCreateMenu({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <NeutralControl
+        <Button
           type="button"
-          className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium"
+          variant="neutral"
+          className="shrink-0 gap-1.5 px-3 hover:bg-control-surface active:bg-control-surface [&_svg]:size-3.5"
         >
           <Plus size={14} />
           <span>
@@ -4549,7 +4549,7 @@ function AutomationCreateMenu({
               return $.workflows.automations.common.addAutomation;
             })}
           </span>
-        </NeutralControl>
+        </Button>
       </DialogTrigger>
       <DialogContent smMaxWidth={880}>
         <DialogHeader>

@@ -44,7 +44,6 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  NeutralControl,
 } from "@okouai/ui";
 import { InstructionsTab } from "../okou-page/instructions-tab.tsx";
 import { SettingsTab } from "../okou-page/settings-tab.tsx";
@@ -223,14 +222,17 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
                 )}
               </p>
             </div>
-            <NeutralControl
-              render={<Link pathname="/agents" />}
-              className="inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium no-underline text-inherit"
+            <Button
+              asChild
+              variant="neutral"
+              className="h-auto rounded-md px-3 py-1.5 no-underline text-inherit hover:bg-control-surface active:bg-control-surface"
             >
-              {t(($) => {
-                return $.detail.notFound.back;
-              })}
-            </NeutralControl>
+              <Link pathname="/agents">
+                {t(($) => {
+                  return $.detail.notFound.back;
+                })}
+              </Link>
+            </Button>
           </div>
         </main>
       </DetailPageShell>
@@ -245,19 +247,20 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
           <Card className={surfaceVariants()}>
             <CardContent className="px-6 py-6 text-center space-y-3">
               <p className="text-sm text-destructive">{error}</p>
-              <NeutralControl
-                render={
-                  <Link
-                    pathname="/agents/:agentId"
-                    options={{ pathParams: { agentId: agentId } }}
-                  />
-                }
-                className="inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium no-underline text-inherit"
+              <Button
+                asChild
+                variant="neutral"
+                className="h-auto rounded-md px-3 py-1.5 no-underline text-inherit hover:bg-control-surface active:bg-control-surface"
               >
-                {t(($) => {
-                  return $.actions.retry;
-                })}
-              </NeutralControl>
+                <Link
+                  pathname="/agents/:agentId"
+                  options={{ pathParams: { agentId: agentId } }}
+                >
+                  {t(($) => {
+                    return $.actions.retry;
+                  })}
+                </Link>
+              </Button>
             </CardContent>
           </Card>
         </div>

@@ -19,7 +19,6 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-  NeutralControl,
 } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import {
@@ -269,14 +268,17 @@ function ActivityNotFound() {
             return $.activity.detail.notFound.description;
           })}
         </p>
-        <NeutralControl
-          render={<Link pathname="/" />}
-          className="mt-2 inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium no-underline text-inherit"
+        <Button
+          asChild
+          variant="neutral"
+          className="mt-2 h-auto rounded-md px-3 py-1.5 no-underline text-inherit hover:bg-control-surface active:bg-control-surface"
         >
-          {t(($) => {
-            return $.activity.detail.notFound.back;
-          })}
-        </NeutralControl>
+          <Link pathname="/">
+            {t(($) => {
+              return $.activity.detail.notFound.back;
+            })}
+          </Link>
+        </Button>
       </div>
     </div>
   );
