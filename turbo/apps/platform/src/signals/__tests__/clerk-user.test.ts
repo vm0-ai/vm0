@@ -98,18 +98,21 @@ test("A repeated emit for the same user keeps the settled promise identity", asy
   expect(context.store.get(clerkUser$)).toBe(first);
 });
 
-test("A read without an owner rejects while Clerk is mid-transition", async () => {
+test("An owner claims the signal before it resolves the Clerk runtime", async () => {
   signIn("user-a");
   context.mocks.clerk().loaded(true);
   context.store.set(setRootSignal$, context.signal);
-  mockClerkSessionTransitioning(true);
 
-  await expect(context.store.get(clerkUser$)).rejects.toThrow(
-    "Clerk identity is in transition without an owner",
-  );
+  // Readers in the same synchronous pass as the owner must see a promise the
+  // owner can still resolve, not the sentinel that nothing settles.
+  const owned = context.store.set(setupClerkUser$, context.signal);
+  const claimed = context.store.get(clerkUser$);
+  await owned;
+
+  await expect(claimed).resolves.toMatchObject({ id: "user-a" });
 });
 
-test("Aborting the owner releases the listener and falls back to a direct read", async () => {
+test("Aborting the owner keeps the last published value and stops listening", async () => {
   signIn("user-a");
 
   const controller = createChildAbortController(context.signal);
@@ -118,8 +121,18 @@ test("Aborting the owner releases the listener and falls back to a direct read",
   controller.abort();
 
   mockClerkSessionTransitioning(true);
-  await expect(context.store.get(clerkUser$)).rejects.toThrow(
-    "Clerk identity is in transition without an owner",
-  );
+  expect(context.store.get(clerkUser$)).toBe(settled);
   await expect(settled).resolves.toMatchObject({ id: "user-a" });
+});
+
+test("Aborting the owner mid-transition rejects the pending read", async () => {
+  signIn("user-a");
+
+  const controller = createChildAbortController(context.signal);
+  await startClerkUser(controller.signal);
+  mockClerkSessionTransitioning(true);
+  const pending = context.store.get(clerkUser$);
+  controller.abort();
+
+  await expect(pending).rejects.toThrow("signal is aborted");
 });

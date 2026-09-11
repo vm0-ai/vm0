@@ -5,8 +5,8 @@ import { logger } from "./log.ts";
 
 const L = logger("Promise");
 
-export const NEVER_RESOLVED_PROMISE: Promise<unknown> =
-  Promise.withResolvers<unknown>().promise;
+export const NEVER_RESOLVED_PROMISE: Promise<never> =
+  Promise.withResolvers<never>().promise;
 
 export enum Reason {
   DomCallback = "dom_callback",

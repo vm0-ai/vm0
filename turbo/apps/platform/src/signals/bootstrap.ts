@@ -549,7 +549,12 @@ const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
 });
 
 const completeBootstrap$ = command(
-  async ({ set }, render: () => void, signal: AbortSignal): Promise<void> => {
+  async (
+    { set },
+    clerkUserOwned: Promise<void>,
+    render: () => void,
+    signal: AbortSignal,
+  ): Promise<void> => {
     await set(initLocale$, signal);
     signal.throwIfAborted();
     set(markBootstrapLocaleInitCompleted$);
@@ -557,12 +562,16 @@ const completeBootstrap$ = command(
 
     render();
 
+    // Route setup reads the settled Clerk identity, which stays pending until
+    // its owner publishes the first value.
+    await clerkUserOwned;
+    signal.throwIfAborted();
+
     // These public protocol pages also run before an embedded Clerk session exists.
     // Hosted Clerk task continuations retain the same ownership via redirect_url.
     if (isDesktopAuthFlow()) {
       await Promise.all([
         set(setupClerk$, signal),
-        set(setupClerkUser$, signal),
         set(watchOrgSwitch$, signal),
         set(setupRoutes$, signal),
       ]);
@@ -581,7 +590,6 @@ const completeBootstrap$ = command(
       set(setupNotificationListener$, signal),
 
       set(setupGlobalKeyboardShortcuts$, signal),
-      set(setupClerkUser$, signal),
       set(watchOrgSwitch$, signal),
       set(setupFeatureSwitches$, signal),
     ]);
@@ -608,6 +616,8 @@ export const bootstrap$ = command(
     set(captureInvitationRedirect$);
     set(markBootstrapLocaleInitStarted$);
     set(setRootSignal$, signal);
+    // Claims `clerkUser$` before the daemons and route setups below read it.
+    const clerkUserOwned = set(setupClerkUser$, signal);
     const apiBaseUrl = resolveApiBaseForTarget("api");
     const vercelProtectionBypass =
       getCapturedPreviewBypassForTarget(apiBaseUrl);
@@ -642,7 +652,7 @@ export const bootstrap$ = command(
     const authenticatedRealtimeDaemon = isDesktopAuthFlow()
       ? Promise.resolve()
       : set(runAuthenticatedRealtime$, signal);
-    const ready = set(completeBootstrap$, render, signal);
+    const ready = set(completeBootstrap$, clerkUserOwned, render, signal);
 
     return {
       authenticatedRealtimeDaemon,

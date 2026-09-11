@@ -25,6 +25,7 @@ import {
   bestEffort,
   createDeferredPromise,
   type DeferredPromise,
+  NEVER_RESOLVED_PROMISE,
   onDomEventFn,
 } from "./utils.ts";
 import { writeConnectionDiagnostic$ } from "./connection-diagnostics.ts";
@@ -370,7 +371,9 @@ export const clerk$ = computed(async (get) => {
   return runtime.clerk;
 });
 
-const internalClerkUser$ = state<Promise<UserResource | null> | null>(null);
+const internalClerkUser$ = state<Promise<UserResource | null>>(
+  NEVER_RESOLVED_PROMISE,
+);
 
 /**
  * The settled Clerk user: `null` when signed out, never the transitive
@@ -382,35 +385,27 @@ const internalClerkUser$ = state<Promise<UserResource | null> | null>(null);
  * user, so every transition swaps in a fresh promise that settles with the
  * value Clerk publishes next.
  */
-export const clerkUser$ = computed(
-  async (get): Promise<UserResource | null> => {
-    const published = get(internalClerkUser$);
-    if (published) {
-      return await published;
-    }
-    // React renders before bootstrap starts `setupClerkUser$`, so the view layer
-    // legitimately reads this before a listener exists. Clerk has not run
-    // `setActive()` yet at that point, which makes the live value authoritative.
-    const clerk = await get(clerk$);
-    if (clerk.user === undefined) {
-      // Transitive without an owner: nothing will ever publish the settled
-      // value, so fail loudly instead of reporting a signed-out user.
-      throw new Error("Clerk identity is in transition without an owner");
-    }
-    return clerk.user;
-  },
-);
+export const clerkUser$ = computed((get): Promise<UserResource | null> => {
+  return get(internalClerkUser$);
+});
 
 /**
- * Owns the Clerk listener behind {@link clerkUser$}. Bootstrap starts this for
- * every route family; until it runs, `clerkUser$` reads Clerk directly.
+ * Owns the Clerk listener behind {@link clerkUser$}. `bootstrap$` starts this
+ * before the daemons and route setups that read it; without an owner
+ * `clerkUser$` never settles.
  */
 export const setupClerkUser$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    // Claim the signal before the first await. Daemons and route setups started
+    // in the same synchronous pass then read a promise this command resolves,
+    // instead of the module sentinel that nothing settles.
+    let pending: DeferredPromise<UserResource | null> | null =
+      createDeferredPromise<UserResource | null>(signal);
+    set(internalClerkUser$, pending.promise);
+
     const clerk = await get(clerk$);
     signal.throwIfAborted();
 
-    let pending: DeferredPromise<UserResource | null> | null = null;
     let published: UserResource | null | undefined;
 
     // Token refreshes emit here too. They never clear `user`, so the identity
@@ -442,16 +437,7 @@ export const setupClerkUser$ = command(
       }
       publish();
     });
-    signal.addEventListener(
-      "abort",
-      () => {
-        unsubscribe();
-        // Release ownership instead of leaving a rejected or pending value
-        // behind: without a listener, `clerkUser$` reads Clerk directly again.
-        set(internalClerkUser$, null);
-      },
-      { once: true },
-    );
+    signal.addEventListener("abort", unsubscribe, { once: true });
     // Close the race between the current value and listener registration
     // instead of relying on Clerk's emit-on-subscribe behavior.
     publish();
