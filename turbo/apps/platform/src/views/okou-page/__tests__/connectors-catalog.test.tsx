@@ -734,3 +734,45 @@ test("Warn on the scope control when a connection this workspace owns needs a re
     screen.findByLabelText("Needs attention"),
   ).resolves.toBeInTheDocument();
 });
+
+test("Find the connectors no agent is using", async () => {
+  const researchId = "c0000000-0000-4000-a000-000000000011";
+  mockConnectors(context, [
+    { connectorSlug: "mail-0" as ConnectorSlug },
+    { connectorSlug: "mail-1" as ConnectorSlug },
+  ]);
+  context.mocks.data.agents([listAgent(researchId, "Research", "preset:0")]);
+  context.mocks.api(userConnectorsContract.get, ({ params, respond }) => {
+    return respond(200, {
+      enabledConnectorSlugs: params.id === researchId ? ["mail-0"] : [],
+    });
+  });
+  mockPublicConnectorStatus(
+    context,
+    connectedShelfCatalog(),
+    shelfCategoryMetadata(),
+    { "communication-collaboration": 327, "ai-voice-audio": 50 },
+  );
+  await setupPage({
+    context,
+    path: "/connectors?scope=mine",
+    featureSwitches: { [FeatureSwitchKey.ConnectorDirectory]: true },
+  });
+
+  await waitFor(() => {
+    expect(getConnectorCard("Gmail")).toBeInTheDocument();
+  });
+  expect(queryConnectorCard("Outlook Mail")).toBeInTheDocument();
+
+  // A connector nobody uses is the one worth finding in your own list, and it
+  // is the question the agent dimension cannot ask agent by agent.
+  click(getConnectorAction("button", "Filter connectors"));
+  click(getConnectorAction("menuitem", "Not shared with any agent"));
+  await waitFor(() => {
+    expect(queryConnectorCard("Gmail")).toBeNull();
+  });
+  expect(getConnectorCard("Outlook Mail")).toBeInTheDocument();
+  expect(new URLSearchParams(locationSearch()).get("connection")).toBe(
+    "unshared",
+  );
+});

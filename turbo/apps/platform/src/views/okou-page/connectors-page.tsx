@@ -99,6 +99,7 @@ import {
 import { noConnectorImg } from "./platform-assets.ts";
 import { AvatarFromUrl } from "./sidebar-shared.tsx";
 import {
+  cn,
   surfaceVariants,
   Button,
   DropdownMenu,
@@ -394,7 +395,10 @@ function ConnectorFilterMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className={`max-h-[min(420px,var(--available-height))] ${width} overflow-y-auto`}
+        className={cn(
+          "max-h-[min(420px,var(--available-height))] overflow-y-auto",
+          width,
+        )}
       >
         {children}
       </DropdownMenuContent>
@@ -1228,7 +1232,10 @@ function ConnectorsMinePanel({
   ) => ReactNode;
 }) {
   const { t } = useTranslation();
-  if (ready && connected.length === 0) {
+  if (!ready) {
+    return <ConnectorCardSkeletons />;
+  }
+  if (connected.length === 0) {
     return (
       <ConnectorEmptyState
         message={t(($) => {
@@ -1363,29 +1370,7 @@ function renderBuiltinList({
   connectionFilter: ConnectorsConnectionFilter;
 }): ReactNode {
   if (loadingState !== "hasData") {
-    return (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {Array.from({ length: 6 }, (_, i) => {
-          return (
-            <div
-              key={i}
-              data-testid="connector-skeleton"
-              className={surfaceVariants({
-                className: "flex flex-col animate-pulse",
-              })}
-            >
-              <div className="flex h-14 items-center gap-2.5 px-5">
-                <span className="h-5 w-5 shrink-0 rounded-lg bg-muted/50" />
-                <span className="h-4 w-24 rounded bg-muted/50" />
-              </div>
-              <div className="flex h-11 items-center border-t border-border/30 px-5">
-                <span className="h-3 w-16 rounded bg-muted/30" />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
+    return <ConnectorCardSkeletons />;
   }
 
   if (filteredCount === 0) {
@@ -1450,6 +1435,33 @@ function connectorsScopeBadge(
   return loadable.state === "hasData"
     ? loadable.data
     : { count: 0, needsAttention: false };
+}
+
+/** The card grid before the catalog answers. */
+function ConnectorCardSkeletons() {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {Array.from({ length: 6 }, (_, index) => {
+        return (
+          <div
+            key={index}
+            data-testid="connector-skeleton"
+            className={surfaceVariants({
+              className: "flex flex-col animate-pulse",
+            })}
+          >
+            <div className="flex h-14 items-center gap-2.5 px-5">
+              <span className="h-5 w-5 shrink-0 rounded-lg bg-muted/50" />
+              <span className="h-4 w-24 rounded bg-muted/50" />
+            </div>
+            <div className="flex h-11 items-center border-t border-border/30 px-5">
+              <span className="h-3 w-16 rounded bg-muted/30" />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 /** What a list says when it has nothing to show and knows why. */
