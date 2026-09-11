@@ -71,6 +71,7 @@ import type {
   ConnectorAccountConnectMode,
   ConnectorAccountMutationOptions,
 } from "../../../../signals/okou-page/settings/connector-account-dialogs.ts";
+import { MercuryDisclosure } from "./mercury-disclosure.tsx";
 
 // ---------------------------------------------------------------------------
 // Connected status text helper
@@ -1598,6 +1599,9 @@ export function ConnectModal({
             }}
           />
         </ConnectorConnectionDialogBody>
+        {item.slug === "mercury" ? (
+          <MercuryDisclosure className="border-t border-border/50 pt-4" />
+        ) : null}
       </DialogContent>
     </Dialog>
   );
