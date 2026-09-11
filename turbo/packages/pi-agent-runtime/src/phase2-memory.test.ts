@@ -1311,12 +1311,21 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     const config = args("http://127.0.0.1:1/v1").model;
     // Ordinary resolution keeps the catalog value before and after maintenance.
     expect(resolvePiAgentModel(config)?.contextWindow).toBe(272_000);
-    // A different catalog model on the same provider and dialect is untouched,
-    // so it still derives the legacy floor. This pins the correction's scope;
-    // it is not a statement that the other model should stay uncorrected.
+    // Precondition: the sibling model still carries the same stale catalog
+    // window. If the catalog is corrected upstream this fails deliberately, so
+    // the scope of the local correction is re-decided rather than drifting.
     expect(
-      await maintenanceRequestBudget(270_000, { catalogModel: "gpt-5.6-sol" }),
-    ).toBe(16);
+      resolvePiAgentModel({ ...config, catalogModel: "gpt-5.6-sol" })
+        ?.contextWindow,
+    ).toBe(272_000);
+    // The correction cannot lift a different catalog model on the same provider
+    // and dialect, so its derived ceiling stays below the corrected one.
+    const corrected = await maintenanceRequestBudget(270_000);
+    const untouched = await maintenanceRequestBudget(270_000, {
+      catalogModel: "gpt-5.6-sol",
+    });
+    expect(corrected).toBe(128_000);
+    expect(untouched).toBeLessThan(corrected);
     const after = resolvePiAgentModel(config);
     expect(after?.contextWindow).toBe(272_000);
     expect(after?.maxTokens).toBe(128_000);

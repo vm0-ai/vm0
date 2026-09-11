@@ -444,6 +444,11 @@ const PI_MEMORY_PHASE2_OFFICIAL_CONTEXT_WINDOW = 1_050_000;
  * different is returned unchanged so newer metadata is never capped. Model
  * identity, provider, route, credentials, headers, tier, transport, reasoning
  * policy, `maxTokens` and pricing all stay exactly as resolved.
+ *
+ * Remove this correction once the pinned catalog publishes the official window:
+ * the guard then stops matching, so it is inert rather than wrong. The catalog
+ * identity is matched here instead of the caller's product model id because the
+ * stale value belongs to that catalog entry, not to Okou's model selection.
  */
 function maintenanceModelWithOfficialContextWindow(
   model: ResolvedPiAgentModel,
