@@ -49,9 +49,13 @@ It never calls the finalize endpoint. Existing inspection previews block a new
 run, including after an uncertain request.
 
 The new branch must have the exact snapshot provenance and must not be an
-existing, default, or protected branch. If needed, one 0.25-CU preview compute is
-created with 60-second idle suspend. Connection discovery pins both the branch
-and endpoint; production endpoints and pooled connections are rejected.
+existing, default, or protected branch. Snapshot restore may return a primary
+compute and read replicas. The workflow selects the unique `read_write` primary
+and records endpoint type counts; multiple primaries and duplicate identities
+are rejected. If no primary exists, one 0.25-CU preview primary is created with
+60-second idle suspend. Connection discovery pins the branch, endpoint and type;
+production endpoints and pooled connections are rejected. Database transactions
+remain read-only regardless of the compute type.
 
 The workflow reads every database returned for the preview in PostgreSQL
 read-only, repeatable-read transactions. It scans physical user tables, partition

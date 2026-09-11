@@ -285,6 +285,18 @@ if path == "/branches/br-preview/endpoints" and method == "GET":
     endpoints = [endpoint] if state.get("endpointCreated") else []
     if scenario == "ambiguous-preview-endpoints":
         endpoints = [endpoint, {**endpoint, "id": "ep-second"}]
+    replica = {
+        **endpoint,
+        "id": "ep-read-replica",
+        "host": "ep-read-replica.us-west-2.aws.neon.tech",
+        "type": "read_only",
+    }
+    if scenario == "preview-primary-and-replica":
+        endpoints = [replica, endpoint]
+    if scenario == "preview-replica-only":
+        endpoints = [replica]
+    if scenario == "duplicate-preview-endpoint":
+        endpoints = [endpoint, endpoint]
     respond({"endpoints": endpoints})
 if path == "/endpoints/ep-preview" and method == "GET":
     assert state.get("endpointCreated")
@@ -293,10 +305,14 @@ if path == "/endpoints/ep-preview" and method == "GET":
         if scenario == "endpoint-readback-production"
         else endpoint
     )
+    if scenario == "endpoint-readback-replica":
+        current = {**current, "type": "read_only"}
     respond({"endpoint": current})
 if path == "/snapshots/snapshot-manual/restore" and method == "POST":
     assert body == {"name": name, "finalize_restore": False}
     state["restored"] = True
+    if scenario == "preview-primary-and-replica":
+        state["endpointCreated"] = True
     save()
     if scenario == "unknown-restore-outcome":
         sys.stderr.write("fixture-private-password")

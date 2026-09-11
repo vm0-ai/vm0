@@ -165,13 +165,53 @@ class SnapshotInspectionTest(unittest.TestCase):
         self.assertTrue(report["cleanupComplete"])
         self.assertNotIn("sqlCalls", state)
 
-    def test_multiple_preview_endpoints_report_count_without_connecting(self):
+    def test_multiple_preview_primaries_report_count_without_connecting(self):
         result, report, state = self.invoke("ambiguous-preview-endpoints")
         self.assertEqual(result.returncode, 1)
-        self.assertEqual(report["failure"], "preview_endpoint_not_unique")
+        self.assertEqual(report["failure"], "preview_primary_endpoint_not_unique")
         self.assertEqual(report["previewEndpointCountBeforeCreate"], 2)
         self.assertTrue(report["cleanupComplete"])
         self.assertNotIn("sqlCalls", state)
+
+    def test_preview_primary_with_replica_pins_primary_without_creating_compute(self):
+        result, report, state = self.invoke("preview-primary-and-replica")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(report["previewEndpointCountBeforeCreate"], 2)
+        self.assertEqual(
+            report["previewEndpointTypeCountsBeforeCreate"],
+            {"read_write": 1, "read_only": 1},
+        )
+        self.assertEqual(report["selectedPreviewEndpointId"], "ep-preview")
+        self.assertEqual(report["selectedPreviewEndpointType"], "read_write")
+        self.assertFalse(
+            any(
+                c["method"] == "POST" and c["path"] == "/endpoints"
+                for c in state["calls"]
+            )
+        )
+        self.assertTrue(report["cleanupComplete"])
+
+    def test_preview_with_only_replica_creates_and_pins_own_primary(self):
+        result, report, state = self.invoke("preview-replica-only")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(report["previewEndpointCountBeforeCreate"], 1)
+        self.assertEqual(report["createdPreviewEndpointId"], "ep-preview")
+        self.assertEqual(report["selectedPreviewEndpointType"], "read_write")
+        self.assertTrue(report["cleanupComplete"])
+
+    def test_duplicate_endpoint_ids_fail_before_connection(self):
+        result, report, state = self.invoke("duplicate-preview-endpoint")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(report["failure"], "duplicate_preview_endpoint_id")
+        self.assertNotIn("sqlCalls", state)
+        self.assertTrue(report["cleanupComplete"])
+
+    def test_primary_readback_cannot_change_to_replica(self):
+        result, report, state = self.invoke("endpoint-readback-replica")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(report["failure"], "preview_endpoint_identity_mismatch")
+        self.assertNotIn("sqlCalls", state)
+        self.assertTrue(report["cleanupComplete"])
 
     def test_production_returned_as_preview_never_connects_or_deletes(self):
         result, report, state = self.invoke("production-returned")

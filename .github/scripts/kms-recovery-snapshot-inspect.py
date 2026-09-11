@@ -439,8 +439,23 @@ def main():
             "preview_endpoint_listing_mismatch",
         )
         report["previewEndpointCountBeforeCreate"] = len(endpoints)
+        report["previewEndpointTypeCountsBeforeCreate"] = {
+            kind: sum(e.get("type") == kind for e in endpoints)
+            for kind in ("read_write", "read_only")
+        }
         checkpoint()
-        if not endpoints:
+        endpoint_ids = [identifier(e.get("id"), "ep-") for e in endpoints]
+        require(
+            len(endpoint_ids) == len(set(endpoint_ids)), "duplicate_preview_endpoint_id"
+        )
+        require(
+            all(e.get("type") in {"read_write", "read_only"} for e in endpoints),
+            "unknown_preview_endpoint_type",
+        )
+        # Snapshot restore can copy both the primary and read replicas. Pin the
+        # unique primary; counting every compute incorrectly rejects that case.
+        primaries = [e for e in endpoints if e["type"] == "read_write"]
+        if not primaries:
             created = api(
                 "/endpoints",
                 "POST",
@@ -455,7 +470,8 @@ def main():
                 },
             )
             require(
-                created["endpoint"].get("branch_id") == preview_id,
+                created["endpoint"].get("branch_id") == preview_id
+                and created["endpoint"].get("type") == "read_write",
                 "created_endpoint_branch_mismatch",
             )
             endpoint_id = identifier(created["endpoint"].get("id"), "ep-")
@@ -466,19 +482,23 @@ def main():
             report["createdPreviewEndpointId"] = endpoint_id
             checkpoint()
             wait_operations(created)
-            endpoints = [created["endpoint"]]
-        require(len(endpoints) == 1, "preview_endpoint_not_unique")
-        endpoint_id = identifier(endpoints[0].get("id"), "ep-")
+            primaries = [created["endpoint"]]
+        require(len(primaries) == 1, "preview_primary_endpoint_not_unique")
+        endpoint_id = identifier(primaries[0].get("id"), "ep-")
         endpoint = api(f"/endpoints/{endpoint_id}")["endpoint"]
         require(
             endpoint.get("id") == endpoint_id
             and endpoint.get("branch_id") == preview_id
+            and endpoint.get("type") == "read_write"
             and isinstance(endpoint.get("host"), str)
             and endpoint["host"].startswith(endpoint["id"] + ".")
             and endpoint["host"].endswith(".neon.tech")
             and endpoint["id"] not in {e["id"] for e in before_endpoints},
             "preview_endpoint_identity_mismatch",
         )
+        report["selectedPreviewEndpointId"] = endpoint_id
+        report["selectedPreviewEndpointType"] = endpoint["type"]
+        checkpoint()
         databases = api(f"/branches/{preview_id}/databases")["databases"]
         require(
             isinstance(databases, list)
