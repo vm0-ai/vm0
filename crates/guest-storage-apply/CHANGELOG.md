@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.80](https://github.com/vm0-ai/vm0/compare/guest-storage-apply-v0.23.79...guest-storage-apply-v0.23.80) (2026-09-11)
+
+
+### Performance Improvements
+
+* **guest-storage-apply:** reuse operation-owned archive workers ([#33402](https://github.com/vm0-ai/vm0/issues/33402)) ([c846a75](https://github.com/vm0-ai/vm0/commit/c846a754a9260d5c03a5e8ba981a0acb6ae943b7))
+
 ## [0.23.79](https://github.com/vm0-ai/vm0/compare/guest-storage-apply-v0.23.78...guest-storage-apply-v0.23.79) (2026-09-11)
 
 

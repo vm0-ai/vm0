@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.3.87](https://github.com/vm0-ai/vm0/compare/session-history-selector-v0.3.86...session-history-selector-v0.3.87) (2026-09-11)
+
 ## [0.3.86](https://github.com/vm0-ai/vm0/compare/session-history-selector-v0.3.85...session-history-selector-v0.3.86) (2026-09-10)
 
 ## [0.3.85](https://github.com/vm0-ai/vm0/compare/session-history-selector-v0.3.84...session-history-selector-v0.3.85) (2026-09-10)
