@@ -5,12 +5,51 @@ import { describe, expect, it } from "vitest";
 import {
   Dialog,
   DialogBody,
+  DialogClose,
   DialogContent,
   DialogTitle,
   DialogTrigger,
 } from "../dialog";
+import { IconButton } from "../icon-button";
 
 describe("Dialog", () => {
+  it.each([false, true])(
+    "closes and restores trigger focus with a custom icon control: %s",
+    async (customClose) => {
+      const user = userEvent.setup();
+      render(
+        <Dialog>
+          <DialogTrigger>Open settings</DialogTrigger>
+          <DialogContent
+            closeLabel="Dismiss settings"
+            showCloseButton={!customClose}
+          >
+            <DialogTitle>Settings</DialogTitle>
+            {customClose && (
+              <DialogClose
+                render={<IconButton />}
+                aria-label="Dismiss settings"
+              >
+                ×
+              </DialogClose>
+            )}
+          </DialogContent>
+        </Dialog>,
+      );
+
+      const trigger = screen.getByRole("button", { name: "Open settings" });
+      await user.click(trigger);
+      expect(screen.getByRole("dialog", { name: "Settings" })).toBeVisible();
+      await user.click(
+        screen.getByRole("button", { name: "Dismiss settings" }),
+      );
+      await waitFor(() => {
+        expect(screen.queryByRole("dialog", { name: "Settings" })).toBeNull();
+        expect(trigger).toHaveFocus();
+      });
+    },
+  );
+
   it("preserves the preview and nested focus ownership across fullscreen changes", async () => {
     const user = userEvent.setup();
     function Preview() {

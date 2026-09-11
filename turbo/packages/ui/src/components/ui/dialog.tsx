@@ -5,20 +5,12 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { X } from "lucide-react";
 
 import { asChildRender } from "../../lib/base-ui-compat";
-import { iconButtonClassName } from "./button-base";
+import { IconButton } from "./icon-button";
 import {
   dialogBackdropAnimationClassName,
   dialogPopupAnimationClassName,
 } from "./popup-motion";
 import { cn } from "../../lib/utils";
-
-/**
- * Slack-style thin scrollbar for dialog and drawer scroll containers. Tailwind
- * has no first-class scrollbar utilities, so the WebKit pseudo-elements are
- * addressed through arbitrary variants rather than a first-party selector.
- */
-export const dialogScrollableClassName =
-  "[scrollbar-width:thin] [scrollbar-color:rgba(128,128,128,0.3)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:my-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-[3px] [&::-webkit-scrollbar-thumb]:bg-[rgba(128,128,128,0.3)] [&::-webkit-scrollbar-thumb:hover]:bg-[rgba(128,128,128,0.5)]";
 
 function Dialog(props: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />;
@@ -219,13 +211,10 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
             )}
           >
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-              <div
+              <DialogScrollArea
                 data-slot="dialog-inner"
                 className={cn(
-                  cn(
-                    "grid min-h-0 min-w-0 flex-1 gap-4 p-6",
-                    dialogScrollableClassName,
-                  ),
+                  "grid min-h-0 min-w-0 flex-1 gap-4 p-6",
                   contentClassName,
                   // A caller's clipping utility must not make footer actions
                   // unreachable when the safe viewport constrains the panel.
@@ -233,17 +222,13 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
                 )}
               >
                 {children}
-              </div>
+              </DialogScrollArea>
               {showCloseButton ? (
                 <DialogPrimitive.Close
                   data-slot="dialog-close"
                   render={
-                    <button
-                      type="button"
-                      className={cn(
-                        iconButtonClassName,
-                        "absolute top-4 right-4 opacity-70 hover:opacity-100",
-                      )}
+                    <IconButton
+                      className="absolute top-4 right-4 opacity-70 hover:opacity-100"
                       aria-label={closeLabel}
                     />
                   }
@@ -259,6 +244,29 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
   },
 );
 DialogContent.displayName = "DialogContent";
+
+interface DialogScrollAreaProps extends React.ComponentProps<"div"> {
+  /** Disable when a child region owns scrolling, keeping the same host element. */
+  scrollable?: boolean;
+}
+
+function DialogScrollArea({
+  className,
+  scrollable = true,
+  ...props
+}: DialogScrollAreaProps) {
+  return (
+    <div
+      data-slot="dialog-scroll-area"
+      {...props}
+      className={cn(
+        scrollable &&
+          "overflow-y-auto [scrollbar-width:thin] [scrollbar-color:rgba(128,128,128,0.3)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:my-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-[3px] [&::-webkit-scrollbar-thumb]:bg-[rgba(128,128,128,0.3)] [&::-webkit-scrollbar-thumb:hover]:bg-[rgba(128,128,128,0.5)]",
+        className,
+      )}
+    />
+  );
+}
 
 function DialogBody({ className, ...props }: React.ComponentProps<"div">) {
   return (
@@ -328,6 +336,7 @@ export {
   DialogTrigger,
   DialogContent,
   DialogBody,
+  DialogScrollArea,
   DialogHeader,
   DialogFooter,
   DialogTitle,

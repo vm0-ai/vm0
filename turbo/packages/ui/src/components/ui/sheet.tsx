@@ -10,7 +10,7 @@ import {
   sheetPopupTransitionClassName,
 } from "./popup-motion";
 import { cn } from "../../lib/utils";
-import { iconButtonClassName } from "./button-base";
+import { IconButton } from "./icon-button";
 
 function Sheet(props: SheetPrimitive.Root.Props) {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />;
@@ -122,12 +122,8 @@ const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
           <SheetPrimitive.Close
             data-slot="sheet-close"
             render={
-              <button
-                type="button"
-                className={cn(
-                  iconButtonClassName,
-                  "absolute top-4 right-4 opacity-70 hover:opacity-100",
-                )}
+              <IconButton
+                className="absolute top-4 right-4 opacity-70 hover:opacity-100"
                 aria-label="Close"
               />
             }
