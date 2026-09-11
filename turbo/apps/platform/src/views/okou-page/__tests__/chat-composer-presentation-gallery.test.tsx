@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { click, setupPage } from "../../../__tests__/page-helper.ts";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@okouai/core/presentation-template-items";
 import { VIDEO_TEMPLATE_ITEMS } from "@okouai/core/video-template-items";
 import { WEBSITE_TEMPLATE_ITEMS } from "@okouai/core/website-template-items";
@@ -49,7 +49,7 @@ function installImmediateAnimationFrames(): void {
   );
 }
 
-test("Choose a presentation template theme", async () => {
+async function openPresentationThemePreview() {
   const capture = mockTemplateChat();
   const template = builtInTemplate();
   mockTemplateObjectUrls();
@@ -64,27 +64,33 @@ test("Choose a presentation template theme", async () => {
   });
 
   await openTemplatePicker(user, "Presentation");
-  await user.click(
-    screen.getByLabelText(`Preview ${template.title} at current slide`),
-  );
+  click(screen.getByLabelText(`Preview ${template.title} at current slide`));
   await waitFor(() => {
     expect(detailGroup(template.title)).toBeVisible();
   });
-  const detail = detailGroup(template.title);
+  return { capture, template, user, detail: detailGroup(template.title) };
+}
+
+test("Changing a presentation theme refreshes its visible preview", async () => {
+  const { template, detail } = await openPresentationThemePreview();
   const firstFrame = await waitFor(() => {
     return within(detail).getByTitle(`${template.title} HTML preview`);
   });
   const firstFrameUrl = firstFrame.getAttribute("src");
 
-  await user.click(screen.getByLabelText("Select style Deep dive"));
+  click(screen.getByLabelText("Select style Deep dive"));
   const themedFrame = await waitFor(() => {
     const frame = within(detail).getByTitle(`${template.title} HTML preview`);
     expect(frame.getAttribute("src")).not.toBe(firstFrameUrl);
     return frame;
   });
   expect(themedFrame).toBeVisible();
+});
 
-  await user.click(
+test("Send the selected presentation theme from its preview", async () => {
+  const { capture, template, user } = await openPresentationThemePreview();
+  click(screen.getByLabelText("Select style Deep dive"));
+  click(
     within(screen.getByRole("dialog")).getByLabelText(
       `Select template ${template.title}`,
     ),

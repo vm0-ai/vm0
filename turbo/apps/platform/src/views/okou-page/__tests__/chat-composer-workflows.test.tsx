@@ -11,6 +11,7 @@ import {
   WORKFLOW_TEMPLATE_ITEMS,
 } from "@okouai/core";
 import { expect, test } from "vitest";
+import { chatThreadDraftContract } from "@okouai/api-contracts/contracts/chat-threads";
 
 import {
   click,
@@ -206,53 +207,83 @@ function installOffsetVisualViewport(): void {
   );
 }
 
-test("Send a message with multiple inline templates", async () => {
-  const first = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
-  const second = PRESENTATION_TEMPLATE_PICKER_ITEMS[1];
-  if (!first || !second) {
-    throw new Error("Expected at least two presentation templates");
-  }
-  let sentTemplateTitles: string[] = [];
-  mockAgent();
-  mockChatLifecycle(context, {
-    threadId: THREAD_ID,
-    threadTitle: "My thread",
-    onSendRequest: (body) => {
-      sentTemplateTitles =
-        body.userMessage?.parts.flatMap((part) => {
-          return part.type === "template" ? [part.titleSnapshot] : [];
-        }) ?? [];
-    },
-  });
-  installWorkflows(() => {
-    return [];
-  });
+test.each(["insert", "send"])(
+  "Multiple inline templates preserve every reference when you %s",
+  async (action) => {
+    const first = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
+    const second = PRESENTATION_TEMPLATE_PICKER_ITEMS[1];
+    if (!first || !second) {
+      throw new Error("Expected at least two presentation templates");
+    }
+    let sentTemplateTitles: string[] = [];
+    mockAgent();
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      threadTitle: "My thread",
+      onSendRequest: (body) => {
+        sentTemplateTitles =
+          body.userMessage?.parts.flatMap((part) => {
+            return part.type === "template" ? [part.titleSnapshot] : [];
+          }) ?? [];
+      },
+    });
+    installWorkflows(() => {
+      return [];
+    });
+    if (action === "send") {
+      context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
+        return respond(200, {
+          draftUserMessage: {
+            version: 1,
+            parts: [first, second].map((template) => {
+              return {
+                type: "template" as const,
+                titleSnapshot: template.title,
+                template: {
+                  type: "presentation" as const,
+                  selection: { templateId: template.templateId },
+                },
+              };
+            }),
+          },
+          draftAttachments: null,
+        });
+      });
+    }
 
-  await setupPage({ context, path: `/chats/${THREAD_ID}` });
+    await setupPage({ context, path: `/chats/${THREAD_ID}` });
 
-  const user = userEvent.setup();
-  const editor = await findComposerEditor();
-  await expect(screen.findByLabelText("Template")).resolves.toBeVisible();
+    const user = userEvent.setup();
+    const editor = await findComposerEditor();
+    await expect(screen.findByLabelText("Template")).resolves.toBeVisible();
 
-  await selectTemplate(user, first);
-  await selectTemplate(user, second);
-  expect(composerInlineTemplates()).toHaveLength(2);
-  expect(editor.textContent).not.toContain("Ask me to automate");
+    if (action === "insert") {
+      await selectTemplate(user, first);
+      await selectTemplate(user, second);
+    }
+    await waitFor(() => {
+      return expect(composerInlineTemplates()).toHaveLength(2);
+    });
+    expect(editor.textContent).not.toContain("Ask me to automate");
+    if (action === "insert") {
+      return;
+    }
 
-  await user.click(editor);
-  await user.keyboard("{Enter}");
+    await user.click(editor);
+    await user.keyboard("{Enter}");
 
-  await waitFor(() => {
-    expect(sentTemplateTitles).toStrictEqual([first.title, second.title]);
-    expect(structuredTemplateReferences()).toHaveLength(2);
-  });
-  expect(
-    structuredTemplateReferences().map((reference) => {
-      return reference.textContent;
-    }),
-  ).toStrictEqual([first.title, second.title]);
-  expect(composerInlineTemplates()).toHaveLength(0);
-});
+    await waitFor(() => {
+      expect(sentTemplateTitles).toStrictEqual([first.title, second.title]);
+      expect(structuredTemplateReferences()).toHaveLength(2);
+    });
+    expect(
+      structuredTemplateReferences().map((reference) => {
+        return reference.textContent;
+      }),
+    ).toStrictEqual([first.title, second.title]);
+    expect(composerInlineTemplates()).toHaveLength(0);
+  },
+);
 
 test("Replace an inline template after sending a message", async () => {
   const first = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
@@ -342,8 +373,8 @@ test("Dismiss workflow suggestions without losing the query", async () => {
   });
 });
 
-test("Refresh workflow suggestions without disrupting the draft", async () => {
-  let workflows: WorkflowFixture[] = [];
+async function openWorkflowRefreshChat(initialWorkflows: WorkflowFixture[]) {
+  let workflows = initialWorkflows;
   const primaryThread = {
     id: THREAD_ID,
     agentId: AGENT_ID,
@@ -377,7 +408,6 @@ test("Refresh workflow suggestions without disrupting the draft", async () => {
   await user.keyboard("/release-report");
   await waitFor(() => {
     expect(primaryEditor).toHaveTextContent("/release-report");
-    expect(workflowHighlights(primaryEditor)).toHaveLength(0);
   });
   await waitFor(() => {
     expect(
@@ -391,26 +421,48 @@ test("Refresh workflow suggestions without disrupting the draft", async () => {
       ),
     ).toBeTruthy();
   });
+  return {
+    primaryEditor,
+    splitEditor,
+    user,
+    traffic,
+    updateWorkflows(next: WorkflowFixture[]) {
+      workflows = next;
+      context.mocks.ably.trigger(`chatThreadWorkflowsChanged:${THREAD_ID}`);
+      context.mocks.ably.trigger(
+        `chatThreadWorkflowsChanged:${SPLIT_THREAD_ID}`,
+      );
+    },
+  };
+}
 
-  workflows = [workflow("release-report")];
-  context.mocks.ably.trigger(`chatThreadWorkflowsChanged:${THREAD_ID}`);
-  context.mocks.ably.trigger(`chatThreadWorkflowsChanged:${SPLIT_THREAD_ID}`);
+test("A newly available workflow highlights the existing draft without changing its text", async () => {
+  const { primaryEditor, updateWorkflows } = await openWorkflowRefreshChat([]);
+  expect(workflowHighlights(primaryEditor)).toHaveLength(0);
+  updateWorkflows([workflow("release-report")]);
 
   await waitFor(() => {
     expect(primaryEditor).toHaveTextContent("/release-report");
     expect(workflowHighlights(primaryEditor)).toHaveLength(1);
     expect(slashButton("/release-report")).toBeVisible();
   });
+});
 
-  workflows = [...workflows, workflow("first-live-change")];
-  context.mocks.ably.trigger(`chatThreadWorkflowsChanged:${THREAD_ID}`);
-  context.mocks.ably.trigger(`chatThreadWorkflowsChanged:${SPLIT_THREAD_ID}`);
+test("Successive workflow updates reach both open composers without disrupting their drafts", async () => {
+  const { primaryEditor, splitEditor, user, traffic, updateWorkflows } =
+    await openWorkflowRefreshChat([workflow("release-report")]);
+  await waitFor(() => {
+    return expect(workflowHighlights(primaryEditor)).toHaveLength(1);
+  });
+  updateWorkflows([workflow("release-report"), workflow("first-live-change")]);
   await waitFor(() => {
     expect(traffic.requests.length).toBeGreaterThanOrEqual(4);
   });
-  workflows = [...workflows, workflow("latest-attached")];
-  context.mocks.ably.trigger(`chatThreadWorkflowsChanged:${THREAD_ID}`);
-  context.mocks.ably.trigger(`chatThreadWorkflowsChanged:${SPLIT_THREAD_ID}`);
+  updateWorkflows([
+    workflow("release-report"),
+    workflow("first-live-change"),
+    workflow("latest-attached"),
+  ]);
 
   await user.click(primaryEditor);
   await user.keyboard(" /latest");
@@ -763,52 +815,63 @@ test("Send a template while the current run is active", async () => {
   expect((await findComposerEditor()).textContent).toBe("");
 });
 
-test("Find and send a workflow template", async () => {
-  const template = WORKFLOW_TEMPLATE_ITEMS.find((item) => {
-    return item.id === "workflow-template:github-pr-summarizer";
-  });
-  if (!template) {
-    throw new Error("Expected the GitHub PR summarizer workflow template");
-  }
-  let sentTemplateTitle: string | undefined;
-  mockAgent();
-  mockChatLifecycle(context, {
-    threadId: THREAD_ID,
-    threadTitle: "Workflow templates",
-    onSendRequest: (body) => {
-      sentTemplateTitle = body.userMessage?.parts.find((part) => {
-        return part.type === "template";
-      })?.titleSnapshot;
-    },
-  });
-  installWorkflows(() => {
-    return [];
-  });
+test.each(["find", "send"])(
+  "Use the workflow template picker to %s a workflow template",
+  async (action) => {
+    const template = WORKFLOW_TEMPLATE_ITEMS.find((item) => {
+      return item.id === "workflow-template:github-pr-summarizer";
+    });
+    if (!template) {
+      throw new Error("Expected the GitHub PR summarizer workflow template");
+    }
+    let sentTemplateTitle: string | undefined;
+    mockAgent();
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      threadTitle: "Workflow templates",
+      onSendRequest: (body) => {
+        sentTemplateTitle = body.userMessage?.parts.find((part) => {
+          return part.type === "template";
+        })?.titleSnapshot;
+      },
+    });
+    installWorkflows(() => {
+      return [];
+    });
 
-  await setupPage({ context, path: `/chats/${THREAD_ID}` });
+    await setupPage({ context, path: `/chats/${THREAD_ID}` });
 
-  const user = userEvent.setup();
-  const editor = await findComposerEditor();
-  await openTemplateCategory("Workflow");
-  const search = screen.getByRole("textbox", { name: "Search templates" });
-  await user.type(search, "merged pull requests");
-  click(
-    await screen.findByLabelText(`Select workflow template ${template.title}`),
-  );
+    const user = userEvent.setup();
+    const editor = await findComposerEditor();
+    await openTemplateCategory("Workflow");
+    const search = screen.getByRole("textbox", { name: "Search templates" });
+    await fill(
+      search,
+      action === "find" ? "merged pull requests" : template.title,
+    );
+    click(
+      await screen.findByLabelText(
+        `Select workflow template ${template.title}`,
+      ),
+    );
 
-  await expectInlineTemplateInComposer(template.title);
-  await user.click(editor);
-  await user.keyboard("{Enter}");
+    await expectInlineTemplateInComposer(template.title);
+    if (action === "find") {
+      return;
+    }
+    await user.click(editor);
+    await user.keyboard("{Enter}");
 
-  await waitFor(() => {
-    expect(sentTemplateTitle).toBe(template.title);
-    expect(
-      structuredTemplateReferences().some((reference) => {
-        return reference.textContent === template.title;
-      }),
-    ).toBeTruthy();
-  });
-});
+    await waitFor(() => {
+      expect(sentTemplateTitle).toBe(template.title);
+      expect(
+        structuredTemplateReferences().some((reference) => {
+          return reference.textContent === template.title;
+        }),
+      ).toBeTruthy();
+    });
+  },
+);
 
 test("Continue from empty slash suggestions to all workflows", async () => {
   mockAgent();

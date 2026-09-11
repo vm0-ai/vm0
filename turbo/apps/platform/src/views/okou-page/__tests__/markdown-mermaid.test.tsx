@@ -54,7 +54,7 @@ function diagramButtons(container: ParentNode = document.body): HTMLElement[] {
   });
 }
 
-test("A Mermaid diagram can move from chat into artifact split view", async () => {
+async function openMermaidSplitView() {
   vi.spyOn(HTMLImageElement.prototype, "naturalWidth", "get").mockReturnValue(
     900,
   );
@@ -124,7 +124,12 @@ test("A Mermaid diagram can move from chat into artifact split view", async () =
   });
   const firstSidebarSource = firstSidebarImage.getAttribute("src");
   await dialogRemoved;
+  return { sidebar, firstSidebarSource, secondExpand };
+}
 
+test("Opening another Mermaid diagram replaces the current artifact split view", async () => {
+  const { sidebar, firstSidebarSource, secondExpand } =
+    await openMermaidSplitView();
   click(secondExpand);
 
   await waitFor(() => {
@@ -136,7 +141,10 @@ test("A Mermaid diagram can move from chat into artifact split view", async () =
   expect(
     screen.queryByRole("dialog", { name: "diagram.svg preview" }),
   ).toBeNull();
+});
 
+test("Closing a Mermaid artifact split view preserves both inline diagrams and sources", async () => {
+  const { sidebar } = await openMermaidSplitView();
   const sidebarRemoved = waitForElementToBeRemoved(sidebar);
   click(getButtonByName("Close artifact", sidebar));
 

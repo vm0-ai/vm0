@@ -289,8 +289,7 @@ async function openUsageSettings(
   });
 }
 
-test("Review your member-package credit balance", async () => {
-  const user = userEvent.setup();
+async function openMemberPackageCredits(): Promise<HTMLElement> {
   mockPersonalUsageStory(usageRows(), "pro", false, "member");
   context.mocks.api(billingUsagePackCreditsContract.get, ({ respond }) => {
     return respond(200, {
@@ -322,6 +321,11 @@ test("Review your member-package credit balance", async () => {
   await openUsageSettings();
 
   const card = await screen.findByTestId("usage-pack-credit-card");
+  return card;
+}
+
+test("Review your member-package credit balance and grant rows", async () => {
+  const card = await openMemberPackageCredits();
   expect(within(card).getByText("Usage pack credits")).toBeInTheDocument();
   expect(
     within(card).getByTestId("usage-pack-credit-purchased"),
@@ -350,7 +354,12 @@ test("Review your member-package credit balance", async () => {
       return button.textContent?.trim() === "Configure member packages";
     }),
   ).toBeFalsy();
+});
 
+test("Review purchased member-package credit expiry and grant details", async () => {
+  const card = await openMemberPackageCredits();
+  const grants = within(card).getByTestId("usage-pack-credit-grants-section");
+  const user = userEvent.setup();
   await user.hover(within(card).getByTestId("usage-pack-credit-purchased"));
   await expect(
     screen.findByText("Purchased — 20,000"),

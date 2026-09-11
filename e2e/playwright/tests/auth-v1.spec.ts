@@ -287,7 +287,7 @@ for (const device of [
       }
     });
 
-    test("hosted password feedback and reveal remain clear after reflow", async ({
+    test("hosted password feedback remains clear after reflow", async ({
       page,
     }) => {
       await openAuth(page, "/v1/sign-up", device.theme);
@@ -316,7 +316,14 @@ for (const device of [
         })
         .toBeGreaterThan(0);
       await expectAuthBackgroundCoversViewport(page);
+    });
 
+    test("hosted password reveal preserves the password and fits a short viewport", async ({
+      page,
+    }) => {
+      await openAuth(page, "/v1/sign-up", device.theme);
+      await page.setViewportSize({ width: 375, height: 568 });
+      const password = page.getByLabel("Password", { exact: true });
       const longPassword = "A-Long-Password-For-Reveal-Layout!2026";
       await password.fill(longPassword);
       const show = page.getByRole("button", {
@@ -325,17 +332,6 @@ for (const device of [
       });
       await expectPasswordControlFits(password, show);
 
-      await legalConsent.focus();
-      await page.keyboard.press("Space");
-      await expect(legalConsent).toBeChecked();
-      await page.keyboard.press("Space");
-      await expect(legalConsent).not.toBeChecked();
-      const legalLinks = page.locator(".cl-formFieldCheckboxLabel a");
-      await expect(legalLinks).toHaveCount(2);
-      for (const link of await legalLinks.all()) {
-        await expect(link).toBeVisible();
-        await expect(link).toHaveAttribute("href", /^https:\/\//);
-      }
       await show.focus();
       await page.keyboard.press("Enter");
       const hide = page.getByRole("button", {
@@ -348,6 +344,25 @@ for (const device of [
       await hide.click();
       await expect(password).toHaveAttribute("type", "password");
       await expectPasswordControlFits(password, show);
+    });
+
+    test("hosted legal consent remains keyboard accessible in a short viewport", async ({
+      page,
+    }) => {
+      await openAuth(page, "/v1/sign-up", device.theme);
+      await page.setViewportSize({ width: 375, height: 568 });
+      const legalConsent = page.getByRole("checkbox");
+      await legalConsent.focus();
+      await page.keyboard.press("Space");
+      await expect(legalConsent).toBeChecked();
+      await page.keyboard.press("Space");
+      await expect(legalConsent).not.toBeChecked();
+      const legalLinks = page.locator(".cl-formFieldCheckboxLabel a");
+      await expect(legalLinks).toHaveCount(2);
+      for (const link of await legalLinks.all()) {
+        await expect(link).toBeVisible();
+        await expect(link).toHaveAttribute("href", /^https:\/\//);
+      }
     });
 
     test("hosted signup keeps native OTP feedback clear of inputs and resend on retry", async ({
