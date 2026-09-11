@@ -5201,7 +5201,7 @@ function AssistantErrorLeadingIcon({ warning = false }: { warning?: boolean }) {
     <span
       className={cn(
         CHAT_THREAD_RESPONSE_LEADING_ICON_CLASS,
-        "mt-[3px]",
+        "mt-0.5",
         warning && "text-amber-500",
       )}
     >
@@ -7152,6 +7152,33 @@ function PagedAssistantGroup({
 
   const groupElementId = `chat-event-group-${group.beginEventId}`;
   const runId = firstRunIdForEvents(group.events);
+  const hasOnlyStatusEvents =
+    !runWorkSection &&
+    group.events.every((event) => {
+      return (
+        !isRenderableAssistantEvent(event) || statusTailEvents?.includes(event)
+      );
+    });
+  if (hasOnlyStatusEvents) {
+    return (
+      <div
+        id={groupElementId}
+        data-role="assistant-thinking"
+        data-chat-run-id={runId}
+        data-turn-created-at={group.events[0]?.createdAt}
+        className={RUN_SECTION_ROW_CLASS}
+      >
+        <div className="hidden @[900px]:block" />
+        <PagedRunWorkAssistantContent
+          group={group}
+          thread={thread}
+          modelChanges={modelChanges}
+          statusTailEvents={statusTailEvents}
+        />
+      </div>
+    );
+  }
+
   const fullContent = group.events
     .map((m) => {
       return m.content;
@@ -7226,8 +7253,12 @@ function PagedAssistantEventItem({
   const error = chatEventDisplayError(event);
   if (error) {
     return (
-      <ChatAssistantMessageBody
-        className={cn(workHistory && CHAT_THREAD_WORK_HISTORY_TEXT_CLASS)}
+      <div
+        className={cn(
+          CHAT_THREAD_RESPONSE_LINE_CLASS,
+          CHAT_THREAD_RESPONSE_SUPPORTING_TEXT_CLASS,
+          "min-w-0 [overflow-wrap:anywhere]",
+        )}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >
@@ -7236,7 +7267,7 @@ function PagedAssistantEventItem({
           eventId={event.id}
           thread={thread}
         />
-      </ChatAssistantMessageBody>
+      </div>
     );
   }
 

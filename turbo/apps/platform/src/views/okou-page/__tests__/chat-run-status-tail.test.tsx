@@ -22,6 +22,7 @@ const GROUP_ID = "a0000000-0000-4000-a000-000000000293";
 const RESULT = "The API is checking dependencies. No errors so far.";
 const OLD_ERROR = "You've hit your usage limit. Please try again later.";
 const NEW_ERROR = "The provider could not complete the next request.";
+const GENERIC_ERROR = "Oops, something went wrong. Please try again later.";
 
 function failedEvent(
   runId = RUN_A,
@@ -84,6 +85,62 @@ async function expectRetainedResult(): Promise<HTMLElement> {
   expect(queryButton("Copy message", main)).toBeVisible();
   return main;
 }
+
+test.each(["run.failed", "output.error"] as const)(
+  "Show a scheduled workflow %s only in the status tail when no output was produced",
+  async (eventType) => {
+    installRunChat({
+      chatEvents: [
+        {
+          id: "scheduled-workflow",
+          eventType: "input.automation",
+          content: null,
+          runId: RUN_A,
+          seqId: 1,
+          createdAt: "2026-08-01T10:00:00.000Z",
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "automation",
+                workflowName: "daily-connector-registry-refresh",
+                automationBrief: "This workflow started on schedule.",
+              },
+            ],
+          },
+        },
+        { ...failedEvent(RUN_A, GENERIC_ERROR, 2), eventType },
+      ],
+    });
+
+    await openChat();
+
+    const error = await screen.findByText(GENERIC_ERROR);
+    expect(screen.getAllByText(GENERIC_ERROR)).toHaveLength(1);
+    expect(error.closest("[data-chat-run-status-tail]")).toBeVisible();
+    expect(error.closest("[data-chat-selection-source]")).toBeNull();
+    expect(document.querySelector('[data-role="assistant"]')).toBeNull();
+    expect(screen.queryByTestId("chat-event-actions")).toBeNull();
+    expect(
+      screen.getByText("This workflow started on schedule."),
+    ).toBeVisible();
+  },
+);
+
+test("Keep a generic failure out of the message body while retaining previous output and actions", async () => {
+  installRunChat({
+    chatEvents: [...resultEvents(), failedEvent(RUN_A, GENERIC_ERROR)],
+  });
+
+  await openChat();
+
+  const error = await screen.findByText(GENERIC_ERROR);
+  const main = await expectRetainedResult();
+  expect(screen.getAllByText(GENERIC_ERROR)).toHaveLength(1);
+  expect(error.closest("[data-chat-run-status-tail]")).toBeVisible();
+  expect(error.closest("[data-chat-selection-source]")).toBeNull();
+  expect(main).not.toContainElement(error);
+});
 
 test("Retire the previous error as soon as a new message is sent, before acknowledgement or output", async () => {
   const sendGate = context.mocks.deferred<void>();
