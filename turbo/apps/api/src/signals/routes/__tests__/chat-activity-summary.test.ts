@@ -285,6 +285,40 @@ function attempts(logs: readonly DiagnosticEvent[], runId: string) {
 function completions(logs: readonly DiagnosticEvent[], runId: string) {
   return records(logs, "Activity summary completion", runId);
 }
+/**
+ * Every summary record this run produced, in order, identified by message.
+ * Asserting the whole list is what catches a replacement diagnostic: a renamed
+ * event carrying the same absorbed outcome is invisible to a message-scoped
+ * check but appears here. It covers the levels the Axiom transport actually
+ * ingests; `captureDiagnostics` pins `OKOU_DEBUG` empty and separately proves
+ * no `debug` event is exported at all, so a debug-level record is outside this
+ * boundary rather than silently tolerated by it.
+ */
+function summaryRecords(logs: readonly DiagnosticEvent[], runId: string) {
+  return logs
+    .filter((event) => {
+      return (
+        event.fields.context === "api:activity-summary" &&
+        event.fields.runId === runId
+      );
+    })
+    .map((event) => {
+      return event.message;
+    });
+}
+/**
+ * Anything this run reported to an operator, regardless of message or context.
+ * An absorbed outcome must produce none of these, and a genuine failure must
+ * produce exactly its own completion.
+ */
+function diagnosed(logs: readonly DiagnosticEvent[], runId: string) {
+  return logs.filter((event) => {
+    return (
+      event.fields.runId === runId &&
+      (event.level === "warn" || event.level === "error")
+    );
+  });
+}
 
 const privatePayload = "private-provider-payload";
 
@@ -864,8 +898,17 @@ describe("thread activity summary", () => {
     await summarize(f.actor, f.run);
     expect(inputs).toHaveLength(1);
     const logs = await diagnostics();
+    // The attempt and the later cooldown read are the only records this run may
+    // leave. Listing them all is what rejects a renamed stand-in: an absorbed
+    // outcome re-emitted as any other message would appear here.
+    expect(summaryRecords(logs, f.run.runId)).toStrictEqual([
+      "Activity summary attempt",
+      "Activity summary cache",
+    ]);
     expect(attempts(logs, f.run.runId)).toHaveLength(1);
     expect(completions(logs, f.run.runId)).toStrictEqual([]);
+    // Nothing reached an operator under any message or context either.
+    expect(diagnosed(logs, f.run.runId)).toStrictEqual([]);
     expect(JSON.stringify(logs)).not.toContain(privatePayload);
   });
 
@@ -924,6 +967,16 @@ describe("thread activity summary", () => {
         },
       }),
     ]);
+    // The failure is reported once and nothing else about this run is: the same
+    // whole-list guard that proves silence for an absorbed outcome also proves
+    // a genuine failure is not accompanied by extra noise.
+    expect(summaryRecords(logs, f.run.runId)).toStrictEqual([
+      "Activity summary attempt",
+      "Activity summary completion",
+    ]);
+    expect(diagnosed(logs, f.run.runId)).toStrictEqual(
+      completions(logs, f.run.runId),
+    );
     expect(JSON.stringify(logs)).not.toContain(privatePayload);
   });
 
@@ -947,8 +1000,12 @@ describe("thread activity summary", () => {
     expect(degraded.retryAfterMs).toBeLessThanOrEqual(60_000);
     expect(inputs).toHaveLength(1);
     const logs = await diagnostics();
+    expect(summaryRecords(logs, f.run.runId)).toStrictEqual([
+      "Activity summary attempt",
+    ]);
     expect(attempts(logs, f.run.runId)).toHaveLength(1);
     expect(completions(logs, f.run.runId)).toStrictEqual([]);
+    expect(diagnosed(logs, f.run.runId)).toStrictEqual([]);
   });
 
   it("keeps a stored summary through a rejected batch and recovers after the cooldown", async () => {
@@ -967,8 +1024,12 @@ describe("thread activity summary", () => {
     expect(rejected.summaryRevision).toBe(first.summaryRevision);
     expect(rejected.retryAfterMs).toBeGreaterThan(50_000);
     const logs = await diagnostics();
+    expect(summaryRecords(logs, f.run.runId)).toStrictEqual([
+      "Activity summary attempt",
+    ]);
     expect(attempts(logs, f.run.runId)).toHaveLength(1);
     expect(completions(logs, f.run.runId)).toStrictEqual([]);
+    expect(diagnosed(logs, f.run.runId)).toStrictEqual([]);
     // The persisted cooldown expires and the next attempt publishes a phrase.
     await advanceRunActivityClockFixture(f.run.runId, 61_000);
     const recovered = await summarize(f.actor, f.run);
@@ -1089,8 +1150,13 @@ describe("thread activity summary", () => {
     // An optional key that was never set is a deliberate omission, not an
     // operator event, even when no summary exists to fall back to.
     const logs = await diagnostics();
+    expect(summaryRecords(logs, f.run.runId)).toStrictEqual([
+      "Activity summary attempt",
+      "Activity summary cache",
+    ]);
     expect(attempts(logs, f.run.runId)).toHaveLength(1);
     expect(completions(logs, f.run.runId)).toStrictEqual([]);
+    expect(diagnosed(logs, f.run.runId)).toStrictEqual([]);
   });
 
   it("bounds a hanging provider request and never retries within the request", async () => {
@@ -1265,8 +1331,12 @@ describe("thread activity summary", () => {
     // the missed attempt alone. An absorbed deadline reaches no operator
     // through any level, and nothing replaces the record it used to emit.
     const logs = await diagnostics();
+    expect(summaryRecords(logs, f.run.runId)).toStrictEqual([
+      "Activity summary attempt",
+    ]);
     expect(attempts(logs, f.run.runId)).toHaveLength(1);
     expect(completions(logs, f.run.runId)).toStrictEqual([]);
+    expect(diagnosed(logs, f.run.runId)).toStrictEqual([]);
   });
 
   it("charges no cooldown when the instance stops before the provider answers", async () => {
@@ -1305,8 +1375,12 @@ describe("thread activity summary", () => {
     // The abandoned attempt is the only one recorded so far, and a request that
     // outlived its own caller is not a failure anyone can act on.
     const logs = await diagnostics();
+    expect(summaryRecords(logs, f.run.runId)).toStrictEqual([
+      "Activity summary attempt",
+    ]);
     expect(attempts(logs, f.run.runId)).toHaveLength(1);
     expect(completions(logs, f.run.runId)).toStrictEqual([]);
+    expect(diagnosed(logs, f.run.runId)).toStrictEqual([]);
     // Only the attempt interval was ever charged, so the next viewer generates
     // again instead of waiting out a failure cooldown it never caused.
     await advanceRunActivityClockFixture(f.run.runId, 16_000);

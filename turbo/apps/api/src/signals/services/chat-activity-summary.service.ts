@@ -345,6 +345,12 @@ type CompletionOutcome =
  * cannot accept, and an exception the shared classifier could not name. A
  * reason added to that classifier later therefore surfaces instead of
  * disappearing into silence.
+ *
+ * The silent list names only reasons this boundary can actually receive.
+ * `auth`, `invalid_request`, `rate_limited` and `provider_unavailable` belong
+ * to the shared reason union but are recorded exclusively while constructing an
+ * `OpenRouterRequestError`, so they are classified as `provider_failure` above
+ * and never reach the residual arm.
  */
 function completionLevel(
   outcome: CompletionOutcome,
@@ -365,8 +371,7 @@ function completionLevel(
     case "output_truncated":
     case "unexpected_tool_calls":
     case "network":
-    case "upstream_timeout":
-    case "provider_unavailable": {
+    case "upstream_timeout": {
       return null;
     }
     default: {
@@ -476,9 +481,17 @@ async function generateSummary(
     runId: identity.runId,
     ...completionRecord(started, phrase, abandoned, deadline.aborted, result),
   };
+  // Each level is dispatched through its own static member access. `api/no-logger-info`
+  // only inspects a non-computed callee, so a computed `log[level](...)` would
+  // quietly exempt this file's allowlisted info record from the rule that
+  // governs it.
   const level = completionLevel(completion.outcome);
-  if (level) {
-    log[level]("Activity summary completion", completion);
+  if (level === "info") {
+    log.info("Activity summary completion", completion);
+  } else if (level === "warn") {
+    log.warn("Activity summary completion", completion);
+  } else if (level === "error") {
+    log.error("Activity summary completion", completion);
   }
   // An abandoned attempt must not spend the shared cooldown on the next
   // viewer's behalf. Its lease expires like any owner that stopped reporting,

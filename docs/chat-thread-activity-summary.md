@@ -107,11 +107,16 @@ message, and the following nested `fields`:
 | `Activity snapshot capture`    | `api:run-activity`     | info for written/unchanged and for an expected failure; warn otherwise                                                                                     | `runId`, `outcome`, `eventCount`; `stage` and `errorCode` on failure                                       |
 | `Activity snapshot cleanup`    | `api:run-activity`     | info on success; warn on failure                                                                                                                           | `outcome`, `removed`, `retentionMs`; `errorCode` on failure                                                |
 
-Completion outcomes are `success`, `provider_failure`, `cancelled`, `timeout`,
-`unconfigured`, `unusable_output`, and the shared OpenRouter failure reasons
-(`network`, `upstream_timeout`, `output_truncated`, `unexpected_tool_calls`,
-`invalid_output`, `unknown`). A provider HTTP 429 is distinguishable by
-`fields.providerStatus: 429`; no error object or provider body is attached.
+Completion outcomes reachable in production are `success`, `provider_failure`,
+`cancelled`, `timeout`, `unconfigured`, `unusable_output`, and the subset of
+the shared OpenRouter failure reasons a non-request throw can carry: `network`,
+`upstream_timeout`, `output_truncated`, `unexpected_tool_calls`,
+`invalid_output` and `unknown`. The reason union also contains `auth`,
+`invalid_request`, `rate_limited` and `provider_unavailable`, but those are
+recorded only while constructing an `OpenRouterRequestError`, so they are
+reported as `provider_failure` and are not residual outcomes. A provider HTTP
+429 is distinguishable by `fields.providerStatus: 429`; no error object or
+provider body is attached.
 
 The residual outcomes are kept apart rather than collapsed into one label.
 `unconfigured` is the optional enrichment's documented return when no API key
@@ -122,8 +127,9 @@ asserts no cause.
 
 An outcome this endpoint's fallback absorbs emits **no record at any level**.
 That covers `cancelled`, `timeout`, `unconfigured`, `unusable_output`,
-`output_truncated`, `unexpected_tool_calls` and the transient transport
-reasons. In each case the response stays truthful (`cooldown` with the caller's
+`output_truncated`, `unexpected_tool_calls`, and the two transport reasons a
+non-request throw can carry, `network` and `upstream_timeout`. In each case the
+response stays truthful (`cooldown` with the caller's
 last usable phrase, or `pending` when none exists yet), the attempt interval or
 the shared cooldown bounds recovery, and no operator action exists. Emitting
 them at a quieter level, or as an equivalent replacement event, would only
@@ -132,8 +138,19 @@ reach `error` because the contract or the exception genuinely needs an
 operator, and `provider_failure` keeps the provider classification's own level.
 
 This deliberately removes the per-outcome counts those records used to carry,
-including the deadline rate that a previous revision documented here. Attempts
-remain countable, so the absorbed share is only visible in aggregate:
+including the deadline rate that a previous revision documented here. **An
+absorbed outcome is not recoverable from these logs, and no arithmetic over the
+retained records recovers it.** Subtracting the retained completions from the
+attempts does not yield the absorbed share: an attempt and its completion are
+separate records written up to the ten-second provider deadline apart, so they
+fall into different time bins at any bin width, and an attempt whose request
+ended without reaching the completion site has no matching record to subtract
+at all. Widening or clamping the bin hides the skew rather than removing it,
+and restoring the count would require a new observation channel, which this
+revision deliberately does not add.
+
+What the retained records do support is a count of each reported outcome and of
+attempts, each in its own right:
 
 ```
 ['vm0-web-logs-prod']
@@ -144,13 +161,10 @@ remain countable, so the absorbed share is only visible in aggregate:
             provider=countif(['fields.outcome'] == 'provider_failure'),
             failures=countif(['fields.outcome'] in ('invalid_output', 'unknown'))
         by bin(_time, 30m)
-| extend absorbed = attempts - successes - provider - failures
 ```
 
-`absorbed` mixes cancellation, the deadline and every other fallback outcome
-and cannot be split further from logs. Separating them again would be a new
-observation decision, not a level change. Alerting on any of these is an
-operator decision and is not configured here.
+Read those four series independently. Do not treat `attempts` as their total.
+Alerting on any of them is an operator decision and is not configured here.
 
 A failed capture is classified into a finite set instead of one opaque
 `write_failed`. `contended` (`55P03`) and `run_missing` (`23503`) are expected
