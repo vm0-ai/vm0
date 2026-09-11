@@ -881,11 +881,8 @@ test("Reconnect the selected non-default account after cancellation", async () =
 
   authWindow = createAuthWindow();
   context.mocks.browser.open(authWindow);
-  const connectorChangedSubscribe = context.mocks.ably.deferNextSubscribe();
   click(getConnectorAction("button", "Reconnect", connect));
 
-  await connectorChangedSubscribe.started;
-  connectorChangedSubscribe.attach();
   await waitFor(() => {
     expect(authWindow.location.href).toBe(
       "https://oauth.test/stripe/authorize",

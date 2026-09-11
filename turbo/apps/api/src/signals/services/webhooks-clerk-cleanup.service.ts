@@ -1,3 +1,4 @@
+import { morningBriefEnrollments } from "@okouai/db/schema/morning-brief-enrollment";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
 import { agentRuns } from "@okouai/db/runtime/agent-run";
@@ -823,6 +824,9 @@ async function deleteOrgData(
     .delete(orgMembersMetadata)
     .where(eq(orgMembersMetadata.orgId, orgId));
   await db.delete(orgCache).where(eq(orgCache.orgId, orgId));
+  await db
+    .delete(morningBriefEnrollments)
+    .where(eq(morningBriefEnrollments.orgId, orgId));
   await db.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
 }
 
@@ -882,6 +886,9 @@ async function deleteUserData(
     .delete(userPermissionGrants)
     .where(eq(userPermissionGrants.userId, userId));
   await db.delete(orgMembersCache).where(eq(orgMembersCache.userId, userId));
+  await db
+    .delete(morningBriefEnrollments)
+    .where(eq(morningBriefEnrollments.userId, userId));
   await db
     .delete(orgMembersMetadata)
     .where(eq(orgMembersMetadata.userId, userId));
