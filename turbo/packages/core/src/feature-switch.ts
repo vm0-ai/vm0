@@ -45,11 +45,6 @@ export interface FeatureSwitchContext {
  * Registry of all feature switches
  */
 const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
-  [FeatureSwitchKey.PrivacyChoices]: {
-    maintainer: "yuma@okou.ai",
-    description: "Canonical anonymous and personal privacy preference APIs",
-    enabled: true,
-  },
   [FeatureSwitchKey.WelcomeThread]: {
     maintainer: "lancy@okou.ai",
     description: "Manually create a welcome conversation with fixed examples",
