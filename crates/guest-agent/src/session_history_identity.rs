@@ -18,13 +18,14 @@ use guest_contracts::session_history_identity::{
     SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE, SessionHistoryFramework,
     SessionHistoryIdentity, SessionHistoryIdentityError, SessionHistoryIdentityExpectation,
     SessionHistoryRefKind, SessionHistorySidecarExportFailure, SessionHistorySidecarExportMetadata,
-    SessionHistorySidecarIoErrorClass, SessionHistorySidecarRepresentation,
-    SessionHistorySourceRef,
+    SessionHistorySidecarExportTimings, SessionHistorySidecarIoErrorClass,
+    SessionHistorySidecarRepresentation, SessionHistorySourceRef,
 };
 use sha2::{Digest, Sha256};
 use std::fmt;
 use std::io;
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 /// Build final session-history identity metadata for a successful checkpoint.
 pub(crate) fn build_final_session_history_identity(
@@ -105,8 +106,9 @@ pub fn verify_final_session_history_identity_file(
 ///
 /// # Returns
 ///
-/// On success, returns the representation and exact byte length written to
-/// `export_path`.
+/// On success, returns the representation, exact byte length written to
+/// `export_path`, and phase timings. Timings exclude helper process startup,
+/// result serialization, exit, and subsequent host copying.
 ///
 /// # Errors
 ///
@@ -118,16 +120,22 @@ pub fn export_final_session_history_sidecar_file(
     metadata_path: impl AsRef<Path>,
     export_path: impl AsRef<Path>,
 ) -> Result<SessionHistorySidecarExportMetadata, SessionHistorySidecarExportError> {
+    let started = Instant::now();
     let identity = read_final_session_history_identity(metadata_path)?;
     let history_source = validated_history_source(&identity)?;
     verify_final_session_history_identity_constraints(&identity)?;
-    let prepared = session_history::prepare_session_history_sidecar_from_source_bounded(
-        history_source,
-        identity.history_size_bytes,
-        RESUME_SESSION_HISTORY_MAX_BYTES,
-    )
-    .map_err(map_session_history_digest_error)?;
+    let metadata_done = Instant::now();
+    let resolved = session_history::resolve_session_history_from_source(history_source)
+        .map_err(SessionHistoryIdentityVerifyError::HistoryRead)?;
+    let resolve_done = Instant::now();
+    let prepared = resolved
+        .prepare_sidecar(
+            identity.history_size_bytes,
+            RESUME_SESSION_HISTORY_MAX_BYTES,
+        )
+        .map_err(map_session_history_digest_error)?;
     verify_final_session_history_digest(&identity, &prepared.digest)?;
+    let read_verify_done = Instant::now();
     let source = prepared.into_source();
     let (representation, bytes) = match source {
         session_history::SessionHistoryCheckpointSource::Decoded(bytes) => {
@@ -139,10 +147,22 @@ pub fn export_final_session_history_sidecar_file(
     };
     crate::paths::write_private(export_path.as_ref(), &bytes)
         .map_err(SessionHistorySidecarExportError::OutputWrite)?;
+    let finished = Instant::now();
     Ok(SessionHistorySidecarExportMetadata {
         representation,
         encoded_size: bytes.len() as u64,
+        timings: SessionHistorySidecarExportTimings {
+            metadata_us: duration_us(metadata_done.duration_since(started)),
+            resolve_us: duration_us(resolve_done.duration_since(metadata_done)),
+            read_verify_us: duration_us(read_verify_done.duration_since(resolve_done)),
+            write_us: duration_us(finished.duration_since(read_verify_done)),
+            total_us: duration_us(finished.duration_since(started)),
+        },
     })
+}
+
+fn duration_us(duration: Duration) -> u64 {
+    u64::try_from(duration.as_micros()).unwrap_or(u64::MAX)
 }
 
 fn read_final_session_history_identity(

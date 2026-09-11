@@ -1029,42 +1029,36 @@ test("Explain package and credit effects before removing a member", async () => 
   expect(screen.getByText("bob@example.com")).toBeInTheDocument();
 });
 
-test("Revoke a pending workspace invitation", async () => {
-  mockMembersStory();
-  await openMembersTab();
+test.each(["Cancel", "Revoke"] as const)(
+  "%s a pending workspace invitation revocation",
+  async (action) => {
+    mockMembersStory();
+    await openMembersTab();
 
-  await fill(screen.getByPlaceholderText("Search"), "pending");
-  await waitFor(() => {
-    expect(screen.getByText("pending@example.com")).toBeInTheDocument();
-  });
+    await fill(screen.getByPlaceholderText("Search"), "pending");
+    await waitFor(() => {
+      expect(screen.getByText("pending@example.com")).toBeInTheDocument();
+    });
 
-  click(screen.getByLabelText("Actions for pending@example.com"));
-  click(menuItemByText("Revoke invitation"));
+    click(screen.getByLabelText("Actions for pending@example.com"));
+    click(menuItemByText("Revoke invitation"));
 
-  const cancelRevokeDialog = await screen.findByRole("dialog", {
-    name: "Revoke invitation?",
-  });
-  expect(
-    within(cancelRevokeDialog).getByText(
-      /will no longer be able to join using this invitation/i,
-    ),
-  ).toBeInTheDocument();
-  click(buttonByText("Cancel", cancelRevokeDialog));
-
-  await waitFor(() => {
-    expect(screen.getByText("pending@example.com")).toBeInTheDocument();
-  });
-
-  click(screen.getByLabelText("Actions for pending@example.com"));
-  click(menuItemByText("Revoke invitation"));
-
-  const revokeDialog = await screen.findByRole("dialog", {
-    name: "Revoke invitation?",
-  });
-  click(buttonByText("Revoke", revokeDialog));
-
-  await waitFor(() => {
-    expect(screen.getByText("Invitation revoked")).toBeInTheDocument();
-    expect(screen.queryByText("pending@example.com")).not.toBeInTheDocument();
-  });
-});
+    const cancelRevokeDialog = await screen.findByRole("dialog", {
+      name: "Revoke invitation?",
+    });
+    expect(
+      within(cancelRevokeDialog).getByText(
+        /will no longer be able to join using this invitation/i,
+      ),
+    ).toBeInTheDocument();
+    click(buttonByText(action, cancelRevokeDialog));
+    await waitFor(() => {
+      expect(screen.queryAllByText("pending@example.com")).toHaveLength(
+        action === "Cancel" ? 1 : 0,
+      );
+      expect(screen.queryAllByText("Invitation revoked")).toHaveLength(
+        action === "Revoke" ? 1 : 0,
+      );
+    });
+  },
+);

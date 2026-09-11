@@ -224,7 +224,7 @@ test.each([0, 2])(
     expect(queryConnectorAction("link", "Manage SSH hosts")).toBeNull();
     click(getConnectorAction("button", "Filter connectors"));
     const categoryMenu = await screen.findByRole("menu");
-    click(getConnectorAction("menuitem", "Remote access1", categoryMenu));
+    click(getConnectorAction("menuitem", "Remote access", categoryMenu));
     await screen.findByRole("heading", { name: "Remote access" });
     expect(queryConnectorAction("link", "Manage SSH hosts")).not.toBeNull();
     expect(screen.queryByTestId("connector-category-grid")).toBeNull();

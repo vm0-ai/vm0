@@ -1041,7 +1041,7 @@ const TEMPLATE_TILE_RING =
   "rounded-xl ring-offset-1 ring-offset-card transition-shadow duration-150";
 const TEMPLATE_TILE_RING_SELECTED = "ring-1 ring-primary";
 const TEMPLATE_TILE_MEDIA =
-  "relative overflow-hidden border border-gray-200 bg-muted";
+  "relative overflow-hidden border border-border bg-muted";
 const TEMPLATE_TILE_SCRIM =
   "pointer-events-none absolute inset-x-0 bottom-0 z-[15] h-14 bg-gradient-to-t from-black/45 to-transparent opacity-0 transition-opacity duration-150 group-hover/tile:opacity-100";
 const TEMPLATE_TILE_USE =
@@ -1320,7 +1320,7 @@ function WorkflowTemplateConnectorIcons({
   return (
     <>
       {withDivider ? (
-        <span className="h-3.5 w-px shrink-0 bg-border/70" />
+        <span className="h-3.5 w-px shrink-0 bg-divider/70" />
       ) : null}
       <span
         className={cn(
@@ -1370,7 +1370,7 @@ function WorkflowTemplateCard({
   return (
     <div
       className={cn(
-        "group/tile flex flex-col border border-gray-200 bg-card p-4",
+        "group/tile flex flex-col border border-border bg-card p-4",
         TEMPLATE_CARD_SHADOW,
         TEMPLATE_TILE_RING,
         selected && TEMPLATE_TILE_RING_SELECTED,
@@ -4217,7 +4217,7 @@ function IllustrationTemplateCard({
     <div
       data-illustration-template-card=""
       className={cn(
-        "group/tile mb-4 break-inside-avoid overflow-hidden border border-gray-200 bg-card",
+        "group/tile mb-4 break-inside-avoid overflow-hidden border border-border bg-card",
         TEMPLATE_CARD_SHADOW,
         TEMPLATE_TILE_RING,
         selected && TEMPLATE_TILE_RING_SELECTED,
@@ -9365,6 +9365,7 @@ function ComposerInputSlot({
   const notifyDraftChanged = useComposerDraftChange(signals);
   const restoreAttachments = useSet(signals.draft.restoreAttachments$);
   const pageSignal = useGet(pageSignal$);
+  const focusEditor = useSet(signals.editor.focus$);
   const insertPromptMarkdown = useSet(signals.editor.insertPromptMarkdown$);
   const insertUserMessage = useSet(signals.editor.insertUserMessage$);
   const uploadFile = useComposerFileUpload(signals);
@@ -9473,7 +9474,17 @@ function ComposerInputSlot({
     >
       <div
         className="col-start-1 row-start-1 min-h-0"
+        data-slot="chat-composer-input"
         hidden={createPickerOpen}
+        onClick={(event) => {
+          const target = event.target;
+          if (
+            target instanceof Node &&
+            !signals.editor.editor.view.dom.contains(target)
+          ) {
+            focusEditor();
+          }
+        }}
       >
         <TiptapWorkflowComposer
           signals={signals}
@@ -9863,7 +9874,7 @@ function ComposerModelPickerControls({
         desktopLayout={desktopLayout}
         mediaModelPanel={mediaModelPanel}
       />
-      <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
+      <div className="mx-0 h-5 w-px bg-divider/60 sm:mx-0.5" />
     </>
   );
 }

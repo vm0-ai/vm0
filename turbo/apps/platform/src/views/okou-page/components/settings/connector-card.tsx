@@ -20,6 +20,7 @@ import {
   type ConnectorConnectHandlers,
 } from "./launch-connector-connect.ts";
 import { useConnectorAccountLabel } from "./use-connector-account-label.ts";
+import { MercuryDisclosure } from "./mercury-disclosure.tsx";
 
 type CatalogConnectorCardProps = {
   readonly variant: "catalog";
@@ -593,6 +594,7 @@ function AccountsConnectorCard({
       trailingAction={
         <div className="relative z-20 min-w-0 max-w-full">{manageAccess}</div>
       }
+      footer={connector.slug === "mercury" ? <MercuryDisclosure /> : undefined}
     />
   );
 }

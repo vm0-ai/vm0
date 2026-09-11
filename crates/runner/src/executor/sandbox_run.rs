@@ -1711,7 +1711,7 @@ pub(super) async fn execute_prepared_sandbox_run_with_process_cancel_timeouts(
             SandboxReuseDisposition::Ineligible(SandboxReuseRejection::PostJobCleanupFailure);
     }
 
-    // Read the CLI-generated session ID after a first-run execution.
+    // Read the CLI-generated session ID after execution only when no ID was supplied.
     let discovered_cli_agent_session_id = if context.cli_agent_session_id().is_none() {
         let id = read_guest_cli_agent_session_id(sandbox.as_ref(), context.run_id)
             .await

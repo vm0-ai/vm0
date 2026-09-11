@@ -2962,10 +2962,10 @@
       "addAccount": "Add account",
       "connected": "Connected",
       "default": "Default",
-      "deleteAccount": "Delete account",
-      "deleteDescription": "Threads using this account will return to default inheritance.",
-      "deleteDescriptionWithCount": "{{value}} threads will return to default inheritance.",
-      "deleteTitle": "Delete {{account}}?",
+      "disconnectAccount": "Disconnect account",
+      "disconnectDescription": "This disconnects the account from Okou. Threads using it will return to default inheritance. The provider account will not be deleted.",
+      "disconnectDescriptionWithCount": "This disconnects the account from Okou. {{value}} threads will return to default inheritance. The provider account will not be deleted.",
+      "disconnectTitle": "Disconnect {{account}}?",
       "fallbackByMethod": {
         "api": "API key",
         "api-token": "API token",
@@ -3031,6 +3031,10 @@
       "genericLabel": "Connector",
       "githubLabel": "GitHub",
       "invalidUrl": "Invalid connector callback URL.",
+      "mercuryAttribution": "Powered by Mercury",
+      "mercuryDisclosure": "Mercury is a fintech company, not an FDIC-insured bank. Banking services provided through Choice Financial Group and Column N.A., Members FDIC.",
+      "mercuryDisclosureLabel": "Mercury banking disclosure",
+      "mercuryLabel": "Mercury",
       "success": "Connected"
     },
     "card": {
@@ -3112,6 +3116,19 @@
       "categoriesAria": "Connector categories",
       "description": "Connect third-party services for your agents to use.",
       "descriptionWithCount": "Connect {{value}} services for your agents to use.",
+      "directory": {
+        "browse": "Browse",
+        "builtin": "Built-in connectors",
+        "builtinLoadFailed": "Couldn't load built-in connectors.",
+        "custom": "Custom",
+        "customLoadFailed": "Couldn't load custom connectors.",
+        "emptyCustom": "Add an HTTP API or MCP server for your organization to use.",
+        "loading": "Loading connectors…",
+        "noCategoryMatches": "No connectors match in this category.",
+        "noCustomMatches": "No custom connectors match your search.",
+        "retry": "Retry",
+        "searchAll": "Search all connectors"
+      },
       "empty": {
         "agent": "No connectors for this agent",
         "connected": "No connected connectors",

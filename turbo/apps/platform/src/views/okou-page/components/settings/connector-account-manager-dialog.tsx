@@ -57,6 +57,7 @@ import {
 } from "../../../../signals/okou-page/settings/connector-account-dialogs.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { useConnectorAccountLabel } from "./use-connector-account-label.ts";
+import { MercuryDisclosure } from "./mercury-disclosure.tsx";
 
 interface ConnectorAccountManagerDialogProps {
   readonly target: ConnectorAccountTarget;
@@ -184,7 +185,9 @@ function AccountActions({
 }) {
   const { t } = useTranslation();
   const startRename = useSet(startConnectorAccountRename$);
-  const [, prepareDelete] = useLoadableSet(prepareConnectorAccountDeletion$);
+  const [, prepareDisconnect] = useLoadableSet(
+    prepareConnectorAccountDeletion$,
+  );
   const signal = useGet(pageSignal$);
   return (
     <DropdownMenu>
@@ -238,13 +241,13 @@ function AccountActions({
           className="text-destructive focus:text-destructive"
           onClick={() => {
             detach(
-              prepareDelete({ target, account }, signal),
+              prepareDisconnect({ target, account }, signal),
               Reason.DomCallback,
             );
           }}
         >
           {t(($) => {
-            return $.connectors.actions.delete;
+            return $.connectors.actions.disconnect;
           })}
         </DropdownMenuItem>
       </DropdownMenuContent>
@@ -471,7 +474,7 @@ function RenameAccountForm({ target }: { target: ConnectorAccountTarget }) {
   );
 }
 
-function DeleteAccountConfirmation({
+function DisconnectAccountConfirmation({
   target,
 }: {
   readonly target: ConnectorAccountTarget;
@@ -480,14 +483,14 @@ function DeleteAccountConfirmation({
   const draft = useGet(connectorAccountDeletionDraft$);
   const accountLabel = useConnectorAccountLabel();
   const clear = useSet(clearConnectorAccountDeletion$);
-  const [deleteLoadable, deleteAccount] = useLoadableSet(
+  const [disconnectLoadable, deleteAccount] = useLoadableSet(
     deleteConnectorAccount$,
   );
   const signal = useGet(pageSignal$);
   if (!draft) {
     return null;
   }
-  const remove = () => {
+  const disconnect = () => {
     detach(
       (async () => {
         await deleteAccount({ target, connectionId: draft.account.id }, signal);
@@ -508,7 +511,7 @@ function DeleteAccountConfirmation({
           <DialogTitle className="line-clamp-2 break-words pr-8 leading-snug">
             {t(
               ($) => {
-                return $.connectors.accounts.deleteTitle;
+                return $.connectors.accounts.disconnectTitle;
               },
               { account: accountLabel(draft.account) },
             )}
@@ -516,11 +519,11 @@ function DeleteAccountConfirmation({
           <DialogDescription>
             {draft.explicitSelectionCount === 0
               ? t(($) => {
-                  return $.connectors.accounts.deleteDescription;
+                  return $.connectors.accounts.disconnectDescription;
                 })
               : t(
                   ($) => {
-                    return $.connectors.accounts.deleteDescriptionWithCount;
+                    return $.connectors.accounts.disconnectDescriptionWithCount;
                   },
                   { value: draft.explicitSelectionCount },
                 )}
@@ -535,12 +538,16 @@ function DeleteAccountConfirmation({
           <Button
             type="button"
             variant="destructive"
-            disabled={deleteLoadable.state === "loading"}
-            onClick={remove}
+            disabled={disconnectLoadable.state === "loading"}
+            onClick={disconnect}
           >
-            {t(($) => {
-              return $.connectors.accounts.deleteAccount;
-            })}
+            {disconnectLoadable.state === "loading"
+              ? t(($) => {
+                  return $.connectors.actions.disconnecting;
+                })
+              : t(($) => {
+                  return $.connectors.accounts.disconnectAccount;
+                })}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -725,6 +732,9 @@ export function ConnectorAccountManagerDialog({
             </Button>
           ) : null}
         </div>
+        {target.kind === "builtin" && target.connectorSlug === "mercury" ? (
+          <MercuryDisclosure className="shrink-0 border-t border-border/50 pt-3" />
+        ) : null}
         {onAdd ? (
           <DialogFooter className="shrink-0">
             <Button
@@ -745,7 +755,7 @@ export function ConnectorAccountManagerDialog({
             </Button>
           </DialogFooter>
         ) : null}
-        <DeleteAccountConfirmation target={target} />
+        <DisconnectAccountConfirmation target={target} />
       </DialogContent>
     </Dialog>
   );

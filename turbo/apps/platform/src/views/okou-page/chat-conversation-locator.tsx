@@ -107,7 +107,7 @@ function ConversationLocatorRail({ thread }: { thread: ChatPanelSignals }) {
                 // React owns everything that only changes with the layout.
                 // Magnified ticks must not extend the rail's hit area.
                 "pointer-events-none absolute left-[14px] h-0.5 -translate-y-1/2 rounded-full transition-colors duration-150",
-                tick.current ? "bg-primary/60" : "bg-border",
+                tick.current ? "bg-primary/60" : "bg-divider",
                 // The turn under the cursor only changes colour — thickness
                 // stays put so the rail keeps one rhythm.
                 "[&[data-locator-hot]]:bg-foreground",

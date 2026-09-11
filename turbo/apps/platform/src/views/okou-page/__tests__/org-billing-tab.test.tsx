@@ -1272,14 +1272,27 @@ test("Manage member packages on an Atom-granted plan", async () => {
   ).not.toBeInTheDocument();
 });
 
-test("Schedule and revise a legacy Team conversion", async () => {
+async function openLegacyTeamConversion(scheduled = false): Promise<void> {
   let migrationState: UsagePackMigrationStateResponse = {
     tier: "team",
-    targetTier: null,
-    status: "eligible",
-    migrationId: null,
+    targetTier: scheduled ? "team" : null,
+    status: scheduled ? "scheduled" : "eligible",
+    migrationId: scheduled ? "3ea4b7cf-d71e-45dc-8273-8bc8b9712490" : null,
     effectiveAt: "2026-09-01T00:00:00.000Z",
     hostedInvoiceUrl: null,
+    ...(scheduled
+      ? {
+          configuration: {
+            tier: "team" as const,
+            memberUsagePacks: [
+              { memberId: "user_1", usagePackUsd: 20 },
+              { memberId: "invitation_1", usagePackUsd: 50 },
+            ],
+            recurringAmountCents: 22_950,
+            currency: "usd",
+          },
+        }
+      : {}),
   };
   context.mocks.data.org({
     id: "org_1",
@@ -1458,6 +1471,10 @@ test("Schedule and revise a legacy Team conversion", async () => {
   });
 
   await screen.findByText("Team plan");
+}
+
+test("Schedule a legacy Team conversion after reviewing member packages", async () => {
+  await openLegacyTeamConversion();
   click(buttonByText("Compare all plans"));
   const choosePlanDialog = await screen.findByRole("dialog", {
     name: "Choose a plan",
@@ -1616,7 +1633,11 @@ test("Schedule and revise a legacy Team conversion", async () => {
     ),
   ).not.toBeInTheDocument();
   expect(screen.getByText("Legacy")).toBeInTheDocument();
+});
 
+test("Review and revise an already scheduled legacy Team conversion", async () => {
+  await openLegacyTeamConversion(true);
+  await screen.findByText("Switches to Team on Sep 1, 2026");
   click(buttonByText("Downgrade"));
   const unchangedChoosePlanDialog = await screen.findByRole("dialog", {
     name: "Choose a plan",

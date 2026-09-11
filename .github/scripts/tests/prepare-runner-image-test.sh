@@ -138,7 +138,11 @@ grep -q "missing required env: RUNNER_PATH" "${TMPDIR}/missing-runner.err" || fa
 . "${SCRIPT_DIR}/runner-binary-build/contract.env"
 runner_guest_binaries_load
 runner="${TMPDIR}/runner"
-printf 'prepared runner fixture\n' > "$runner"
+cat > "$runner" <<'BASH'
+#!/usr/bin/env bash
+[ "${1:-}" = --version ] || exit 2
+echo runner-fixture
+BASH
 runner_sha=$(sha256sum "$runner" | awk '{print $1}')
 runner_size=$(stat -c '%s' "$runner")
 input_digest=$(printf 'a%.0s' {1..64})
@@ -214,7 +218,16 @@ if [ "$#" -eq 2 ] && [ "$1" = "uname" ] && [ "$2" = "-m" ]; then
 fi
 
 if [ "${1:-}" = "bash" ] && [ "${2:-}" = "-s" ]; then
-  if [[ "${4:-}" = *.tmp ]]; then
+  if [[ "${4:-}" = *.XXXXXX ]]; then
+    # Map the remote filesystem into the fixture, retaining the real allocator.
+    bash -s -- "${SSH_UPLOAD_DIR}/${4##*/}"
+    exit 0
+  fi
+  if [[ "${4:-}" = *.tmp.* ]]; then
+    if [ -n "${SSH_UPLOAD_STATUSES:-}" ]; then
+      # Execute the production checksum/executable validation and publication.
+      "$@"
+    fi
     exit 0
   fi
 
@@ -227,6 +240,32 @@ if [ "${1:-}" = "bash" ] && [ "${2:-}" = "-s" ]; then
 fi
 
 if [ "${1:-}" = "sudo" ] && [ "${2:-}" = "install" ]; then
+  if [ -n "${SSH_UPLOAD_STATUSES:-}" ]; then
+    upload_attempt=$(( $(< "$SSH_UPLOAD_COUNT_FILE") + 1 ))
+    printf '%s\n' "$upload_attempt" > "$SSH_UPLOAD_COUNT_FILE"
+    IFS=',' read -r -a upload_statuses <<< "$SSH_UPLOAD_STATUSES"
+    if [ "$upload_attempt" -gt "${#upload_statuses[@]}" ]; then
+      echo "unexpected upload attempt ${upload_attempt}" >&2
+      exit 1
+    fi
+    candidate=${*: -1}
+    status=${upload_statuses[$((upload_attempt - 1))]}
+    if [ "$status" -ne 0 ]; then
+      head -c 4 > "$candidate"
+      printf '%s\n' "$candidate" > "${SSH_UPLOAD_DIR}/failed-candidate"
+      echo "fixture transfer interrupted" >&2
+      exit "$status"
+    fi
+
+    install -m 755 /dev/stdin "$candidate"
+    if [ "${SSH_UPLOAD_CORRUPT:-}" = 1 ]; then
+      printf 'corrupt bytes\n' > "$candidate"
+    fi
+    if [ -f "${SSH_UPLOAD_DIR}/failed-candidate" ]; then
+      # A previous remote writer resumes after the new transfer completes.
+      printf 'late stale bytes\n' > "$(< "${SSH_UPLOAD_DIR}/failed-candidate")"
+    fi
+  fi
   exit 0
 fi
 
@@ -254,10 +293,23 @@ set -euo pipefail
 command=$1
 shift
 case "$command" in
+  sha256sum|mktemp)
+    exec "$command" "$@"
+    ;;
+  mv)
+    [ "$1" = -f ] && [ "$3" = /var/lib/vm0-runner/bin/pr-123/runner ] || exit 1
+    mv -f "$2" "${SSH_UPLOAD_DIR}/runner"
+    ;;
+  "${SSH_UPLOAD_DIR}/"*)
+    exec "$command" "$@"
+    ;;
   systemctl)
     exec systemctl "$@"
     ;;
   rm|mkdir|find)
+    if [ "$command" = rm ] && [[ "${2:-}" = "${SSH_UPLOAD_DIR}/"* ]]; then
+      exec rm "$@"
+    fi
     {
       printf 'mutate %s' "$command"
       printf ' %s' "$@"
@@ -336,11 +388,12 @@ chmod +x "${TMPDIR}/bin/ssh" "${TMPDIR}/bin/sudo" "${TMPDIR}/bin/systemctl"
 
 prepare_remote_case() {
   local case_dir=$1
-  mkdir -p "${case_dir}/state" "${case_dir}/load-state"
+  mkdir -p "${case_dir}/state" "${case_dir}/load-state" "${case_dir}/uploads"
   : > "${case_dir}/ssh.log"
   : > "${case_dir}/systemctl.log"
   : > "${case_dir}/extra-list-rows"
   printf '0\n' > "${case_dir}/gc-count"
+  printf '0\n' > "${case_dir}/upload-count"
 }
 
 set_unit_state() {
@@ -362,6 +415,10 @@ run_remote_case() {
     SSH_GC_COUNT_FILE="${case_dir}/gc-count" \
     SSH_GC_STATUSES="${REMOTE_GC_STATUSES:-}" \
     SSH_REACH_GC="${REMOTE_REACH_GC:-}" \
+    SSH_UPLOAD_DIR="${case_dir}/uploads" \
+    SSH_UPLOAD_COUNT_FILE="${case_dir}/upload-count" \
+    SSH_UPLOAD_STATUSES="${REMOTE_UPLOAD_STATUSES:-}" \
+    SSH_UPLOAD_CORRUPT="${REMOTE_UPLOAD_CORRUPT:-}" \
     SYSTEMCTL_LOG="${case_dir}/systemctl.log" \
     SYSTEMCTL_STATE_DIR="${case_dir}/state" \
     SYSTEMCTL_LOAD_STATE_DIR="${case_dir}/load-state" \
@@ -378,6 +435,7 @@ run_remote_case() {
     RUNNER_PATH="$runner" \
     FRESH_METADATA_PATH="$metadata" \
     EXPECTED_BINARY_INPUT_DIGEST="$input_digest" \
+    MANIFEST_PATH="${case_dir}/manifest.json" \
     "$PREPARE" >"${case_dir}/out" 2>"${case_dir}/err"; then
     fail "expected mocked post-preparation SSH boundary to fail"
   fi
@@ -501,5 +559,56 @@ grep -Fq 'runner GC failed on dev-arm-1 with status 255' "${gc_transport_failure
 if grep -Fqx -- "$setup_command" "${gc_transport_failure_case}/ssh.log"; then
   fail "persistent SSH failure must not continue to runner setup"
 fi
+
+upload_success_case="${TMPDIR}/upload-success"
+prepare_remote_case "$upload_success_case"
+REMOTE_REACH_GC=1 REMOTE_GC_STATUSES=0 REMOTE_UPLOAD_STATUSES=0 \
+  run_remote_case "$upload_success_case"
+cmp "$runner" "${upload_success_case}/uploads/runner" || fail "successful upload must publish the complete executable"
+[ "$(< "${upload_success_case}/upload-count")" -eq 1 ] || fail "healthy upload must run once"
+grep -Fqx -- "$setup_command" "${upload_success_case}/ssh.log" || fail "validated upload must continue to setup"
+grep -Fq 'runner upload completed: host=dev-arm-1 attempt=1/2 elapsed_seconds=' "${upload_success_case}/out" || fail "expected successful upload timing"
+
+for status in 255 124 141; do
+  upload_retry_case="${TMPDIR}/upload-retry-${status}"
+  prepare_remote_case "$upload_retry_case"
+  REMOTE_REACH_GC=1 REMOTE_GC_STATUSES=0 REMOTE_UPLOAD_STATUSES="${status},0" \
+    run_remote_case "$upload_retry_case"
+  [ "$(< "${upload_retry_case}/upload-count")" -eq 2 ] || fail "transient upload failure must retry once"
+  cmp "$runner" "${upload_retry_case}/uploads/runner" || fail "retry must restart input and publish only the complete candidate"
+  failed_candidate=$(< "${upload_retry_case}/uploads/failed-candidate")
+  grep -Fxq 'late stale bytes' "$failed_candidate" || fail "expected a late write to the failed candidate"
+  grep -Fqx -- "$setup_command" "${upload_retry_case}/ssh.log" || fail "recovered upload must continue to setup"
+  [ "$(grep -c '^mutate mkdir ' "${upload_retry_case}/systemctl.log")" -eq 1 ] || fail "upload retry must not repeat destructive preparation"
+  [ "$(< "${upload_retry_case}/gc-count")" -eq 1 ] || fail "upload retry must not repeat GC"
+  grep -Fq "runner upload failed: host=dev-arm-1 attempt=1/2 status=${status} elapsed_seconds=" "${upload_retry_case}/out" || fail "expected original upload status and timing"
+  grep -Fq "expected_bytes=${runner_size}" "${upload_retry_case}/out" || fail "expected upload size diagnostic"
+  grep -Fq 'fixture transfer interrupted' "${upload_retry_case}/out" || fail "expected original upload stderr"
+done
+
+for statuses in 255,255 7 130 137 143; do
+  upload_failure_case="${TMPDIR}/upload-failure-${statuses}"
+  prepare_remote_case "$upload_failure_case"
+  REMOTE_REACH_GC=1 REMOTE_UPLOAD_STATUSES="$statuses" \
+    run_remote_case "$upload_failure_case"
+  expected_attempts=1
+  if [ "$statuses" = 255,255 ]; then expected_attempts=2; fi
+  [ "$(< "${upload_failure_case}/upload-count")" -eq "$expected_attempts" ] || fail "upload failures must respect retry and cancellation boundaries"
+  [ ! -e "${upload_failure_case}/uploads/runner" ] || fail "failed upload must not publish an executable"
+  [ ! -e "${upload_failure_case}/manifest.json" ] || fail "failed upload must not publish a manifest"
+  [ "$(< "${upload_failure_case}/gc-count")" -eq 0 ] || fail "failed upload must not reach GC"
+  grep -Fq "attempt=${expected_attempts}/2 status=${statuses##*,}" "${upload_failure_case}/out" || fail "expected terminal upload status"
+done
+
+upload_corrupt_case="${TMPDIR}/upload-corrupt"
+prepare_remote_case "$upload_corrupt_case"
+REMOTE_REACH_GC=1 REMOTE_UPLOAD_STATUSES=0 REMOTE_UPLOAD_CORRUPT=1 \
+  run_remote_case "$upload_corrupt_case"
+grep -Fq 'runner sha mismatch' "${upload_corrupt_case}/out" || fail "successful SSH must not bypass checksum validation"
+[ "$(< "${upload_corrupt_case}/upload-count")" -eq 1 ] || fail "checksum failure must not retry upload"
+[ ! -e "${upload_corrupt_case}/uploads/runner" ] || fail "corrupt upload must not publish an executable"
+[ -z "$(find "${upload_corrupt_case}/uploads" -type f -name 'runner.*')" ] || fail "verification failure must clean up its candidate"
+[ ! -e "${upload_corrupt_case}/manifest.json" ] || fail "corrupt upload must not publish a manifest"
+[ "$(< "${upload_corrupt_case}/gc-count")" -eq 0 ] || fail "corrupt upload must not reach GC"
 
 echo "prepare-runner-image-test: ok"

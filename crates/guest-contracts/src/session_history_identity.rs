@@ -150,6 +150,27 @@ pub struct SessionHistorySidecarExportMetadata {
     pub representation: SessionHistorySidecarRepresentation,
     /// Exact byte length of the exported sidecar file.
     pub encoded_size: u64,
+    /// Guest helper timings, not persisted in workspace-cache metadata.
+    pub timings: SessionHistorySidecarExportTimings,
+}
+
+/// Monotonic wall-clock durations for one successful sidecar export.
+///
+/// Runner and the helper ship together. These fields are private helper output,
+/// not a workspace-cache format or independently deployed API contract.
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionHistorySidecarExportTimings {
+    /// Read and validate final identity metadata and its size/identity constraints.
+    pub metadata_us: u64,
+    /// Locate and safely open the unique history source.
+    pub resolve_us: u64,
+    /// Read, optionally decode, buffer and hash the source, then verify its digest.
+    pub read_verify_us: u64,
+    /// Create and write the verified export file; does not include host copying.
+    pub write_us: u64,
+    /// Total helper work; excludes process startup, result serialization and exit.
+    pub total_us: u64,
 }
 
 /// Safe low-cardinality I/O class emitted for a sidecar output failure.

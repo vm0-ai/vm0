@@ -35,7 +35,9 @@ Components must not introduce local CSS variables as an alternate token registry
 
 One hairline serves the whole product. `--default-border-width` in the shared `@theme` is 0.5px, and Tailwind's bare `border`, `border-t`, `border-x`, `divide-y`, and their siblings all read it, so a component asks for "a border" and the system decides how thick it is. Components must not hand-write a width: an arbitrary width such as `border-[0.7px]`, or a literal width inside a `style` prop, is a second registry for a decision this token already owns. `border-0` and the deliberate emphasis widths such as `border-2` stay available, because they express a different decision rather than a competing value for the same one.
 
-The sub-pixel value is a declaration of intent as much as a measurement. Blink and Gecko round a non-zero border up to one device pixel, so it renders exactly like 1px there and layout is unchanged in every engine; WebKit can draw the true hairline on a high-density display. Do not treat a width below 1px as a way to make a border visibly lighter in Chromium — reach for the border color for that.
+This is a real hairline, not a rounding no-op. On a 2x display 0.5px paints one device pixel where 1px paints two, so every bare border carries half the ink it used to; layout is unaffected, because the used value is still rounded to whole pixels. Colour has to carry what the width no longer does, which is why `--border` sits one stop darker than the surface ramp's lightest step: `gray-200` was calibrated for a 1px line and stops reading on a near-white card at half the thickness.
+
+Borders and rules are separate decisions with separate tokens. `--border` is for real borders, which follow `--default-border-width`. `--divider` is the lightest neutral rule — separators, `h-px` / `w-px` hairlines painted as backgrounds, and resting rail ticks. Those are sized explicitly, so they never lost thickness to the border hairline and must not inherit its compensating darkening. Use `bg-divider` for a painted rule and `border-border` for an actual border; do not reach for a raw ramp stop such as `border-gray-200` for either, because that bypasses both decisions.
 
 Color-theme presets in the App stylesheet share their anchor and companion colors between picker swatches and workspace ambience. Daydream uses cool blue and violet, while Cotton sky uses pastel pink and blue. Each preset's hue and ring values keep semantic surfaces, selected states, and focus indicators aligned with that palette in Light/Dark.
 
@@ -119,6 +121,31 @@ Tests scope badges through `data-slot="badge"`, which carries no styles. The ico
 Line height belongs to the badge because a font-size utility with an arbitrary value carries no paired line height. A badge that declared only `text-[11px]` therefore took its box from whatever `line-height` an ancestor happened to set: the same badge measured 22px, 26px, or 34px tall across four ancestors. It reuses the page-surface border tokens rather than declaring badge-specific aliases, so one hairline decision keeps one owner.
 
 The `okou-badge`, `okou-pill`, and `okou-border-r` selectors and their consumers have been removed. `okou-pill` was scoped to `.okou-app` and set the muted foreground; its only consumer now spells that foreground itself. `okou-border-r` was a single settings-dialog divider and became `border-r border-r-gray-300` on that nav, keeping its lighter Gray 300 stroke while its width joins the shared hairline token.
+
+### Animated layers
+
+`RunningIndicator` owns its Tailwind utilities directly in JSX. Reuse the
+component through its props; its internal class strings are not an exported
+styling API. Both animated layers set their resting offset through an arbitrary
+`[transform:translate(-50%,-50%)_scale(...)]` rather than Tailwind's
+`translate-*` and `scale-*` utilities.
+
+That is not a style preference. Those utilities set the individual `translate`
+and `scale` CSS properties, while the keyframes animate `transform`. The
+individual properties compose with an animated `transform` instead of being
+replaced by it, so the layer would carry the centring offset twice for the whole
+cycle. Measured, the naive form moves roughly 20,000 pixels of the indicator at
+every sampled phase.
+
+Register a keyframe animation as an `--animate-*` theme entry so consumers reach
+it through `animate-*` rather than an `animation` shorthand. A per-instance
+runtime value, such as the indicator's phase-anchoring
+`--running-indicator-delay`, stays a narrowly named custom property that the
+component sets, read through an arbitrary `[animation-delay:var(...)]`.
+
+The `running-indicator`, `running-indicator-center`, and
+`running-indicator-ripple` recipes have been removed; their keyframes remain,
+since keyframes are not class selectors.
 
 ## Exception boundary
 

@@ -38,8 +38,6 @@ import {
   reloadConnectors$,
 } from "../../external/connectors.ts";
 import { replaceSearchParams$, searchParams$ } from "../../route.ts";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { featureSwitch$ } from "../../external/feature-switch.ts";
 import { connectorAgentAuthorizations$ } from "./connector-access-management.ts";
 import {
   OAUTH_API_BASE,
@@ -62,6 +60,12 @@ import { IN_VITEST } from "../../../env.ts";
 import { connectorRedirectingPath } from "../../connectors-page/connector-redirecting.ts";
 import { isConnectorChangedPayloadFor } from "../../connector-change.ts";
 import { i18n } from "../../../i18n/index.ts";
+import {
+  connectorDirectoryEnabled$,
+  connectorDirectoryCustomScope$,
+  connectorsScope$,
+  openConnectorDirectoryScope$,
+} from "./connector-directory-route.ts";
 import type {
   PlatformConnector,
   PlatformConnectorAccountMutationIntent,
@@ -442,46 +446,7 @@ export function matchesConnectorDirectorySearch(
 const CONNECTORS_SEARCH_PARAM = "keywords";
 const CONNECTORS_CONNECTION_FILTER_PARAM = "connection";
 const CONNECTORS_CATEGORY_PARAM = "category";
-const CONNECTORS_SCOPE_PARAM = "scope";
 const CONNECTORS_AGENT_FILTER_PREFIX = "agent:";
-
-/**
- * Which of the two lists the connectors page is showing. They are different
- * tasks — checking who can use Gmail, and finding something that talks to
- * Shopify — and each is organised by a different dimension, so a single
- * toolbar cannot serve both. Discovery is the default because that is what a
- * visit is usually for.
- */
-export type ConnectorsScope = "discover" | "mine";
-
-export const connectorsScope$ = computed((get): ConnectorsScope => {
-  // Only the directory offers the control that sets this, so without it the
-  // page has one list and one scope.
-  if (get(featureSwitch$)[FeatureSwitchKey.ConnectorDirectory] !== true) {
-    return "discover";
-  }
-  return get(searchParams$).get(CONNECTORS_SCOPE_PARAM) === "mine"
-    ? "mine"
-    : "discover";
-});
-
-export const setConnectorsScope$ = command(
-  ({ get, set }, value: ConnectorsScope) => {
-    const params = new URLSearchParams(get(searchParams$));
-    if (value === "mine") {
-      params.set(CONNECTORS_SCOPE_PARAM, value);
-    } else {
-      params.delete(CONNECTORS_SCOPE_PARAM);
-    }
-    // Every other control belongs to the scope that was just left: a category
-    // means nothing among the connectors you already have, and an agent means
-    // nothing in a catalog of four thousand.
-    params.delete(CONNECTORS_SEARCH_PARAM);
-    params.delete(CONNECTORS_CATEGORY_PARAM);
-    params.delete(CONNECTORS_CONNECTION_FILTER_PARAM);
-    set(replaceSearchParams$, params);
-  },
-);
 
 // A single, mutually-exclusive connector filter: all connectors, a connection
 // status, or the connectors a given agent is authorized to use.
@@ -494,6 +459,12 @@ export type ConnectorsConnectionFilter =
 
 export const connectorsConnectionFilter$ = computed(
   (get): ConnectorsConnectionFilter => {
+    // The directory browses a catalog, and category is the only dimension that
+    // organises it. The scope you already own is organised by who uses those
+    // connectors instead, so that is the one place this control still applies.
+    if (get(connectorDirectoryEnabled$) && get(connectorsScope$) !== "mine") {
+      return { kind: "all" };
+    }
     const raw = get(searchParams$).get(CONNECTORS_CONNECTION_FILTER_PARAM);
     if (raw === "connected") {
       return { kind: "connected" };
@@ -524,11 +495,21 @@ export const connectorsSearch$ = computed((get) => {
  * next to the search keyword rather than in component state.
  */
 export const connectorsCategoryFilter$ = computed((get): string | null => {
+  if (get(connectorDirectoryCustomScope$)) {
+    return null;
+  }
   return get(searchParams$).get(CONNECTORS_CATEGORY_PARAM) ?? null;
 });
 
 export const setConnectorsCategoryFilter$ = command(
   ({ get, set }, value: string | null) => {
+    if (get(connectorDirectoryEnabled$)) {
+      set(
+        openConnectorDirectoryScope$,
+        value ? { kind: "category", category: value } : { kind: "all" },
+      );
+      return;
+    }
     const params = new URLSearchParams(get(searchParams$));
     if (value) {
       params.set(CONNECTORS_CATEGORY_PARAM, value);

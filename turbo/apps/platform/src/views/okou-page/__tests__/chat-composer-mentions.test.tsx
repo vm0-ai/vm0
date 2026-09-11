@@ -9,6 +9,7 @@ import type { ChatThreadSnapshotProjection } from "@okouai/api-contracts/contrac
 import { expect, test } from "vitest";
 
 import {
+  fill,
   click,
   queryAllByRoleFast,
   setupPage,
@@ -175,7 +176,7 @@ test("Hide mention suggestions when nothing useful matches", async () => {
   });
 });
 
-test("Mention another agent in a message", async () => {
+async function openAgentMentionWorkspace() {
   const current = withAgent(
     continuityThread(62, 1, "Scout planning"),
     AGENT_ID,
@@ -219,9 +220,13 @@ test("Mention another agent in a message", async () => {
     path: `/chats/${current.id}`,
     ...workspace.pageOptions,
   });
+  return { current, savedMentionThread, workspace };
+}
 
-  const user = userEvent.setup();
+test("Suggest other agents before matching chats", async () => {
+  await openAgentMentionWorkspace();
   const composer = await screen.findByRole("textbox", { name: "Message" });
+  const user = userEvent.setup({ delay: null });
   await user.click(composer);
   await user.keyboard("@");
   const menu = await screen.findByTestId("chat-thread-suggestion-menu");
@@ -248,8 +253,14 @@ test("Mention another agent in a message", async () => {
   ]);
   expect(within(menu).queryByText("Scout")).toBeNull();
   expect(within(menu).getByText("Zeta launch notes")).toBeVisible();
+});
 
-  await user.keyboard("zeta");
+test("Save a selected agent mention and retain it when returning to the chat", async () => {
+  const { current, savedMentionThread, workspace } =
+    await openAgentMentionWorkspace();
+  const user = userEvent.setup({ delay: null });
+  const composer = await screen.findByRole("textbox", { name: "Message" });
+  await fill(composer, "@zeta");
   const zetaSuggestion = await waitFor(() => {
     return menuButton("Zeta Agent");
   });
@@ -275,7 +286,19 @@ test("Mention another agent in a message", async () => {
       }),
     ).toBeTruthy();
   });
+  await openConversation(savedMentionThread.id);
+  await screen.findByRole("textbox", { name: "Message" });
+  await openConversation(current.id);
+  const retainedComposer = await screen.findByRole("textbox", {
+    name: "Message",
+  });
+  await waitFor(() => {
+    expect(agentMention(retainedComposer, ZETA_ID)).toBeVisible();
+  });
+});
 
+test("A saved agent mention uses the current avatar when opened", async () => {
+  const { savedMentionThread } = await openAgentMentionWorkspace();
   await openConversation(savedMentionThread.id);
   const restoredComposer = await screen.findByRole("textbox", {
     name: "Message",
@@ -287,14 +310,6 @@ test("Mention another agent in a message", async () => {
       "data-agent-avatar-url",
       ZETA_CURRENT_AVATAR,
     );
-  });
-
-  await openConversation(current.id);
-  const retainedComposer = await screen.findByRole("textbox", {
-    name: "Message",
-  });
-  await waitFor(() => {
-    expect(agentMention(retainedComposer, ZETA_ID)).toBeVisible();
   });
 });
 

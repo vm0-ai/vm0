@@ -329,7 +329,7 @@ export function ActivityHeaderCard({
             <StatusBadge status={status} shellStyle />
           </div>
           <span
-            className="w-px h-3.5 shrink-0 bg-border self-center"
+            className="w-px h-3.5 shrink-0 bg-divider self-center"
             aria-hidden
           />
           {triggerSource && (
@@ -345,7 +345,7 @@ export function ActivityHeaderCard({
                 </span>
               </div>
               <span
-                className="w-px h-3.5 shrink-0 bg-border self-center"
+                className="w-px h-3.5 shrink-0 bg-divider self-center"
                 aria-hidden
               />
             </>
@@ -394,7 +394,7 @@ export function ActivityHeaderCard({
                 )}
               </div>
               <span
-                className="w-px h-3.5 shrink-0 bg-border self-center"
+                className="w-px h-3.5 shrink-0 bg-divider self-center"
                 aria-hidden
               />
             </>
@@ -410,7 +410,7 @@ export function ActivityHeaderCard({
             </span>
           </div>
           <span
-            className="w-px h-3.5 shrink-0 bg-border self-center"
+            className="w-px h-3.5 shrink-0 bg-divider self-center"
             aria-hidden
           />
           <div className="flex items-center gap-1.5 px-3">
@@ -1295,7 +1295,7 @@ function ActivitySkeleton() {
             <div className="flex flex-wrap items-center gap-y-2 gap-x-3">
               <div className="h-5 w-28 rounded bg-muted/50 animate-pulse" />
               <span
-                className="w-px h-3.5 shrink-0 bg-border self-center"
+                className="w-px h-3.5 shrink-0 bg-divider self-center"
                 aria-hidden
               />
               <div className="h-4 w-20 rounded bg-muted/50 animate-pulse" />
@@ -1502,7 +1502,7 @@ function PromptCard({
     <div className="relative">
       {showConnector && (
         <div
-          className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-border/70"
+          className="absolute left-[3px] top-6 bottom-[-8px] w-[1px] bg-divider/70"
           aria-hidden="true"
         />
       )}
@@ -1518,7 +1518,7 @@ function PromptCard({
             </span>
           </div>
         </summary>
-        <div className="absolute left-[2px] top-[2.25rem] bottom-0 w-[1px] bg-border/70 group-open:block hidden" />
+        <div className="absolute left-[2px] top-[2.25rem] bottom-0 w-[1px] bg-divider/70 group-open:block hidden" />
         <div className="ml-[18px] mt-2">
           <Markdown source={prompt} />
         </div>

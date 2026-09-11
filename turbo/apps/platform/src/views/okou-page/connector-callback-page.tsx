@@ -1,15 +1,18 @@
 import { AlertCircle, Check, Loader2 } from "lucide-react";
 import type { PublicConnectorCatalogIcon } from "@okouai/api-contracts/contracts/connector-catalog";
+import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { Button } from "@okouai/ui/components/ui/button";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ConnectorFlowCard } from "./connector-flow-card.tsx";
+import { MercuryDisclosure } from "./components/settings/mercury-disclosure.tsx";
 
 type ConnectorCallbackPageStatus = "loading" | "success" | "error";
 
 export function ConnectorCallbackPage({
   connectorIcon,
   iconContent,
+  connectorSlug,
   connectorLabel,
   status,
   username,
@@ -17,6 +20,7 @@ export function ConnectorCallbackPage({
 }: {
   readonly connectorIcon: PublicConnectorCatalogIcon | undefined;
   readonly iconContent?: ReactNode;
+  readonly connectorSlug: ConnectorSlug | null;
   readonly connectorLabel: string;
   readonly status: ConnectorCallbackPageStatus;
   readonly username: string | null;
@@ -125,6 +129,9 @@ export function ConnectorCallbackPage({
           </Button>
         </div>
       )}
+      {connectorSlug === "mercury" ? (
+        <MercuryDisclosure className="w-full border-t border-border/50 pt-4 text-left" />
+      ) : null}
     </ConnectorFlowCard>
   );
 }

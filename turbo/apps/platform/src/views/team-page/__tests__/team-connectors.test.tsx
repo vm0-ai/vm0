@@ -230,7 +230,7 @@ async function navigateToAgent(name: string): Promise<void> {
   await screen.findByRole("heading", { name });
 }
 
-test("Connector changes for one agent never appear on another agent", async () => {
+async function openAgentConnectorIsolationStory() {
   const customSaves: string[] = [];
   mockConnectorSurface(context, {
     catalog: [catalogConnectorFixture("github", "GitHub")],
@@ -261,6 +261,11 @@ test("Connector changes for one agent never appear on another agent", async () =
   });
 
   await screen.findByRole("heading", { name: "Research Agent" });
+  return { customSaves };
+}
+
+test("Cancelled custom connector permission edits do not appear on another agent", async () => {
+  const { customSaves } = await openAgentConnectorIsolationStory();
   await screen.findByText("Acme Search");
   click(connectorAccessSwitch("Grant Acme Search access"));
   await screen.findByRole("heading", { name: /Acme Search permissions/i });
@@ -282,8 +287,10 @@ test("Connector changes for one agent never appear on another agent", async () =
   ).not.toBeInTheDocument();
   expect(connectorAccessSwitch("Grant Acme Search access")).toBeVisible();
   expect(customSaves).toStrictEqual([]);
+});
 
-  await navigateToAgent("Research Agent");
+test("A failed built-in connector grant does not appear on another agent", async () => {
+  await openAgentConnectorIsolationStory();
   await screen.findByText("GitHub");
   click(connectorAccessSwitch("Grant GitHub access"));
   await waitFor(() => {

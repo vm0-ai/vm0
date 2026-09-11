@@ -711,7 +711,7 @@ function WorkflowSectionHeader({ label }: { readonly label: string }) {
 }
 
 function WorkflowRowDivider() {
-  return <div className="mx-5 h-px bg-border/50" />;
+  return <div className="mx-5 h-px bg-divider/50" />;
 }
 
 function WorkflowRowList({

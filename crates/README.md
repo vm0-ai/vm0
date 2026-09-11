@@ -175,6 +175,38 @@ than inferring recovery from missing warnings. Old draining Runners can still
 emit the previous immediate warnings, so group evidence by deployed identity.
 This observation does not require or authorize production fault injection.
 
+### Builtin firewall catalog refresh recovery
+
+Startup still requires a successful catalog fetch, validation and private cache
+publication. Periodic refresh keeps its five-minute interval and ten-second
+request budget. A failed refresh never replaces the last published catalog.
+
+A typed send-stage timeout, or an already classified transient JSON body-read
+failure, is INFO only while the existing cache passes the trusted, size-bounded
+reader and schema/firewall validation. Missing, corrupt or untrusted cache,
+non-timeout send failures, HTTP status, JSON/schema/size and local publication
+failures remain immediately actionable. No cache expiry or freshness guarantee
+is introduced, and firewall enforcement is unchanged.
+
+Eligible send and body failures share one catalog-owned episode. The first
+failure is INFO; a later failed observation spanning at least five minutes emits
+one `builtin firewall catalog refresh degraded` WARN. Further eligible failures
+are INFO with `degraded=true`. This threshold is checked after a failed attempt,
+not by an exact timer. A complete successful refresh emits
+`builtin firewall catalog refresh recovered`, even if identical trusted cache
+bytes need no rewrite. Cancellation does not report recovery.
+
+Send-timeout diagnostics include the existing request/session identity for API
+correlation and `failure_stage=send`, without inventing a response status or
+logging credentials or response content. INFO remains local; Axiom still ingests
+WARN+ only. Before closing [#33373](https://github.com/vm0-ai/vm0/issues/33373),
+record the deployed Runner artifact and a bounded real-traffic window (for
+example, 24 hours), and inspect Runner-local failure/recovery and cache-usability
+evidence. Group old draining releases separately. API-wide HTTP 200 counts,
+cache publication timestamps or no repeated warning do not prove that a
+particular Runner completed a refresh. Report missing evidence explicitly;
+this verification does not authorize production fault injection.
+
 ### Orphan sandbox termination
 
 `runner kill --sandbox <ID>` first asks the owning runner to terminate the
@@ -220,6 +252,13 @@ Before running the benchmark, ensure that:
 Runner Rust logs are recorded to local files, stderr, and CI at `info` and
 above by default. Axiom ingests `warn` and above. Use `debug` or `trace` only
 for local diagnostics that are acceptable to miss in production logs.
+
+Per-run network-log uploads have a 30-second total budget, with a separate
+10-second timeout for each sequential HTTP request. Uploads remain best-effort,
+limited to 32 MiB of source data and 32 batches, with no automatic retries.
+They run after completion reporting and sandbox ownership settlement, but
+graceful Runner shutdown waits for outstanding uploads. Deadline cancellation
+can leave a request's result unknown; it does not prove that ingestion failed.
 
 ## TLS in Guest Binaries
 

@@ -102,11 +102,12 @@ function customConnectorValuesClient() {
 
 async function cleanupFixture(fixture: Fixture): Promise<void> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
+  const accountsApi = accountClient();
   for (const connectorSlug of ["openai", "github"] as const) {
     let hasBuiltinAccounts = true;
     while (hasBuiltinAccounts) {
       const accounts = await accept(
-        accountClient().connections({
+        accountsApi.connections({
           headers: authHeaders(),
           query: { kind: "builtin", connectorSlug, limit: 100 },
         }),
@@ -119,7 +120,7 @@ async function cleanupFixture(fixture: Fixture): Promise<void> {
       }
       for (const account of accounts.body.connections) {
         await accept(
-          accountClient().delete({
+          accountsApi.delete({
             headers: authHeaders(),
             params: { connectionId: account.id },
             body: {
@@ -798,14 +799,15 @@ describe("connector account lifecycle routes", () => {
     ).toHaveLength(1);
   });
 
-  it("paginates and searches more than one hundred accounts", async () => {
+  async function createBulkAccounts(): Promise<string[]> {
     await seedFixture();
 
     const createdAccountIds: string[] = [];
+    const connectorsApi = connectorClient();
     for (let index = 0; index < 101; index += 1) {
       const label = `Bulk ${index.toString().padStart(3, "0")}`;
       const created = await accept(
-        connectorClient().connect({
+        connectorsApi.connect({
           headers: authHeaders(),
           params: { connectorSlug: "openai" },
           body: {
@@ -818,9 +820,12 @@ describe("connector account lifecycle routes", () => {
       );
       createdAccountIds.push(created.body.id);
     }
+    return createdAccountIds;
+  }
 
+  it("paginates and summarizes more than one hundred accounts", async () => {
+    await createBulkAccounts();
     const ids = new Set<string>();
-    const firstPageIds = new Set<string>();
     let cursor: string | undefined;
     do {
       const page = await accept(
@@ -837,14 +842,24 @@ describe("connector account lifecycle routes", () => {
       );
       for (const account of page.body.connections) {
         ids.add(account.id);
-        if (!cursor) {
-          firstPageIds.add(account.id);
-        }
       }
       cursor = page.body.nextCursor ?? undefined;
     } while (cursor);
     expect(ids.size).toBe(101);
+    const summary = await accept(
+      accountClient().summaries({ headers: authHeaders() }),
+      [200],
+    );
+    expect(summary.body.summaries).toContainEqual(
+      expect.objectContaining({
+        target: { kind: "builtin", connectorSlug: "openai" },
+        accountCount: 101,
+      }),
+    );
+  });
 
+  it("searches display names across more than one hundred accounts", async () => {
+    await createBulkAccounts();
     const searched = await accept(
       accountClient().connections({
         headers: authHeaders(),
@@ -859,7 +874,22 @@ describe("connector account lifecycle routes", () => {
     );
     expect(searched.body.connections).toHaveLength(1);
     expect(searched.body.connections[0]!.displayName).toBe("Bulk 042");
+  });
 
+  it("searches fallback names outside the first account page", async () => {
+    const createdAccountIds = await createBulkAccounts();
+    const firstPage = await accept(
+      accountClient().connections({
+        headers: authHeaders(),
+        query: { kind: "builtin", connectorSlug: "openai", limit: 23 },
+      }),
+      [200],
+    );
+    const firstPageIds = new Set(
+      firstPage.body.connections.map((account) => {
+        return account.id;
+      }),
+    );
     const accountOutsideFirstPage = createdAccountIds.find((id) => {
       return !firstPageIds.has(id);
     });
@@ -895,7 +925,10 @@ describe("connector account lifecycle routes", () => {
         displayName: null,
       }),
     );
+  });
 
+  it("returns no matches and rejects blank searches with more than one hundred accounts", async () => {
+    await createBulkAccounts();
     const noMatch = await accept(
       accountClient().connections({
         headers: authHeaders(),
@@ -924,17 +957,6 @@ describe("connector account lifecycle routes", () => {
         },
       }),
       [400],
-    );
-
-    const summary = await accept(
-      accountClient().summaries({ headers: authHeaders() }),
-      [200],
-    );
-    expect(summary.body.summaries).toContainEqual(
-      expect.objectContaining({
-        target: { kind: "builtin", connectorSlug: "openai" },
-        accountCount: 101,
-      }),
     );
   });
 

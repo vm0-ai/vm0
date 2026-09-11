@@ -4,6 +4,7 @@
 import base64
 import binascii
 import datetime as dt
+import errno
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,19 @@ SOURCE = "arn:aws:kms:us-west-2:072707626411:key/a1b3922b-fab1-4ed3-aa9e-40f86f9
 TARGET = "arn:aws:kms:us-west-2:251964670836:key/e68917e2-5541-4597-b6ef-7e9eb5670947"
 PROJECT = "hidden-lab-39609750"
 REGISTRY_LIMIT = 16 * 1024 * 1024
+PRODUCTION_VERSION = re.compile(r"v\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?")
+REGISTRY_FAILURE_CODES = {
+    "invalid_runner_directory",
+    "non_regular_registry",
+    "registry_size_limit",
+    "invalid_registry",
+    "duplicate_json_key",
+    "missing_registry",
+    "registry_access_denied",
+    "symlink_registry",
+    "registry_io_error",
+    "invalid_registry_json",
+}
 COUNTERS = (
     "productionDirectories",
     "registriesRead",
@@ -120,16 +134,19 @@ def key_category(value):
 
 def registry_inventory(root):
     counts = dict.fromkeys(COUNTERS, 0)
+    failures = []
     require(not root.is_symlink() and root.is_dir(), "runner_root_unavailable")
     directories = list(root.iterdir())
     require(len(directories) <= 1000, "runner_directory_limit")
     # Production promotion names directories v{runner_version}. PR and staging
     # directories have separate names and are intentionally outside this scope.
     for directory in directories:
-        if not re.fullmatch(r"v\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?", directory.name):
+        if not PRODUCTION_VERSION.fullmatch(directory.name):
             continue
         counts["productionDirectories"] += 1
         path = directory / "proxy-registry.json"
+        size = None
+        reason = None
         try:
             require(
                 not directory.is_symlink() and directory.is_dir(),
@@ -138,10 +155,9 @@ def registry_inventory(root):
             fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
             with os.fdopen(fd, "rb") as stream:
                 before = os.fstat(stream.fileno())
-                require(
-                    stat.S_ISREG(before.st_mode) and before.st_size <= REGISTRY_LIMIT,
-                    "invalid_registry_file",
-                )
+                size = before.st_size
+                require(stat.S_ISREG(before.st_mode), "non_regular_registry")
+                require(size <= REGISTRY_LIMIT, "registry_size_limit")
                 data = stream.read(REGISTRY_LIMIT + 1)
                 require(len(data) <= REGISTRY_LIMIT, "registry_size_limit")
                 after = os.fstat(stream.fileno())
@@ -168,9 +184,27 @@ def registry_inventory(root):
                     counts["invalid"] += 1
                 else:
                     counts[key_category(entry["encryptedSecrets"])] += 1
-        except (CheckError, OSError, ValueError, UnicodeError):
+        except CheckError as error:
+            reason = str(error)
+        except FileNotFoundError:
+            reason = "missing_registry"
+        except PermissionError:
+            reason = "registry_access_denied"
+        except OSError as error:
+            reason = (
+                "symlink_registry"
+                if error.errno == errno.ELOOP
+                else "registry_io_error"
+            )
+        except (ValueError, UnicodeError):
+            reason = "invalid_registry_json"
+        if reason is not None:
+            require(reason in REGISTRY_FAILURE_CODES, "invalid_registry_failure_code")
             counts["unreadable"] += 1
-    return counts
+            failures.append(
+                {"runnerVersion": directory.name, "reason": reason, "sizeBytes": size}
+            )
+    return {"counts": counts, "failures": failures}
 
 
 def runner_fleet():
@@ -205,10 +239,16 @@ def runner_fleet():
                 timeout=130,
             )
             require(
-                child.returncode == 0 and len(child.stdout) < 10000,
+                child.returncode == 0 and len(child.stdout) < 512 * 1024,
                 "remote_inventory_failed",
             )
-            counts = decode_json(child.stdout)
+            inventory = decode_json(child.stdout)
+            require(
+                isinstance(inventory, dict)
+                and set(inventory) == {"counts", "failures"},
+                "invalid_remote_report",
+            )
+            counts = inventory["counts"]
             require(
                 isinstance(counts, dict) and set(counts) == set(COUNTERS),
                 "invalid_remote_report",
@@ -217,7 +257,33 @@ def runner_fleet():
                 all(type(v) is int and 0 <= v <= 1_000_000 for v in counts.values()),
                 "invalid_remote_report",
             )
+            failures = inventory["failures"]
+            require(
+                isinstance(failures, list)
+                and len(failures) == counts["unreadable"]
+                and len(failures) <= 1000,
+                "invalid_remote_report",
+            )
+            for failure in failures:
+                require(
+                    isinstance(failure, dict)
+                    and set(failure) == {"runnerVersion", "reason", "sizeBytes"},
+                    "invalid_remote_report",
+                )
+                require(
+                    isinstance(failure["runnerVersion"], str)
+                    and bool(PRODUCTION_VERSION.fullmatch(failure["runnerVersion"]))
+                    and isinstance(failure["reason"], str)
+                    and failure["reason"] in REGISTRY_FAILURE_CODES
+                    and (
+                        failure["sizeBytes"] is None
+                        or type(failure["sizeBytes"]) is int
+                        and 0 <= failure["sizeBytes"] < 2**63
+                    ),
+                    "invalid_remote_report",
+                )
             result["counts"] = counts
+            result["registryFailures"] = failures
         except (CheckError, OSError, ValueError, subprocess.TimeoutExpired):
             result["error"] = "remote_inventory_failed"
         results.append(result)

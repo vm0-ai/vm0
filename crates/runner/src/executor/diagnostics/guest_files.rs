@@ -72,9 +72,9 @@ pub(in crate::executor) async fn read_guest_failure_diagnostic_file(
 /// Read the CLI-generated session ID from the guest filesystem.
 ///
 /// The guest-agent writes the session ID to the guest runtime directory
-/// after the CLI emits its `system/init` event. On first runs (no
-/// `resume_session`), the runner uses this as the late-discovered identity
-/// for session tracking and finalization.
+/// when the CLI reports it. When the execution context supplies no session ID,
+/// the runner uses this as the late-discovered identity for session tracking
+/// and finalization. Preassigned Pi session IDs skip this discovery path.
 pub(in crate::executor) async fn read_guest_cli_agent_session_id(
     sandbox: &dyn Sandbox,
     run_id: RunId,
