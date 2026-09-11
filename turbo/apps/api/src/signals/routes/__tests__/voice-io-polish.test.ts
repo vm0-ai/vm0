@@ -9,7 +9,10 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { createUniqueStaffOrgIdFixture } from "../../../test-fixtures/staff-org";
 import { createBddApi } from "./helpers/api-bdd";
-import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
+import {
+  deleteFeatureSwitchesForUser,
+  updateFeatureSwitchesForUser,
+} from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
 import {
   mockGoogleVoice,
@@ -119,6 +122,50 @@ describe("POST /api/voice-io/polish", () => {
     );
     expect(response.body.error.code).toBe("PROVIDER_UNAVAILABLE");
     expect(calls).toBe(1);
+  });
+
+  it("defaults staff to Google and honors disabling and resetting the override", async () => {
+    const actor = {
+      ...createBddApi(context).user(),
+      orgId: createUniqueStaffOrgIdFixture(),
+      orgRole: "org:member" as const,
+    };
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    server.use(
+      http.post(VERTEX_VOICE_URL, () => {
+        return vertexVoiceResponse("Google staff default.");
+      }),
+      http.post("https://openrouter.ai/api/v1/chat/completions", () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "stop",
+              message: { content: "OpenRouter override." },
+            },
+          ],
+        });
+      }),
+    );
+    const polish = () => {
+      return client().post({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { text: "Synthetic dictation." },
+      });
+    };
+
+    const staffDefault = await accept(polish(), [200]);
+    expect(staffDefault.body.text).toBe("Google staff default.");
+
+    await updateFeatureSwitchesForUser(context, actor, {
+      [FeatureSwitchKey.VoiceGoogleCloud]: false,
+    });
+    const disabled = await accept(polish(), [200]);
+    expect(disabled.body.text).toBe("OpenRouter override.");
+
+    await deleteFeatureSwitchesForUser(context, actor);
+    const reset = await accept(polish(), [200]);
+    expect(reset.body.text).toBe("Google staff default.");
   });
 
   it("preserves OpenRouter polishing by default without Google credentials", async () => {
