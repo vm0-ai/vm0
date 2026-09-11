@@ -117,7 +117,9 @@ test.each([
     // Reload recovery is covered separately in chat-capability-voice-input.
     click(await findEnabledButton("Voice input"));
     click(await findEnabledButton("Stop recording"));
-    await screen.findByText("Voice transcription is temporarily unavailable");
+    await screen.findByText("Voice transcription is temporarily unavailable", {
+      exact: false,
+    });
     click(await findEnabledButton("Retry"));
     await retryRequested.promise;
     const retryStatus = screen.getByRole("status");

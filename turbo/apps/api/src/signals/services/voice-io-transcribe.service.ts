@@ -13,10 +13,7 @@ import { command } from "ccstate";
 
 import { notConfigured } from "../../lib/error";
 import { requestSignal$, setResHeader$ } from "../context/hono";
-import {
-  isLlmConfigured,
-  OpenRouterRequestError,
-} from "../external/openrouter";
+import { isLlmConfigured } from "../external/openrouter";
 import {
   OPENROUTER_VOICE_NO_SPEECH,
   polishLongVoiceTranscript,
@@ -28,7 +25,6 @@ import {
 import {
   isVoiceTranscriptionConfigured,
   transcribeVoiceInputAudio,
-  VoiceTranscriptionRequestError,
 } from "../external/voice-input-transcription";
 import { settle } from "../utils";
 import { VoiceProviderUnavailableError } from "../external/voice-provider-request";
@@ -76,17 +72,6 @@ function providerError(error: unknown) {
       503,
       "PROVIDER_UNAVAILABLE",
       "Speech recognition is temporarily busy. Please retry in a moment.",
-    );
-  }
-  if (
-    (error instanceof OpenRouterRequestError ||
-      error instanceof VoiceTranscriptionRequestError) &&
-    (error.status === 429 || error.status >= 500)
-  ) {
-    return transcriptionError(
-      503,
-      "PROVIDER_UNAVAILABLE",
-      "Voice draft transcription is temporarily unavailable",
     );
   }
   return transcriptionError(
