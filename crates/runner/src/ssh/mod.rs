@@ -26,7 +26,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{http::HttpClient, ids::RunId, runner_process_identity::RunnerProcessIdentity};
-use authority::{Authority, PreparedCredential, Trust};
+use authority::{Authority, CredentialAuth, PreparedAuth, PreparedCredential, Trust};
 use io::{GuestIo, Lease};
 use network::{Network, PublicNetwork};
 
@@ -391,6 +391,26 @@ impl SshRuntime {
         let credential = scope
             .wait(self.authority.resolve(run, connection))
             .await??;
+        let (private_key, passphrase) = match credential.auth {
+            CredentialAuth::PrivateKey {
+                private_key,
+                passphrase,
+            } => (private_key, passphrase),
+            CredentialAuth::Password(password) => {
+                scope.check()?;
+                observation.generation = Some(credential.generation);
+                return Ok(PreparedCredential {
+                    host: credential.host,
+                    port: credential.port,
+                    username: credential.username,
+                    trust: Mutex::new(Trust {
+                        generation: credential.generation,
+                        pin: credential.pin,
+                    }),
+                    auth: PreparedAuth::Password(password),
+                });
+            }
+        };
         let cpu = Arc::clone(&self.cpu)
             .try_acquire_owned()
             .map_err(|_| FailureReason::ResourceExhausted)?;
@@ -402,8 +422,8 @@ impl SshRuntime {
             let _lease = worker_lease;
             worker_scope.check()?;
             let key = keys::decode(
-                credential.private_key.expose(),
-                credential.passphrase.as_ref().map(|value| value.expose()),
+                private_key.expose(),
+                passphrase.as_ref().map(|value| value.expose()),
             )?;
             worker_scope.check()?;
             Ok::<_, FailureReason>(PreparedCredential {
@@ -414,7 +434,7 @@ impl SshRuntime {
                     generation: credential.generation,
                     pin: credential.pin,
                 }),
-                key,
+                auth: PreparedAuth::PrivateKey(key),
             })
         });
         let result = scope

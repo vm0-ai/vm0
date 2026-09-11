@@ -450,6 +450,34 @@ describe("SSH connection routes", () => {
       context,
       routes: sshConnectionsRoutes,
     });
+    for (const [path, method, body] of [
+      [
+        "/api/ssh/connections",
+        "POST",
+        {
+          ...createBody("password.example.com"),
+          password: "password-canary",
+        },
+      ],
+      [
+        `/api/ssh/connections/${created.body.id}`,
+        "PATCH",
+        {
+          expectedGeneration: created.body.generation,
+          password: "password-canary",
+        },
+      ],
+    ] as const) {
+      const response = await rawRequest(path, {
+        method,
+        headers: { ...authHeaders(), "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(400);
+      expect(JSON.stringify(response.body)).not.toContain("password-canary");
+    }
+    expect(kms.generateDataKeyCalls).toBe(1);
+
     const unknownField = await rawRequest("/api/ssh/connections", {
       method: "POST",
       headers: { ...authHeaders(), "content-type": "application/json" },

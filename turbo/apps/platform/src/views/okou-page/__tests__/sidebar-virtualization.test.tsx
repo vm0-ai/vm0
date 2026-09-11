@@ -36,7 +36,7 @@ function mockThreads(count: number): void {
     {
       agentId: AGENT_ID,
       ownerId: "test-user-123",
-      displayName: "Zero",
+      displayName: "Nova",
       description: null,
       sound: null,
       avatarUrl: null,
@@ -380,7 +380,7 @@ function mockPinnedGrid(): string {
     return {
       agentId: `c0000000-0000-4000-a000-${String(index + 1).padStart(12, "0")}`,
       ownerId: "test-user-123",
-      displayName: index === 0 ? "Zero" : `Agent ${index + 1}`,
+      displayName: index === 0 ? "Nova" : `Agent ${index + 1}`,
       description: null,
       sound: null,
       avatarUrl: null,

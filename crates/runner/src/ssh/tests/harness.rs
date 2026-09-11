@@ -450,6 +450,9 @@ pub(super) async fn frames(mut guest: DuplexStream) -> Vec<Value> {
         .unwrap()
 }
 
+pub(super) const PASSWORD: &str = " password-😀-canary \n";
+pub(super) const PARTIAL_PASSWORD: &str = "partial-password-canary";
+
 struct Peer {
     key: PublicKey,
     observed: Arc<Observed>,
@@ -508,6 +511,21 @@ impl Peer {
 }
 impl server::Handler for Peer {
     type Error = russh::Error;
+    async fn auth_password(
+        &mut self,
+        user: &str,
+        password: &str,
+    ) -> Result<server::Auth, Self::Error> {
+        self.observed.auth.fetch_add(1, Ordering::SeqCst);
+        Ok(if user == "test-user" && password == PASSWORD {
+            server::Auth::Accept
+        } else {
+            server::Auth::Reject {
+                proceed_with_methods: None,
+                partial_success: password == PARTIAL_PASSWORD,
+            }
+        })
+    }
     async fn auth_publickey(
         &mut self,
         user: &str,

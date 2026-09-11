@@ -15,18 +15,20 @@ import { notConfigured } from "../../lib/error";
 import { requestSignal$, setResHeader$ } from "../context/hono";
 import { isLlmConfigured } from "../external/openrouter";
 import {
-  OPENROUTER_VOICE_NO_SPEECH,
+  VOICE_NO_SPEECH,
   polishLongVoiceTranscript,
   transcribeVoice,
   finishIncrementalVoice,
   reconcileVoiceSegmentTranscript,
-  type OpenRouterVoiceAudio,
-} from "../external/openrouter-voice";
+} from "../external/voice-completion";
 import {
   isVoiceTranscriptionConfigured,
   transcribeVoiceInputAudio,
 } from "../external/voice-input-transcription";
 import { settle } from "../utils";
+import { GcpLlmAuthError, gcpLlmConfiguration } from "../external/gcp-llm-auth";
+import { isVertexVoiceModel } from "../external/vertex-voice";
+import type { VoiceAudio } from "../external/voice-completion-types";
 import { VoiceProviderUnavailableError } from "../external/voice-provider-request";
 
 // Character rate is noisy for short clips, so only context-sized output can
@@ -38,6 +40,7 @@ type VoiceDraftTranscriptionInput = VoiceIoTranscribeContext &
   VoiceIoTranscribeSegmentOptions & {
     readonly files: readonly File[];
     readonly model: VoiceInputModel;
+    readonly useGoogleCloud: boolean;
     readonly debug: boolean;
     readonly audioDurationSeconds: number;
   };
@@ -74,6 +77,13 @@ function providerError(error: unknown) {
       "Speech recognition is temporarily busy. Please retry in a moment.",
     );
   }
+  if (error instanceof GcpLlmAuthError && error.temporary) {
+    return transcriptionError(
+      503,
+      "PROVIDER_UNAVAILABLE",
+      "Voice draft transcription is temporarily unavailable",
+    );
+  }
   return transcriptionError(
     502,
     "VOICE_TRANSCRIPTION_FAILED",
@@ -84,7 +94,7 @@ function providerError(error: unknown) {
 async function voiceAudio(
   file: File,
   signal: AbortSignal,
-): Promise<OpenRouterVoiceAudio> {
+): Promise<VoiceAudio> {
   const bytes = await file.arrayBuffer();
   signal.throwIfAborted();
   return {
@@ -99,7 +109,7 @@ function stitchTranscripts(pieces: readonly string[]): string {
       return piece.trim();
     })
     .filter((text) => {
-      return text !== OPENROUTER_VOICE_NO_SPEECH;
+      return text !== VOICE_NO_SPEECH;
     })
     .join(" ")
     .trim();
@@ -114,11 +124,8 @@ function normalizeVoiceTranscript(
 ): VoiceIoTranscribeSegmentResponse {
   return {
     ...result,
-    transcript:
-      result.transcript === OPENROUTER_VOICE_NO_SPEECH ? "" : result.transcript,
-    ...(result.polishedText === OPENROUTER_VOICE_NO_SPEECH
-      ? { polishedText: "" }
-      : {}),
+    transcript: result.transcript === VOICE_NO_SPEECH ? "" : result.transcript,
+    ...(result.polishedText === VOICE_NO_SPEECH ? { polishedText: "" } : {}),
   };
 }
 
@@ -180,7 +187,7 @@ async function transcribeIncrementalVoice(
     const result = await finishIncrementalVoice(
       audio,
       input,
-      input.model.id,
+      { model: input.model.id, useGoogleCloud: input.useGoogleCloud },
       signal,
     );
     if (!result) {
@@ -198,13 +205,18 @@ async function transcribeIncrementalVoice(
           ),
           language: "und",
         }
-      : await transcribeVoice(audio, input, input.model.id, signal)
+      : await transcribeVoice(
+          audio,
+          input,
+          { model: input.model.id, useGoogleCloud: input.useGoogleCloud },
+          signal,
+        )
     : { transcript: "", language: "und" };
   if (!result) {
     throw new Error("Voice transcription is not configured");
   }
   const transcript =
-    result.transcript === OPENROUTER_VOICE_NO_SPEECH ? "" : result.transcript;
+    result.transcript === VOICE_NO_SPEECH ? "" : result.transcript;
   if (
     input.model.kind === "transcription" &&
     input.overlapDurationSeconds > 0 &&
@@ -214,7 +226,10 @@ async function transcribeIncrementalVoice(
       transcript,
       input,
       input.final,
-      DEFAULT_VOICE_INPUT_MODEL,
+      {
+        model: DEFAULT_VOICE_INPUT_MODEL,
+        useGoogleCloud: input.useGoogleCloud,
+      },
       signal,
     );
     if (!reconciled) {
@@ -235,7 +250,7 @@ async function transcribeIncrementalVoice(
   const polished = await polishLongVoiceTranscript(
     completeTranscript,
     input,
-    voicePolishModel(input),
+    { model: voicePolishModel(input), useGoogleCloud: input.useGoogleCloud },
     signal,
   );
   if (!polished) {
@@ -245,10 +260,42 @@ async function transcribeIncrementalVoice(
     transcript,
     ...polished,
     polishedText:
-      polished.polishedText === OPENROUTER_VOICE_NO_SPEECH
-        ? ""
-        : polished.polishedText,
+      polished.polishedText === VOICE_NO_SPEECH ? "" : polished.polishedText,
   };
+}
+
+function voiceProvidersConfigured(
+  input: VoiceDraftTranscriptionInput,
+): boolean {
+  const audio = input.files.length > 0;
+  if (
+    audio &&
+    input.model.kind === "transcription" &&
+    !isVoiceTranscriptionConfigured(input.model)
+  ) {
+    return false;
+  }
+  if (
+    audio &&
+    input.model.kind === "multimodal" &&
+    !isVertexVoiceModel(input.model.id) &&
+    !isLlmConfigured()
+  ) {
+    return false;
+  }
+  const gemini =
+    (input.model.kind === "multimodal" && isVertexVoiceModel(input.model.id)) ||
+    (input.final && isVertexVoiceModel(voicePolishModel(input))) ||
+    (audio &&
+      input.model.kind === "transcription" &&
+      input.overlapDurationSeconds > 0 &&
+      Boolean(input.previousTranscript));
+  return (
+    !gemini ||
+    (input.useGoogleCloud
+      ? gcpLlmConfiguration() !== undefined
+      : isLlmConfigured())
+  );
 }
 
 export const transcribeVoiceSegment$ = command(
@@ -259,11 +306,7 @@ export const transcribeVoiceSegment$ = command(
   ) => {
     const requestSignal = AbortSignal.any([signal, get(requestSignal$)]);
     requestSignal.throwIfAborted();
-    if (
-      !isLlmConfigured() ||
-      (input.model.kind === "transcription" &&
-        !isVoiceTranscriptionConfigured(input.model))
-    ) {
+    if (!voiceProvidersConfigured(input)) {
       return notConfigured("Voice transcription is not configured");
     }
     if (input.debug) {

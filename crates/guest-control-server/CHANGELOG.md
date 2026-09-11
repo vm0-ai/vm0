@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.21.4](https://github.com/vm0-ai/vm0/compare/guest-control-server-v0.21.3...guest-control-server-v0.21.4) (2026-09-11)
+
 ## [0.21.3](https://github.com/vm0-ai/vm0/compare/guest-control-server-v0.21.2...guest-control-server-v0.21.3) (2026-09-11)
 
 ## [0.21.2](https://github.com/vm0-ai/vm0/compare/guest-control-server-v0.21.1...guest-control-server-v0.21.2) (2026-09-10)

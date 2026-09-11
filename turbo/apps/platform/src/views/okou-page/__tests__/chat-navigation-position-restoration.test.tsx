@@ -434,7 +434,7 @@ async function expectAtLatestActivity(
 
 test("Restore the reading position during keyboard thread navigation", async () => {
   context.mocks.browser.userAgent(LINUX_CHROME_USER_AGENT);
-  const user = userEvent.setup();
+  const user = userEvent.setup({ delay: null });
   // Three exchanges keep the reading anchor between the top and tail. The
   // neighboring threads only need content that proves navigation completed.
   const currentEvents = conversationEvents("keyboard-current", "Current", 3);

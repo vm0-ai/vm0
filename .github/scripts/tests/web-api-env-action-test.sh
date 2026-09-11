@@ -100,6 +100,15 @@ assert_debug_absent() {
   assert_env_key_absent "$env_file" OKOU_DEBUG
 }
 
+assert_google_llm_config() {
+  local env_file="$1"
+  local account="$2"
+  assert_env_value "$env_file" GCP_LLM_PROJECT_ID "vm0-ai-488909"
+  assert_env_value "$env_file" GCP_LLM_WORKLOAD_IDENTITY_PROVIDER "projects/662642595011/locations/global/workloadIdentityPools/vercel-vm0-api/providers/vercel"
+  assert_env_value "$env_file" GCP_LLM_SERVICE_ACCOUNT_EMAIL "$account"
+  assert_env_key_count "$env_file" GCP_LLM_SERVICE_ACCOUNT_EMAIL 1
+}
+
 assert_api_backend_url_canonical() {
   local env_file="$1"
   local expected="$2"
@@ -289,6 +298,9 @@ run_action() {
     repo_vars_json="$(jq -c 'with_entries(select(.key | startswith("OKOU_") | not))' <<< "$repo_vars_json")"
     repo_secrets_json="$(jq -c 'with_entries(select(.key | startswith("OKOU_") | not))' <<< "$repo_secrets_json")"
   fi
+  # Repository defaults; the caller supplies GitHub Environment overrides in
+  # the same resolved vars object used by the deployment workflow.
+  repo_vars_json="$(jq -c '. + {GCP_LLM_PROJECT_ID: "vm0-ai-488909", GCP_LLM_WORKLOAD_IDENTITY_PROVIDER: "projects/662642595011/locations/global/workloadIdentityPools/vercel-vm0-api/providers/vercel", GCP_LLM_SERVICE_ACCOUNT_EMAIL: "llm-dev@vm0-ai-488909.iam.gserviceaccount.com"}' <<< "$repo_vars_json")"
   repo_vars_json="$(jq -c --argjson github_app_vars "$github_app_vars_json" '. + $github_app_vars' <<< "$repo_vars_json")"
   repo_secrets_json="$(jq -c --argjson github_app_secrets "$github_app_secrets_json" '. + $github_app_secrets' <<< "$repo_secrets_json")"
   if [[ -n "$machine_secret_repo_secrets_json" ]]; then
@@ -524,6 +536,7 @@ assert_env_value "$success_env_file" VERCEL_AUTOMATION_BYPASS_SECRET "github-ver
 assert_env_key_count "$success_env_file" OKOU_PREVIEW_JOB_REF 1
 assert_env_value "$success_env_file" OKOU_PREVIEW_JOB_REF "pr-123"
 assert_api_backend_url_canonical "$success_env_file" "https://pr-123-api-backend.okou.test"
+assert_google_llm_config "$success_env_file" "llm-dev@vm0-ai-488909.iam.gserviceaccount.com"
 assert_env_value "$success_env_file" FEISHU_CALLBACK_BASE_URL "https://pr-123-api-backend.okou.test"
 assert_env_value "$success_env_file" FINICITY_WEBHOOK_BASE_URL "https://pr-123-api-backend.okou.test"
 assert_web_url_canonical "$success_env_file" "https://pr-123-www.okou.test"
@@ -576,6 +589,9 @@ assert_debug_canonical "$preview_web_env_file"
 assert_api_backend_url_canonical "$preview_web_env_file" "https://pr-123-api-backend.okou.test"
 assert_env_key_absent "$preview_web_env_file" OKOU_MACHINE_SECRET_KEY
 assert_web_url_absent "$preview_web_env_file"
+assert_env_key_absent "$preview_web_env_file" GCP_LLM_PROJECT_ID
+assert_env_key_absent "$preview_web_env_file" GCP_LLM_WORKLOAD_IDENTITY_PROVIDER
+assert_env_key_absent "$preview_web_env_file" GCP_LLM_SERVICE_ACCOUNT_EMAIL
 
 empty_job_ref_dir="$(mktemp -d)"
 TEMP_DIRS+=("$empty_job_ref_dir")
@@ -615,6 +631,9 @@ assert_env_value "$production_web_env_file" OKOU_HOST_SCHEME "https"
 assert_debug_absent "$production_web_env_file"
 assert_api_backend_url_canonical "$production_web_env_file" "https://pr-123-api-backend.okou.test"
 assert_web_url_absent "$production_web_env_file"
+assert_env_key_absent "$production_web_env_file" GCP_LLM_PROJECT_ID
+assert_env_key_absent "$production_web_env_file" GCP_LLM_WORKLOAD_IDENTITY_PROVIDER
+assert_env_key_absent "$production_web_env_file" GCP_LLM_SERVICE_ACCOUNT_EMAIL
 assert_env_value "$production_web_env_file" POSTHOG_KEY "github-posthog-key"
 assert_env_value "$production_web_env_file" POSTHOG_HOST "https://posthog.github.test"
 assert_env_value "$production_web_env_file" GIT_COMMIT_SHA "$EXPECTED_BUILD_COMMIT_SHA"
@@ -636,13 +655,14 @@ assert_env_absent_value "$production_web_env_file" "github-artifact-preview-waf-
 
 production_api_dir="$(mktemp -d)"
 TEMP_DIRS+=("$production_api_dir")
-production_api_output="$(run_action "$(build_doppler_secrets_json)" "$production_api_dir" api production 2>&1)"
+production_api_output="$(run_action "$(build_doppler_secrets_json)" "$production_api_dir" api production "https://static.okou.io/okou-cli/test-sha/package.tgz" canonical '{"GCP_LLM_SERVICE_ACCOUNT_EMAIL":"llm-prod@vm0-ai-488909.iam.gserviceaccount.com"}' 2>&1)"
 production_api_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${production_api_dir}/github-output")"
 assert_contains "$production_api_output" "Rendered"
 assert_no_fixture_secret_values "$production_api_output"
 assert_machine_secret_values_absent_from_output "$production_api_output" "github-atom-machine-secret"
 assert_env_value "$production_api_env_file" OKOU_HOST_SCHEME "https"
 assert_debug_absent "$production_api_env_file"
+assert_google_llm_config "$production_api_env_file" "llm-prod@vm0-ai-488909.iam.gserviceaccount.com"
 assert_env_value "$production_api_env_file" MAILCHIMP_OAUTH_CLIENT_ID "doppler-MAILCHIMP_OAUTH_CLIENT_ID"
 assert_env_value "$production_api_env_file" MAILCHIMP_OAUTH_CLIENT_SECRET "doppler-MAILCHIMP_OAUTH_CLIENT_SECRET"
 assert_env_value "$production_api_env_file" R2_PRIVATE_ARTIFACTS_BUCKET_NAME "user-artifact-private-prod"
