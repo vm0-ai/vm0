@@ -76,6 +76,86 @@ afterEach(() => {
 });
 
 describe("Google voice workload identity through the public API", () => {
+  it.each([
+    { url: GOOGLE_STS_URL, stage: "sts", bodyFailure: false },
+    {
+      url: GOOGLE_IMPERSONATION_URL,
+      stage: "impersonation",
+      bodyFailure: false,
+    },
+    { url: GOOGLE_STS_URL, stage: "sts", bodyFailure: true },
+    {
+      url: GOOGLE_IMPERSONATION_URL,
+      stage: "impersonation",
+      bodyFailure: true,
+    },
+  ])(
+    "reports temporary $stage I/O failure (body=$bodyFailure) without replay",
+    async ({ url, stage, bodyFailure }) => {
+      let calls = 0;
+      server.use(
+        http.post(url, () => {
+          calls += 1;
+          return bodyFailure
+            ? new HttpResponse(
+                new ReadableStream({
+                  start(controller) {
+                    controller.error(
+                      new Error("private credential response", {
+                        cause: { code: "UND_ERR_BODY_TIMEOUT" },
+                      }),
+                    );
+                  },
+                }),
+              )
+            : HttpResponse.error();
+        }),
+      );
+      const response = await accept(polish(), [503]);
+      expect(response.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+      expect(calls).toBe(1);
+      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledExactlyOnceWith(
+        "Google Cloud LLM authentication rejected",
+        expect.objectContaining({
+          stage,
+          status: 503,
+          reason: bodyFailure ? "upstream_timeout" : "network",
+        }),
+      );
+      expect(
+        JSON.stringify(context.mocks.axiomLogging.warn.mock.calls),
+      ).not.toContain("private credential response");
+    },
+  );
+
+  it.each([GOOGLE_STS_URL, GOOGLE_IMPERSONATION_URL])(
+    "preserves denied auth even when its body fails at %s",
+    async (url) => {
+      server.use(
+        http.post(url, () => {
+          return new HttpResponse(
+            new ReadableStream({
+              start(controller) {
+                controller.error(
+                  new Error("private denied response", {
+                    cause: { code: "ECONNRESET" },
+                  }),
+                );
+              },
+            }),
+            { status: 403 },
+          );
+        }),
+      );
+      const response = await accept(polish(), [502]);
+      expect(response.body.error.code).toBe("VOICE_POLISH_FAILED");
+      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledExactlyOnceWith(
+        "Google Cloud LLM authentication rejected",
+        expect.objectContaining({ status: 403, reason: "http" }),
+      );
+    },
+  );
+
   it("bounds an in-flight auth request by its own deadline and permits a later refresh", async () => {
     const deadline = new AbortController();
     context.mocks.abortSignal.timeout.mockImplementation((milliseconds) => {
@@ -102,6 +182,14 @@ describe("Google voice workload identity through the public API", () => {
     deadline.abort(new DOMException("Auth deadline", "TimeoutError"));
     await accept(pending, [503]);
     await aborted.promise;
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledExactlyOnceWith(
+      "Google Cloud LLM authentication rejected",
+      expect.objectContaining({
+        stage: "deadline",
+        reason: "deadline",
+        status: 503,
+      }),
+    );
     context.mocks.abortSignal.timeout.mockReset();
     server.use(
       http.post(GOOGLE_STS_URL, () => {

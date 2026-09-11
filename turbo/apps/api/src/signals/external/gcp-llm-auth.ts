@@ -6,11 +6,16 @@ import { logger } from "../../lib/log";
 import { now } from "../../lib/time";
 import { singleton } from "../../lib/singleton";
 import {
+  gcpLlmTransportReason,
+  type GcpLlmTransportReason,
+} from "./gcp-llm-transport";
+import {
   awaitWithSignal,
   onRejection,
   readBoundedResponseText,
   safeJsonParse,
   safeSync,
+  startUntrackedBestEffortCleanup,
 } from "../utils";
 
 const L = logger("GcpLlmAuth");
@@ -52,6 +57,12 @@ export class GcpLlmAuthError extends Error {
     readonly stage: "oidc" | "sts" | "impersonation" | "deadline",
     readonly status: number,
     readonly temporary = false,
+    readonly reason:
+      | GcpLlmTransportReason
+      | "http"
+      | "invalid_response"
+      | "missing_identity"
+      | "deadline" = "invalid_response",
   ) {
     super("Google Cloud LLM authentication failed");
     this.name = "GcpLlmAuthError";
@@ -93,19 +104,35 @@ const impersonationResponseSchema = z.object({
 });
 
 async function tokenResponse(
-  response: Response,
+  pending: Promise<Response>,
   stage: "sts" | "impersonation",
   signal: AbortSignal,
 ): Promise<unknown> {
-  const body = await readBoundedResponseText(response, MAX_RESPONSE_BYTES);
+  const rejectTransport = (error: unknown) => {
+    signal.throwIfAborted();
+    const reason = gcpLlmTransportReason(error);
+    if (reason) {
+      throw new GcpLlmAuthError(stage, 503, true, reason);
+    }
+  };
+  const response = await onRejection(pending, rejectTransport);
   signal.throwIfAborted();
   if (!response.ok) {
+    if (response.body) {
+      startUntrackedBestEffortCleanup(response.body.cancel());
+    }
     throw new GcpLlmAuthError(
       stage,
       response.status,
       response.status === 429 || response.status >= 500,
+      "http",
     );
   }
+  const body = await onRejection(
+    readBoundedResponseText(response, MAX_RESPONSE_BYTES),
+    rejectTransport,
+  );
+  signal.throwIfAborted();
   if (body.kind !== "text") {
     throw new GcpLlmAuthError(stage, 502);
   }
@@ -120,9 +147,9 @@ async function exchange(
   // Read the current request context without the SDK's local CLI refresh path.
   const subjectToken = safeSync(getVercelOidcTokenSync);
   if (!("ok" in subjectToken) || !subjectToken.ok) {
-    throw new GcpLlmAuthError("oidc", 401);
+    throw new GcpLlmAuthError("oidc", 401, false, "missing_identity");
   }
-  const stsResponse = await fetch(STS_URL, {
+  const stsResponse = fetch(STS_URL, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -141,7 +168,7 @@ async function exchange(
   if (!sts.success) {
     throw new GcpLlmAuthError("sts", 502);
   }
-  const response = await fetch(
+  const response = fetch(
     `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${configuration.serviceAccount}:generateAccessToken`,
     {
       method: "POST",
@@ -190,12 +217,18 @@ async function completeRefresh(
     (error) => {
       ownerSignal.throwIfAborted();
       if (deadline.aborted) {
-        throw new GcpLlmAuthError("deadline", 503, true);
+        L.warn("Google Cloud LLM authentication rejected", {
+          stage: "deadline",
+          status: 503,
+          reason: "deadline",
+        });
+        throw new GcpLlmAuthError("deadline", 503, true, "deadline");
       }
       if (error instanceof GcpLlmAuthError) {
         L.warn("Google Cloud LLM authentication rejected", {
           stage: error.stage,
           status: error.status,
+          reason: error.reason,
         });
       }
     },

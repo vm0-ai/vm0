@@ -124,10 +124,22 @@ capacity recovery from #33403 within the same attempt/time budget. Native Google
 responses use Google's own response contract; OpenRouter error shapes are not
 interpreted as successful Google output.
 
-Capacity exhaustion and transient auth unavailability use public 503; invalid
-output or denied auth use 502. App quota 402/429, no-speech 204, and successful
-usage accounting retain their existing route contracts. Logs contain sanitized
-model/location/operation/status metadata, never tokens, audio, or transcripts.
+Capacity exhaustion, transient auth unavailability, and recognized Google
+fetch/body network or timeout failures use public 503 / `PROVIDER_UNAVAILABLE`.
+Transport failures do not add automatic replay: an interrupted response may
+follow a billable generation. Unknown errors, invalid output, and denied auth
+still use 502. A received non-2xx status remains authoritative even if its body
+is unreadable. Caller cancellation retains its original outcome.
+
+App quota 402/429, no-speech 204, and successful usage accounting retain their
+existing route contracts. Terminal native errors log sanitized
+model/location/operation/status and a fixed reason, including truncation,
+blocking, empty output, invalid response/schema, and oversized responses. Auth
+diagnostics include the failing stage and fixed reason. Neither diagnostics nor
+public errors include tokens, audio, transcripts, raw provider responses, or
+unbounded provider-supplied reason strings. Auth, native validation/transport,
+and exhausted HTTP recovery retain separate diagnostic owners; successful
+recovery and caller cancellation do not produce terminal-error warnings.
 
 ## Verification and rollout gates
 

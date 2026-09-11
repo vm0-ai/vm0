@@ -2,8 +2,18 @@ import type { MultimodalVoiceInputModelId } from "@okouai/api-contracts/contract
 import { z } from "zod";
 
 import { logger } from "../../lib/log";
-import { readBoundedResponseText, safeJsonParse } from "../utils";
+import {
+  onRejection,
+  readBoundedResponseText,
+  safeJsonParse,
+  safeSync,
+  startUntrackedBestEffortCleanup,
+} from "../utils";
 import { gcpLlmAccessToken, gcpLlmConfiguration } from "./gcp-llm-auth";
+import {
+  gcpLlmTransportReason,
+  type GcpLlmTransportReason,
+} from "./gcp-llm-transport";
 import type { VoiceCompletionRequest } from "./voice-completion-types";
 import { requestVoiceProvider } from "./voice-provider-request";
 
@@ -60,11 +70,42 @@ export function isVertexVoiceModel(
   return Object.hasOwn(MODELS, model);
 }
 
-class VertexVoiceError extends Error {
-  constructor(readonly status: number) {
+type VertexVoiceFailureReason =
+  | GcpLlmTransportReason
+  | "http"
+  | "response_too_large"
+  | "invalid_response"
+  | "blocked"
+  | "output_truncated"
+  | "non_stop"
+  | "empty_output"
+  | "invalid_output";
+
+export class VertexVoiceError extends Error {
+  constructor(
+    readonly status: number,
+    readonly reason: VertexVoiceFailureReason,
+  ) {
     super("Google voice request failed");
     this.name = "VertexVoiceError";
   }
+
+  get temporary(): boolean {
+    return this.reason === "network" || this.reason === "upstream_timeout";
+  }
+}
+
+async function vertexIo<T>(
+  pending: Promise<T>,
+  signal: AbortSignal,
+): Promise<T> {
+  return await onRejection(pending, (error) => {
+    signal.throwIfAborted();
+    const reason = gcpLlmTransportReason(error);
+    if (reason) {
+      throw new VertexVoiceError(503, reason);
+    }
+  });
 }
 
 const responseSchema = z.object({
@@ -72,16 +113,70 @@ const responseSchema = z.object({
   candidates: z
     .array(
       z.object({
-        finishReason: z.literal("STOP"),
-        content: z.object({
-          parts: z.array(
-            z.object({ text: z.string(), thought: z.boolean().optional() }),
-          ),
-        }),
+        finishReason: z.string(),
+        content: z
+          .object({
+            parts: z.array(
+              z.object({ text: z.string(), thought: z.boolean().optional() }),
+            ),
+          })
+          .optional(),
       }),
     )
-    .length(1),
+    .optional(),
 });
+
+function parseVertexResponse<T>(
+  body: string,
+  parseResponse: (content: string) => T,
+): T {
+  const parsed = responseSchema.safeParse(safeJsonParse(body));
+  if (!parsed.success) {
+    throw new VertexVoiceError(502, "invalid_response");
+  }
+  if (parsed.data.promptFeedback?.blockReason) {
+    throw new VertexVoiceError(502, "blocked");
+  }
+  const candidate = parsed.data.candidates?.[0];
+  if (!candidate || parsed.data.candidates?.length !== 1) {
+    throw new VertexVoiceError(502, "invalid_response");
+  }
+  if (candidate.finishReason !== "STOP") {
+    const reason =
+      candidate.finishReason === "MAX_TOKENS"
+        ? "output_truncated"
+        : [
+              "SAFETY",
+              "RECITATION",
+              "BLOCKLIST",
+              "PROHIBITED_CONTENT",
+              "SPII",
+              "IMAGE_SAFETY",
+            ].includes(candidate.finishReason)
+          ? "blocked"
+          : "non_stop";
+    throw new VertexVoiceError(502, reason);
+  }
+  const text = candidate.content?.parts
+    .filter((part) => {
+      return !part.thought;
+    })
+    .map((part) => {
+      return part.text;
+    })
+    .join("")
+    .trim();
+  if (!text) {
+    throw new VertexVoiceError(502, "empty_output");
+  }
+  const result = safeSync(() => {
+    return parseResponse(text);
+  });
+  if (!("ok" in result)) {
+    throw new VertexVoiceError(502, "invalid_output");
+  }
+  return result.ok;
+}
 
 /** Voice-only native transport; other Google consumers keep their own routing. */
 export async function generateVertexVoice<T>(
@@ -125,64 +220,66 @@ export async function generateVertexVoice<T>(
       }),
     },
   });
-  return await requestVoiceProvider(
-    async (requestSignal) => {
-      const token = await gcpLlmAccessToken(configuration, requestSignal);
-      requestSignal.throwIfAborted();
-      return await fetch(
-        `https://${model.host}/v1/projects/${configuration.project}/locations/${model.location}/publishers/google/models/${model.model}:generateContent`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body,
-          signal: requestSignal,
-        },
-      );
-    },
-    async (response) => {
-      const body = await readBoundedResponseText(
-        response,
-        args.jsonSchema ? 1024 * 1024 : 2 * 1024 * 1024,
-      );
+  return await onRejection(
+    requestVoiceProvider(
+      async (requestSignal) => {
+        const token = await gcpLlmAccessToken(configuration, requestSignal);
+        requestSignal.throwIfAborted();
+        return await vertexIo(
+          fetch(
+            `https://${model.host}/v1/projects/${configuration.project}/locations/${model.location}/publishers/google/models/${model.model}:generateContent`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              body,
+              signal: requestSignal,
+            },
+          ),
+          requestSignal,
+        );
+      },
+      async (response) => {
+        signal.throwIfAborted();
+        if (!response.ok) {
+          if (response.body) {
+            startUntrackedBestEffortCleanup(response.body.cancel());
+          }
+          throw new VertexVoiceError(response.status, "http");
+        }
+        const body = await vertexIo(
+          readBoundedResponseText(
+            response,
+            args.jsonSchema ? 1024 * 1024 : 2 * 1024 * 1024,
+          ),
+          signal,
+        );
+        signal.throwIfAborted();
+        if (body.kind !== "text") {
+          throw new VertexVoiceError(502, "response_too_large");
+        }
+        return parseVertexResponse(body.text, parseResponse);
+      },
+      {
+        provider: "vertex",
+        model: args.model,
+        responseSchema: args.jsonSchema?.name,
+      },
+      signal,
+    ),
+    (error) => {
       signal.throwIfAborted();
-      if (!response.ok) {
+      if (error instanceof VertexVoiceError) {
         L.warn("Google voice request rejected", {
           model: args.model,
           location: model.location,
           operation: args.jsonSchema?.name ?? "plain_text_polish",
-          status: response.status,
+          status: error.status,
+          reason: error.reason,
         });
-        throw new VertexVoiceError(response.status);
       }
-      const parsed = responseSchema.safeParse(
-        body.kind === "text" ? safeJsonParse(body.text) : undefined,
-      );
-      if (!parsed.success || parsed.data.promptFeedback?.blockReason) {
-        throw new VertexVoiceError(502);
-      }
-      const candidate = parsed.data.candidates[0];
-      const text = candidate?.content.parts
-        .filter((part) => {
-          return !part.thought;
-        })
-        .map((part) => {
-          return part.text;
-        })
-        .join("")
-        .trim();
-      if (!text) {
-        throw new VertexVoiceError(502);
-      }
-      return parseResponse(text);
     },
-    {
-      provider: "vertex",
-      model: args.model,
-      responseSchema: args.jsonSchema?.name,
-    },
-    signal,
   );
 }

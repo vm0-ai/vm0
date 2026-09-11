@@ -12,6 +12,8 @@ import { voiceIoQuotaRoutes } from "../voice-io-quota";
 import { HttpResponse, http } from "msw";
 import {
   mockGoogleVoice,
+  GOOGLE_STS_URL,
+  GOOGLE_IMPERSONATION_URL,
   VERTEX_VOICE_URL,
   vertexVoiceResponse,
   type VertexVoiceRequest,
@@ -1840,6 +1842,61 @@ describe("voice provider capacity recovery", () => {
   beforeEach(() => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     context.mocks.signalTimers.delay.mockResolvedValue(undefined);
+  });
+
+  it.each([GOOGLE_STS_URL, GOOGLE_IMPERSONATION_URL, VERTEX_VOICE_URL])(
+    "returns provider-unavailability for a connection failure at %s",
+    async (url) => {
+      await enabledActor();
+      let calls = 0;
+      server.use(
+        http.post(url, () => {
+          calls += 1;
+          return HttpResponse.error();
+        }),
+      );
+      const response = await accept(
+        client().segment({
+          headers: { authorization: "Bearer clerk-session" },
+          body: form([audioFile(1)]),
+        }),
+        [503],
+      );
+      expect(response.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+      expect(calls).toBe(1);
+    },
+  );
+
+  it("reports invalid structured Google output without logging its transcript", async () => {
+    await enabledActor();
+    server.use(
+      http.post(VERTEX_VOICE_URL, () => {
+        return vertexVoiceResponse(
+          JSON.stringify({
+            transcript: "private transcript without required fields",
+          }),
+        );
+      }),
+    );
+    const response = await accept(
+      client().segment({
+        headers: { authorization: "Bearer clerk-session" },
+        body: form([audioFile(1)]),
+      }),
+      [502],
+    );
+    expect(response.body.error.code).toBe("VOICE_TRANSCRIPTION_FAILED");
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledExactlyOnceWith(
+      "Google voice request rejected",
+      expect.objectContaining({
+        reason: "invalid_output",
+        operation: "voice_transcript_and_polish",
+        status: 502,
+      }),
+    );
+    expect(
+      JSON.stringify(context.mocks.axiomLogging.warn.mock.calls),
+    ).not.toContain("private transcript");
   });
 
   it.each([
