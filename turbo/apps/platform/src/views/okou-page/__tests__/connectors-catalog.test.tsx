@@ -652,6 +652,14 @@ test("Land on Discover, then switch to the connectors this workspace has", async
   const mine = screen.getByTestId("connectors-scope-mine");
   expect(mine).toHaveTextContent("Your connectors2");
   expect(screen.queryByTestId("connectors-mine-grid")).toBeNull();
+
+  // A connector this workspace already has is still an answer to "what talks
+  // to mail", so it stays on the shelf -- without an add affordance.
+  const head = screen.getByTestId("connector-shelf-head");
+  expect(within(head).getByTestId("connector-card-label")).toHaveTextContent(
+    "Gmail",
+  );
+  expect(queryConnectorAction("button", "Connect Gmail")).toBeNull();
   // Category is the dimension that organises the catalog, so it owns the filter.
   expect(screen.getByLabelText("Filter connectors")).toHaveTextContent(
     "Filter: All",
