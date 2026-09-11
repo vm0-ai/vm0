@@ -478,12 +478,19 @@ body {
      card is, so it gets contact rather than lift: a 2px blur instead of 12px. */
   --okou-chat-card-shadow: 0 1px 2px hsl(30 6% 45% / 0.05);
   /* Static focus veil for the composer. Fading this layer through opacity lets
-     the browser composite it without interpolating the wide blur every frame. */
-  --okou-composer-focus-veil: 0 10px 48px -8px hsl(30 8% 45% / 0.09);
+     the browser composite it without interpolating the blur every frame.
+
+     Sized to the room the composer actually has. It sits 16px above the
+     workspace pane's bottom edge, and a veil that is still painting there gets
+     cut by the edge instead of ending on its own. Offset and blur are set so
+     the falloff lands back on the surface within ~11px; the alpha carries the
+     weight the width used to, so the card edge reads exactly as dense on focus
+     as it did before. */
+  --okou-composer-focus-veil: 0 6px 20px -8px hsl(30 8% 45% / 0.12);
 }
 
-/* A wide black shadow reads as a page gradient on dark surfaces. The border
-   step carries the focus state without adding another layer behind the card. */
+/* A black shadow reads as a page gradient on dark surfaces. The border step
+   carries the focus state without adding another layer behind the card. */
 :where([data-theme="dark"]) .okou-app {
   --okou-composer-focus-veil: none;
 }
@@ -493,7 +500,7 @@ body {
     0 2px 12px hsl(var(--state-layer) / 0.035),
     0 0 0 0.5px hsl(var(--state-layer) / 0.018);
   --okou-chat-card-shadow: 0 1px 2px hsl(var(--state-layer) / 0.035);
-  --okou-composer-focus-veil: 0 10px 48px -8px hsl(var(--state-layer) / 0.07);
+  --okou-composer-focus-veil: 0 6px 20px -8px hsl(var(--state-layer) / 0.09);
 }
 
 :where([data-theme="dark"]) .okou-app[data-gradient-color-themes] {
