@@ -675,118 +675,115 @@ async function resolveExistingClientThread(
   return { kind: "existing" as const, ...existingThread };
 }
 
+interface CreateChatThreadArgs {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly agentId: string;
+  readonly title: string | undefined;
+  readonly clientThreadId: string | undefined;
+  readonly eventId: string | undefined;
+  readonly modelProviderId: string | null;
+  readonly modelProviderType: string | null;
+  readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
+  readonly selectedModel: string | null;
+  readonly codexServiceTier: CodexServiceTier | null;
+  readonly selectedVideoModel: string | null;
+  readonly selectedImageModel: ImageModelId | null;
+  readonly connectorSelections?: readonly PreparedChatThreadConnectorSelection[];
+}
+
+/** Compose ordinary thread initialization inside a caller-owned transaction. */
+export async function createChatThreadInTransaction(
+  tx: Tx,
+  args: CreateChatThreadArgs,
+) {
+  const preparedConnectorSelections =
+    await prepareChatThreadConnectorSelections(tx, {
+      orgId: args.orgId,
+      userId: args.userId,
+      agentId: args.agentId,
+      selections: args.connectorSelections ?? [],
+      missingAccountPolicy: "omit",
+    });
+  if (preparedConnectorSelections.kind === "invalid") {
+    return {
+      kind: "invalid_connector_selection" as const,
+      message: preparedConnectorSelections.message,
+    };
+  }
+  const insert = tx.insert(chatThreads).values({
+    ...(args.clientThreadId !== undefined ? { id: args.clientThreadId } : {}),
+    userId: args.userId,
+    agentId: args.agentId,
+    title: args.title ?? null,
+    lastReadAt: sql`NOW()`,
+    modelProviderId: args.modelProviderId,
+    modelProviderType:
+      args.modelProviderType === null
+        ? null
+        : modelProviderTypeSchema.parse(args.modelProviderType),
+    modelProviderCredentialScope: args.modelProviderCredentialScope,
+    selectedModel: args.selectedModel,
+    codexServiceTier: args.codexServiceTier,
+    selectedVideoModel: args.selectedVideoModel,
+    selectedImageModel: args.selectedImageModel,
+  });
+  // Tolerate only the primary key. Each caller owns its replay policy; every
+  // other database fault still propagates and rolls back initialization.
+  const [createdThread] = await insert
+    .onConflictDoNothing({ target: chatThreads.id })
+    .returning({
+      id: chatThreads.id,
+      createdAt: chatThreads.createdAt,
+    });
+  if (!createdThread) {
+    return { kind: "client_thread_conflict" as const };
+  }
+  await insertInitialChatThreadConnectorSelections(tx, {
+    chatThreadId: createdThread.id,
+    selections: preparedConnectorSelections.selections,
+  });
+  await appendChatThreadEvent(tx, {
+    kind: "created",
+    userId: args.userId,
+    orgId: args.orgId,
+    chatThreadId: createdThread.id,
+    agentId: args.agentId,
+    eventId: args.eventId,
+    title: args.title ?? null,
+    selectedModel: args.selectedModel,
+    serviceTier: chatThreadServiceTierFromCodex(args.codexServiceTier),
+    computerUseHostId: null,
+    cloudBrowserEnabled: false,
+    selectedVideoModel: args.selectedVideoModel,
+    selectedImageModel: args.selectedImageModel,
+    createdAt: createdThread.createdAt,
+  });
+  return { kind: "created" as const, ...createdThread };
+}
+
 export const createChatThread$ = command(
-  async (
-    { set },
-    args: {
-      readonly userId: string;
-      readonly orgId: string;
-      readonly agentId: string;
-      readonly title: string | undefined;
-      readonly clientThreadId: string | undefined;
-      readonly eventId: string | undefined;
-      readonly modelProviderId: string | null;
-      readonly modelProviderType: string | null;
-      readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
-      readonly selectedModel: string | null;
-      readonly codexServiceTier: CodexServiceTier | null;
-      readonly selectedVideoModel: string | null;
-      readonly selectedImageModel: ImageModelId | null;
-      readonly connectorSelections?: readonly PreparedChatThreadConnectorSelection[];
-    },
-    signal: AbortSignal,
-  ): Promise<
-    | CreatedChatThread
-    | ExistingChatThread
-    | {
-        readonly kind: "client_thread_conflict";
+  async ({ set }, args: CreateChatThreadArgs, signal: AbortSignal) => {
+    const thread = await set(writeDb$).transaction(async (tx) => {
+      const result = await createChatThreadInTransaction(tx, args);
+      if (result.kind !== "client_thread_conflict") {
+        return result;
       }
-    | {
-        readonly kind: "invalid_connector_selection";
-        readonly message: string;
+      // Preserve ordinary creation's same-transaction, owner-and-agent-scoped
+      // replay. Welcome creation verifies its distinct seed provenance instead.
+      if (args.clientThreadId === undefined) {
+        return undefined;
       }
-  > => {
-    const writeDb = set(writeDb$);
-    const thread = await writeDb.transaction(async (tx) => {
-      const preparedConnectorSelections =
-        await prepareChatThreadConnectorSelections(tx, {
-          orgId: args.orgId,
-          userId: args.userId,
-          agentId: args.agentId,
-          selections: args.connectorSelections ?? [],
-          missingAccountPolicy: "omit",
-        });
-      if (preparedConnectorSelections.kind === "invalid") {
-        return {
-          kind: "invalid_connector_selection" as const,
-          message: preparedConnectorSelections.message,
-        };
-      }
-      const [createdThread] = await tx
-        .insert(chatThreads)
-        .values({
-          ...(args.clientThreadId !== undefined
-            ? { id: args.clientThreadId }
-            : {}),
-          userId: args.userId,
-          agentId: args.agentId,
-          title: args.title ?? null,
-          lastReadAt: sql`NOW()`,
-          modelProviderId: args.modelProviderId,
-          modelProviderType:
-            args.modelProviderType === null
-              ? null
-              : modelProviderTypeSchema.parse(args.modelProviderType),
-          modelProviderCredentialScope: args.modelProviderCredentialScope,
-          selectedModel: args.selectedModel,
-          codexServiceTier: args.codexServiceTier,
-          selectedVideoModel: args.selectedVideoModel,
-          selectedImageModel: args.selectedImageModel,
-        })
-        // A duplicate delivery of one create request must replay the thread the
-        // caller already owns instead of surfacing the primary key violation.
-        // Only that key is tolerated, so every other database fault propagates.
-        .onConflictDoNothing({ target: chatThreads.id })
-        .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
-      if (!createdThread) {
-        // A generated id never collides, so its absent row stays an error.
-        if (args.clientThreadId === undefined) {
-          return undefined;
-        }
-        return await resolveExistingClientThread(tx, {
-          clientThreadId: args.clientThreadId,
-          userId: args.userId,
-          agentId: args.agentId,
-        });
-      }
-      await insertInitialChatThreadConnectorSelections(tx, {
-        chatThreadId: createdThread.id,
-        selections: preparedConnectorSelections.selections,
-      });
-      await appendChatThreadEvent(tx, {
-        kind: "created",
+      return await resolveExistingClientThread(tx, {
+        clientThreadId: args.clientThreadId,
         userId: args.userId,
-        orgId: args.orgId,
-        chatThreadId: createdThread.id,
         agentId: args.agentId,
-        eventId: args.eventId,
-        title: args.title ?? null,
-        selectedModel: args.selectedModel,
-        serviceTier: chatThreadServiceTierFromCodex(args.codexServiceTier),
-        computerUseHostId: null,
-        cloudBrowserEnabled: false,
-        selectedVideoModel: args.selectedVideoModel,
-        selectedImageModel: args.selectedImageModel,
-        createdAt: createdThread.createdAt,
       });
-      return { kind: "created" as const, ...createdThread };
     });
     signal.throwIfAborted();
-
     if (!thread) {
       throw new Error("Failed to create chat thread");
     }
-
     return thread;
   },
 );

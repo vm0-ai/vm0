@@ -358,6 +358,62 @@ describe("privacy choices", () => {
     });
   });
 
+  it.each([
+    ["explicit", false],
+    ["gpc", false],
+    ["gpc", true],
+  ] as const)(
+    "invalidates a prepared grant when an already-%s-denied browser explicitly withdraws again (active GPC: %s)",
+    async (source, gpc) => {
+      const created = await browser(
+        source === "gpc" ? { source } : explicit(null, DENIED),
+      );
+      const headers = tokenHeaders(created.token);
+      const preparedGrant = explicit(created.state.revision);
+      const withdrawn = await accept(
+        client().updateAnonymous({
+          headers: { ...headers, ...(gpc ? { "sec-gpc": "1" } : {}) },
+          body: explicit(created.state.revision, DENIED),
+        }),
+        [200],
+      );
+      expect(
+        (await client().updateAnonymous({ headers, body: preparedGrant }))
+          .status,
+      ).toBe(409);
+      expect(withdrawn.body).toMatchObject({ purposes: DENIED, source });
+      expect(
+        (await accept(client().getAnonymous({ headers }), [200])).body,
+      ).toStrictEqual(withdrawn.body);
+    },
+  );
+
+  it("invalidates a prepared personal grant when a linked denied browser explicitly withdraws again", async () => {
+    const created = await browser({ source: "gpc" });
+    signIn();
+    const linked = await associate(created.token);
+    const preparedGrant = explicit(linked.body.revision);
+    const withdrawn = await accept(
+      client().updateAnonymous({
+        headers: tokenHeaders(created.token),
+        body: explicit(linked.body.revision, DENIED),
+      }),
+      [200],
+    );
+    expect(
+      (
+        await client().update({
+          headers: sessionHeaders,
+          body: preparedGrant,
+        })
+      ).status,
+    ).toBe(409);
+    expect(withdrawn.body).toMatchObject({ purposes: DENIED, source: "gpc" });
+    expect(
+      (await accept(client().get({ headers: sessionHeaders }), [200])).body,
+    ).toStrictEqual(withdrawn.body);
+  });
+
   it("imports the latest anonymous withdrawal and keeps the linked browser on the personal state", async () => {
     const created = await browser(explicit(null));
     await accept(

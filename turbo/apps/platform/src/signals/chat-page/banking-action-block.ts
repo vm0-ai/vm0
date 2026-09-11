@@ -8,7 +8,6 @@ import { command, computed, state, type Command, type Computed } from "ccstate";
 
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
-import { rootSignal$ } from "../root-signal.ts";
 import { onRef, setLoop } from "../utils.ts";
 import {
   chatActionCallbackFromUrl,
@@ -142,7 +141,6 @@ function createBankingStatusSignals(descriptor: BankingActionDescriptor) {
     const result = await accept(
       client.accessRequestStatus({
         params: { agentId: descriptor.agentId },
-        fetchOptions: { signal: get(rootSignal$) },
       }),
       [200],
     );

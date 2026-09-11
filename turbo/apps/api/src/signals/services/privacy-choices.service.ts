@@ -109,12 +109,14 @@ async function saveChoice(
   tx: Tx,
   row: ChoiceRow,
   choice: ChoiceEvidence,
+  forceRevision: boolean,
   signal: AbortSignal,
 ): Promise<ChoiceRow> {
   // Repeated GPC observations and explicit denials must not erase a saved GPC.
   const source =
     row.source === "gpc" && allDenied(choice.purposes) ? "gpc" : choice.source;
   if (
+    !forceRevision &&
     row.source === source &&
     row.policyVersion === PRIVACY_POLICY_VERSION &&
     row.saleSharing === choice.purposes.saleSharing &&
@@ -195,7 +197,15 @@ async function applyChoice(
   }
   // A withdrawal wins even when another tab changed the revision. Grants need
   // the exact observed revision and must never be automatically rebased.
-  const updated = await saveChoice(tx, row, normalized, signal);
+  // A fresh explicit withdrawal also invalidates prepared grants when consent
+  // was already denied. Passive GPC observations remain idempotent.
+  const updated = await saveChoice(
+    tx,
+    row,
+    normalized,
+    update?.source === "explicit" && allDenied(normalized.purposes),
+    signal,
+  );
   return { ok: true, state: stateOf(updated) };
 }
 
@@ -416,6 +426,7 @@ export const associatePrivacyChoice$ = command(
               purposes: purposes.saleSharing === "denied" ? DENIED : purposes,
               source: incoming.source,
             },
+            false,
             signal,
           );
         }

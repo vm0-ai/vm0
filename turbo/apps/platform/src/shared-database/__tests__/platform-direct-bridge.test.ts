@@ -15,7 +15,6 @@ import {
 } from "../../signals/__tests__/test-helpers.ts";
 import { createChatEventSignals } from "../../signals/chat-page/chat-event-signals.ts";
 import { eventDrivenChatThreads$ } from "../../signals/chat-page/chat-thread-event-sourcing.ts";
-import { writeConnectionDiagnostic$ } from "../../signals/connection-diagnostics.ts";
 import { createChildAbortController } from "../../signals/utils.ts";
 import {
   CHAT_EVENT_CURSOR_STORE,
@@ -27,9 +26,7 @@ import { openDB } from "idb";
 import {
   indexedDbSnapshotMeasurementFromWorker$,
   measureIndexedDbSnapshotFromWorker$,
-  setSharedDatabaseConnectionStatus$,
 } from "../../signals/shared-database.ts";
-import { okouDebugRealtimeIndicator$ } from "../../signals/okou-page/realtime-status.ts";
 
 const context = testContext();
 const CREATED_AT = "2026-08-14T10:00:00.000Z";
@@ -456,20 +453,6 @@ test("Preserve every message during a burst of realtime notifications", async ()
   });
   expect(catchUpRequests).toBeGreaterThan(0);
   owner.abort();
-});
-
-test("Report the current shared database connection status", () => {
-  context.store.set(writeConnectionDiagnostic$, {
-    action: "set-enabled",
-    enabled: true,
-  });
-  context.store.set(setSharedDatabaseConnectionStatus$, "connected");
-
-  expect(context.store.get(okouDebugRealtimeIndicator$)).toBeNull();
-  context.store.set(setSharedDatabaseConnectionStatus$, "connecting");
-  expect(context.store.get(okouDebugRealtimeIndicator$)).toBe("reconnecting");
-  context.store.set(setSharedDatabaseConnectionStatus$, "disconnected");
-  expect(context.store.get(okouDebugRealtimeIndicator$)).toBe("disconnected");
 });
 
 test("Subscribe shared chat data through the worker", async () => {

@@ -45,6 +45,7 @@ import {
 } from "../../../test-fixtures/chat-events";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
+import { seedLegacyPrivateDefaultAgentFixture } from "../../../test-fixtures/legacy-default-agent";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { now } from "../../../lib/time";
 import { createDeferredPromise } from "../../utils";
@@ -5253,9 +5254,9 @@ describe("Feishu integration", () => {
       }),
     ).toBeTruthy();
 
-    await authOrgApi.updateAgentMetadata(actor, defaultAgentId, {
-      visibility: "private",
-    });
+    // Retain access-denial coverage for historical private defaults; current
+    // agent APIs reject this state, so it requires an explicit legacy fixture.
+    await seedLegacyPrivateDefaultAgentFixture(defaultAgentId);
     await postEvent(
       callbackUrl,
       groupMessage(appId, "unavailable group task", {

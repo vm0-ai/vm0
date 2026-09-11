@@ -5,6 +5,7 @@
  */
 export enum FeatureSwitchKey {
   PrivacyChoices = "privacyChoices",
+  WelcomeThread = "welcomeThread",
   ThreadActivitySummary = "threadActivitySummary",
   Dummy = "_dummy",
   AhrefsConnector = "ahrefsConnector",
@@ -81,4 +82,5 @@ export enum FeatureSwitchKey {
   AvatarFraming = "avatarFraming",
   ConnectorDirectory = "connectorDirectory",
   ChatThreadHeaderActions = "chatThreadHeaderActions",
+  ComposerTemplateChipCover = "composerTemplateChipCover",
 }

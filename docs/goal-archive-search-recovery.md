@@ -7,6 +7,19 @@ its evidence and historical design; it does not authorize another dispatch,
 replay, retry, production approval or release. The sole recovery operator has
 stopped, and the controller deleted its separate Okou watcher and verified absence.
 
+**Subsequent S5 acceptance, 2026-09-10:**
+[independent production verification](https://github.com/vm0-ai/vm0/issues/32653#issuecomment-5623079780)
+accepted the contracted schema from Ethan's successful #33307
+(`9c777819776d2bed0cfdb110653e46dcaffc0e8b`), separately from #33253's DDL
+`40P01` failure. The accepted actual production 1106 DDL → helper cleanup/reset
+→ awaited journal INSERT → `Migrations complete` path at **17:21:49.5878347 UTC**
+and fresh physical metadata establish completion. No direct journal/catalog
+SELECT is claimed; MaskDB does not expose those rows. See
+[the recorded migration gates](../turbo/packages/db/MIGRATIONS.md#retired-goal-transition-validators-2026-09-10).
+The pre-contract SQL/procedures below are historical and no longer apply to the
+current schema. The numbered 014 README/code/exports remain unchanged; do not
+replay the completed operation.
+
 ## Final operation and acceptance
 
 The sole successful apply was
@@ -61,10 +74,11 @@ All deleted sources remain available at accepted commit
 - [Dedicated certificate tests](https://github.com/vm0-ai/vm0/blob/30c84e22f32fb43bfc12af672fa1aec9a8969c47/turbo/packages/db/scripts/goal-archive-search-recovery/certificate.test.ts).
 
 The historical design below describes that accepted source. The original numbered
-[014 operation](../turbo/packages/db/scripts/migrations/014-goal-archive-search/README.md),
-immutable 1093/1094 migrations, receipts and transition validator remain under
-repository migration policy. No execution or scheduling authority is added to
-history readers.
+[014 operation](../turbo/packages/db/scripts/migrations/014-goal-archive-search/README.md)
+and shipped SQL/snapshots/journal remain under repository migration policy.
+S5 removed physical receipts; S6a retires the expired validators and pre-contract
+API fixture branches while retaining current-schema history coverage. No
+execution or scheduling authority is added to history readers.
 
 ## Historical serving and convergence prerequisite
 
@@ -265,11 +279,14 @@ fabricated terminal success and blind apply retries. A prior report or resumed
 subset was never write authority or a completion certificate; the historical
 014 README's low-level cursor example did not apply to this protected path.
 
-Independent S2 production acceptance closed the disposal gate. S3 #33023 removes
-the five temporary workflow/wrapper/dedicated-test files linked above, before
-S5 drops receipt inventory. The separate Okou S2 watcher was already deleted
-and its absence verified by the controller. This record and its immutable source,
+Independent S2 production acceptance closed the disposal gate. S3 #33023 removed
+the five temporary workflow/wrapper/dedicated-test files linked above before
+S5 subsequently dropped receipt inventory. The separate Okou S2 watcher was
+already deleted and its absence verified by the controller. This record and its immutable source,
 run and controller links remain; no recovery workflow is expected to run again.
-The numbered 014 operation, its package exports, immutable 1093/1094, migration
-journal/snapshots and S5 transition validator remain unchanged. Physical Goal
-schema, S1 fences and shared DB dependencies remain for the later staged gates.
+The numbered 014 operation, its original README/code/package exports and shipped
+1093/1094/1105/1106 SQL, journal and snapshots remain unchanged. S6a removes the
+expired transition validation after accepted S5 contraction. Permanent history,
+accounting and security contracts, S1 and combined-S4 rollback floors and shared
+DB dependencies remain; official resource and durable instruction disposition
+are still controller-owned.

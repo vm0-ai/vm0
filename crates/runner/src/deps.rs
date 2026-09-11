@@ -1,23 +1,23 @@
 //! Third-party dependency metadata: versions, checksums, and download URLs.
 
-pub const FIRECRACKER_VERSION: &str = "v1.15.1";
-pub const KERNEL_VERSION: &str = "6.1.155";
+pub const FIRECRACKER_VERSION: &str = "v1.16.2";
+pub const KERNEL_VERSION: &str = "6.18.44";
 /// Canonical mitmproxy release for runner artifacts and the embedded add-on.
 pub const MITMPROXY_VERSION: &str = "12.2.3";
 
 // Exact identities for installed artifacts, keyed by arch.
-pub const FIRECRACKER_SIZE_X86_64: u64 = 3_417_392;
-pub const FIRECRACKER_SIZE_AARCH64: u64 = 3_119_984;
+pub const FIRECRACKER_SIZE_X86_64: u64 = 3_539_456;
+pub const FIRECRACKER_SIZE_AARCH64: u64 = 3_255_464;
 pub const FIRECRACKER_SHA256_X86_64: &str =
-    "7e8b57e88c459396d4680d83dcdd8c7f72305447cb55b11f4ac98ad70a3f7825";
+    "8227875ceda44177a4d501052dae4a2f9d7837362f5399f02cf0748e68418377";
 pub const FIRECRACKER_SHA256_AARCH64: &str =
-    "e9ce7466c3b0d879d7a9158f4bf710dd5e131bbc5e580e5269fec66d5b5a0f0a";
-pub const KERNEL_SIZE_X86_64: u64 = 44_279_576;
-pub const KERNEL_SIZE_AARCH64: u64 = 17_111_552;
+    "f7168507c37b2b047ea2b30433cbe4faa3986c36d1209c046fd1814118ce3d48";
+pub const KERNEL_SIZE_X86_64: u64 = 27_846_248;
+pub const KERNEL_SIZE_AARCH64: u64 = 19_397_120;
 pub const KERNEL_SHA256_X86_64: &str =
-    "e20e46d0c36c55c0d1014eb20576171b3f3d922260d9f792017aeff53af3d4f2";
+    "d8ced68bd61e27b6813e2c993cc53a4029c59e13210672180591c84109684fe4";
 pub const KERNEL_SHA256_AARCH64: &str =
-    "e3544b10603acbf3db492cb52e000d22ba202cb4b63b9add027565683e11c591";
+    "3b0233769ed8c89f1f47fdbcc4ff9300a2b1b5c618e25ade966a484481b151dc";
 pub const MITMDUMP_SIZE_X86_64: u64 = 39_172_624;
 pub const MITMDUMP_SIZE_AARCH64: u64 = 36_908_488;
 pub const MITMDUMP_SHA256_X86_64: &str =
@@ -26,12 +26,12 @@ pub const MITMDUMP_SHA256_AARCH64: &str =
     "47612c592db3b0b80164aee2dd1be1f3841d5430891f7ebeabf2284a7cc490b9";
 
 // Exact identities for compressed source archives, keyed by arch.
-pub const FIRECRACKER_ARCHIVE_SIZE_X86_64: u64 = 7_622_285;
-pub const FIRECRACKER_ARCHIVE_SIZE_AARCH64: u64 = 7_422_699;
+pub const FIRECRACKER_ARCHIVE_SIZE_X86_64: u64 = 7_499_848;
+pub const FIRECRACKER_ARCHIVE_SIZE_AARCH64: u64 = 7_321_444;
 pub const FIRECRACKER_ARCHIVE_SHA256_X86_64: &str =
-    "d4a32ab2322d887ca1bc4a4e7afa9cc35393e6362dfc2b3becb389d362e4275a";
+    "32e3cdcd4081f91fe2b024a266f57dcb3b4e5fec5033e0cb22467ad7f7820bda";
 pub const FIRECRACKER_ARCHIVE_SHA256_AARCH64: &str =
-    "00654ac1e702a22744121ea9f10a4f792ebd7c3a744cba587dfac9fcb79b41a5";
+    "751365040ca3dde7616c5a1d97cc1304674fae469ce02993104eab22f5961950";
 pub const MITMPROXY_ARCHIVE_SIZE_X86_64: u64 = 119_209_168;
 pub const MITMPROXY_ARCHIVE_SIZE_AARCH64: u64 = 112_694_307;
 pub const MITMPROXY_ARCHIVE_SHA256_X86_64: &str =
@@ -42,25 +42,6 @@ pub const MITMPROXY_ARCHIVE_SHA256_AARCH64: &str =
 /// System CA certificate bundle path. The standalone mitmproxy binary bundles its
 /// own (incomplete) certifi CA store; we override it with the host's system store.
 pub const SYSTEM_CA_BUNDLE: &str = "/etc/ssl/certs/ca-certificates.crt";
-
-/// "v1.15.1" → "v1.15"
-const FIRECRACKER_MINOR: &str = strip_patch(FIRECRACKER_VERSION);
-
-#[allow(clippy::panic, clippy::indexing_slicing)] // compile-time only
-const fn strip_patch(version: &str) -> &str {
-    let bytes = version.as_bytes();
-    let mut i = bytes.len();
-    while i > 0 {
-        i -= 1;
-        if bytes[i] == b'.' {
-            // SAFETY: splitting a UTF-8 str at an ASCII '.' boundary yields valid UTF-8
-            return unsafe {
-                std::str::from_utf8_unchecked(std::slice::from_raw_parts(bytes.as_ptr(), i))
-            };
-        }
-    }
-    panic!("FIRECRACKER_VERSION must be in vMAJOR.MINOR.PATCH format")
-}
 
 /// Tarball entry name for firecracker binary.
 pub fn firecracker_tar_entry(arch: &str) -> String {
@@ -74,8 +55,11 @@ pub fn firecracker_url(arch: &str) -> String {
 }
 
 pub fn kernel_url(arch: &str) -> String {
+    // Pin a dated upstream Amazon Linux microVM kernel build independently of
+    // the VMM version. Guest 6.18 is supported with Firecracker >= v1.16.1:
+    // https://github.com/firecracker-microvm/firecracker/blob/main/docs/kernel-policy.md#guest-kernel
     format!(
-        "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/{FIRECRACKER_MINOR}/{arch}/vmlinux-{KERNEL_VERSION}"
+        "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/20260909-a8e1c3830545-0/{arch}/vmlinux-{KERNEL_VERSION}"
     )
 }
 
@@ -100,11 +84,6 @@ mod tests {
             .lines()
             .filter_map(|line| line.strip_prefix(prefix)?.strip_suffix(suffix))
             .collect()
-    }
-
-    #[test]
-    fn strip_patch_version() {
-        assert_eq!(FIRECRACKER_MINOR, "v1.15");
     }
 
     #[test]

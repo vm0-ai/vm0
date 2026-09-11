@@ -1,5 +1,5 @@
 {
-  "id": "8682e673-3691-494b-a829-c0e43fa46039",
+  "id": "5a4c07c3-1698-42cd-8457-2bc57b540fa4",
   "prevId": "ad4d8cb5-357e-4237-9f28-620ed6dff265",
   "version": "7",
   "dialect": "postgresql",
@@ -20825,224 +20825,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.privacy_choice_revisions": {
-      "name": "privacy_choice_revisions",
-      "schema": "",
-      "columns": {
-        "revision": {
-          "name": "revision",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "subject_id": {
-          "name": "subject_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "sale_sharing": {
-          "name": "sale_sharing",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "advertising": {
-          "name": "advertising",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "marketing_analytics": {
-          "name": "marketing_analytics",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source": {
-          "name": "source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "policy_version": {
-          "name": "policy_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "recorded_at": {
-          "name": "recorded_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "privacy_choice_revisions_subject_idx": {
-          "name": "privacy_choice_revisions_subject_idx",
-          "columns": [
-            {
-              "expression": "subject_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "privacy_choice_revisions_subject_id_privacy_choices_id_fk": {
-          "name": "privacy_choice_revisions_subject_id_privacy_choices_id_fk",
-          "tableFrom": "privacy_choice_revisions",
-          "tableTo": "privacy_choices",
-          "columnsFrom": [
-            "subject_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.privacy_choices": {
-      "name": "privacy_choices",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "token_hash": {
-          "name": "token_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "linked_user_id": {
-          "name": "linked_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "revision": {
-          "name": "revision",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "sale_sharing": {
-          "name": "sale_sharing",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'unknown'"
-        },
-        "advertising": {
-          "name": "advertising",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'unknown'"
-        },
-        "marketing_analytics": {
-          "name": "marketing_analytics",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'unknown'"
-        },
-        "source": {
-          "name": "source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "policy_version": {
-          "name": "policy_version",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "privacy_choices_linked_user_idx": {
-          "name": "privacy_choices_linked_user_idx",
-          "columns": [
-            {
-              "expression": "linked_user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "privacy_choices_user_id_unique": {
-          "name": "privacy_choices_user_id_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "user_id"
-          ]
-        },
-        "privacy_choices_token_hash_unique": {
-          "name": "privacy_choices_token_hash_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "token_hash"
-          ]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {
-        "privacy_choices_owner_check": {
-          "name": "privacy_choices_owner_check",
-          "value": "(\"privacy_choices\".\"user_id\" IS NOT NULL AND \"privacy_choices\".\"token_hash\" IS NULL AND \"privacy_choices\".\"linked_user_id\" IS NULL) OR (\"privacy_choices\".\"user_id\" IS NULL AND \"privacy_choices\".\"token_hash\" IS NOT NULL)"
-        }
-      },
-      "isRLSEnabled": false
-    },
     "public.push_subscriptions": {
       "name": "push_subscriptions",
       "schema": "",
@@ -23706,6 +23488,66 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ssh_connection_observations": {
+      "name": "ssh_connection_observations",
+      "schema": "",
+      "columns": {
+        "connection_id": {
+          "name": "connection_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "generation": {
+          "name": "generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "observed_at": {
+          "name": "observed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "failure_reason": {
+          "name": "failure_reason",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "ssh_connection_observations_connection_id_ssh_connections_id_fk": {
+          "name": "ssh_connection_observations_connection_id_ssh_connections_id_fk",
+          "tableFrom": "ssh_connection_observations",
+          "tableTo": "ssh_connections",
+          "columnsFrom": [
+            "connection_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "chk_ssh_connection_observation_generation": {
+          "name": "chk_ssh_connection_observation_generation",
+          "value": "\"ssh_connection_observations\".\"generation\" > 0"
+        },
+        "chk_ssh_connection_observation_failure": {
+          "name": "chk_ssh_connection_observation_failure",
+          "value": "\"ssh_connection_observations\".\"failure_reason\" IS NULL OR \"ssh_connection_observations\".\"failure_reason\" IN ('invalid_credential', 'unsupported_credential', 'credential_resource_limit', 'unsafe_destination', 'network_failure', 'host_key_mismatch', 'unsupported_host_key', 'authentication_failed', 'protocol', 'timed_out')"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.ssh_connections": {

@@ -80,7 +80,30 @@ Controlled processes deny process inspection across the boundary.
 
 ### Direct cgroup creation
 
-Guest-control-server uses one contained-command launcher for typed storage,
+Guest-control-server and managed host Firecracker launches share the
+`process-launch` crate: explicit command inputs, private descriptors, one raw
+clone3/exec implementation, error handshake, and exact-child wait ownership.
+Guest identity lookup and operation policy remain in guest-control-server;
+host delegation and vCPU weights remain in sandbox-firecracker.
+
+Managed host launches await a process-wide asynchronous admission permit before
+preparing the command and entering clone3. Dropping a launch future while it is
+queued releases its resources without creating a child. One five-second host
+launch budget covers admission, preparation and exec acknowledgement, with an
+explicit deadline check before clone3. The parent releases admission after clone3
+and signal-mask restoration. The host then awaits exec-pipe readiness without
+blocking a runtime worker. Until acknowledgement, a pending owner kills and reaps
+on cancellation, error or unwind before the caller releases its cgroup lease.
+After acknowledgement, failed pidfd or pipe adoption also reaps before returning
+or unwinding; only successful adoption transfers the child into Tokio ownership. Synchronous
+preparation, clone and abnormal reap cannot be forcibly interrupted; this is not
+a hard syscall-duration bound or a change to Runner callers that deliberately
+drain work on cancellation.
+Guest synchronous launches do not join this queue and retain their five-second
+exec-handshake budget. Explicit unmanaged host/snapshot-creation modes also do not
+join it and remain separate choices, never retries after managed launch failure.
+
+Guest-control-server uses this launcher for typed storage,
 ordinary Workload exec (including oversized storage fallback), and controlled
 Agent startup. It prepares the operation hierarchy and resource policy, then
 uses `clone3(CLONE_INTO_CGROUP)` to create the child in its target leaf:
@@ -97,9 +120,25 @@ owned child before containment cleanup. Unsupported or denied syscalls fail
 the launch instead of retrying without containment. Agent readiness observes
 exit without reaping, so the terminal owner retains the PID through cleanup.
 
+Managed Firecracker fresh boots and snapshot restores receive a private
+directory descriptor for their weighted host Guest leaf. They are created in
+that leaf instead of writing to `cgroup.procs` after fork. The shared launcher
+preserves the owned process group, working directory, log pipes, null stdin,
+and jailer-compatible soft/hard `RLIMIT_NOFILE=2048`.
+
+The host enables the shared optional Tokio adapter. Normal direct-child waits
+use pidfd readiness and exact-PID reaping without a dedicated waiting thread.
+Cancelling a wait retains ownership; abnormal drop kills the owned group and
+retains a reaper until the child is collected, including if spawning a cleanup
+thread fails. The process monitor retains its pre-reap group cleanup and
+termination acknowledgements, then releases the host cgroup lease. Explicitly
+unmanaged local mode and snapshot generation use the standard backend; neither
+is a retry after a managed launch failure. Guest-only builds do not enable the
+Tokio adapter.
+
 Direct placement requires cgroup v2 and Linux 5.7; the launcher's
 `close_range(CLOSE_RANGE_CLOEXEC)` additionally requires Linux 5.11. The
-committed guest kernel is 6.1.155. Fixed process-group-only helpers and explicit
+committed guest kernel is 6.18.44. Fixed process-group-only helpers and explicit
 local TestNoop backends still use standard process creation. Guest Agent's
 internal CLI launcher and the managed tool's migrate-self/exec boundary are
 unchanged. There is no persistent cgroup pool, resident launcher or cgroup

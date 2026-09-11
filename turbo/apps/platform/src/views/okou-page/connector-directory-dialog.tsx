@@ -659,9 +659,12 @@ function DirectoryBrowseView({
   const remoteAccessLabel = t(($) => {
     return $.connectors.catalog.remoteAccess;
   });
+  // The chip row comes from the browse response, not from what is currently
+  // shown: a chip row that empties itself when you pick a chip cannot be used
+  // to pick another one.
   const sections = sshAvailable
     ? [
-        ...model.categorySections,
+        ...model.chipSections,
         {
           category: REMOTE_ACCESS_CATEGORY,
           label: remoteAccessLabel,
@@ -670,7 +673,7 @@ function DirectoryBrowseView({
           connectors: [],
         },
       ]
-    : model.categorySections;
+    : model.chipSections;
   return (
     <>
       <DirectoryToolbar
@@ -879,6 +882,8 @@ interface ConnectorDirectoryDialogProps {
    */
   readonly categoryMetadata: PublicConnectorCatalogCategoryMetadata | undefined;
   readonly loading: boolean;
+  /** Every connector the browse response carried, for the chip row. */
+  readonly chipCatalog: readonly PlatformConnectorCatalogStatusItem[];
   readonly connected: readonly PlatformConnectorCatalogStatusItem[];
   readonly unconnected: readonly PlatformConnectorCatalogStatusItem[];
   readonly connectedCustom: readonly CustomConnectorResponse[];
@@ -919,6 +924,7 @@ export function ConnectorDirectoryDialog({
   categoryCounts,
   categoryMetadata,
   loading,
+  chipCatalog,
   connected,
   unconnected,
   connectedCustom,
@@ -943,6 +949,7 @@ export function ConnectorDirectoryDialog({
   const model = buildConnectorDirectoryModel({
     connected,
     unconnected,
+    chipCatalog,
     connectedCustom,
     unconnectedCustom,
     search,

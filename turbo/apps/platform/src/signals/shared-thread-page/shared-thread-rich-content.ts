@@ -4,92 +4,73 @@ import type { Root } from "hast";
 
 import { parseMarkdownTree } from "../../lib/markdown/pipeline.ts";
 import {
-  createImageLoadRegistry,
+  createImageLoadSignals,
   embedImageLoadSignals,
 } from "../image-load.ts";
 import {
-  createMermaidDiagramRegistry,
+  createMermaidDiagramSignals,
   embedMermaidSignals,
 } from "../mermaid-diagram.ts";
-import { retryRichMarkdown$ } from "../rich-markdown-retry.ts";
-import { tapError } from "../utils.ts";
-
-export interface SharedThreadRichContentState {
-  readonly status: "loading" | "error" | "ready";
-  readonly trees: ReadonlyMap<number, Root>;
-}
 
 export interface SharedThreadRichContentSignals {
-  readonly state$: Computed<SharedThreadRichContentState>;
-  readonly load$: Command<Promise<void>, [AbortSignal]>;
-  readonly retry$: Command<Promise<void>, []>;
+  readonly trees$: Computed<Promise<ReadonlyMap<number, Root>>>;
+  readonly retry$: Command<void, []>;
+}
+
+function createScopedResolver<Key, Value>(
+  createValue: (key: Key) => Value,
+): (key: Key) => Value {
+  const values = new Map<Key, Value>();
+  return (key) => {
+    const existing = values.get(key);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const value = createValue(key);
+    values.set(key, value);
+    return value;
+  };
 }
 
 /**
- * Loads and prepares only the rich bodies of one immutable shared thread. The
- * page publishes its plain messages before starting `load$`; this state keeps
- * the loading and error lifecycle local to each pending rich body.
+ * Derives the rich bodies of one immutable shared thread when the view consumes
+ * `trees$`. Its resource resolvers are bounded by those message bodies and keep
+ * diagram and image signal identities stable if the user retries preparation.
  */
 export function createSharedThreadRichContentSignals(
   messages: readonly SharedMessage[],
   mathEnabled: boolean,
   ownerSignal: AbortSignal,
 ): SharedThreadRichContentSignals {
-  const mermaidDiagrams = createMermaidDiagramRegistry(ownerSignal);
-  const imageLoads = createImageLoadRegistry();
-  const emptyTrees: ReadonlyMap<number, Root> = new Map();
-  const internalState$ = state<SharedThreadRichContentState>({
-    status: "loading",
-    trees: emptyTrees,
+  const resolveMermaidDiagram = createScopedResolver((code: string) => {
+    return createMermaidDiagramSignals(code, ownerSignal);
   });
-  const state$ = computed((get) => {
-    return get(internalState$);
+  const resolveImageLoad = createScopedResolver(() => {
+    return createImageLoadSignals();
   });
-
-  const load$ = command(async ({ set }, signal: AbortSignal): Promise<void> => {
-    set(internalState$, (current): SharedThreadRichContentState => {
-      return { status: "loading", trees: current.trees };
-    });
-    const trees = await tapError(
-      (async (): Promise<ReadonlyMap<number, Root>> => {
-        // Keep parser failures on the promise consumed by `tapError`.
-        await Promise.resolve();
-        signal.throwIfAborted();
-        const next = new Map<number, Root>();
-        for (const message of messages) {
-          const tree = parseMarkdownTree(message.content, {
-            math: mathEnabled,
-            mermaid: true,
-          });
-          embedMermaidSignals(tree, (code) => {
-            return set(mermaidDiagrams.register$, code);
-          });
-          embedImageLoadSignals(tree, (url) => {
-            return set(imageLoads.register$, url);
-          });
-          next.set(message.messageIndex, tree);
-        }
-        signal.throwIfAborted();
-        return next;
-      })(),
-      () => {
-        set(internalState$, (current): SharedThreadRichContentState => {
-          return { status: "error", trees: current.trees };
-        });
-      },
-    );
-    signal.throwIfAborted();
-    if (trees === undefined) {
-      return;
+  const internalRevision$ = state(0);
+  const trees$ = computed(async (get) => {
+    get(internalRevision$);
+    // Let the page shell and plain bodies render before rich parsing begins.
+    await Promise.resolve();
+    const trees = new Map<number, Root>();
+    for (const message of messages) {
+      const tree = parseMarkdownTree(message.content, {
+        math: mathEnabled,
+        mermaid: true,
+      });
+      embedMermaidSignals(tree, resolveMermaidDiagram);
+      embedImageLoadSignals(tree, resolveImageLoad);
+      trees.set(message.messageIndex, tree);
     }
-    set(internalState$, { status: "ready", trees });
+    return trees;
   });
 
-  const retry$ = command(({ set }): Promise<void> => {
-    ownerSignal.throwIfAborted();
-    set(retryRichMarkdown$);
-    return set(load$, ownerSignal);
+  const retry$ = command(({ set }) => {
+    set(internalRevision$, (revision) => {
+      return revision + 1;
+    });
   });
 
-  return { load$, retry$, state$ };
+  return { retry$, trees$ };
 }

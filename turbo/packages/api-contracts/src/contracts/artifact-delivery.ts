@@ -48,6 +48,11 @@ export function artifactFilenameExtension(filename: string): string {
   return filename.toLowerCase().match(/\.[a-z0-9]{1,12}$/u)?.[0] ?? ".bin";
 }
 
+/** Public share aliases are separate from the historical public object keys. */
+export function isArtifactPublicationFilePath(pathname: string): boolean {
+  return /^\/[a-f0-9]{24}\.[a-z0-9]{1,12}$/u.test(pathname);
+}
+
 /** The marker certifies completed registration, not a feature rollout flag. */
 export function artifactDeliveryRegistrationKey(brand: "vm0" | "okou"): string {
   return `artifact-delivery/${brand}/registration.json`;

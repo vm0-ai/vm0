@@ -20,7 +20,6 @@ import {
   type ImageLoadSignals,
 } from "../image-load.ts";
 import { apiClient$ } from "../api-client.ts";
-import { rootSignal$ } from "../root-signal.ts";
 import { accept } from "../../lib/accept.ts";
 import { IN_VITEST } from "../../env.ts";
 import type {
@@ -37,8 +36,8 @@ import { i18n } from "../../i18n/index.ts";
 import { flattenAnnotatedImage } from "./flatten-annotated-image.ts";
 import { logger } from "../log.ts";
 import {
+  createAttachmentPreviewSignals,
   createAttachmentResourceUrl$,
-  createAttachmentUrls$,
 } from "../attachment-resource-url.ts";
 import { isAnnotationMeaningful } from "./image-annotation.ts";
 
@@ -435,10 +434,14 @@ function createAttachmentAnnotationSignals(args: {
           // response remains unreadable to fetch because of CORS. Flattening
           // needs the bytes. Private storage must allow authenticated app origins
           // through R2 CORS; public inputs retain their existing CDN URL.
-          const resolved = await get(createAttachmentUrls$(original.url));
+          const preview = createAttachmentPreviewSignals(original.url);
+          const [resourceUrl, shareUrl] = await Promise.all([
+            get(preview.resourceUrl$),
+            get(preview.shareUrl$),
+          ]);
           signal.throwIfAborted();
           const flattened = await flattenAnnotatedImage(
-            resolved.shareUrl ?? resolved.resourceUrl,
+            shareUrl ?? resourceUrl,
             annotations,
             args.filename,
             signal,
@@ -683,15 +686,12 @@ export function createRestoredAttachment(
   persisted: RestorableAttachment,
 ): ChatAttachment {
   const fileInfo$ = computed(async (get): Promise<FileInfo | null> => {
-    const signal = get(rootSignal$);
     const client = get(apiClient$)(webFilesContract);
     const resolved = await accept(
       client.fileUrl({
         query: { file_id: persisted.id },
-        fetchOptions: { signal },
       }),
       [200, 404],
-      signal,
     );
     return resolved.status === 404
       ? null

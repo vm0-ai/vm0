@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -25,7 +26,7 @@ import {
   replaceLoadedChatEvent,
 } from "../signals/services/chat-event.service";
 
-/** Contract only a test-owned database; never alter the shared suite database. */
+/** Run the real complete migration sequence in a test-owned database. */
 export async function withContractedGoalSchema(
   work: (statements: () => readonly string[]) => Promise<void>,
 ): Promise<void> {
@@ -43,28 +44,27 @@ export async function withContractedGoalSchema(
   const provider = new BasicTracerProvider({
     spanProcessors: [new SimpleSpanProcessor(exporter)],
   });
+  const packageDir = fileURLToPath(
+    new URL("../../../../packages/db", import.meta.url),
+  );
   const run = async () => {
-    await promisify(execFile)("pnpm", ["db:migrate"], {
-      cwd: fileURLToPath(new URL("../../../../packages/db", import.meta.url)),
-      env: {
-        PATH: optionalEnv("PATH"),
-        HOME: optionalEnv("HOME"),
-        DATABASE_URL: url.toString(),
+    await promisify(execFile)(
+      "node",
+      [
+        fileURLToPath(import.meta.resolve("tsx/cli")),
+        join(packageDir, "scripts/migrate.ts"),
+      ],
+      {
+        cwd: packageDir,
+        env: {
+          PATH: optionalEnv("PATH"),
+          HOME: optionalEnv("HOME"),
+          DATABASE_URL: url.toString(),
+        },
+        timeout: 120_000,
+        maxBuffer: 20 * 1024 * 1024,
       },
-      timeout: 120_000,
-      maxBuffer: 20 * 1024 * 1024,
-    });
-    const client = new Client({ connectionString: url.toString() });
-    await client.connect();
-    const [contracted] = await Promise.allSettled([
-      client.query(
-        "ALTER TABLE agent_runs DROP COLUMN goal_id CASCADE; DROP TABLE thread_goals CASCADE;",
-      ),
-    ]);
-    await client.end();
-    if (contracted.status === "rejected") {
-      throw contracted.reason;
-    }
+    );
     await closeDbPool();
     mockEnv("DATABASE_URL", url.toString());
     trace.disable();

@@ -32,10 +32,7 @@ import {
   type SharedDatabaseHeartbeatLoop,
 } from "../message-port-client.ts";
 import { SharedDatabaseMessagePortServer } from "../message-port-server.ts";
-import {
-  sharedDatabaseClientMessageSchema,
-  type SharedDatabaseConnectionStatus,
-} from "../protocol.ts";
+import { sharedDatabaseClientMessageSchema } from "../protocol.ts";
 import {
   recordConnectionHeartbeat$,
   registerConnection$,
@@ -146,7 +143,6 @@ function bridgeEvents(): SharedDatabaseBridgeEvents {
     computedReloaded: vi.fn<(computedKey: ComputedKey) => void>(),
     databaseInvalidated: vi.fn<(dataKey: SharedDatabaseDataKey) => void>(),
     workerUnavailable: vi.fn<SharedDatabaseBridgeEvents["workerUnavailable"]>(),
-    statusChanged: vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
   };
 }
 
@@ -217,6 +213,8 @@ test("share one Worker realtime subscription until tabs disconnect", async () =>
   const second = connectProtocolTransport(secondOwner.signal);
   const firstMessages: unknown[] = [];
   const secondMessages: unknown[] = [];
+  let firstResyncs = 0;
+  let secondResyncs = 0;
   const topic = "connectorPermissionUpdated";
   const channelName = `user:${identity().userId}`;
 
@@ -230,6 +228,9 @@ test("share one Worker realtime subscription until tabs disconnect", async () =>
       (message) => {
         firstMessages.push(message.data);
       },
+      () => {
+        firstResyncs += 1;
+      },
     ),
     second.bridge.subscribeRealtime(
       "second-subscription",
@@ -237,6 +238,9 @@ test("share one Worker realtime subscription until tabs disconnect", async () =>
       topic,
       (message) => {
         secondMessages.push(message.data);
+      },
+      () => {
+        secondResyncs += 1;
       },
     ),
   ]);
@@ -250,6 +254,19 @@ test("share one Worker realtime subscription until tabs disconnect", async () =>
   await vi.waitFor(() => {
     expect(firstMessages).toStrictEqual([{ revision: 1 }]);
     expect(secondMessages).toStrictEqual([{ revision: 1 }]);
+  });
+
+  // Only the Worker sees Ably's continuity signal, so it has to tell every tab
+  // holding the subscription. A replayed reattach must stay silent.
+  context.mocks.ably.triggerResume();
+  expect(firstResyncs).toBe(0);
+  expect(secondResyncs).toBe(0);
+
+  context.mocks.ably.triggerConnectionState("suspended");
+  context.mocks.ably.triggerConnectionState("connected");
+  await vi.waitFor(() => {
+    expect(firstResyncs).toBe(1);
+    expect(secondResyncs).toBe(1);
   });
 
   firstOwner.abort(new DOMException("First tab closed", "AbortError"));
@@ -283,6 +300,7 @@ test("route workspace realtime subscriptions through the organization channel", 
     (message) => {
       messages.push(message.data);
     },
+    () => {},
   );
 
   await vi.waitFor(() => {

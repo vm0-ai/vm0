@@ -12,6 +12,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from aws_sigv4_body_admission import MAX_ADMITTED_AWS_SIGV4_REQUESTS
+from thread_pool import start_thread_pool
 
 _lock = threading.Lock()
 _executor: ThreadPoolExecutor | None = None
@@ -25,27 +26,11 @@ def get_executor() -> ThreadPoolExecutor:
         if _shut_down:
             raise RuntimeError("AWS SigV4 hashing is shut down")
         if _executor is None:
-            _executor = _start_executor()
+            _executor = start_thread_pool(
+                max_workers=MAX_ADMITTED_AWS_SIGV4_REQUESTS,
+                thread_name_prefix="aws-sigv4-hash",
+            )
         return _executor
-
-
-def _start_executor() -> ThreadPoolExecutor:
-    executor = ThreadPoolExecutor(
-        max_workers=MAX_ADMITTED_AWS_SIGV4_REQUESTS,
-        thread_name_prefix="aws-sigv4-hash",
-    )
-    release_workers = threading.Event()
-    try:
-        # Keep startup jobs busy so every submit starts a worker. No body enters
-        # this queue until all worker starts have succeeded.
-        for _ in range(MAX_ADMITTED_AWS_SIGV4_REQUESTS):
-            executor.submit(release_workers.wait)
-    except BaseException:
-        release_workers.set()
-        executor.shutdown(wait=True, cancel_futures=True)
-        raise
-    release_workers.set()
-    return executor
 
 
 def shutdown() -> None:

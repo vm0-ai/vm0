@@ -6,7 +6,6 @@
 //! Protocol encoding/decoding is handled by the `guest-control-proto` crate.
 
 mod agent_command;
-mod cgroup_spawn;
 mod connection;
 mod contained_command;
 mod drain;

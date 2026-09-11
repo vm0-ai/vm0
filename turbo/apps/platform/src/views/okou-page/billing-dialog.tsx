@@ -29,7 +29,7 @@ import { formatUsd } from "../../i18n/format.ts";
 const CREDITS_PER_DOLLAR = 1000;
 
 const settingsCardBorder = {
-  border: "0.7px solid hsl(var(--gray-400))",
+  border: "var(--border-width-surface) solid hsl(var(--gray-400))",
 } as const;
 
 export function AutoRechargeSection({

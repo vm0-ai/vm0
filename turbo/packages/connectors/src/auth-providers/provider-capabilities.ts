@@ -1632,26 +1632,28 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
   },
   {
     connectorSlug: "ramp",
-    authMethodId: "api-token",
+    authMethodId: "oauth",
     contract: {
       client: {
-        kind: "none",
+        kind: "static-confidential-env",
+        clientIdEnv: "RAMP_OAUTH_CLIENT_ID",
+        clientSecretEnv: "RAMP_OAUTH_CLIENT_SECRET",
       },
       grant: {
-        kind: "manual",
-        callbackOrigin: null,
-        outputNames: [],
+        kind: "auth-code",
+        callbackOrigin: "web",
+        outputNames: ["accessToken", "refreshToken"],
         startOptionNames: [],
       },
       access: {
         kind: "refresh-token",
-        inputNames: ["clientId", "clientSecret", "scope"],
-        outputNames: ["accessToken"],
+        inputNames: ["refreshToken"],
+        outputNames: ["accessToken", "refreshToken"],
         platformSecrets: [],
       },
       revoke: {
-        kind: "none",
-        inputNames: [],
+        kind: "token-revoke",
+        inputNames: ["accessToken", "refreshToken"],
       },
     },
   },

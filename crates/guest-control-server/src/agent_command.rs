@@ -12,7 +12,7 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{ChildStderr, ChildStdout};
 
-use crate::contained_command::{CommandStdio, ContainedCommand as Command};
+use crate::contained_command::{CommandStdio, ContainedCommand as Command, ContainedCommandExt};
 
 use guest_contracts::codex_session_cleanup::CodexSessionCleanupRequest;
 use guest_contracts::session_history_identity::SessionHistoryIdentityVerifyRequest;
@@ -210,7 +210,6 @@ fn cloexec_pipe() -> io::Result<(OwnedFd, OwnedFd)> {
 
 #[cfg(test)]
 mod tests {
-    use crate::process::ChildProcess;
     use std::io::{Read, Write};
 
     use guest_control_proto::ExecProcessRole;

@@ -84,8 +84,8 @@ import { captureActiveCodexModelProviderAccount } from "./model-provider-account
 
 type AgentRunCreateBody = z.infer<typeof runCreateBodySchema>;
 // Emitted as the agent_run_origin observability dimension. The values name what
-// started the run, so the fallback is "direct" (neither automation nor goal
-// continuation) rather than a restatement that this is an agent run.
+// started the run, so the fallback is "direct" (not started by an automation)
+// rather than a restatement that this is an agent run.
 type AgentRunOrigin = "direct" | "workflow_automation";
 export type AgentRunPreCreateSource =
   | "chat_callback_auto_send"

@@ -289,7 +289,7 @@ export function ComposerCreatePicker({
         aria-label={t(($) => {
           return $.chat.composer.create.chooseType;
         })}
-        className="flex w-72 max-w-full flex-col gap-1 rounded-xl border-[0.7px] border-control-border bg-card p-1"
+        className="flex w-72 max-w-full flex-col gap-1 rounded-xl border border-control-border bg-card p-1"
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             event.preventDefault();

@@ -70,10 +70,7 @@ export type OfficialWorkflowInstallationDefinition = z.infer<
 export const officialWorkflowInstallationResponseSchema = z
   .object({
     workflow: workflowDetailResponseSchema,
-    // New App -> old API fallback. Current APIs always return authoritative
-    // accepted Definition metadata; remove the optional parser in #29991
-    // after pre-P4 APIs are no longer serving or retained for rollback.
-    definition: officialWorkflowInstallationDefinitionSchema.optional(),
+    definition: officialWorkflowInstallationDefinitionSchema,
   })
   .strict();
 export type OfficialWorkflowInstallationResponse = z.infer<

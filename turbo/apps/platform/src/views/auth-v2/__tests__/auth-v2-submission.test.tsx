@@ -36,6 +36,7 @@ const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 function backgroundRecoveryAgent() {
   return {
+    isDefaultAgent: false,
     agentId: AGENT_ID,
     avatarUrl: null,
     description: "Reviews pending work",

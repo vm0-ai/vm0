@@ -7,7 +7,6 @@ import {
   createBrowserSessionSignals,
   type BrowserSessionSignals,
 } from "../chat-page/browser-session-block.ts";
-import { pageSignal$ } from "../page-signal.ts";
 
 export interface BrowserSessionPageSignals {
   readonly browser: BrowserSessionSignals;
@@ -19,16 +18,13 @@ export function createBrowserSessionPageSignals(
 ): BrowserSessionPageSignals {
   const browser = createBrowserSessionSignals(threadId);
   const threadAccessible$ = computed(async (get): Promise<boolean> => {
-    const signal = get(pageSignal$);
     const session = await get(browser.session$);
-    signal.throwIfAborted();
     if (session) {
       return true;
     }
     const response = await accept(
       get(apiClient$)(chatThreadByIdContract).get({
         params: { id: threadId },
-        fetchOptions: { signal },
       }),
       [200, 404],
     );

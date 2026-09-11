@@ -27,10 +27,13 @@ import {
   setAblyLoop$,
   setAblyPayloadLoop$,
   setupRealtime$,
-  subscribeRealtimeConnectionState$,
-  type RealtimeConnectionState,
 } from "../signals/realtime.ts";
-import { rootSignal$, setRootSignal$ } from "../signals/root-signal.ts";
+import {
+  rootSignal$,
+  rootVersion$,
+  setRootSignal$,
+} from "../signals/root-signal.ts";
+import { logger } from "../signals/log.ts";
 import { settle } from "../signals/utils.ts";
 import { throttleCommand } from "../signals/command-scheduling.ts";
 import {
@@ -54,10 +57,11 @@ import {
   reloadComputedForConnections$,
   reportWorkerUnavailableForConnections$,
   requireConnectionSignal$,
-  updateRealtimeStatusForConnections$,
   type ConnectionId,
 } from "./worker-context.ts";
 import { SharedDatabaseWorkerRuntime } from "./worker-runtime.ts";
+
+const L = logger("SharedDatabaseWorker");
 
 const workerRuntimeState$ = state<SharedDatabaseWorkerRuntime | null>(null);
 const workerDaemonsStartedState$ = state(false);
@@ -126,7 +130,7 @@ const executeCatchUpChatEvent$ = command(
 );
 
 const catchUpChatEventThrottle$ = computed((get) => {
-  get(rootSignal$).throwIfAborted();
+  get(rootVersion$);
   return throttleCommand(
     executeCatchUpChatEvent$,
     CHAT_EVENT_CATCH_UP_THROTTLE_MS,
@@ -145,7 +149,7 @@ interface WorkerChatThreadIndicatorsCache {
 
 const workerChatThreadIndicatorsCache$ = computed(
   (get): WorkerChatThreadIndicatorsCache => {
-    get(rootSignal$).throwIfAborted();
+    get(rootVersion$);
     return { source: null, result: null };
   },
 );
@@ -181,18 +185,6 @@ const readWorkerChatThreadIndicators$ = command(
     return result;
   },
 );
-
-function sharedDatabaseConnectionStatus(
-  state: RealtimeConnectionState,
-): "connected" | "connecting" | "disconnected" {
-  if (state === "connected") {
-    return "connected";
-  }
-  if (state === "closed" || state === "closing" || state === "failed") {
-    return "disconnected";
-  }
-  return "connecting";
-}
 
 function isInboundMessage(value: unknown): value is InboundMessage {
   return (
@@ -279,15 +271,6 @@ export const bootstrapWorker$ = command(
         ...(vercelProtectionBypass ? { vercelProtectionBypass } : {}),
       },
       signal,
-    );
-  },
-);
-
-const updateSharedDatabaseRealtimeStatus$ = command(
-  ({ set }, state: RealtimeConnectionState): void => {
-    set(
-      updateRealtimeStatusForConnections$,
-      sharedDatabaseConnectionStatus(state),
     );
   },
 );
@@ -396,16 +379,9 @@ const reloadWorkerQueueDataFromRealtime$ = command(
 
 const runSharedDatabaseWorkerDaemons$ = command(
   async ({ set }, signal: AbortSignal): Promise<void> => {
-    set(
-      subscribeRealtimeConnectionState$,
-      (state) => {
-        set(updateSharedDatabaseRealtimeStatus$, state);
-      },
-      signal,
-    );
     const setup = await settle(set(setupRealtime$, signal), signal);
     if (!setup.ok) {
-      set(updateSharedDatabaseRealtimeStatus$, "failed");
+      L.warn("shared database realtime setup failed", setup.error);
       return;
     }
     const subscriptions = await settle(
@@ -470,7 +446,10 @@ const runSharedDatabaseWorkerDaemons$ = command(
     );
     signal.throwIfAborted();
     if (!subscriptions.ok) {
-      set(updateSharedDatabaseRealtimeStatus$, "failed");
+      L.warn(
+        "shared database realtime subscriptions failed",
+        subscriptions.error,
+      );
     }
   },
 );

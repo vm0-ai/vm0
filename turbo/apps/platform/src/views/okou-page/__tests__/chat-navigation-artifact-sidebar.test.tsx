@@ -448,7 +448,7 @@ test("Render a generated private image from the authenticated file reference", a
   expect(within(dialog).queryByLabelText(/^share$/i)).not.toBeInTheDocument();
 });
 
-test.each(["https://f.okou.io", "https://files.sites.vm7.io"])(
+test.each(["https://a.okou.io", "https://files.sites.vm7.io"])(
   "public CDN images use the file viewer on %s",
   async (origin) => {
     const filename = "shared-image.png";

@@ -47,6 +47,62 @@ function hostKeyDocs(name: string): RustTypeDeclarationDoc[] {
 
 export const sshTypeBindings = [
   {
+    schema: runnerSshContract.observe.body,
+    rustModulePath: ["runners", "ssh"],
+    rustTypeName: "ObservationRequest",
+    direction: "request",
+    declarations: [
+      {
+        rustTypeName: "ObservationRequest",
+        rustDoc: [
+          "Latest connection evidence, never commands or authorization.",
+        ],
+        fields: {
+          connectionId: ["Exact owner connection UUID."],
+          runnerIdentity: ["Winning process identity."],
+          expectedGeneration: [
+            "Configuration used, including successful TOFU advancement.",
+          ],
+          observedAt: [
+            "UTC observation time, ordered independently of report delivery.",
+          ],
+          failureReason: [
+            "Connection failure; null means verified host and authenticated user.",
+          ],
+        },
+      },
+      identityDocs("ObservationRequestRunnerIdentity"),
+      {
+        rustTypeName: "ObservationRequestFailureReason",
+        rustDoc: [
+          "Allow-listed connection failures, excluding command and authority failures.",
+        ],
+        variants: {
+          invalid_credential: [
+            "Private key or passphrase could not be decoded.",
+          ],
+          unsupported_credential: [
+            "Unsupported private key format or algorithm.",
+          ],
+          credential_resource_limit: [
+            "Credential exceeds the supported decoding envelope.",
+          ],
+          unsafe_destination: [
+            "Destination does not meet the public address policy.",
+          ],
+          network_failure: ["DNS or connection failed."],
+          host_key_mismatch: [
+            "Verified host identity differs from the stored pin.",
+          ],
+          unsupported_host_key: ["Host key is unsupported."],
+          authentication_failed: ["SSH user authentication failed."],
+          protocol: ["Connection handshake failed before user authentication."],
+          timed_out: ["Connection did not authenticate before its deadline."],
+        },
+      },
+    ],
+  },
+  {
     schema: runnerSshInvalidateSchema,
     rustModulePath: ["runners", "ssh"],
     rustTypeName: "InvalidateNotification",

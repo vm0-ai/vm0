@@ -142,7 +142,7 @@ const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentProps>(
             data-slot="popover-content"
             className={cn(
               anchoredPopupTransitionClassName,
-              "w-72 rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-4 text-foreground outline-none",
+              "w-72 rounded-[12px] border border-[hsl(var(--gray-400))] bg-card p-4 text-foreground outline-none",
               className,
             )}
             style={

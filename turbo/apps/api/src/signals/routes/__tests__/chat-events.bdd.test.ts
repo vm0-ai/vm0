@@ -222,6 +222,10 @@ import {
   readCustomConnectorCredentialStorageParent,
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
+import {
+  auxiliaryResults,
+  auxiliaryWarnings,
+} from "./helpers/auxiliary-generation";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import {
   commitMemoryVersion,
@@ -21807,6 +21811,9 @@ describe("CHAT-02: incomplete-round context", () => {
 });
 
 describe("CHAT-02: initial thinking indicator", () => {
+  // Provider text is untrusted and must never reach a log or a metric.
+  const privateProviderDetail = "private_prompt_history_authorization_canary";
+
   it.each([
     { enabled: false, existingThread: false },
     { enabled: true, existingThread: false },
@@ -21924,6 +21931,8 @@ describe("CHAT-02: initial thinking indicator", () => {
           error: { code: 504, message: providerDetail },
         });
       },
+      outcome: "degraded",
+      reason: "upstream_timeout",
       warned: false,
     },
     {
@@ -21931,6 +21940,8 @@ describe("CHAT-02: initial thinking indicator", () => {
       thinkingResponse: () => {
         return new HttpResponse(providerDetail, { status: 429 });
       },
+      outcome: "degraded",
+      reason: "rate_limited",
       warned: false,
     },
     {
@@ -21938,6 +21949,8 @@ describe("CHAT-02: initial thinking indicator", () => {
       thinkingResponse: () => {
         return new HttpResponse(providerDetail, { status: 502 });
       },
+      outcome: "degraded",
+      reason: "provider_unavailable",
       warned: false,
     },
     // Negative control: an unsupported request is our defect, not the
@@ -21947,6 +21960,8 @@ describe("CHAT-02: initial thinking indicator", () => {
       thinkingResponse: () => {
         return new HttpResponse(providerDetail, { status: 400 });
       },
+      outcome: "error",
+      reason: "invalid_request",
       warned: true,
     },
     {
@@ -21954,10 +21969,12 @@ describe("CHAT-02: initial thinking indicator", () => {
       thinkingResponse: () => {
         return new HttpResponse(providerDetail, { status: 401 });
       },
+      outcome: "error",
+      reason: "auth",
       warned: true,
     },
-    // An exhausted token budget describes our own request rather than the
-    // provider's availability, so it stays outside the suppressed set.
+    // The shared boundary counts a token ceiling as expected degradation, but
+    // the optional marker remains absent because shortened copy is unusable.
     {
       name: "an exhausted token budget",
       thinkingResponse: () => {
@@ -21971,11 +21988,13 @@ describe("CHAT-02: initial thinking indicator", () => {
           ],
         });
       },
-      warned: true,
+      outcome: "degraded",
+      reason: "output_truncated",
+      warned: false,
     },
   ])(
     "omits opening copy and reports a defect only for $name",
-    async ({ thinkingResponse, warned }) => {
+    async ({ thinkingResponse, outcome, reason, warned }) => {
       const { actor, agentId } = await entitledChatActor();
       mockOptionalEnv("OPENROUTER_API_KEY", "thinking-classification-key");
       server.use(
@@ -22013,13 +22032,19 @@ describe("CHAT-02: initial thinking indicator", () => {
       ).toStrictEqual([]);
       expect((await api.readRun(actor, run.runId)).status).toBe("pending");
 
-      const warnings = context.mocks.axiomLogging.warn.mock.calls.filter(
-        ([message]) => {
-          return message === "Initial thinking generation failed";
-        },
-      );
+      const warnings = auxiliaryWarnings(context);
       expect(warnings).toHaveLength(warned ? 1 : 0);
       expect(JSON.stringify(warnings)).not.toContain(providerDetail);
+      expect(auxiliaryResults(context, "chat_initial_thinking")).toStrictEqual([
+        expect.objectContaining({
+          outcome,
+          reason,
+          run_id: run.runId,
+        }),
+      ]);
+      expect(
+        JSON.stringify(auxiliaryResults(context, "chat_initial_thinking")),
+      ).not.toContain(providerDetail);
       await cancelChatRun(actor, run.runId);
     },
   );
@@ -22316,6 +22341,136 @@ describe("CHAT-02: initial thinking indicator", () => {
 
   it.each([
     {
+      name: "an HTTP rate limit",
+      response: () => {
+        return HttpResponse.json(
+          { error: { code: 429 } },
+          { status: 429, headers: { "retry-after": "12" } },
+        );
+      },
+      outcome: "degraded",
+      reason: "rate_limited",
+      retryAfterMs: 12_000,
+    },
+    {
+      // OpenRouter reports an exhausted upstream window as a synthetic gateway
+      // failure. It is the same admission problem, not a separate outage.
+      name: "a rate limit wrapped in a synthetic 502",
+      response: () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "error",
+              error: { code: 429, message: privateProviderDetail },
+            },
+          ],
+        });
+      },
+      outcome: "degraded",
+      reason: "rate_limited",
+      retryAfterMs: undefined,
+    },
+    {
+      name: "an unreachable provider",
+      response: () => {
+        return new HttpResponse(privateProviderDetail, { status: 503 });
+      },
+      outcome: "degraded",
+      reason: "provider_unavailable",
+      retryAfterMs: undefined,
+    },
+    {
+      name: "rejected credentials",
+      response: () => {
+        return new HttpResponse(privateProviderDetail, { status: 401 });
+      },
+      outcome: "error",
+      reason: "auth",
+      retryAfterMs: undefined,
+    },
+    {
+      // Non-empty for the provider, yet nothing survives sanitization.
+      name: "output that sanitizes to nothing",
+      response: () => {
+        return HttpResponse.json({
+          choices: [{ finish_reason: "stop", message: { content: '"""' } }],
+        });
+      },
+      outcome: "error",
+      reason: "unusable_output",
+      retryAfterMs: undefined,
+    },
+  ])(
+    "classifies $name for optional progress copy",
+    async ({ response, outcome, reason, retryAfterMs }) => {
+      const { actor, agentId } = await entitledChatActor();
+      mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
+      server.use(
+        http.post(
+          "https://openrouter.ai/api/v1/chat/completions",
+          async ({ request }) => {
+            const body = openRouterBodySchema.parse(await request.json());
+            return body.messages[0]?.content.includes(
+              "Write user-visible progress copy",
+            )
+              ? response()
+              : HttpResponse.json({
+                  choices: [
+                    { finish_reason: "stop", message: { content: "Update" } },
+                  ],
+                });
+          },
+        ),
+      );
+      const run = await sendChatRun(actor, {
+        agentId,
+        prompt: "Prepare an update",
+      });
+      await flushWaitUntilForTest();
+
+      expect(auxiliaryResults(context, "chat_initial_thinking")).toStrictEqual([
+        expect.objectContaining({
+          outcome,
+          reason,
+          run_id: run.runId,
+          // Recorded only when the provider actually asked for a delay.
+          ...(retryAfterMs === undefined
+            ? {}
+            : { retry_after_ms: retryAfterMs }),
+        }),
+      ]);
+      expect(
+        auxiliaryResults(context, "chat_initial_thinking")[0],
+      ).toStrictEqual(
+        retryAfterMs === undefined
+          ? expect.not.objectContaining({ retry_after_ms: expect.anything() })
+          : expect.anything(),
+      );
+      // Only a defect the caller can act on still reaches the log.
+      expect(auxiliaryWarnings(context)).toHaveLength(
+        outcome === "error" ? 1 : 0,
+      );
+      expect(JSON.stringify(auxiliaryWarnings(context))).not.toContain(
+        privateProviderDetail,
+      );
+      expect(JSON.stringify(auxiliaryResults(context))).not.toContain(
+        privateProviderDetail,
+      );
+
+      // The optional copy is absent either way; the run itself is untouched.
+      const page = await chat.listThreadEvents(actor, run.threadId);
+      expect(
+        page.events.some((event) => {
+          return event.runEventId === "thinking:initial";
+        }),
+      ).toBeFalsy();
+      expect((await api.readRun(actor, run.runId)).status).toBe("pending");
+      await cancelChatRun(actor, run.runId);
+    },
+  );
+
+  it.each([
+    {
       name: "empty",
       responseBody: {
         choices: [{ finish_reason: "stop", message: { content: "  " } }],
@@ -22382,18 +22537,28 @@ describe("CHAT-02: initial thinking indicator", () => {
           return event.runEventId === "thinking:initial";
         }),
       ).toBeFalsy();
-      const errors = context.mocks.axiomLogging.warn.mock.calls.filter(
-        ([message]) => {
-          return message === "Initial thinking generation failed";
-        },
-      );
-      expect(errors).toHaveLength(1);
-      const logged = z
-        .object({ err: z.instanceof(Error) })
-        .parse(errors[0]?.[1]);
-      expect(logged.err.message).not.toContain(
+      // Output the feature cannot interpret stays a reported defect; only the
+      // provider-side conditions the caller cannot act on became silent.
+      expect(auxiliaryWarnings(context)).toStrictEqual([
+        [
+          "Auxiliary generation failed",
+          expect.objectContaining({
+            feature: "chat_initial_thinking",
+            reason: "invalid_output",
+            runId: run.runId,
+          }),
+        ],
+      ]);
+      expect(JSON.stringify(auxiliaryWarnings(context))).not.toContain(
         "private_prompt_history_authorization_canary",
       );
+      expect(auxiliaryResults(context, "chat_initial_thinking")).toStrictEqual([
+        expect.objectContaining({
+          outcome: "error",
+          reason: "invalid_output",
+          run_id: run.runId,
+        }),
+      ]);
       await cancelChatRun(actor, run.runId);
     },
   );
@@ -22483,26 +22648,26 @@ describe("CHAT-02: initial thinking indicator", () => {
         prompt: "Prepare an update",
       });
       await flushWaitUntilForTest();
-      const errors = context.mocks.axiomLogging.warn.mock.calls.filter(
-        ([message]) => {
-          return message === "Initial thinking generation failed";
-        },
-      );
-      expect(errors).toHaveLength(1);
-      const logged = z
-        .object({ err: z.instanceof(Error) })
-        .parse(errors[0]?.[1]);
-      expect(logged.err).toMatchObject({
-        name: "OpenRouterRequestError",
-        message: "OpenRouter request failed: 400",
-        status: 400,
-        errorType: undefined,
-        ...expected,
-      });
-      expect(JSON.stringify(logged.err)).not.toContain(
+      // A rejected request is the caller's own defect, so it keeps warning with
+      // the enumerated diagnostics and without the provider's message or stack.
+      expect(auxiliaryWarnings(context)).toStrictEqual([
+        [
+          "Auxiliary generation failed",
+          expect.objectContaining({
+            feature: "chat_initial_thinking",
+            reason: "invalid_request",
+            errorKind: "openrouter_request",
+            status: 400,
+            errorType: undefined,
+            runId: run.runId,
+            ...expected,
+          }),
+        ],
+      ]);
+      expect(JSON.stringify(auxiliaryWarnings(context))).not.toContain(
         "private_prompt_history_authorization_canary",
       );
-      expect(logged.err).not.toHaveProperty("cause");
+      expect(auxiliaryWarnings(context)[0]?.[1]).not.toHaveProperty("err");
       const page = await chat.listThreadEvents(actor, run.threadId);
       expect(
         page.events.some((event) => {

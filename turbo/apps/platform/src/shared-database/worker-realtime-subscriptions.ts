@@ -102,6 +102,30 @@ const markWorkerRealtimeSubscriptionReady$ = command(
   },
 );
 
+/**
+ * Tell every tab holding this subscription that Ably lost continuity. Only the
+ * Worker owns the channel, so only it observes `resumed`; each tab then re-runs
+ * the same baseline read it performed when the subscription first went live.
+ */
+const forwardWorkerRealtimeResync$ = command(
+  ({ get, set }, key: string): void => {
+    const subscription = get(workerRealtimeSubscriptionsState$).get(key);
+    if (!subscription) {
+      return;
+    }
+    for (const subscriber of subscription.subscribers.values()) {
+      set(
+        sendSharedDatabaseWorkerMessageToConnection$,
+        subscriber.connectionId,
+        {
+          type: "realtime-resync",
+          subscriptionId: subscriber.subscriptionId,
+        },
+      );
+    }
+  },
+);
+
 const forwardWorkerRealtimeSubscriptionMessage$ = command(
   (
     { get, set },
@@ -181,6 +205,9 @@ const runWorkerRealtimeSubscription$ = command(
           options: {
             onSubscribed: () => {
               set(markWorkerRealtimeSubscriptionReady$, key);
+            },
+            onResync: () => {
+              set(forwardWorkerRealtimeResync$, key);
             },
           },
         },

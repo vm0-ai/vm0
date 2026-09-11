@@ -42,6 +42,8 @@ choice, never a default tag configuration or an automatically replayed event.
   withdrawal, including across anonymous/account association. Client clocks do
   not establish ordering. Stale grants return `409`; clients must not rebase
   them automatically. A full withdrawal is accepted even with a stale revision.
+  A fresh explicit withdrawal records a new revision even when the saved state
+  is already denied, invalidating grants prepared before that withdrawal.
 - GPC remains persisted when the header later disappears. A later explicit
   opt-in requires the current revision and no active GPC. Repeated GPC reads do
   not churn revisions or erase its source.
@@ -90,7 +92,7 @@ processing remain essential operations outside these optional purposes.
 
 ## Rollout compatibility
 
-Migration `1104_privacy_choices` adds two tables; it does not backfill historical
+Migration `1107_privacy_choices` adds two tables; it does not backfill historical
 consent or change existing attribution schemas. Ship it before the API code.
 Old API/clients do not access the new tables and remain compatible. New clients
 receiving a missing/unavailable API must allow no optional tracking.

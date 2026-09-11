@@ -85,12 +85,14 @@ export const openAuthV2AddAccountDialog$ = command(
     set(signInSignals.useAnotherAccount$);
     const continuationSignals: AuthV2ContinuationSignals = {
       ...instrumentedContinuationSignals,
+      // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
       restart$: command(async ({ set }, signal: AbortSignal): Promise<void> => {
         await set(instrumentedContinuationSignals.restart$, signal);
         signal.throwIfAborted();
         set(signInSignals.restart$);
       }),
     };
+    // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
     const operationSignal$ = computed(() => {
       return dialogSignal;
     });

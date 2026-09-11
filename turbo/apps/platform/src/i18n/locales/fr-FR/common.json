@@ -479,14 +479,14 @@
       "attach": "Joindre les annotations",
       "draftOnly": "Les annotations restent dans le brouillon — modifiables jusqu'à l'envoi",
       "inkLabel": "Couleur {{color}}",
-      "notePlaceholder": "Dites ce qui doit changer ici",
+      "notePlaceholder": "Que faut-il changer ?",
       "open": "Annoter",
       "redo": "Rétablir",
       "removeMark": "Supprimer l'annotation",
       "subtitle_one": "{{count}} annotation",
       "subtitle_many": "{{count}} annotations",
       "subtitle_other": "{{count}} annotations",
-      "textPlaceholder": "Saisissez le libellé",
+      "textPlaceholder": "Saisissez ici",
       "tools": {
         "arrow": "Flèche",
         "box": "Rectangle",
@@ -2584,6 +2584,289 @@
         "video": "Vidéo",
         "website": "Site web",
         "workflow": "Workflow"
+      },
+      "workflows": {
+        "back": "Parcourir les workflows",
+        "browse": "Parcourir les workflows",
+        "close": "Fermer",
+        "contextPrefix": "Ce qui compte pour moi : {{context}}",
+        "heading": "Quelle tâche souhaitez-vous déléguer ?",
+        "items": {
+          "competitors": {
+            "cadence": "Chaque jour ou chaque semaine",
+            "description": "Surveillez les prix et fonctionnalités des concurrents, consignez les trouvailles dans Notion et alertez Slack.",
+            "name": "Veille concurrentielle",
+            "next": "Préparez un brouillon, puis confirmez les sources, le périmètre, le moment et la destination avant toute activation.",
+            "prompt": "Aidez-moi à configurer ce workflow : Veille concurrentielle. Consulter les pages concurrentes choisies à intervalles réguliers. Repérer les changements importants de prix, offres ou messages. Enregistrer les sources dans Notion et alerter Slack si souhaité. Préparez un brouillon, puis confirmez les sources, le périmètre, le moment et la destination avant toute activation.",
+            "results": {
+              "one": "Comparaison avant et après",
+              "three": "Brève explication des changements",
+              "two": "Liens sources pour chaque constat"
+            },
+            "scope": "Surveillez les prix et fonctionnalités des concurrents, consignez les trouvailles dans Notion et alertez Slack.",
+            "steps": {
+              "one": "Consulter les pages concurrentes choisies à intervalles réguliers",
+              "three": "Enregistrer les sources dans Notion et alerter Slack si souhaité",
+              "two": "Repérer les changements importants de prix, offres ou messages"
+            },
+            "title": "Repérez les changements chez vos concurrents"
+          },
+          "inbox": {
+            "cadence": "À l’arrivée d’un email",
+            "description": "Triez votre boîte de réception et rédigez des réponses aux e-mails qui en ont besoin.",
+            "name": "Trier Gmail et rédiger des réponses",
+            "next": "Préparez un brouillon, puis confirmez les sources, le périmètre, le moment et la destination avant toute activation.",
+            "prompt": "Aidez-moi à configurer ce workflow : Trier Gmail et rédiger des réponses. Lire les messages dans le périmètre choisi. Les classer par urgence selon les règles convenues. Enregistrer des réponses à relire dans les brouillons Gmail. Préparez un brouillon, puis confirmez les sources, le périmètre, le moment et la destination avant toute activation. Les réponses aux emails doivent rester des brouillons que je relirai et enverrai moi-même.",
+            "results": {
+              "one": "Emails classés par urgence",
+              "three": "Brouillons de réponse Gmail",
+              "two": "Demandes importantes mises en avant"
+            },
+            "scope": "Triez votre boîte de réception et rédigez des réponses aux e-mails qui en ont besoin.",
+            "steps": {
+              "one": "Lire les messages dans le périmètre choisi",
+              "three": "Enregistrer des réponses à relire dans les brouillons Gmail",
+              "two": "Les classer par urgence selon les règles convenues"
+            },
+            "title": "Faites avancer les emails importants"
+          },
+          "invoices": {
+            "cadence": "Lorsque vous étiquetez une facture",
+            "description": "Classer les e-mails de factures dans Drive et consigner chacune dans une feuille.",
+            "name": "Classer les factures Gmail sur Google Drive",
+            "next": "Préparez un brouillon, puis confirmez les sources, le périmètre, le moment et la destination avant toute activation.",
+            "prompt": "Aidez-moi à configurer ce workflow : Classer les factures Gmail sur Google Drive. Identifier une facture grâce au libellé Gmail choisi. Classer la pièce jointe dans le dossier Drive convenu. Consigner les détails dans Google Sheets si souhaité. Préparez un brouillon, puis confirmez les sources, le périmètre, le moment et la destination avant toute activation.",
+            "results": {
+              "one": "Factures dans le bon dossier",
+              "three": "Registre de factures Sheets facultatif",
+              "two": "Historique de classement cohérent"
+            },
+            "scope": "Classer les e-mails de factures dans Drive et consigner chacune dans une feuille.",
+            "steps": {
+              "one": "Identifier une facture grâce au libellé Gmail choisi",
+              "three": "Consigner les détails dans Google Sheets si souhaité",
+              "two": "Classer la pièce jointe dans le dossier Drive convenu"
+            },
+            "title": "Gardez vos factures en ordre"
+          },
+          "meetings": {
+            "cadence": "À l’ajout d’une réunion",
+            "description": "Recherchez les personnes que vous allez rencontrer avant chaque événement du calendrier.",
+            "name": "Recherchez vos réunions du calendrier",
+            "next": "Préparez un brouillon, puis confirmez les sources, le périmètre, le moment et la destination avant toute activation.",
+            "prompt": "Aidez-moi à configurer ce workflow : Recherchez vos réunions du calendrier. Lire les participants et les détails d’un nouvel événement. Rechercher le contexte professionnel et les entreprises. Préparer une fiche avec sources et sujets de discussion. Préparez un brouillon, puis confirmez les sources, le périmètre, le moment et la destination avant toute activation.",
+            "results": {
+              "one": "Contexte des participants et des entreprises",
+              "three": "Sujets de discussion proposés",
+              "two": "Informations pertinentes avec sources"
+            },
+            "scope": "Recherchez les personnes que vous allez rencontrer avant chaque événement du calendrier.",
+            "steps": {
+              "one": "Lire les participants et les détails d’un nouvel événement",
+              "three": "Préparer une fiche avec sources et sujets de discussion",
+              "two": "Rechercher le contexte professionnel et les entreprises"
+            },
+            "title": "Arrivez préparé à vos réunions"
+          },
+          "metrics": {
+            "cadence": "Chaque matin",
+            "description": "Publier quotidiennement les chiffres de visiteurs, inscriptions et activations sur Slack.",
+            "name": "Publier les métriques quotidiennes sur Slack",
+            "next": "Préparez un brouillon, puis confirmez les sources, le périmètre, le moment et la destination avant toute activation.",
+            "prompt": "Aidez-moi à configurer ce workflow : Publier les métriques quotidiennes sur Slack. Lire les indicateurs de site et d’inscription convenus. Préparer un aperçu quotidien avec une période explicite. Partager cet aperçu dans la destination Slack choisie. Préparez un brouillon, puis confirmez les sources, le périmètre, le moment et la destination avant toute activation.",
+            "results": {
+              "one": "Visiteurs quotidiens",
+              "three": "Période de mesure clairement indiquée",
+              "two": "Inscriptions et activations si disponibles"
+            },
+            "scope": "Publier quotidiennement les chiffres de visiteurs, inscriptions et activations sur Slack.",
+            "steps": {
+              "one": "Lire les indicateurs de site et d’inscription convenus",
+              "three": "Partager cet aperçu dans la destination Slack choisie",
+              "two": "Préparer un aperçu quotidien avec une période explicite"
+            },
+            "title": "Suivez la santé de votre activité"
+          },
+          "morning": {
+            "cadence": "Chaque matin",
+            "description": "Transformez les nouveautés Gmail, Agenda et Notion en un court plan de journée dans Slack.",
+            "name": "Brief du matin",
+            "next": "Préparez un brouillon, puis confirmez les sources, le périmètre, le moment et la destination avant toute activation.",
+            "prompt": "Aidez-moi à configurer ce workflow : Brief du matin. Lire les emails importants et les réunions du jour. Prioriser les décisions, les suivis et le temps de concentration. Envoyer un bref plan de la matinée dans Slack. Préparez un brouillon, puis confirmez les sources, le périmètre, le moment et la destination avant toute activation.",
+            "results": {
+              "one": "Priorités du jour",
+              "three": "Réponses et décisions à suivre",
+              "two": "Réunions et temps de concentration"
+            },
+            "scope": "Transformez les nouveautés Gmail, Agenda et Notion en un court plan de journée dans Slack.",
+            "steps": {
+              "one": "Lire les emails importants et les réunions du jour",
+              "three": "Envoyer un bref plan de la matinée dans Slack",
+              "two": "Prioriser les décisions, les suivis et le temps de concentration"
+            },
+            "title": "Commencez la journée avec un plan clair"
+          },
+          "recap": {
+            "cadence": "Vérification régulière des nouvelles notes",
+            "description": "Partagez un récapitulatif avec les décisions et les actions à entreprendre après chaque réunion.",
+            "name": "Recevez les récapitulatifs de réunion dans Slack",
+            "next": "Préparez un brouillon, puis confirmez les sources, le périmètre, le moment et la destination avant toute activation.",
+            "prompt": "Aidez-moi à configurer ce workflow : Recevez les récapitulatifs de réunion dans Slack. Lire une nouvelle transcription de réunion. Extraire les décisions, actions, responsables et dates indiqués. Envoyer un bref compte rendu à la destination choisie. Préparez un brouillon, puis confirmez les sources, le périmètre, le moment et la destination avant toute activation.",
+            "results": {
+              "one": "Décisions prises pendant la réunion",
+              "three": "Informations manquantes clairement signalées",
+              "two": "Actions et responsables mentionnés"
+            },
+            "scope": "Partagez un récapitulatif avec les décisions et les actions à entreprendre après chaque réunion.",
+            "steps": {
+              "one": "Lire une nouvelle transcription de réunion",
+              "three": "Envoyer un bref compte rendu à la destination choisie",
+              "two": "Extraire les décisions, actions, responsables et dates indiqués"
+            },
+            "title": "Transformez les réunions en actions"
+          },
+          "reply": {
+            "cadence": "À l’arrivée d’une réponse correspondante",
+            "description": "Suivez une conversation et recevez les points clés de chaque réponse ainsi que les prochaines étapes.",
+            "name": "Suivi des réponses par email",
+            "next": "Préparez un brouillon, puis confirmez les sources, le périmètre, le moment et la destination avant toute activation.",
+            "prompt": "Aidez-moi à configurer ce workflow : Suivi des réponses par email. Suivre une conversation email et les expéditeurs convenus. Détecter une nouvelle réponse et résumer les points importants. Alerter une seule fois et préparer un brouillon si nécessaire. Préparez un brouillon, puis confirmez les sources, le périmètre, le moment et la destination avant toute activation. Les réponses aux emails doivent rester des brouillons que je relirai et enverrai moi-même.",
+            "results": {
+              "one": "Réponse reçue et points clés",
+              "three": "Brouillon de suivi si utile",
+              "two": "Actions demandées ou échéances"
+            },
+            "scope": "Suivez une conversation et recevez les points clés de chaque réponse ainsi que les prochaines étapes.",
+            "steps": {
+              "one": "Suivre une conversation email et les expéditeurs convenus",
+              "three": "Alerter une seule fois et préparer un brouillon si nécessaire",
+              "two": "Détecter une nouvelle réponse et résumer les points importants"
+            },
+            "title": "Ne manquez pas la réponse attendue"
+          },
+          "weekly": {
+            "cadence": "Chaque semaine",
+            "description": "Résumez votre activité GitHub, Gmail et Agenda dans une mise à jour hebdomadaire Slack.",
+            "name": "Synthèse hebdomadaire personnelle",
+            "next": "Préparez un brouillon, puis confirmez les sources, le périmètre, le moment et la destination avant toute activation.",
+            "prompt": "Aidez-moi à configurer ce workflow : Synthèse hebdomadaire personnelle. Collecter l’activité des sources choisies. Regrouper les réalisations, décisions en attente et suivis. Partager le bilan hebdomadaire dans le Slack choisi. Préparez un brouillon, puis confirmez les sources, le périmètre, le moment et la destination avant toute activation.",
+            "results": {
+              "one": "Réalisations de la semaine",
+              "three": "Engagements à venir",
+              "two": "Décisions en attente et suivis"
+            },
+            "scope": "Résumez votre activité GitHub, Gmail et Agenda dans une mise à jour hebdomadaire Slack.",
+            "steps": {
+              "one": "Collecter l’activité des sources choisies",
+              "three": "Partager le bilan hebdomadaire dans le Slack choisi",
+              "two": "Regrouper les réalisations, décisions en attente et suivis"
+            },
+            "title": "Faites le bilan de votre semaine"
+          }
+        },
+        "next": "Workflow suivant",
+        "ownSources": "Votre workflow utilisera vos propres sources et contenus.",
+        "placeholder": "Facultatif — indiquez ce qui compte pour vous",
+        "preview": {
+          "competitors": {
+            "changed": "Changed",
+            "footer": "Source page and change history included",
+            "heading": "One change worth a closer look.",
+            "label": "Veille concurrentielle",
+            "now": "Now",
+            "plan": "Example company’s team plan",
+            "previous": "Previous",
+            "unit": "/ mo"
+          },
+          "inbox": {
+            "draft": "Reply draft",
+            "label": "Trier Gmail et rédiger des réponses",
+            "later": "Your weekly digest",
+            "needsReply": "Needs reply",
+            "readLater": "Read later",
+            "review": "Review before sending",
+            "subject": "Re: Next steps",
+            "text": "Thanks for the details. I’ve reviewed the proposal and…"
+          },
+          "invoices": {
+            "amount": "Amount",
+            "example": "Example studio",
+            "file": "Invoice — September",
+            "filed": "Filed",
+            "footer": "An optional Sheet keeps the record together",
+            "label": "Classer les factures Gmail sur Google Drive",
+            "path": "Finance / Invoices / Sep",
+            "second": "Sample supply co.",
+            "status": "Status",
+            "vendor": "Vendor"
+          },
+          "meetings": {
+            "heading": "Your next conversation.",
+            "initials": "JL",
+            "label": "Recherchez vos réunions du calendrier",
+            "note": "A useful place to begin",
+            "person": "Jordan Lee",
+            "question": "Ask how the team handles customer handoffs.",
+            "role": "Operations lead · Example company",
+            "tagOne": "Company context",
+            "tagTwo": "Discussion points"
+          },
+          "metrics": {
+            "activated": "Activated",
+            "footer": "A clear period. Only the metrics you choose.",
+            "label": "Publier les métriques quotidiennes sur Slack",
+            "period": "Yesterday vs. prior day",
+            "signups": "Signups",
+            "visitors": "Visitors"
+          },
+          "morning": {
+            "footer": "2 emails need your attention",
+            "heading": "A little clarity for your day.",
+            "label": "Brief du matin",
+            "meetingOne": "Team check-in",
+            "meetingTwo": "Client discovery",
+            "priority": "First things first",
+            "task": "Review the proposal before your client call"
+          },
+          "recap": {
+            "assign": "To assign",
+            "decision": "Decision: move ahead with a pilot",
+            "due": "Due",
+            "friday": "Fri",
+            "label": "Recevez les récapitulatifs de réunion dans Slack",
+            "monday": "Mon",
+            "one": "Send the revised brief",
+            "owner": "Owner",
+            "task": "Next step",
+            "team": "Team",
+            "three": "Book the next check-in",
+            "two": "Confirm the pilot scope",
+            "you": "You"
+          },
+          "reply": {
+            "heading": "The reply you were waiting for.",
+            "label": "Suivi des réponses par email",
+            "next": "Next step",
+            "quote": "“Thursday works for us. Could you share a short agenda?”",
+            "subject": "Re: Our next conversation",
+            "task": "Confirm the time and prepare an agenda"
+          },
+          "weekly": {
+            "heading": "A week worth looking back on.",
+            "label": "Synthèse hebdomadaire personnelle",
+            "next": "Carry into next week",
+            "one": "Shared the revised proposal",
+            "task": "Confirm the launch date with the team",
+            "two": "Wrapped up the onboarding guide"
+          }
+        },
+        "previous": "Workflow précédent",
+        "sample": "Exemple",
+        "tailor": "Que souhaitez-vous adapter ?",
+        "use": "Utiliser ce workflow",
+        "whatHappens": "À chaque exécution",
+        "whatYouGet": "Ce que vous obtiendrez",
+        "worksWith": "Applications utilisées"
       }
     },
     "templates": {
@@ -3586,9 +3869,7 @@
       "requestFailed": "La requête a échoué"
     },
     "realtime": {
-      "degraded": "Les mises à jour en direct ont rencontré un problème. Veuillez actualiser la page.",
-      "disconnected": "Connexion en temps réel interrompue",
-      "reconnecting": "Reconnexion en temps réel"
+      "degraded": "Les mises à jour en direct ont rencontré un problème. Veuillez actualiser la page."
     }
   },
   "invitationRedirect": {
@@ -5493,6 +5774,14 @@
           "description": "Choisissez le modèle pour la saisie vocale v2. Les modèles de transcription utilisent {{model}} pour améliorer le texte.",
           "title": "Modèle de saisie vocale",
           "unavailable": "Modèle indisponible ({{model}})"
+        },
+        "welcomeThread": {
+          "create": "Créer une discussion de bienvenue",
+          "creating": "Création…",
+          "defaultAgentNotReady": "Configurez l’agent par défaut de l’espace de travail, puis réessayez.",
+          "description": "Créez une discussion de bienvenue avec la présentation et les exemples.",
+          "failed": "Impossible de créer la discussion de bienvenue. Réessayez.",
+          "title": "Discussion de bienvenue"
         }
       },
       "emailSubscription": {
@@ -5777,6 +6066,23 @@
     "cancel": "Annuler",
     "chooseFile": "Choisir un fichier",
     "choosePrivateKeyFile": "Choisir un fichier de clé privée",
+    "connectionStatus": {
+      "attention_one": "{{count}} hôte SSH nécessite votre attention",
+      "attention_many": "{{count}} hôtes SSH nécessitent votre attention",
+      "attention_other": "{{count}} hôtes SSH nécessitent votre attention",
+      "authenticationFailed": "L’authentification SSH a échoué. Vérifiez le nom d’utilisateur, la clé privée et l’autorisation sur le serveur ; modifiez l’hôte ou remplacez les identifiants si nécessaire.",
+      "credentialResourceLimit": "La clé privée dépasse les limites de traitement prises en charge. Réexportez-la avec un chiffrement compatible, puis remplacez les identifiants.",
+      "hostKeyMismatch": "La clé d’hôte du serveur ne correspond pas à l’identité enregistrée. Vérifiez le serveur indépendamment avant de réinitialiser sa clé d’hôte.",
+      "invalidCredential": "La clé privée ou sa phrase secrète n’a pas pu être lue. Remplacez les identifiants par la clé complète et la phrase secrète correcte.",
+      "networkFailure": "La dernière connexion SSH a échoué. Vérifiez le nom d’hôte, le port, la disponibilité du serveur et l’accès du Runner à travers le pare-feu.",
+      "observedAt": "Observé : {{time}}",
+      "protocol": "La négociation SSH a échoué. Vérifiez que ce port fournit SSH et que le serveur prend en charge des algorithmes compatibles.",
+      "timedOut": "La dernière connexion SSH a expiré avant la fin de l’authentification. Vérifiez le point d’accès, le pare-feu et la disponibilité du serveur.",
+      "unavailable": "L’état de la connexion SSH est indisponible",
+      "unsafeDestination": "Cet hôte ne correspond pas à une adresse publique autorisée. Utilisez un point d’accès SSH public.",
+      "unsupportedCredential": "Le format ou l’algorithme de la clé privée n’est pas pris en charge. Remplacez-la par une clé OpenSSH, PKCS8 ou RSA PEM compatible.",
+      "unsupportedHostKey": "La clé d’hôte du serveur n’est pas prise en charge. Configurez une clé d’hôte Ed25519, ECDSA ou RSA compatible sur le serveur."
+    },
     "credentialsHelp": "Les identifiants sont accessibles uniquement en écriture et restent hors du sandbox. Collez la clé complète ; les espaces sont conservés. Les champs sont effacés à l’envoi ou à la fermeture du formulaire.",
     "delete": "Supprimer l’hôte",
     "deleteHelp": "Supprimer cet hôte et ses identifiants enregistrés ? Les Agents ne le verront plus dans l’inventaire actuel.",

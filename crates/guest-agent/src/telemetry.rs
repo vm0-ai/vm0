@@ -337,6 +337,11 @@ enum Cmd {
 /// Holds both the command channel and the spawned task's [`JoinHandle`],
 /// so callers see one lifecycle object rather than juggling two.
 /// Construct with [`Self::spawn_for_paths`]; release with [`Self::shutdown`].
+///
+/// Dropping this handle, including by cancelling a consuming shutdown, closes
+/// the command channel. The worker finishes queued and in-flight uploads under
+/// the existing HTTP timeouts before exiting. Cancelling a borrowed
+/// [`Self::flush`] future alone leaves the worker running.
 pub struct Telemetry {
     tx: mpsc::Sender<Cmd>,
     handle: JoinHandle<()>,
@@ -489,8 +494,8 @@ async fn run(
                 }
                 Some(Cmd::Shutdown) | None => { incidents.flush(&http, &run_id).await; break; },
             },
-            result = incidents.rx.changed() => {
-                if result.is_ok() { incidents.flush(&http, &run_id).await; }
+            Ok(()) = incidents.rx.changed() => {
+                incidents.flush(&http, &run_id).await;
             }
             _ = interval.tick() => {
                 let _ = upload_with_incidents(&http, &masker, &run_id, &telemetry_paths, UploadMode::Live, &mut incidents).await;
@@ -519,8 +524,10 @@ async fn upload_with_incidents(
     loop {
         tokio::select! {
             biased;
-            result = incidents.rx.changed() => {
-                if result.is_ok() { incidents.flush(http, run_id).await; }
+            // Disable this branch on closure. Looping on its ready error can
+            // starve the upload and its HTTP timeout of cooperative budget.
+            Ok(()) = incidents.rx.changed() => {
+                incidents.flush(http, run_id).await;
             }
             result = &mut upload => return result,
         }

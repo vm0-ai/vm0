@@ -208,6 +208,7 @@ export function installChatListAgent(
     await gate;
     return respond(200, [
       {
+        isDefaultAgent: false,
         agentId: CHAT_LIST_AGENT_ID,
         ownerId: "chat-list-owner",
         displayName: "List agent",

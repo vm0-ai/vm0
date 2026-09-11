@@ -11,7 +11,6 @@ import {
   MessageSquare,
   Presentation,
   RefreshCw,
-  Search,
   Sparkles,
   UserRound,
   Video,
@@ -26,6 +25,7 @@ import type {
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ComposerPresentationRecommendations } from "./chat-composer.tsx";
+import { ComposerWorkflowRecommendations } from "./composer-workflow-recommendations.tsx";
 
 const TASK_ICONS = {
   workflow: Workflow,
@@ -42,16 +42,6 @@ const IDEA_ICONS = {
     Sparkles,
     FileText,
     ChartNoAxesCombined,
-  ],
-  workflow: [
-    Mail,
-    Search,
-    FileText,
-    ChartNoAxesCombined,
-    CalendarDays,
-    FileText,
-    MessageSquare,
-    FileText,
   ],
   video: [
     Image,
@@ -95,16 +85,6 @@ const IMAGE_IDEAS = [
   "greetingCard",
   "brandCharacter",
 ] as const;
-const WORKFLOW_IDEAS = [
-  "emailBrief",
-  "topicUpdates",
-  "progressRecap",
-  "numbersBrief",
-  "meetingPrep",
-  "meetingActions",
-  "replyWatch",
-  "fileOrganization",
-] as const;
 const VIDEO_IDEAS = [
   "animatePhoto",
   "productDemo",
@@ -133,7 +113,7 @@ function ComposerTaskIdeas({
   task,
 }: {
   readonly signals: ComposerSignals;
-  readonly task: ComposerIdeaTask;
+  readonly task: Exclude<ComposerIdeaTask, "workflow">;
 }) {
   const { t } = useTranslation();
   const copy = t(
@@ -145,9 +125,6 @@ function ComposerTaskIdeas({
   const ideas = {
     image: IMAGE_IDEAS.map((key) => {
       return copy.image[key];
-    }),
-    workflow: WORKFLOW_IDEAS.map((key) => {
-      return copy.workflow[key];
     }),
     video: VIDEO_IDEAS.map((key) => {
       return copy.video[key];
@@ -309,9 +286,14 @@ export function ComposerTaskChips({
       {selected === "presentation" && (
         <ComposerPresentationRecommendations signals={signals} />
       )}
-      {selected !== null && selected !== "presentation" && (
-        <ComposerTaskIdeas signals={signals} task={selected} />
+      {selected === "workflow" && (
+        <ComposerWorkflowRecommendations signals={signals} />
       )}
+      {selected !== null &&
+        selected !== "presentation" &&
+        selected !== "workflow" && (
+          <ComposerTaskIdeas signals={signals} task={selected} />
+        )}
     </section>
   );
 }

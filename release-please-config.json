@@ -72,6 +72,9 @@
         "crates/process-control-ipc": {
             "release-type": "rust"
         },
+        "crates/process-launch": {
+            "release-type": "rust"
+        },
         "crates/guest-agent": {
             "release-type": "rust"
         },

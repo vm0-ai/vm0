@@ -851,6 +851,7 @@ function otherAgentWorkflow(): WorkflowDetailResponse {
 
 function agent(id: string, displayName: string): AgentResponse {
   return {
+    isDefaultAgent: false,
     agentId: id,
     ownerId: CURRENT_USER_ID,
     displayName,
@@ -893,6 +894,7 @@ function mockAgentPageApis(): void {
     const displayName =
       params.id === OTHER_AGENT_ID ? "Support Bot" : "Research Bot";
     return respond(200, {
+      isDefaultAgent: false,
       agentId: params.id,
       ownerId: CURRENT_USER_ID,
       description: "Finds and summarizes information",
@@ -2411,28 +2413,6 @@ test("Keep a retired Official Workflow operable but structurally read-only", asy
   click(screen.getByLabelText("Workflow files"));
   expect(screen.queryByText("Upload text files")).not.toBeInTheDocument();
   expect(screen.queryByText("Delete selected file")).not.toBeInTheDocument();
-});
-
-test("Preserve safe Official Workflow operations when parameter metadata is unavailable", async () => {
-  const workflow = officialSalesResearch("retired");
-  mockWorkflowApis([workflow]);
-  context.mocks.api(
-    officialWorkflowInstallationsContract.get,
-    ({ respond }) => {
-      return respond(200, { workflow });
-    },
-  );
-
-  await setupWorkflowDetailPage(workflowDetailPath("info"));
-
-  await expect(
-    screen.findByText(
-      "Authoritative parameter metadata is temporarily unavailable.",
-    ),
-  ).resolves.toBeInTheDocument();
-  expect(buttonByText("Reconfigure")).toBeDisabled();
-  expect(buttonByText("Copy workflow")).toBeEnabled();
-  expect(buttonByText("Uninstall")).toBeEnabled();
 });
 
 async function expectOfficialReconciliation(

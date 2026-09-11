@@ -46,12 +46,16 @@ return {
     colorBackground: "hsl(var(--card))",
     colorForeground: "hsl(var(--foreground))",
     colorPrimary: "hsl(var(--brand-text))",
-    colorBorder: "hsl(var(--border))",
+    colorNeutral: "hsl(var(--foreground))",
     colorRing: "hsl(var(--ring))",
     colorDanger: "hsl(var(--destructive))",
   },
 };
 ```
+
+Clerk derives its border scale from `colorNeutral`. Do not map the application's
+`--border` token through Clerk's `colorBorder`: hosted controls also use a local
+`--border` variable, so the deferred value can resolve against the wrong owner.
 
 Provider appearance must not contain `elements`. Authentication-specific
 element overrides belong on `SignIn` and `SignUp`, so unrelated Clerk surfaces

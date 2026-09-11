@@ -187,8 +187,29 @@
     {
       "idx": 1104,
       "version": "7",
-      "when": 1789037955969,
-      "tag": "1104_privacy_choices",
+      "when": 1789038329413,
+      "tag": "1104_flawless_alex_power",
+      "breakpoints": true
+    },
+    {
+      "idx": 1105,
+      "version": "7",
+      "when": 1789049108125,
+      "tag": "1105_prepare_goal_metadata_contraction",
+      "breakpoints": true
+    },
+    {
+      "idx": 1106,
+      "version": "7",
+      "when": 1789049110365,
+      "tag": "1106_contract_retired_goal_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 1107,
+      "version": "7",
+      "when": 1789093787653,
+      "tag": "1107_privacy_choices",
       "breakpoints": true
     }
   ]

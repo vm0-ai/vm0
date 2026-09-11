@@ -1,5 +1,6 @@
 import { resolveApiBase } from "../api-base.ts";
 import { parseArtifactReference } from "@okouai/api-contracts/contracts/artifact-references";
+import { isArtifactPublicationFilePath } from "@okouai/api-contracts/contracts/artifact-delivery";
 import { privateHostedDeploymentId } from "@okouai/core/private-hosted-artifact";
 import {
   parseConnectorAuthorizeUrl,
@@ -36,6 +37,7 @@ import {
   type BrowserSessionDescriptor,
 } from "./browser-session-block.ts";
 import { isTrustedPlatformHostname } from "./trusted-platform-url.ts";
+import { isOfficialTemplatePreviewUrl } from "./official-template-preview.ts";
 
 import {
   resolveHostedSiteDomains,
@@ -132,7 +134,6 @@ const SHORT_ARTIFACT_FILE_PATH_PATTERN = /^\/artifacts\/[0-9a-z]{10}\.[^/]+$/;
 const OKOU_SHORT_ARTIFACT_FILE_PATH_PATTERN = /^\/[0-9a-z]{10}\.[^/]+$/;
 const OKOU_SHORT_ARTIFACT_ORIGINS: readonly string[] = Object.freeze([
   "https://a.okou.io",
-  "https://f.okou.io",
   "https://files.sites.vm7.io",
 ]);
 const PLATFORM_FILE_CDN_HOSTS = [
@@ -449,8 +450,7 @@ function isPlatformFileUrl(url: string): boolean {
     parsed.username === "" &&
     parsed.password === "" &&
     (OKOU_SHORT_ARTIFACT_FILE_PATH_PATTERN.test(parsed.pathname) ||
-      (parsed.origin !== "https://a.okou.io" &&
-        /^\/[a-f0-9]{24}\.[a-z0-9]{1,12}$/u.test(parsed.pathname)));
+      isArtifactPublicationFilePath(parsed.pathname));
   if (!isLegacyPath && !isShortArtifactPath && !isOkouShortArtifactPath) {
     return false;
   }
@@ -540,6 +540,7 @@ export function isPreviewableChatUrl(url: string): boolean {
       ),
     ) ||
     Boolean(privateHostedDeploymentId(url, resolveApiBase())) ||
+    isOfficialTemplatePreviewUrl(url) ||
     isPlatformFileUrl(url) ||
     isHostedSiteUrl(url)
   );
