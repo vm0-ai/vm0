@@ -2,12 +2,12 @@ import type { ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import type { VisualizationChart } from "../../signals/okou-page/composer-visualization.ts";
 import {
-  FLIGHT_ROUTE_CITIES,
-  FLIGHT_ROUTE_PATHS,
-  POPULATION_CHOROPLETH_TIERS,
+  FLIGHT_LINE_ARROWS,
+  FLIGHT_LINE_HUB,
+  FLIGHT_LINE_PATHS,
   WORD_CLOUD_TERMS,
+  WORLD_COUNTRY_TIERS,
   WORLD_GRATICULE_PATH,
-  WORLD_LAND_PATH,
 } from "./composer-visualization-preview-data.ts";
 
 const PLOT = { left: 25, right: 153, top: 9, bottom: 69 } as const;
@@ -962,63 +962,78 @@ function NestedDonutChartArtwork() {
   );
 }
 
-function MapGraticule() {
-  return (
-    <path
-      d={WORLD_GRATICULE_PATH}
-      fill="none"
-      className="stroke-border"
-      strokeOpacity="0.5"
-      strokeWidth="0.5"
-    />
-  );
-}
-
 function RouteMapChartArtwork() {
   return (
     // The route preview carries no legend, so the map sits lower than in the
     // choropleth to stay vertically centred.
     <g transform="translate(0 6)">
-      <MapGraticule />
-      <path
-        d={WORLD_LAND_PATH}
-        className="fill-chart-blue-100 stroke-chart-blue-200"
-        strokeWidth="0.35"
-        strokeLinejoin="round"
-      />
-      {FLIGHT_ROUTE_PATHS.map(({ d, tone }) => {
+      {WORLD_COUNTRY_TIERS.map(({ d, tone }) => {
+        return (
+          <path
+            key={tone}
+            d={d}
+            className="fill-gray-300 stroke-background"
+            strokeWidth="0.4"
+            strokeLinejoin="round"
+          />
+        );
+      })}
+      {FLIGHT_LINE_PATHS.map((d) => {
         return (
           <path
             key={d}
             d={d}
             fill="none"
-            className={tone}
-            strokeWidth="1.3"
+            className="stroke-chart-blue-500"
+            strokeOpacity="0.5"
+            strokeWidth="1.2"
             strokeLinecap="round"
-            strokeLinejoin="round"
           />
         );
       })}
-      {FLIGHT_ROUTE_CITIES.map(({ x, y }) => {
+      {FLIGHT_LINE_ARROWS.map(({ angle, trail, x, y }) => {
         return (
-          <g key={`${x}-${y}`}>
-            <circle
-              cx={x}
-              cy={y}
-              r="3.4"
-              className="fill-chart-blue-600"
-              fillOpacity="0.15"
+          <g key={trail}>
+            <path
+              d={trail}
+              fill="none"
+              className="stroke-chart-orange"
+              strokeOpacity="0.55"
+              strokeWidth="1.2"
+              strokeLinecap="round"
             />
-            <circle
-              cx={x}
-              cy={y}
-              r="1.8"
-              className="fill-chart-blue-600 stroke-background"
-              strokeWidth="0.7"
+            <path
+              d="M0 0L-3.2 1.7L-3.2-1.7Z"
+              className="fill-chart-orange"
+              transform={`translate(${x} ${y}) rotate(${angle})`}
             />
           </g>
         );
       })}
+      <circle
+        cx={FLIGHT_LINE_HUB.x}
+        cy={FLIGHT_LINE_HUB.y}
+        r="7"
+        fill="none"
+        className="stroke-chart-orange"
+        strokeOpacity="0.22"
+        strokeWidth="0.6"
+      />
+      <circle
+        cx={FLIGHT_LINE_HUB.x}
+        cy={FLIGHT_LINE_HUB.y}
+        r="4.6"
+        fill="none"
+        className="stroke-chart-orange"
+        strokeOpacity="0.45"
+        strokeWidth="0.7"
+      />
+      <circle
+        cx={FLIGHT_LINE_HUB.x}
+        cy={FLIGHT_LINE_HUB.y}
+        r="2.2"
+        className="fill-chart-orange"
+      />
     </g>
   );
 }
@@ -1026,11 +1041,14 @@ function RouteMapChartArtwork() {
 function ChoroplethMapChartArtwork() {
   return (
     <>
-      <MapGraticule />
-      {/* Countries without a population reading fall back to this land base so
-          the map has no holes. */}
-      <path d={WORLD_LAND_PATH} className="fill-muted" />
-      {POPULATION_CHOROPLETH_TIERS.map(({ d, tone }) => {
+      <path
+        d={WORLD_GRATICULE_PATH}
+        fill="none"
+        className="stroke-border"
+        strokeOpacity="0.5"
+        strokeWidth="0.5"
+      />
+      {WORLD_COUNTRY_TIERS.map(({ d, tone }) => {
         return (
           <path
             key={tone}
@@ -1051,7 +1069,7 @@ function ChoroplethMapChartArtwork() {
         >
           0
         </text>
-        {POPULATION_CHOROPLETH_TIERS.map(({ tone }, index) => {
+        {WORLD_COUNTRY_TIERS.map(({ tone }, index) => {
           return (
             <rect
               key={tone}
