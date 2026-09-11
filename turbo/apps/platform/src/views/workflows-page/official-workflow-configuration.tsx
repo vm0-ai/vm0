@@ -79,6 +79,7 @@ export function createOfficialWorkflowConfigurationForm(args: {
     }),
   );
   return {
+    submitted: false,
     target: args.target,
     definitionName: args.definitionName,
     agentId: args.agentId,

@@ -681,14 +681,6 @@ export const reconcileUndeliveredStripePaidInvoices$ = command(
         orgIds.add(result.value);
       }
     }
-    if (events.length > 0) {
-      L.warn("undelivered Stripe paid invoices reconciled", {
-        discovered: events.length,
-        replayed,
-        failed,
-        orgs: orgIds.size,
-      });
-    }
     return {
       discovered: events.length,
       replayed,
@@ -1783,14 +1775,6 @@ const reconcileBillingEntitlementsForScope$ = command(
       signal,
     );
 
-    if (downgraded.length > 0) {
-      L.warn("billing subscriptions downgraded during reconciliation", {
-        count: downgraded.length,
-        subscriptionIds: downgraded.slice(0, 10).map((row) => {
-          return row.subscriptionId;
-        }),
-      });
-    }
     if (expiredConcurrency.length > 0) {
       L.warn("stale payment-failed concurrency subscriptions expired", {
         count: expiredConcurrency.length,

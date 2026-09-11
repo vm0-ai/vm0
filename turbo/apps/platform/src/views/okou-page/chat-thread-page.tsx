@@ -2889,7 +2889,7 @@ function ChatThreadArea({
       {leftPane && <ChatThreadPane isMain pane={leftPane} />}
       {rightPane && (
         <>
-          <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
+          <div className="w-px shrink-0 bg-divider/60" aria-hidden="true" />
           <ChatThreadPane pane={rightPane} />
         </>
       )}
@@ -3444,7 +3444,7 @@ function RunSectionDivider({
       >
         {label}
       </p>
-      <div role="separator" className="h-px flex-1 bg-border/40" />
+      <div role="separator" className="h-px flex-1 bg-divider/40" />
     </div>
   );
 }
@@ -5599,8 +5599,9 @@ function PagedUserGroup({
   );
 }
 
-// A user event does not always render as a bubble: a workflow run, a goal, and
-// a rejected goal each render as their own card or as nothing at all.
+// A user event does not always render as a bubble: a workflow run, a historical
+// goal, and a rejected historical goal each render as their own card or as
+// nothing at all.
 function rendersUserBubble(event: EnrichedChatEvent): boolean {
   return (
     !isRejectedGoalUserMessage(event) &&

@@ -17,7 +17,10 @@ use std::os::fd::{AsRawFd, OwnedFd, RawFd};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::path::{Component, Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::sync::Mutex;
 
 use guest_contracts::diagnostics::WorkloadResourceLimitDiagnostic;
 use guest_contracts::process_containment::{
@@ -40,7 +43,14 @@ pub struct WorkloadContainment {
     placement: Arc<OwnedFd>,
     workload_path: Arc<PathBuf>,
     tool_placement_endpoint: Arc<str>,
-    evidence_stream: Arc<Mutex<Option<UnixStream>>>,
+    evidence_stream: Arc<Mutex<Option<EvidenceStream>>>,
+}
+
+/// Bootstrap completes before Tokio exists; register the socket on first capture.
+#[derive(Debug)]
+enum EvidenceStream {
+    Bootstrap(UnixStream),
+    Registered(tokio::net::UnixStream),
 }
 
 /// Read-only paths used to sample control and workload CPU accounting.
@@ -76,32 +86,51 @@ pub struct WorkloadResourceDiagnostics {
 
 impl WorkloadContainment {
     /// Read root-owned evidence over the existing authenticated bootstrap.
-    /// IO failures permanently close this exchange; cleanup retains its own
-    /// root-owned capture path and execution outcomes are unaffected.
-    pub fn oom_evidence(
+    /// I/O failures and cancellation permanently close this exchange; cleanup
+    /// retains its own root-owned capture path and execution outcomes are unaffected.
+    /// Concurrent captures skip rather than queue behind an outstanding exchange.
+    pub async fn oom_evidence(
         &self,
         reason: guest_contracts::oom_evidence::CaptureReason,
     ) -> Option<guest_contracts::oom_evidence::OomEvidence> {
-        use guest_contracts::oom_evidence::{CaptureReason, EVIDENCE_IO_TIMEOUT, read_evidence};
-        use std::io::Write;
+        use guest_contracts::oom_evidence::{
+            CaptureReason, EVIDENCE_IO_TIMEOUT, MAX_EVIDENCE_BYTES, decode_evidence,
+        };
+
         let mut owner = self.evidence_stream.try_lock().ok()?;
-        let mut stream = owner.take()?;
+        // Restore only a complete exchange. Dropping this future closes the socket
+        // so a partial response can never be mistaken for the next capture.
+        let mut stream = match owner.take()? {
+            EvidenceStream::Bootstrap(stream) => {
+                stream.set_nonblocking(true).ok()?;
+                tokio::net::UnixStream::from_std(stream).ok()?
+            }
+            EvidenceStream::Registered(stream) => stream,
+        };
         let request = match reason {
             CaptureReason::CliError => 2,
             _ => 1,
         };
-        let result = (|| {
-            stream.set_write_timeout(Some(EVIDENCE_IO_TIMEOUT))?;
-            stream.write_all(&[request])?;
-            read_evidence(&stream)
-        })();
-        match result {
-            Ok(evidence) => {
-                *owner = Some(stream);
-                Some(evidence)
+        tokio::time::timeout(EVIDENCE_IO_TIMEOUT, stream.write_all(&[request]))
+            .await
+            .ok()?
+            .ok()?;
+        let evidence = tokio::time::timeout(EVIDENCE_IO_TIMEOUT, async {
+            let mut header = [0; 4];
+            stream.read_exact(&mut header).await?;
+            let length = u32::from_be_bytes(header) as usize;
+            if length > MAX_EVIDENCE_BYTES {
+                return Err(io::Error::other("evidence response exceeds byte limit"));
             }
-            Err(_) => None,
-        }
+            let mut bytes = vec![0; length];
+            stream.read_exact(&mut bytes).await?;
+            decode_evidence(&bytes)
+        })
+        .await
+        .ok()?
+        .ok()?;
+        *owner = Some(EvidenceStream::Registered(stream));
+        Some(evidence)
     }
     /// Receive and adopt the production bootstrap descriptor.
     ///
@@ -225,7 +254,7 @@ impl WorkloadContainment {
         let placement = process_control_ipc::receive_workload_placement(&stream)?;
         let mut containment = Self::adopt(placement, tool_endpoint)?;
         process_control_ipc::write_workload_placement_confirmation(&stream)?;
-        containment.evidence_stream = Arc::new(Mutex::new(Some(stream)));
+        containment.evidence_stream = Arc::new(Mutex::new(Some(EvidenceStream::Bootstrap(stream))));
         Ok(containment)
     }
 
@@ -440,6 +469,9 @@ fn write_self_to_cgroup(fd: RawFd) -> io::Result<()> {
         return Err(io::Error::from_raw_os_error(libc::EIO));
     }
 }
+
+#[cfg(test)]
+mod evidence_tests;
 
 #[cfg(test)]
 mod tests {

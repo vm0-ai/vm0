@@ -1705,7 +1705,7 @@ function OfficialWorkflowReconfigureDialog({
             disabled={reconfiguring}
           />
         ) : null}
-        {reconfigureLoadable.state === "hasError" ? (
+        {activeForm?.submitted && reconfigureLoadable.state === "hasError" ? (
           <Alert variant="destructive">
             <AlertTitle>
               {i18n.t(($) => {
@@ -2743,7 +2743,7 @@ function WorkflowFileManagementItems({
 }) {
   return (
     <>
-      <div className="my-1 h-px bg-border/60" />
+      <div className="my-1 h-px bg-divider/60" />
       <label
         className={cn(
           "flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm transition-colors hover:bg-state-hover hover:text-accent-foreground",
@@ -8819,7 +8819,7 @@ function AutomationRow({
         ) : null}
       </div>
       {showDivider ? (
-        <div className="mx-5 h-px bg-border/50" aria-hidden="true" />
+        <div className="mx-5 h-px bg-divider/50" aria-hidden="true" />
       ) : null}
       {canEditStructure ? (
         <EditWorkflowAutomationDialog

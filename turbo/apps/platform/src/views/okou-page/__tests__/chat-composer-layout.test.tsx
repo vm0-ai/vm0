@@ -1,3 +1,4 @@
+import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
 import { setupPage } from "../../../__tests__/page-helper.ts";
@@ -10,7 +11,7 @@ import {
 
 const APP_HOST = "app.okou.ai";
 
-test("Keep the iPadOS composer from stealing focus", async () => {
+function installIPadBrowser(): void {
   context.mocks.browser.userAgent(
     "Mozilla/5.0 (iPad; CPU OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1",
   );
@@ -19,6 +20,10 @@ test("Keep the iPadOS composer from stealing focus", async () => {
   context.mocks.browser.matchMedia((query) => {
     return query === "(pointer: coarse)" || query === "(any-pointer: fine)";
   });
+}
+
+test("Keep the iPadOS composer from stealing focus", async () => {
+  installIPadBrowser();
   installMessageExperienceChat();
 
   await setupPage({
@@ -36,4 +41,27 @@ test("Keep the iPadOS composer from stealing focus", async () => {
   expect(
     editor.closest("[data-slot='chat-composer-card']"),
   ).not.toContainElement(activeElement);
+});
+
+test("Focus the composer from its empty input area", async () => {
+  const user = userEvent.setup();
+  installIPadBrowser();
+  installMessageExperienceChat();
+
+  await setupPage({
+    context,
+    path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat`,
+    host: APP_HOST,
+  });
+
+  const editor = await findComposer();
+  const input = editor.closest("[data-slot='chat-composer-input']");
+  if (!(input instanceof HTMLElement)) {
+    throw new Error("The composer input area was not found");
+  }
+  expect(editor).not.toHaveFocus();
+
+  await user.click(input);
+
+  expect(editor).toHaveFocus();
 });

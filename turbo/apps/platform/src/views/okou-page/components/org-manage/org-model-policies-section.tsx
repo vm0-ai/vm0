@@ -46,6 +46,7 @@ import {
   ACTIVE_RUN_MODELS,
   getCanonicalModelDisplayName,
   getProvidersForModel,
+  getSelectableProviderTypes,
   isBuiltInModelProviderType,
   type ModelProviderResponse,
   type ModelProviderType,
@@ -650,7 +651,7 @@ function PolicyRow({
   return (
     <div
       data-testid={`org-model-policy-row-${policy.model}`}
-      className="relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 rounded-lg px-3 py-3.5 transition-colors after:pointer-events-none after:absolute after:bottom-0 after:left-[3.75rem] after:right-3 after:h-px after:bg-border/50 after:content-[''] last:after:hidden hover:bg-gray-50 dark:hover:bg-gray-100 lg:grid-cols-[minmax(0,1fr)_236px_96px_36px]"
+      className="relative grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 rounded-lg px-3 py-3.5 transition-colors after:pointer-events-none after:absolute after:bottom-0 after:left-[3.75rem] after:right-3 after:h-px after:bg-divider/50 after:content-[''] last:after:hidden hover:bg-gray-50 dark:hover:bg-gray-100 lg:grid-cols-[minmax(0,1fr)_236px_96px_36px]"
     >
       <div className="col-start-1 row-start-1 flex min-w-0 flex-col justify-center">
         <div className="flex min-w-0 items-center gap-2">
@@ -785,18 +786,22 @@ function ProviderTypeSelect({
         </SelectValue>
       </SelectTrigger>
       <SelectContent>
-        {types.map((type) => {
-          return (
-            <SelectItem key={type} value={type}>
-              <div className="flex min-w-0 items-center gap-2">
-                <ProviderIcon type={type} size={16} />
-                <span className="min-w-0 flex-1 truncate">
-                  {getUILabel(type)}
-                </span>
-              </div>
-            </SelectItem>
-          );
-        })}
+        {types
+          .filter((type) => {
+            return getSelectableProviderTypes().includes(type);
+          })
+          .map((type) => {
+            return (
+              <SelectItem key={type} value={type}>
+                <div className="flex min-w-0 items-center gap-2">
+                  <ProviderIcon type={type} size={16} />
+                  <span className="min-w-0 flex-1 truncate">
+                    {getUILabel(type)}
+                  </span>
+                </div>
+              </SelectItem>
+            );
+          })}
       </SelectContent>
     </Select>
   );

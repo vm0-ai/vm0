@@ -576,6 +576,8 @@ jobs:
           OKOU_DESKTOP_NOTARIZE_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
           OKOU_DESKTOP_NOTARIZE_API_ISSUER: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
         run: |
+          set -o pipefail
+
           app_dir="${{ steps.desktop-app.outputs.okou_app_dir }}"
           zip_artifact_path="apps/desktop/out/Okou-darwin-arm64-$DESKTOP_VERSION.zip"
           dmg_artifact_path="apps/desktop/out/Okou-darwin-arm64-$DESKTOP_VERSION.dmg"
@@ -591,11 +593,37 @@ jobs:
             --volume-name "Okou" \
             --background-svg apps/desktop/assets/dmg-background-okou.svg
           codesign --force --sign "$OKOU_DESKTOP_SIGNING_IDENTITY" --timestamp "$dmg_artifact_path"
-          xcrun notarytool submit "$dmg_artifact_path" \
-            --key "$OKOU_DESKTOP_NOTARIZE_API_KEY_PATH" \
-            --key-id "$OKOU_DESKTOP_NOTARIZE_API_KEY_ID" \
-            --issuer "$OKOU_DESKTOP_NOTARIZE_API_ISSUER" \
-            --wait
+          # A single timed-out status poll makes notarytool exit non-zero while the
+          # submission itself is still healthy, which loses the whole release. Retry
+          # the submission twice; a terminal Apple verdict is never retried.
+          notarize_log="$(mktemp)"
+          notarize_status=1
+          for attempt in 1 2 3; do
+            if xcrun notarytool submit "$dmg_artifact_path" \
+              --key "$OKOU_DESKTOP_NOTARIZE_API_KEY_PATH" \
+              --key-id "$OKOU_DESKTOP_NOTARIZE_API_KEY_ID" \
+              --issuer "$OKOU_DESKTOP_NOTARIZE_API_ISSUER" \
+              --wait 2>&1 | tee "$notarize_log"; then
+              notarize_status=0
+              break
+            fi
+
+            if grep -Eq '^[[:space:]]+status: (Invalid|Rejected)$' "$notarize_log"; then
+              echo "::error::Apple rejected notarization of ${dmg_artifact_path}"
+              exit 1
+            fi
+
+            echo "::warning::Notarization did not complete (attempt ${attempt}/3)"
+            if [ "$attempt" -lt 3 ]; then
+              sleep 30
+            fi
+          done
+
+          if [ "$notarize_status" -ne 0 ]; then
+            echo "::error::Notarization did not complete after 3 attempts"
+            exit 1
+          fi
+
           xcrun stapler staple "$dmg_artifact_path"
 
           {

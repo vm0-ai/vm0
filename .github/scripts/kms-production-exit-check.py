@@ -4,6 +4,8 @@
 import base64
 import binascii
 import datetime as dt
+import errno
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -17,6 +19,19 @@ SOURCE = "arn:aws:kms:us-west-2:072707626411:key/a1b3922b-fab1-4ed3-aa9e-40f86f9
 TARGET = "arn:aws:kms:us-west-2:251964670836:key/e68917e2-5541-4597-b6ef-7e9eb5670947"
 PROJECT = "hidden-lab-39609750"
 REGISTRY_LIMIT = 16 * 1024 * 1024
+PRODUCTION_VERSION = re.compile(r"v\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?")
+REGISTRY_FAILURE_CODES = {
+    "invalid_runner_directory",
+    "non_regular_registry",
+    "registry_size_limit",
+    "invalid_registry",
+    "duplicate_json_key",
+    "missing_registry",
+    "registry_access_denied",
+    "symlink_registry",
+    "registry_io_error",
+    "invalid_registry_json",
+}
 COUNTERS = (
     "productionDirectories",
     "registriesRead",
@@ -118,18 +133,315 @@ def key_category(value):
         return "invalid"
 
 
+SERVICE_STATES = {
+    "LoadState": {
+        "stub",
+        "loaded",
+        "not-found",
+        "bad-setting",
+        "error",
+        "merged",
+        "masked",
+    },
+    "ActiveState": {
+        "active",
+        "reloading",
+        "inactive",
+        "failed",
+        "activating",
+        "deactivating",
+        "maintenance",
+        "refreshing",
+    },
+    "SubState": {
+        "dead",
+        "running",
+        "exited",
+        "failed",
+        "start-pre",
+        "start",
+        "start-post",
+        "auto-restart",
+        "stop",
+        "stop-sigterm",
+        "stop-sigkill",
+        "stop-post",
+        "condition",
+        "final-sigterm",
+        "final-sigkill",
+        "cleaning",
+        "reload",
+        "reload-signal",
+        "reload-notify",
+        "dead-before-auto-restart",
+        "failed-before-auto-restart",
+    },
+    "UnitFileState": {
+        "",
+        "enabled",
+        "enabled-runtime",
+        "linked",
+        "linked-runtime",
+        "alias",
+        "static",
+        "disabled",
+        "masked",
+        "masked-runtime",
+        "indirect",
+        "generated",
+        "transient",
+        "bad",
+    },
+}
+
+
+def validate_service_state(service):
+    require(
+        isinstance(service, dict)
+        and set(service) == set(SERVICE_STATES) | {"MainPID", "ControlPID"},
+        "invalid_service_state",
+    )
+    for key, choices in SERVICE_STATES.items():
+        require(
+            isinstance(service[key], str) and service[key] in choices,
+            "invalid_service_state",
+        )
+    for key in ("MainPID", "ControlPID"):
+        require(
+            type(service[key]) is int and 0 <= service[key] < 2**31,
+            "invalid_service_state",
+        )
+
+
+def missing_registry_evidence(directory):
+    """Read metadata only. Runner maintenance commands can clean state."""
+    evidence = {"runnerVersion": directory.name, "collectionComplete": False}
+    diagnostics = {
+        "stage": "directory",
+        "directoryEntryCount": None,
+        "configFileOnly": None,
+        "serviceReturnCode": None,
+        "serviceStderrPresent": None,
+        "serviceProperties": {},
+        "matchingRunnerCommandLines": None,
+    }
+    try:
+        before = directory.stat(follow_symlinks=False)
+        require(stat.S_ISDIR(before.st_mode), "invalid_runner_directory")
+        entries = list(directory.iterdir())
+        require(len(entries) <= 10000, "directory_evidence_limit")
+        config_only = (
+            len(entries) == 1
+            and entries[0].name == "runner.yaml"
+            and stat.S_ISREG(entries[0].stat(follow_symlinks=False).st_mode)
+        )
+        diagnostics.update(
+            directoryEntryCount=len(entries),
+            configFileOnly=config_only,
+            stage="process_command",
+        )
+        # Command lines may contain credentials: keep them in host memory and
+        # export only a count. This does not prove absence of all retained state.
+        processes = subprocess.run(
+            ["ps", "-C", "runner", "-o", "args=", "-ww"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        require(
+            len(processes.stdout) <= 1024 * 1024
+            and (
+                processes.returncode == 0
+                or processes.returncode == 1
+                and not processes.stdout
+                and not processes.stderr
+            ),
+            "process_evidence_unavailable",
+        )
+        version = re.compile(
+            r"(?<![A-Za-z0-9_.-])" + re.escape(directory.name) + r"(?![A-Za-z0-9_.-])"
+        )
+        matches = sum(
+            bool(version.search(line)) for line in processes.stdout.splitlines()
+        )
+        diagnostics["matchingRunnerCommandLines"] = matches
+        diagnostics["stage"] = "service_command"
+        command = [
+            "systemctl",
+            "show",
+            "--all",
+            "--no-pager",
+            "--property=" + ",".join([*SERVICE_STATES, "MainPID", "ControlPID"]),
+            "vm0-runner-" + directory.name + ".service",
+        ]
+        child = subprocess.run(command, capture_output=True, text=True, timeout=15)
+        diagnostics.update(
+            serviceReturnCode=child.returncode, serviceStderrPresent=bool(child.stderr)
+        )
+        require(
+            child.returncode in (0, 1) and len(child.stdout) <= 4096,
+            "service_state_unavailable",
+        )
+        diagnostics["stage"] = "service_properties"
+        pairs = [line.split("=", 1) for line in child.stdout.splitlines()]
+        require(all(len(pair) == 2 for pair in pairs), "invalid_service_state")
+        service = strict_object(pairs)
+        # Retain only known state values on failure, never raw command output.
+        diagnostics["serviceProperties"] = {
+            key: value
+            for key, value in service.items()
+            if key in SERVICE_STATES and value in SERVICE_STATES[key]
+        }
+        for key in ("MainPID", "ControlPID"):
+            require(
+                isinstance(service.get(key), str)
+                and service[key].isascii()
+                and service[key].isdigit(),
+                "invalid_service_state",
+            )
+            service[key] = int(service[key])
+        validate_service_state(service)
+        require(
+            child.returncode == 0
+            or service["LoadState"] == "not-found"
+            and service["MainPID"] == service["ControlPID"] == 0,
+            "service_state_unavailable",
+        )
+        diagnostics["stage"] = "directory_readback"
+        after = directory.stat(follow_symlinks=False)
+        unchanged = (before.st_dev, before.st_ino, before.st_mtime_ns) == (
+            after.st_dev,
+            after.st_ino,
+            after.st_mtime_ns,
+        )
+        return {
+            **evidence,
+            "collectionComplete": unchanged,
+            "directoryEntryCount": len(entries),
+            "configFileOnly": config_only,
+            "directoryChangedDuringRead": not unchanged,
+            "service": service,
+            "matchingRunnerCommandLines": matches,
+        }
+    except (CheckError, OSError, ValueError, subprocess.TimeoutExpired):
+        return {
+            **evidence,
+            "error": "runner_state_unavailable",
+            "diagnostics": diagnostics,
+        }
+
+
+def validate_missing_evidence(evidence):
+    require(
+        isinstance(evidence, dict)
+        and isinstance(evidence.get("runnerVersion"), str)
+        and bool(PRODUCTION_VERSION.fullmatch(evidence["runnerVersion"]))
+        and type(evidence.get("collectionComplete")) is bool,
+        "invalid_remote_report",
+    )
+    if "error" in evidence:
+        require(
+            set(evidence)
+            == {"runnerVersion", "collectionComplete", "error", "diagnostics"}
+            and evidence["collectionComplete"] is False
+            and evidence["error"] == "runner_state_unavailable",
+            "invalid_remote_report",
+        )
+        diagnostics = evidence["diagnostics"]
+        require(
+            isinstance(diagnostics, dict)
+            and set(diagnostics)
+            == {
+                "stage",
+                "directoryEntryCount",
+                "configFileOnly",
+                "serviceReturnCode",
+                "serviceStderrPresent",
+                "serviceProperties",
+                "matchingRunnerCommandLines",
+            },
+            "invalid_remote_report",
+        )
+        require(
+            diagnostics["stage"]
+            in {
+                "directory",
+                "service_command",
+                "service_properties",
+                "process_command",
+                "directory_readback",
+            },
+            "invalid_remote_report",
+        )
+        for key, minimum, maximum in [
+            ("directoryEntryCount", 0, 10000),
+            ("matchingRunnerCommandLines", 0, 10000),
+            ("serviceReturnCode", -255, 255),
+        ]:
+            value = diagnostics[key]
+            require(
+                value is None or type(value) is int and minimum <= value <= maximum,
+                "invalid_remote_report",
+            )
+        for key in ["configFileOnly", "serviceStderrPresent"]:
+            require(
+                diagnostics[key] is None or type(diagnostics[key]) is bool,
+                "invalid_remote_report",
+            )
+        properties = diagnostics["serviceProperties"]
+        require(
+            isinstance(properties, dict) and set(properties) <= set(SERVICE_STATES),
+            "invalid_remote_report",
+        )
+        for key, value in properties.items():
+            require(
+                isinstance(value, str) and value in SERVICE_STATES[key],
+                "invalid_remote_report",
+            )
+        return
+    require(
+        set(evidence)
+        == {
+            "runnerVersion",
+            "collectionComplete",
+            "directoryEntryCount",
+            "configFileOnly",
+            "directoryChangedDuringRead",
+            "service",
+            "matchingRunnerCommandLines",
+        },
+        "invalid_remote_report",
+    )
+    for key in ("directoryEntryCount", "matchingRunnerCommandLines"):
+        require(
+            type(evidence[key]) is int and 0 <= evidence[key] <= 10000,
+            "invalid_remote_report",
+        )
+    for key in ("configFileOnly", "directoryChangedDuringRead"):
+        require(type(evidence[key]) is bool, "invalid_remote_report")
+    require(
+        evidence["collectionComplete"] is not evidence["directoryChangedDuringRead"],
+        "invalid_remote_report",
+    )
+    validate_service_state(evidence["service"])
+
+
 def registry_inventory(root):
     counts = dict.fromkeys(COUNTERS, 0)
+    failures = []
+    missing_evidence = []
     require(not root.is_symlink() and root.is_dir(), "runner_root_unavailable")
     directories = list(root.iterdir())
     require(len(directories) <= 1000, "runner_directory_limit")
     # Production promotion names directories v{runner_version}. PR and staging
     # directories have separate names and are intentionally outside this scope.
     for directory in directories:
-        if not re.fullmatch(r"v\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?", directory.name):
+        if not PRODUCTION_VERSION.fullmatch(directory.name):
             continue
         counts["productionDirectories"] += 1
         path = directory / "proxy-registry.json"
+        size = None
+        reason = None
         try:
             require(
                 not directory.is_symlink() and directory.is_dir(),
@@ -138,10 +450,9 @@ def registry_inventory(root):
             fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
             with os.fdopen(fd, "rb") as stream:
                 before = os.fstat(stream.fileno())
-                require(
-                    stat.S_ISREG(before.st_mode) and before.st_size <= REGISTRY_LIMIT,
-                    "invalid_registry_file",
-                )
+                size = before.st_size
+                require(stat.S_ISREG(before.st_mode), "non_regular_registry")
+                require(size <= REGISTRY_LIMIT, "registry_size_limit")
                 data = stream.read(REGISTRY_LIMIT + 1)
                 require(len(data) <= REGISTRY_LIMIT, "registry_size_limit")
                 after = os.fstat(stream.fileno())
@@ -168,9 +479,33 @@ def registry_inventory(root):
                     counts["invalid"] += 1
                 else:
                     counts[key_category(entry["encryptedSecrets"])] += 1
-        except (CheckError, OSError, ValueError, UnicodeError):
+        except CheckError as error:
+            reason = str(error)
+        except FileNotFoundError:
+            reason = "missing_registry"
+        except PermissionError:
+            reason = "registry_access_denied"
+        except OSError as error:
+            reason = (
+                "symlink_registry"
+                if error.errno == errno.ELOOP
+                else "registry_io_error"
+            )
+        except (ValueError, UnicodeError):
+            reason = "invalid_registry_json"
+        if reason is not None:
+            require(reason in REGISTRY_FAILURE_CODES, "invalid_registry_failure_code")
             counts["unreadable"] += 1
-    return counts
+            failures.append(
+                {"runnerVersion": directory.name, "reason": reason, "sizeBytes": size}
+            )
+            if reason == "missing_registry":
+                missing_evidence.append(missing_registry_evidence(directory))
+    return {
+        "counts": counts,
+        "failures": failures,
+        "missingRegistryEvidence": missing_evidence,
+    }
 
 
 def runner_fleet():
@@ -205,10 +540,16 @@ def runner_fleet():
                 timeout=130,
             )
             require(
-                child.returncode == 0 and len(child.stdout) < 10000,
+                child.returncode == 0 and len(child.stdout) < 512 * 1024,
                 "remote_inventory_failed",
             )
-            counts = decode_json(child.stdout)
+            inventory = decode_json(child.stdout)
+            require(
+                isinstance(inventory, dict)
+                and set(inventory) == {"counts", "failures", "missingRegistryEvidence"},
+                "invalid_remote_report",
+            )
+            counts = inventory["counts"]
             require(
                 isinstance(counts, dict) and set(counts) == set(COUNTERS),
                 "invalid_remote_report",
@@ -217,7 +558,52 @@ def runner_fleet():
                 all(type(v) is int and 0 <= v <= 1_000_000 for v in counts.values()),
                 "invalid_remote_report",
             )
+            failures = inventory["failures"]
+            require(
+                isinstance(failures, list)
+                and len(failures) == counts["unreadable"]
+                and len(failures) <= 1000,
+                "invalid_remote_report",
+            )
+            for failure in failures:
+                require(
+                    isinstance(failure, dict)
+                    and set(failure) == {"runnerVersion", "reason", "sizeBytes"},
+                    "invalid_remote_report",
+                )
+                require(
+                    isinstance(failure["runnerVersion"], str)
+                    and bool(PRODUCTION_VERSION.fullmatch(failure["runnerVersion"]))
+                    and isinstance(failure["reason"], str)
+                    and failure["reason"] in REGISTRY_FAILURE_CODES
+                    and (
+                        failure["sizeBytes"] is None
+                        or type(failure["sizeBytes"]) is int
+                        and 0 <= failure["sizeBytes"] < 2**63
+                    ),
+                    "invalid_remote_report",
+                )
+            missing_evidence = inventory["missingRegistryEvidence"]
+            require(
+                isinstance(missing_evidence, list)
+                and len(missing_evidence)
+                == sum(f["reason"] == "missing_registry" for f in failures),
+                "invalid_remote_report",
+            )
+            for evidence in missing_evidence:
+                validate_missing_evidence(evidence)
+            require(
+                sorted(e["runnerVersion"] for e in missing_evidence)
+                == sorted(
+                    f["runnerVersion"]
+                    for f in failures
+                    if f["reason"] == "missing_registry"
+                ),
+                "invalid_remote_report",
+            )
             result["counts"] = counts
+            result["registryFailures"] = failures
+            result["missingRegistryEvidence"] = missing_evidence
         except (CheckError, OSError, ValueError, subprocess.TimeoutExpired):
             result["error"] = "remote_inventory_failed"
         results.append(result)
@@ -305,6 +691,102 @@ def neon_list(collection):
     raise CheckError("neon_pagination_limit")
 
 
+def metadata_timestamp(value):
+    if value is None:
+        return None
+    require(
+        isinstance(value, str)
+        and bool(
+            re.fullmatch(
+                r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d{1,9})?(?:Z|[+-]\d\d:\d\d)",
+                value,
+            )
+        ),
+        "invalid_metadata_timestamp",
+    )
+    try:
+        return dt.datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(
+            dt.timezone.utc
+        )
+    except ValueError:
+        raise CheckError("invalid_metadata_timestamp") from None
+
+
+def snapshot_evidence(snapshots, branch_id, cutoff):
+    evidence, seen = [], set()
+    for snapshot in snapshots:
+        snapshot_id = snapshot.get("id")
+        require(
+            isinstance(snapshot_id, str)
+            and bool(re.fullmatch(r"[a-z0-9-]{1,60}", snapshot_id))
+            and snapshot_id not in seen,
+            "invalid_snapshot_id",
+        )
+        seen.add(snapshot_id)
+        created = metadata_timestamp(snapshot.get("created_at"))
+        require(created is not None, "missing_snapshot_created_at")
+        point = metadata_timestamp(snapshot.get("timestamp"))
+        expires = metadata_timestamp(snapshot.get("expires_at"))
+        lsn = snapshot.get("lsn")
+        require(
+            lsn is None
+            or isinstance(lsn, str)
+            and bool(re.fullmatch(r"[0-9A-Fa-f]{1,8}/[0-9A-Fa-f]{1,8}", lsn)),
+            "invalid_snapshot_lsn",
+        )
+        source_branch = snapshot.get("source_branch_id")
+        require(
+            source_branch is None
+            or isinstance(source_branch, str)
+            and bool(re.fullmatch(r"br-[a-z0-9-]+", source_branch)),
+            "invalid_snapshot_branch",
+        )
+        manual = snapshot.get("manual")
+        require(manual is None or type(manual) is bool, "invalid_snapshot_manual_flag")
+        evidence.append(
+            {
+                "snapshotIdSha256": hashlib.sha256(snapshot_id.encode()).hexdigest(),
+                "createdAt": created.isoformat(),
+                "snapshotPoint": point.isoformat() if point else None,
+                "reportedLsn": lsn,
+                "expiresAt": expires.isoformat() if expires else None,
+                "expirationReported": expires is not None,
+                "sourceBranchIsProduction": source_branch == branch_id
+                if source_branch
+                else None,
+                "manual": manual,
+                "pointBeforeMigrationVerification": point < cutoff if point else None,
+            }
+        )
+    return sorted(evidence, key=lambda item: item["snapshotIdSha256"])
+
+
+def backup_schedule_evidence(schedule):
+    evidence = []
+    for entry in schedule:
+        require(
+            isinstance(entry, dict)
+            and entry.get("frequency")
+            in {"hourly", "daily", "weekly", "monthly", "yearly"},
+            "invalid_backup_schedule",
+        )
+        item = {"frequency": entry["frequency"]}
+        for key, minimum, maximum in [
+            ("hour", 0, 23),
+            ("day", 1, 31),
+            ("month", 1, 12),
+            ("retention_seconds", 3600, 2**53 - 1),
+        ]:
+            value = entry.get(key)
+            require(
+                value is None or type(value) is int and minimum <= value <= maximum,
+                "invalid_backup_schedule",
+            )
+            item[key] = value
+        evidence.append(item)
+    return evidence
+
+
 def recovery_history():
     require(os.environ.get("NEON_PROJECT_ID") == PROJECT, "production_project_mismatch")
     cutoff = timestamp(os.environ.get("MIGRATION_VERIFIED_AT"))
@@ -332,6 +814,8 @@ def recovery_history():
         isinstance(schedule, dict) and isinstance(schedule.get("schedule"), list),
         "invalid_backup_schedule",
     )
+    snapshot_details = snapshot_evidence(snapshots, branch_id, cutoff)
+    schedule_details = backup_schedule_evidence(schedule["schedule"])
     return {
         "collectionComplete": True,
         "project": PROJECT,
@@ -344,10 +828,24 @@ def recovery_history():
         "configuredHistoryWindowOverlapsMigration": checked
         - dt.timedelta(seconds=retention)
         < cutoff,
+        "configuredHistoryWindowClearsMigrationAt": (
+            cutoff + dt.timedelta(seconds=retention)
+        ).isoformat(),
         "productionBranchFound": True,
         "otherBranchesNotInspected": len(branches) - 1,
         "retainedSnapshotsRequiringKeyReview": len(snapshots),
         "backupScheduleEntries": len(schedule["schedule"]),
+        "snapshots": snapshot_details,
+        "snapshotsWithReportedPreMigrationPoint": sum(
+            s["pointBeforeMigrationVerification"] is True for s in snapshot_details
+        ),
+        "snapshotsWithUnreportedPoint": sum(
+            s["snapshotPoint"] is None for s in snapshot_details
+        ),
+        "snapshotsWithoutReportedExpiration": sum(
+            not s["expirationReported"] for s in snapshot_details
+        ),
+        "backupSchedule": schedule_details,
         "actualEarliestRestorableTimeVerified": False,
         "backupCiphertextVerified": False,
         "externalBackupsInspected": False,

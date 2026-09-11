@@ -29,6 +29,10 @@ pub(super) fn resolve(
             "low" | "medium" | "high" | "xhigh" | "max",
         ) | (
             Framework::Codex,
+            "gpt-6-astra" | "gpt-5.6-sol" | "gpt-5.6-terra",
+            "ultra",
+        ) | (
+            Framework::Codex,
             "gpt-5.5",
             "low" | "medium" | "high" | "xhigh"
         ) | (
@@ -65,6 +69,8 @@ mod tests {
     fn rejects_invalid_or_unsupported_native_choices_before_launch() {
         for (framework, model_key, model, effort) in [
             (Framework::Codex, "OPENAI_MODEL", "gpt-5.5", "max"),
+            (Framework::Codex, "OPENAI_MODEL", "gpt-5.6-luna", "ultra"),
+            (Framework::Codex, "OPENAI_MODEL", "gpt-5.5", "ultra"),
             (Framework::Codex, "OPENAI_MODEL", "gpt-6-astra", "extra"),
             (Framework::Codex, "OPENAI_MODEL", "gpt-6-astra", "ultracode"),
             (

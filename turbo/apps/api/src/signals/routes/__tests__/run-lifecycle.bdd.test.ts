@@ -3017,15 +3017,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, filteredRun.runId, [200]);
   });
 
-  it("loads, deduplicates, and reuses an exact scoped runtime projection", async () => {
+  async function exactRuntimeProjection() {
     const api = createRunsApi(context);
     const fw = createFirewallApi(context);
     mockEnv(
       "R2_USER_STORAGES_BUCKET_NAME",
       `test-run-lifecycle-runtime-projection-${randomUUID()}`,
     );
+    const catalogVersion = `api-test-runtime-projection-${randomUUID()}`;
     await installApiTestConnectorCatalog({
-      catalogVersion: `api-test-runtime-projection-${randomUUID()}`,
+      catalogVersion,
       runtimeProjection: true,
     });
     await corruptApiTestConnectorCatalogRuntimeProjectionDigest("slack");
@@ -3049,6 +3050,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       });
     };
 
+    return { api, actor, runnerGroup, catalogVersion, createProjectedRun };
+  }
+
+  it("deduplicates concurrent scoped runtime projection loads and reuses the warm result", async () => {
+    const { api, actor, runnerGroup, createProjectedRun } =
+      await exactRuntimeProjection();
     const concurrentRuns = await Promise.all(
       Array.from({ length: 2 }, async (_, index) => {
         return await createProjectedRun(
@@ -3185,6 +3192,14 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     );
     await api.requestCancelRun(actor, repeatedRun.runId, [200]);
+  });
+
+  it("invalidates scoped runtime projection history when the catalog version changes", async () => {
+    const { api, actor, createProjectedRun } = await exactRuntimeProjection();
+    const initialRun = await createProjectedRun(
+      "warm the previous catalog identity",
+    );
+    await api.requestCancelRun(actor, initialRun.runId, [200]);
 
     const rotatedVersion = `api-test-projection-observation-${randomUUID()}`;
     await installApiTestConnectorCatalog({
@@ -3222,10 +3237,19 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     );
     await api.requestCancelRun(actor, resetRun.runId, [200]);
+  });
+
+  it("invalidates a scoped runtime projection when capabilities change at the same catalog version", async () => {
+    const { api, actor, catalogVersion, createProjectedRun } =
+      await exactRuntimeProjection();
+    const initialRun = await createProjectedRun(
+      "warm the previous capability identity",
+    );
+    await api.requestCancelRun(actor, initialRun.runId, [200]);
 
     mockOptionalEnv("CALCOM_OAUTH_CLIENT_ID", undefined);
     await installApiTestConnectorCatalog({
-      catalogVersion: rotatedVersion,
+      catalogVersion,
       runtimeProjection: true,
     });
     const capabilityRun = await createProjectedRun(
@@ -16052,6 +16076,44 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     ]) {
       expect(appendSystemPrompt).toContain(connectorContext);
     }
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("requires Mercury attribution when a response presents account data", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    await connectors.updateFeatureSwitches(actor, {
+      mercuryConnector: true,
+    });
+    await fw.seedTestConnector(actor, {
+      connectorSlug: "mercury",
+      authMethod: "oauth",
+      accessToken: "mercury-bdd-access",
+      refreshToken: "mercury-bdd-refresh",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["mercury"]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "summarize my Mercury account balances",
+      modelProvider: "anthropic-api-key",
+    });
+    const appendSystemPrompt =
+      (await api.readRun(actor, run.runId)).appendSystemPrompt ?? "";
+
+    expect(appendSystemPrompt).toContain("# Mercury Account Data Disclosure");
+    expect(appendSystemPrompt).toContain(
+      "[Powered by Mercury](https://mercury.com)",
+    );
+    expect(appendSystemPrompt).toContain(
+      "Mercury is a fintech company, not an FDIC-insured bank. Banking services provided through Choice Financial Group and Column N.A., Members FDIC.",
+    );
+    expect(appendSystemPrompt).toContain(
+      "Do not include this disclosure when the response does not present Mercury-sourced data.",
+    );
 
     await api.requestCancelRun(actor, run.runId, [200]);
   });

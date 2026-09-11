@@ -1,7 +1,7 @@
 //! Third-party dependency metadata: versions, checksums, and download URLs.
 
 pub const FIRECRACKER_VERSION: &str = "v1.16.2";
-pub const KERNEL_VERSION: &str = "6.1.155";
+pub const KERNEL_VERSION: &str = "6.18.44";
 /// Canonical mitmproxy release for runner artifacts and the embedded add-on.
 pub const MITMPROXY_VERSION: &str = "12.2.3";
 
@@ -12,12 +12,12 @@ pub const FIRECRACKER_SHA256_X86_64: &str =
     "8227875ceda44177a4d501052dae4a2f9d7837362f5399f02cf0748e68418377";
 pub const FIRECRACKER_SHA256_AARCH64: &str =
     "f7168507c37b2b047ea2b30433cbe4faa3986c36d1209c046fd1814118ce3d48";
-pub const KERNEL_SIZE_X86_64: u64 = 44_279_576;
-pub const KERNEL_SIZE_AARCH64: u64 = 17_111_552;
+pub const KERNEL_SIZE_X86_64: u64 = 27_846_248;
+pub const KERNEL_SIZE_AARCH64: u64 = 19_397_120;
 pub const KERNEL_SHA256_X86_64: &str =
-    "e20e46d0c36c55c0d1014eb20576171b3f3d922260d9f792017aeff53af3d4f2";
+    "d8ced68bd61e27b6813e2c993cc53a4029c59e13210672180591c84109684fe4";
 pub const KERNEL_SHA256_AARCH64: &str =
-    "e3544b10603acbf3db492cb52e000d22ba202cb4b63b9add027565683e11c591";
+    "3b0233769ed8c89f1f47fdbcc4ff9300a2b1b5c618e25ade966a484481b151dc";
 pub const MITMDUMP_SIZE_X86_64: u64 = 39_172_624;
 pub const MITMDUMP_SIZE_AARCH64: u64 = 36_908_488;
 pub const MITMDUMP_SHA256_X86_64: &str =
@@ -55,10 +55,11 @@ pub fn firecracker_url(arch: &str) -> String {
 }
 
 pub fn kernel_url(arch: &str) -> String {
-    // Pin the kernel artifact source independently of the VMM version. The
-    // v1.16 artifact namespace does not contain the existing 6.1.155 kernel.
+    // Pin a dated upstream Amazon Linux microVM kernel build independently of
+    // the VMM version. Guest 6.18 is supported with Firecracker >= v1.16.1:
+    // https://github.com/firecracker-microvm/firecracker/blob/main/docs/kernel-policy.md#guest-kernel
     format!(
-        "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/v1.15/{arch}/vmlinux-{KERNEL_VERSION}"
+        "https://s3.amazonaws.com/spec.ccfc.min/firecracker-ci/20260909-a8e1c3830545-0/{arch}/vmlinux-{KERNEL_VERSION}"
     )
 }
 

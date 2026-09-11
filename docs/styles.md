@@ -35,7 +35,9 @@ Components must not introduce local CSS variables as an alternate token registry
 
 One hairline serves the whole product. `--default-border-width` in the shared `@theme` is 0.5px, and Tailwind's bare `border`, `border-t`, `border-x`, `divide-y`, and their siblings all read it, so a component asks for "a border" and the system decides how thick it is. Components must not hand-write a width: an arbitrary width such as `border-[0.7px]`, or a literal width inside a `style` prop, is a second registry for a decision this token already owns. `border-0` and the deliberate emphasis widths such as `border-2` stay available, because they express a different decision rather than a competing value for the same one.
 
-The sub-pixel value is a declaration of intent as much as a measurement. Blink and Gecko round a non-zero border up to one device pixel, so it renders exactly like 1px there and layout is unchanged in every engine; WebKit can draw the true hairline on a high-density display. Do not treat a width below 1px as a way to make a border visibly lighter in Chromium — reach for the border color for that.
+This is a real hairline, not a rounding no-op. On a 2x display 0.5px paints one device pixel where 1px paints two, so every bare border carries half the ink it used to; layout is unaffected, because the used value is still rounded to whole pixels. Colour has to carry what the width no longer does, which is why `--border` sits one stop darker than the surface ramp's lightest step: `gray-200` was calibrated for a 1px line and stops reading on a near-white card at half the thickness.
+
+Borders and rules are separate decisions with separate tokens. `--border` is for real borders, which follow `--default-border-width`. `--divider` is the lightest neutral rule — separators, `h-px` / `w-px` hairlines painted as backgrounds, and resting rail ticks. Those are sized explicitly, so they never lost thickness to the border hairline and must not inherit its compensating darkening. Use `bg-divider` for a painted rule and `border-border` for an actual border; do not reach for a raw ramp stop such as `border-gray-200` for either, because that bypasses both decisions.
 
 Color-theme presets in the App stylesheet share their anchor and companion colors between picker swatches and workspace ambience. Daydream uses cool blue and violet, while Cotton sky uses pastel pink and blue. Each preset's hue and ring values keep semantic surfaces, selected states, and focus indicators aligned with that palette in Light/Dark.
 
@@ -120,6 +122,61 @@ Line height belongs to the badge because a font-size utility with an arbitrary v
 
 The `okou-badge`, `okou-pill`, and `okou-border-r` selectors and their consumers have been removed. `okou-pill` was scoped to `.okou-app` and set the muted foreground; its only consumer now spells that foreground itself. `okou-border-r` was a single settings-dialog divider and became `border-r border-r-gray-300` on that nav, keeping its lighter Gray 300 stroke while its width joins the shared hairline token.
 
+### Icon controls and dialog bodies
+
+`IconButton` from `@okouai/ui` owns a neutral 36px square control, the shared
+radius, muted hover fill, and keyboard focus ring. Its `aria-label` is required;
+callers provide the icon, foreground, opacity, and positioning. It reuses
+`ButtonBase` for native button behavior, refs, render/asChild composition, and
+optional tooltip support. Tooltip stays off by default. Use `Button` for action
+variants; `IconButton` preserves the neutral dialog and sheet close treatment.
+Compose it through `DialogClose` or `SheetClose` using `render` so Base UI keeps
+ownership of closing and focus restoration, with one native button in the DOM.
+
+`DialogBody` owns a native scrolling body and its thin scrollbar. It adds no
+wrapper: layout, padding, and grid columns stay with the caller. Set
+`scrollable={false}` when a child owns scrolling, as in the plan-selection grid
+below a fixed header; the body keeps the same DOM element across step changes.
+The existing `overflow-hidden` override used by artifact previews is retained.
+The default `DialogContent` inner container also uses `DialogBody`, preserving
+its `dialog-inner` slot and its protected vertical scrolling.
+
+Scrollbar styling is private to `DialogBody`, not an exported class-name API.
+Tailwind arbitrary variants address WebKit pseudo-elements. The component owns
+the 6px width, 3px thumb radius, 4px vertical track inset, transparent track,
+and neutral thumb colors, including hover. All default dialog bodies use this
+treatment, including the existing workflow-recommendation detail body; artifact
+previews retain their own clipping and internal scroll ownership.
+
+The `icon-button` and `dialog-scrollable` selectors and their dependencies have
+been removed. `icon-tooltip-trigger` remains scoped to the third-party Mermaid
+block and migrates with that adapter.
+
+### Animated layers
+
+`RunningIndicator` owns its Tailwind utilities directly in JSX. Reuse the
+component through its props; its internal class strings are not an exported
+styling API. Both animated layers set their resting offset through an arbitrary
+`[transform:translate(-50%,-50%)_scale(...)]` rather than Tailwind's
+`translate-*` and `scale-*` utilities.
+
+That is not a style preference. Those utilities set the individual `translate`
+and `scale` CSS properties, while the keyframes animate `transform`. The
+individual properties compose with an animated `transform` instead of being
+replaced by it, so the layer would carry the centring offset twice for the whole
+cycle. Measured, the naive form moves roughly 20,000 pixels of the indicator at
+every sampled phase.
+
+Register a keyframe animation as an `--animate-*` theme entry so consumers reach
+it through `animate-*` rather than an `animation` shorthand. A per-instance
+runtime value, such as the indicator's phase-anchoring
+`--running-indicator-delay`, stays a narrowly named custom property that the
+component sets, read through an arbitrary `[animation-delay:var(...)]`.
+
+The `running-indicator`, `running-indicator-center`, and
+`running-indicator-ripple` recipes have been removed; their keyframes remain,
+since keyframes are not class selectors.
+
 ## Exception boundary
 
 Only two exception kinds exist:
@@ -188,3 +245,11 @@ The check has three layers:
 CI runs this as the independent required `lint-style` job. The pre-commit hook runs the fast repository policy so the most actionable boundary failures are returned before push. Both policy diagnostics and the full lint command's failure output direct contributors to `docs/styles.md` for the style guide. The full command keeps a failing exit status for policy, CSS, Tailwind, or test failures.
 
 When a style check fails, read this guide and replace business styling with the appropriate Tailwind utilities and registered tokens. Prune the baseline when legacy code has been removed. Do not suppress the check or add a business styling exception to make it pass.
+
+## App palette previews
+
+`bg-palette-anchor bg-palette-gradient` renders the color-theme anchor and its
+fixed companion gradient. These App-owned domain utilities use `@theme inline`
+so each element resolves its own `data-color-theme` anchor/companion instead of
+inheriting the selected document palette. The 135-degree gradient and 52% sRGB
+midpoint are identical in Light/Dark; consumer geometry stays at the call site.

@@ -626,18 +626,25 @@ test("Show a longer history of recent voice levels", async () => {
   });
 });
 
-test.each([
-  {
-    status: 503,
-    code: "PROVIDER_UNAVAILABLE",
-    message: "Voice transcription is temporarily unavailable",
-  },
-  {
-    status: 502,
-    code: "VOICE_TRANSCRIPTION_FAILED",
-    message: "Voice draft transcription failed to produce a usable response",
-  },
-])("Retry the original recording after $code", async (failure) => {
+test.each(
+  [
+    {
+      status: 503,
+      code: "PROVIDER_UNAVAILABLE",
+      message: "Voice transcription is temporarily unavailable",
+    },
+    {
+      status: 502,
+      code: "VOICE_TRANSCRIPTION_FAILED",
+      message: "Voice draft transcription failed to produce a usable response",
+    },
+  ].flatMap((failure) => {
+    return [
+      { ...failure, phase: "failure feedback" },
+      { ...failure, phase: "recovery after repeated failure" },
+    ];
+  }),
+)("Voice retry $phase after $code", async (failure) => {
   const transcriptionFailed = context.mocks.deferred<void>();
   const retryRequest = context.mocks.deferred<void>();
   const retryResponse = context.mocks.deferred<void>();
@@ -694,7 +701,7 @@ test.each([
   await transcriptionFailed.promise;
 
   await waitFor(() => {
-    expect(screen.getByText(failure.message)).toBeVisible();
+    expect(screen.getByText(failure.message, { exact: false })).toBeVisible();
   });
   await expect(findButton("Retry")).resolves.toBeEnabled();
   expect(queryButton("Voice input")).toBeNull();
@@ -712,6 +719,11 @@ test.each([
   retryResponse.resolve();
   await findEnabledButton("Retry");
   expect(normalizedComposerText()).toBe("Keep these notes.");
+  expect(transcriptionAttempts).toBe(2);
+  expect(recordings[1]).toStrictEqual(recordings[0]);
+  if (failure.phase === "failure feedback") {
+    return;
+  }
   click(await findButton("Retry"));
 
   await waitFor(() => {

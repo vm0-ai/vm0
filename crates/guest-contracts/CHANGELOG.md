@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.14.3](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.14.2...guest-contracts-v0.14.3) (2026-09-11)
+
+
+### Bug Fixes
+
+* **guest-agent:** keep oom evidence waits off tokio workers ([#33396](https://github.com/vm0-ai/vm0/issues/33396)) ([0c7a535](https://github.com/vm0-ai/vm0/commit/0c7a535c995853acc1226a0c9815baecc3f0b870))
+
+## [0.14.2](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.14.1...guest-contracts-v0.14.2) (2026-09-10)
+
 ## [0.14.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.14.0...guest-contracts-v0.14.1) (2026-09-10)
 
 

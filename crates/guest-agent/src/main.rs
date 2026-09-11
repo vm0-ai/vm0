@@ -613,7 +613,7 @@ async fn execute(
         } else {
             guest_contracts::oom_evidence::CaptureReason::CliError
         };
-        if let Some(evidence) = workload_containment.oom_evidence(reason) {
+        if let Some(evidence) = workload_containment.oom_evidence(reason).await {
             telemetry
                 .incident_reporter()
                 .with_sandbox_id(runtime.config.sandbox_id.clone())

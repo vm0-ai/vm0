@@ -179,6 +179,49 @@ function manualMethod(args: {
   };
 }
 
+test("Show Mercury disclosures before connecting an account", async () => {
+  mockConnectors(context, []);
+  mockPublicConnectorStatus(context, [
+    publicStatusItem({
+      connectorSlug: "mercury",
+      label: "Mercury",
+      authMethods: [
+        oauthMethod(),
+        manualMethod({
+          id: "api-token",
+          label: "API token",
+          fieldId: "token",
+          fieldLabel: "API token",
+          placeholder: "Enter your Mercury API token",
+        }),
+      ],
+    }),
+  ]);
+  await setupPage({
+    context,
+    path: "/connectors?keywords=mercury",
+  });
+
+  const card = await waitFor(() => {
+    return getConnectorCard("Mercury");
+  });
+  expect(
+    getConnectorAction("link", "Powered by Mercury", card),
+  ).toHaveAttribute("href", "https://mercury.com");
+  expect(card).toHaveTextContent(
+    "Mercury is a fintech company, not an FDIC-insured bank. Banking services provided through Choice Financial Group and Column N.A., Members FDIC.",
+  );
+
+  click(getConnectorAction("button", "Connect Mercury", card));
+  const dialog = await screen.findByRole("dialog", { name: "Mercury" });
+  expect(
+    getConnectorAction("link", "Powered by Mercury", dialog),
+  ).toHaveAttribute("href", "https://mercury.com");
+  expect(dialog).toHaveTextContent(
+    "Mercury is a fintech company, not an FDIC-insured bank. Banking services provided through Choice Financial Group and Column N.A., Members FDIC.",
+  );
+});
+
 async function openAwsWithCode(code: string): Promise<{
   readonly dialog: HTMLElement;
   readonly complete: HTMLElement;
@@ -888,7 +931,7 @@ test("Complete OAuth only after the current attempt succeeds", async () => {
   });
 });
 
-test("Name a newly added manual account", async () => {
+async function addManualAccountForNaming() {
   mockConnectors(context, []);
   const connectionId = crypto.randomUUID();
   let renamed: { readonly id: string; readonly name: string | null } | null =
@@ -946,14 +989,30 @@ test("Name a newly added manual account", async () => {
     name: "Name your Ahrefs account",
   });
   const input = within(naming).getByLabelText("Account name");
+  return {
+    input,
+    naming,
+    connectionId,
+    getRenamed: () => {
+      return renamed;
+    },
+  };
+}
+
+test("A newly added manual account suggests its external identity without prefilling a name", async () => {
+  const { input } = await addManualAccountForNaming();
   expect(input).toHaveValue("");
   expect(input).toHaveAttribute("placeholder", "owner@example.com");
+});
 
+test("Save a name for the exact newly added manual account", async () => {
+  const { input, naming, connectionId, getRenamed } =
+    await addManualAccountForNaming();
   await fill(input, "Work");
   click(getConnectorAction("button", "Save", naming));
 
   await waitFor(() => {
-    expect(renamed).toStrictEqual({ id: connectionId, name: "Work" });
+    expect(getRenamed()).toStrictEqual({ id: connectionId, name: "Work" });
   });
 });
 

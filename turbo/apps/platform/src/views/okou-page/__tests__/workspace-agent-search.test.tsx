@@ -76,7 +76,7 @@ async function openSearch() {
   };
 }
 
-test("Find workspace agents by name and open their chat", async () => {
+test("Find workspace agents by name with case and whitespace normalization", async () => {
   prepareAgents();
   await setupPage({
     context,
@@ -102,7 +102,12 @@ test("Find workspace agents by name and open their chat", async () => {
   expect(
     within(dialog).getByRole("option", { name: "Research Agent" }),
   ).toBeVisible();
+});
 
+test("Agent search excludes IDs and blank queries but includes Zero", async () => {
+  prepareAgents();
+  await setupPage({ context, path: `/agents/${DEFAULT_AGENT_ID}/chat` });
+  const { dialog, search } = await openSearch();
   await fill(search, RESEARCH_AGENT_ID);
   await expect(
     within(dialog).findByText("No results found"),
@@ -119,7 +124,12 @@ test("Find workspace agents by name and open their chat", async () => {
     within(dialog).findByText("No results found"),
   ).resolves.toBeVisible();
   expect(within(dialog).queryByRole("option")).toBeNull();
+});
 
+test("Selecting a workspace agent search result opens its chat", async () => {
+  prepareAgents();
+  await setupPage({ context, path: `/agents/${DEFAULT_AGENT_ID}/chat` });
+  const { dialog, search } = await openSearch();
   await fill(search, "Support");
   const result = await within(dialog).findByRole("option", {
     name: "Support Agent",

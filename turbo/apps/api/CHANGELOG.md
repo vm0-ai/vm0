@@ -8,6 +8,69 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.584.0](https://github.com/vm0-ai/vm0/compare/api-v1.583.0...api-v1.584.0) (2026-09-11)
+
+
+### Features
+
+* **api:** activate shared deepseek and native claude pi routes ([#33397](https://github.com/vm0-ai/vm0/issues/33397)) ([f942995](https://github.com/vm0-ai/vm0/commit/f942995d317de177dd344a12577bb6e151c47a01))
+* **api:** verify marketing delivery consent ([#33436](https://github.com/vm0-ai/vm0/issues/33436)) ([832dbe4](https://github.com/vm0-ai/vm0/commit/832dbe4b652792461633ad4e4bd92902e7dc4165))
+
+
+### Bug Fixes
+
+* **connectors:** add Mercury compliance disclosures ([#33381](https://github.com/vm0-ai/vm0/issues/33381)) ([c13be86](https://github.com/vm0-ai/vm0/commit/c13be861672a425555d9dffdf3d29da982131bd8))
+* **voice:** recover completion-body provider failures ([#33403](https://github.com/vm0-ai/vm0/issues/33403)) ([1c005dd](https://github.com/vm0-ai/vm0/commit/1c005ddbb297aec5f576d4d9063f82c61d809be8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.428.0
+    * @okouai/core bumped to 8.652.1
+    * @okouai/db bumped to 1.252.0
+    * @okouai/pi-agent-runtime bumped to 1.25.0
+
+## [1.583.0](https://github.com/vm0-ai/vm0/compare/api-v1.582.3...api-v1.583.0) (2026-09-11)
+
+
+### Features
+
+* **chat:** add native reasoning effort controls ([#33016](https://github.com/vm0-ai/vm0/issues/33016)) ([f649925](https://github.com/vm0-ai/vm0/commit/f649925cbb81c11ee5b66d32bcc6072fc2fe80c2))
+
+
+### Bug Fixes
+
+* **billing:** remove routine reconciliation warnings ([#33399](https://github.com/vm0-ai/vm0/issues/33399)) ([2c47c7a](https://github.com/vm0-ai/vm0/commit/2c47c7a2001543f5c92dc67edad4b4307bd66099))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.427.0
+    * @okouai/core bumped to 8.652.0
+    * @okouai/db bumped to 1.251.5
+    * @okouai/pi-agent-runtime bumped to 1.24.15
+
+## [1.582.3](https://github.com/vm0-ai/vm0/compare/api-v1.582.2...api-v1.582.3) (2026-09-10)
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#33343](https://github.com/vm0-ai/vm0/issues/33343)) ([f670a02](https://github.com/vm0-ai/vm0/commit/f670a0233ae13a11d43f3a2ad72ff30831cab822))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.426.1
+    * @okouai/core bumped to 8.651.2
+    * @okouai/db bumped to 1.251.4
+    * @okouai/pi-agent-runtime bumped to 1.24.14
+
 ## [1.582.2](https://github.com/vm0-ai/vm0/compare/api-v1.582.1...api-v1.582.2) (2026-09-10)
 
 

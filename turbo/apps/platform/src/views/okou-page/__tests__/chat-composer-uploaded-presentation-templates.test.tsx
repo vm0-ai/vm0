@@ -162,7 +162,7 @@ test("A closed composer does not load uploaded template covers", async () => {
   });
 });
 
-test("Use an uploaded presentation template", async () => {
+async function openUploadedPresentationPicker() {
   mockNow(UPLOADED_TEMPLATE_NOW_MS, context.signal);
   const capture = mockTemplateChat();
   const uploaded = createUploadedTemplate({
@@ -185,7 +185,11 @@ test("Use an uploaded presentation template", async () => {
     expect(screen.getByText(uploaded.title)).toBeVisible();
   });
   expectTextBefore(uploaded.title, firstBuiltInTitle());
+  return { capture, uploaded, user, picker };
+}
 
+test("Hovering an uploaded presentation opens the currently previewed slide", async () => {
+  const { uploaded, user, picker } = await openUploadedPresentationPicker();
   const media = importedTemplateMedia(uploaded.id);
   Object.defineProperty(media, "getBoundingClientRect", {
     configurable: true,
@@ -213,6 +217,17 @@ test("Use an uploaded presentation template", async () => {
     "true",
   );
   expect(detail).toBeVisible();
+});
+
+test("Select and send an uploaded presentation template from its detail preview", async () => {
+  const { capture, uploaded, user } = await openUploadedPresentationPicker();
+  click(
+    buttonNamed(
+      `Preview ${uploaded.title} at current slide`,
+      importedTemplateMedia(uploaded.id),
+    ),
+  );
+  await screen.findByRole("group", { name: `${uploaded.title} slide preview` });
   click(buttonNamed(`Select template ${uploaded.title}`));
   await sendComposerMessage(user, "Use this deck for the launch review");
   await waitFor(() => {

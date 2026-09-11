@@ -49,6 +49,21 @@ export function streamPiNative(
     throw new Error("Pi native stream requires its exact catalog and dialect");
   }
   assertNativeOptions(options);
+  const catalogModel = config.catalogModel;
+  // A Messages upstream may echo the selected opaque deployment in its result.
+  // Preserve same-route signatures while the adapter uses catalog capabilities;
+  // persisted history and the final request retain their upstream identity.
+  const nativeContext: Context = {
+    ...context,
+    messages: context.messages.map((message) => {
+      return message.role === "assistant" &&
+        message.provider === model.provider &&
+        message.api === model.api &&
+        message.model === model.id
+        ? { ...message, model: catalogModel }
+        : message;
+    }),
+  };
   const nativeOptions = {
     ...options,
     maxRetries: 0,
@@ -82,7 +97,7 @@ export function streamPiNative(
     if (config.transport !== "sse") throw new Error("Pi Messages requires SSE");
     return streamMessages(
       { ...model, id: config.catalogModel },
-      context,
+      nativeContext,
       nativeOptions,
     );
   }
@@ -112,7 +127,7 @@ export function streamPiNative(
   );
   return streamBedrock(
     { ...model, id: config.catalogModel, name: config.catalogModel },
-    context,
+    nativeContext,
     {
       ...nativeOptions,
       clientConfig: {

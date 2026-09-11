@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.190.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.190.2...runner-rs-v0.190.3) (2026-09-11)
+
+
+### Bug Fixes
+
+* **runner:** classify cached firewall refresh send timeouts ([#33422](https://github.com/vm0-ai/vm0/issues/33422)) ([1bb8ae8](https://github.com/vm0-ai/vm0/commit/1bb8ae869215f01310b759779070773c93a6252c))
+* **runner:** extend bounded network-log upload budget to 30 seconds ([#33419](https://github.com/vm0-ai/vm0/issues/33419)) ([b71a6a0](https://github.com/vm0-ai/vm0/commit/b71a6a0e2ddda9756ea5a7e48a9cdaae733ce169))
+
+## [0.190.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.190.1...runner-rs-v0.190.2) (2026-09-11)
+
+
+### Bug Fixes
+
+* **runner:** preserve connector diagnostic base specificity ([#33394](https://github.com/vm0-ai/vm0/issues/33394)) ([5074692](https://github.com/vm0-ai/vm0/commit/5074692946531bc240499a7c5f908c1de0607ade))
+
+## [0.190.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.190.0...runner-rs-v0.190.1) (2026-09-10)
+
 ## [0.190.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.189.7...runner-rs-v0.190.0) (2026-09-10)
 
 

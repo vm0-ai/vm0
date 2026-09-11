@@ -24,7 +24,7 @@
 //! exposes no catalog for that identity and marks builtin-dependent sandbox entries
 //! invalid until a usable cache is loaded.
 //!
-//! A known transient JSON body-read failure with a usable cache is INFO. The
+//! A send timeout or known transient JSON body-read failure with a usable cache is INFO. The
 //! next scheduled refresh gets one opportunity to recover; a failed observation
 //! at least one refresh interval later warns once per episode. Only a complete
 //! successful refresh clears the episode, including an unchanged catalog. Other
@@ -68,7 +68,9 @@ use api_contracts::generated::constants::runners::{
 
 use super::api::{ApiClient, DegradationEpisodeTracker};
 use crate::duration::duration_ms;
-use crate::error::{ApiTransportCause, RunnerError, RunnerResult};
+use crate::error::{
+    ApiBodyReadError, ApiTransportCause, ApiTransportError, RunnerError, RunnerResult,
+};
 use crate::lock;
 use crate::types::Firewall;
 
@@ -427,7 +429,15 @@ async fn log_periodic_refresh_failure(
     degradation: &DegradationEpisodeTracker,
     interval: Duration,
 ) {
-    let body_error = match error {
+    enum TransientFailure<'a> {
+        SendTimeout(&'a ApiTransportError),
+        BodyRead(&'a ApiBodyReadError),
+    }
+
+    let failure = match error {
+        RunnerError::ApiTransport(error) if error.failure_cause == ApiTransportCause::Timeout => {
+            TransientFailure::SendTimeout(error)
+        }
         RunnerError::ApiBodyRead(error)
             if error.content_type == "application/json"
                 && matches!(
@@ -441,7 +451,7 @@ async fn log_periodic_refresh_failure(
                         | ApiTransportCause::HttpClosed
                 ) =>
         {
-            error
+            TransientFailure::BodyRead(error)
         }
         _ => {
             warn!(
@@ -489,20 +499,40 @@ async fn log_periodic_refresh_failure(
         .await;
     macro_rules! emit_failure {
         ($emit:ident, $message:literal) => {
-            $emit!(
-                cache_path = %cache_path.display(),
-                endpoint = body_error.endpoint_label,
-                status = body_error.status.as_u16(),
-                content_type = body_error.content_type,
-                content_length = ?body_error.content_length,
-                received_bytes = body_error.received_bytes,
-                failure_cause = body_error.failure_cause.as_str(),
-                consecutive_failures = observation.consecutive_failures,
-                failure_elapsed_ms = duration_ms(observation.failure_elapsed),
-                degraded = observation.degraded,
-                will_retry = true,
-                $message
-            );
+            match failure {
+                TransientFailure::SendTimeout(error) => $emit!(
+                    cache_path = %cache_path.display(),
+                    endpoint = error.request.endpoint_label,
+                    method = %error.request.method,
+                    host = %error.request.host,
+                    path = %error.request.path,
+                    client_request_id = %error.request.client_request_id,
+                    client_session_id = %error.request.client_session_id,
+                    client_version = %error.request.client_version,
+                    failure_stage = "send",
+                    failure_kind = error.failure_kind.as_str(),
+                    failure_cause = error.failure_cause.as_str(),
+                    consecutive_failures = observation.consecutive_failures,
+                    failure_elapsed_ms = duration_ms(observation.failure_elapsed),
+                    degraded = observation.degraded,
+                    will_retry = true,
+                    $message
+                ),
+                TransientFailure::BodyRead(error) => $emit!(
+                    cache_path = %cache_path.display(),
+                    endpoint = error.endpoint_label,
+                    status = error.status.as_u16(),
+                    content_type = error.content_type,
+                    content_length = ?error.content_length,
+                    received_bytes = error.received_bytes,
+                    failure_cause = error.failure_cause.as_str(),
+                    consecutive_failures = observation.consecutive_failures,
+                    failure_elapsed_ms = duration_ms(observation.failure_elapsed),
+                    degraded = observation.degraded,
+                    will_retry = true,
+                    $message
+                ),
+            }
         };
     }
     if observation.emit_degradation {
@@ -638,6 +668,8 @@ fn validate_catalog_digest(value: &str) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
+    mod send_timeout;
+
     use std::pin::Pin;
     use std::sync::atomic::{AtomicUsize, Ordering};
 

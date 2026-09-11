@@ -82,11 +82,6 @@ class SharedBaseOwnershipResolution:
 
 
 @dataclass(frozen=True)
-class _SharedBaseDiagnosticResolution:
-    candidate: ConnectorDiagnosticCandidate | None
-
-
-@dataclass(frozen=True)
 class _DiagnosticConnectorMatcher:
     base_authorities: frozenset[str]
     compiled_firewalls: matching.CompiledFirewallSet | None
@@ -162,6 +157,8 @@ def find_candidate(
     Model-provider routes are retained only as exclusions and are checked
     before connector ownership.
 
+    Select the most-specific matching base tier before resolving ownership.
+    Broader bases cannot introduce owners or ambiguity into that tier.
     Selection is intentionally asymmetric. A base owned by one eligible
     connector matches broadly without enforcing its catalog permission method
     or rules because ownership is unambiguous. A base shared by eligible
@@ -189,21 +186,20 @@ def find_candidate(
     if _matches_model_provider_exclusion(url, method, catalog):
         return None
 
-    shared_base_resolution = _find_shared_base_candidate(
-        url,
-        method,
-        catalog,
-        active_firewall_names=active_firewall_names,
-    )
-    if shared_base_resolution is not None:
-        return shared_base_resolution.candidate
-
     match = matching.match_compiled_firewall_request(
         url,
         method,
         catalog.compiled_connector_firewalls,
         catalog.compiled_network_policies,
     )
+    if isinstance(match, matching.FirewallAmbiguous):
+        return _find_shared_base_candidate(
+            url,
+            method,
+            catalog,
+            candidate_connector_slugs=match.candidates,
+            active_firewall_names=active_firewall_names,
+        )
     if not isinstance(match, matching.FirewallAllow):
         return None
     if match.name in active_firewall_names:
@@ -217,20 +213,23 @@ def _find_shared_base_candidate(
     method: str,
     catalog: _DiagnosticCatalog,
     *,
+    candidate_connector_slugs: tuple[str, ...],
     active_firewall_names: set[str],
-) -> _SharedBaseDiagnosticResolution | None:
-    matches = _ownership_matches(url, method, catalog)
+) -> ConnectorDiagnosticCandidate | None:
+    matches = _ownership_matches(
+        url, method, catalog, candidate_connector_slugs=candidate_connector_slugs
+    )
     if len(matches) < _SHARED_BASE_MIN_CANDIDATES:
         return None
 
     route_matches = [match for match in matches if match.route_specific]
     if len(route_matches) != 1:
-        return _SharedBaseDiagnosticResolution(candidate=None)
+        return None
 
     selected = route_matches[0].candidate
     if selected.connector_slug in active_firewall_names:
-        return _SharedBaseDiagnosticResolution(candidate=None)
-    return _SharedBaseDiagnosticResolution(candidate=selected)
+        return None
+    return selected
 
 
 def resolve_shared_base_ownership(
@@ -244,6 +243,7 @@ def resolve_shared_base_ownership(
 ) -> SharedBaseOwnershipResolution | None:
     """Resolve shared-base ownership for an active unknown-endpoint allow.
 
+    Only owners in the most-specific matching base tier participate.
     Route-specific ownership takes precedence over connector intent.
 
     ``reason`` values:
@@ -281,7 +281,18 @@ def resolve_shared_base_ownership(
     if _matches_model_provider_exclusion(url, method, catalog):
         return None
 
-    matches = _ownership_matches(url, method, catalog)
+    base_match = matching.match_compiled_firewall_request(
+        url,
+        method,
+        catalog.compiled_connector_firewalls,
+        catalog.compiled_network_policies,
+    )
+    if not isinstance(base_match, matching.FirewallAmbiguous):
+        return None
+
+    matches = _ownership_matches(
+        url, method, catalog, candidate_connector_slugs=base_match.candidates
+    )
     if len(matches) < _SHARED_BASE_MIN_CANDIDATES:
         return None
     if not any(match.candidate.connector_slug == matched_firewall_name for match in matches):
@@ -335,6 +346,8 @@ def _ownership_matches(
     url: str,
     method: str,
     catalog: _DiagnosticCatalog,
+    *,
+    candidate_connector_slugs: tuple[str, ...],
 ) -> list[_OwnershipMatch]:
     matches: list[_OwnershipMatch] = []
     authority = matching.match_url_authority_key(url)
@@ -348,6 +361,8 @@ def _ownership_matches(
             matcher.compiled_network_policies,
         )
         if not isinstance(match, matching.FirewallAllow):
+            continue
+        if match.name not in candidate_connector_slugs:
             continue
         candidate = _candidate_from_match(match)
         if candidate is None:

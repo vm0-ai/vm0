@@ -45,6 +45,11 @@ export interface FeatureSwitchContext {
  * Registry of all feature switches
  */
 const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
+  [FeatureSwitchKey.PrivacyChoices]: {
+    maintainer: "yuma@okou.ai",
+    description: "Canonical anonymous and personal privacy preference APIs",
+    enabled: true,
+  },
   [FeatureSwitchKey.WelcomeThread]: {
     maintainer: "lancy@okou.ai",
     description: "Manually create a welcome conversation with fixed examples",
@@ -325,6 +330,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Choose model reasoning effort for Codex and Claude Code chats.",
     enabled: false,
+    enabledUserHashes: ["032a75d8"], // Bingjie's account, including API contexts without email
+    enabledEmailHashes: ["6490c77f"], // bingjie@okou.ai
   },
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "lancy@okou.ai",

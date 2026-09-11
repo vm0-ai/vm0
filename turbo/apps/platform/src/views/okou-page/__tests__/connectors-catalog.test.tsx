@@ -220,7 +220,7 @@ test("Update connector visibility when availability changes", async () => {
   expect(locationSearch()).toBe("?keywords=mailchimp");
 });
 
-test("Filter connectors by connection state and agent", async () => {
+async function openConnectorFilterCatalog() {
   const researchId = "c0000000-0000-4000-a000-000000000010";
   mockConnectors(context, [
     { connectorSlug: "github", externalUsername: "octocat" },
@@ -235,7 +235,11 @@ test("Filter connectors by connection state and agent", async () => {
   });
   await setupPage({ context, path: "/connectors" });
   await expectCards({ github: true, asana: true });
+  return { researchId };
+}
 
+test("Switch between connected and disconnected connector filters", async () => {
+  await openConnectorFilterCatalog();
   click(getConnectorAction("button", "Filter connectors"));
   click(getConnectorAction("menuitem", "Connected"));
   await expectCards({ github: true, asana: false });
@@ -246,6 +250,13 @@ test("Filter connectors by connection state and agent", async () => {
   click(getConnectorAction("button", "Filter connectors"));
   click(getConnectorAction("menuitem", "Not connected"));
   await expectCards({ github: false, asana: true });
+});
+
+test("Retain a text search when clearing the connector connection filter", async () => {
+  await openConnectorFilterCatalog();
+  click(getConnectorAction("button", "Filter connectors"));
+  click(getConnectorAction("menuitem", "Not connected"));
+  await expectCards({ github: false, asana: true });
 
   await fill(screen.getByPlaceholderText("Find connectors"), "git");
   click(getConnectorAction("button", "Filter connectors"));
@@ -253,7 +264,12 @@ test("Filter connectors by connection state and agent", async () => {
   await expectCards({ github: true, asana: false });
   expect(new URLSearchParams(locationSearch()).get("keywords")).toBe("git");
   expect(new URLSearchParams(locationSearch()).has("connection")).toBeFalsy();
+});
 
+test("Filter connectors by an agent after clearing the text search", async () => {
+  const { researchId } = await openConnectorFilterCatalog();
+  await fill(screen.getByPlaceholderText("Find connectors"), "git");
+  await expectCards({ github: true, asana: false });
   await fill(screen.getByPlaceholderText("Find connectors"), "");
   click(getConnectorAction("button", "Filter connectors"));
   click(

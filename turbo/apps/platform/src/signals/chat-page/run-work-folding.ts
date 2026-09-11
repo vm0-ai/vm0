@@ -479,9 +479,10 @@ function runWorkUnits(events: readonly EnrichedChatEvent[]): RunWorkUnit[] {
       continue;
     }
 
-    // Goal continuations are synthetic user turns. Attach their contiguous
-    // streak to the nearest preceding ungrouped run; an intervening run then
-    // naturally starts a new visual work section after an interruption.
+    // Historical goal continuations are synthetic user turns. Attach their
+    // contiguous streak to the nearest preceding ungrouped run; an intervening
+    // run then naturally starts a new visual work section after an
+    // interruption.
     const previousUnit = units[units.length - 1];
     const anchorUnit = canAnchorGoalRun(previousUnit) ? units.pop() : undefined;
     const groupedEvents = streak.flatMap((item) => {
@@ -581,7 +582,8 @@ interface RunWorkGroupFolding {
 }
 
 // A work group is bounded by visible user inputs, independently of execution:
-// one run can span several groups, and goal continuations can span several runs.
+// one run can span several groups, and historical goal continuations can span
+// several runs.
 interface RunWorkGroup {
   readonly unit: RunWorkUnit;
   readonly events: readonly EnrichedChatEvent[];

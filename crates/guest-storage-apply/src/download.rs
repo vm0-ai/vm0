@@ -10,7 +10,7 @@ use std::collections::VecDeque;
 use std::fs;
 use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc;
+use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -248,13 +248,11 @@ impl DownloadScheduler {
             .min()
     }
 
-    fn start_ready_attempts<'scope, 'env: 'scope>(
+    fn start_ready_attempts(
         &mut self,
-        scope: &'scope thread::Scope<'scope, 'env>,
-        completion_tx: &mpsc::Sender<DownloadCompletion>,
-        attempt_runner: AttemptRunner,
+        work_tx: &mpsc::SyncSender<StartedDownload>,
         telemetry: &mut DownloadRunTelemetry,
-    ) {
+    ) -> bool {
         while self.active_attempts < MAX_CONCURRENT {
             let now = Instant::now();
             let retry = self
@@ -297,21 +295,13 @@ impl DownloadScheduler {
                 }
             };
 
-            let completion_tx = completion_tx.clone();
-            scope.spawn(move || {
-                let mut download = download;
-                let outcome =
-                    std::panic::catch_unwind(AssertUnwindSafe(|| attempt_runner(&mut download)))
-                        .map(AttemptOutcome::Finished)
-                        .unwrap_or_else(|e| AttemptOutcome::Panicked(panic_message(e.as_ref())));
-                let _ = completion_tx.send(DownloadCompletion {
-                    download,
-                    completed_at: Instant::now(),
-                    outcome,
-                });
-            });
+            if work_tx.send(download).is_err() {
+                log_error!(LOG_TAG, "Download scheduler worker channel closed");
+                return false;
+            }
             self.active_attempts += 1;
         }
+        true
     }
 
     fn record_completion(&mut self, mut completion: DownloadCompletion) {
@@ -386,10 +376,49 @@ fn download_all_parallel_with_runner(
 
     let success = thread::scope(|scope| {
         let (completion_tx, completion_rx) = mpsc::channel();
+        // Admission counts queued and running attempts together, so this queue
+        // cannot add work beyond the existing four-attempt bound. The sender is
+        // local to this scope's closure: every return closes it before joining.
+        let (work_tx, work_rx) = mpsc::sync_channel::<StartedDownload>(MAX_CONCURRENT);
+        let work_rx = Arc::new(Mutex::new(work_rx));
+        for _ in 0..pending.len().min(MAX_CONCURRENT) {
+            let work_rx = Arc::clone(&work_rx);
+            let completion_tx = completion_tx.clone();
+            scope.spawn(move || {
+                loop {
+                    // Only receiving is serialized; extraction and panic
+                    // handling never hold the receiver lock.
+                    let work = match work_rx.lock() {
+                        Ok(receiver) => receiver.recv(),
+                        Err(_) => {
+                            log_error!(LOG_TAG, "Download worker receiver lock poisoned");
+                            break;
+                        }
+                    };
+                    let Ok(mut download) = work else {
+                        break;
+                    };
+                    let outcome = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                        attempt_runner(&mut download)
+                    }))
+                    .map(AttemptOutcome::Finished)
+                    .unwrap_or_else(|e| AttemptOutcome::Panicked(panic_message(e.as_ref())));
+                    let _ = completion_tx.send(DownloadCompletion {
+                        download,
+                        completed_at: Instant::now(),
+                        outcome,
+                    });
+                }
+            });
+        }
+        drop(work_rx);
+        drop(completion_tx);
         let mut scheduler = DownloadScheduler::new(pending);
 
         while scheduler.has_work() {
-            scheduler.start_ready_attempts(scope, &completion_tx, attempt_runner, &mut telemetry);
+            if !scheduler.start_ready_attempts(&work_tx, &mut telemetry) {
+                return false;
+            }
 
             if !scheduler.can_make_progress() {
                 log_error!(LOG_TAG, "Download scheduler cannot make progress");
@@ -637,43 +666,51 @@ mod tests {
     }
 
     #[test]
-    fn task_panic_returns_false_without_unwinding() {
+    fn task_panic_releases_reservation_and_pending_tasks_finish() {
         guest_telemetry::log::clear_system_log_file();
+        let directory = tempfile::tempdir().unwrap();
 
         fn runner(download: &mut StartedDownload) -> Result<(), DownloadError> {
             if download.task.task.url == "panic" {
                 panic!("expected panic");
             }
-            Ok(())
+            fs::write(
+                download
+                    .task
+                    .effective_mount_path()
+                    .join(&download.task.task.url),
+                &download.task.task.url,
+            )
+            .map_err(|error| DownloadError::fatal(error.to_string()))
         }
 
-        let result = std::panic::catch_unwind(|| {
-            download_all_parallel_with_runner(
-                vec![
-                    PreparedDownloadTask {
-                        task: DownloadTask::storage(
-                            "panic".to_owned(),
-                            "panic".to_owned(),
-                            "/tmp/panic".to_owned(),
-                            false,
-                        ),
-                        effective_mount_path: PathBuf::from("/tmp/panic"),
+        // All tasks conflict, so the panic must release its reservation before
+        // any of the more-than-four remaining tasks can produce their files.
+        let tasks = (0..10)
+            .map(|index| PreparedDownloadTask {
+                task: DownloadTask::storage(
+                    format!("task-{index}"),
+                    if index == 0 {
+                        "panic".to_owned()
+                    } else {
+                        format!("file-{index}")
                     },
-                    PreparedDownloadTask {
-                        task: DownloadTask::storage(
-                            "success".to_owned(),
-                            "success".to_owned(),
-                            "/tmp/success".to_owned(),
-                            false,
-                        ),
-                        effective_mount_path: PathBuf::from("/tmp/success"),
-                    },
-                ],
-                runner,
-            )
-        });
+                    directory.path().to_str().unwrap().to_owned(),
+                    false,
+                ),
+                effective_mount_path: directory.path().to_owned(),
+            })
+            .collect();
+        let result = std::panic::catch_unwind(|| download_all_parallel_with_runner(tasks, runner));
 
         assert!(matches!(result, Ok(false)));
+        for index in 1..10 {
+            let name = format!("file-{index}");
+            assert_eq!(
+                fs::read_to_string(directory.path().join(&name)).unwrap(),
+                name
+            );
+        }
     }
 
     #[test]

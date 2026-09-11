@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.89.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.89.0...guest-agent-v0.89.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **guest-agent:** keep oom evidence waits off tokio workers ([#33396](https://github.com/vm0-ai/vm0/issues/33396)) ([0c7a535](https://github.com/vm0-ai/vm0/commit/0c7a535c995853acc1226a0c9815baecc3f0b870))
+
+## [0.89.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.88.3...guest-agent-v0.89.0) (2026-09-11)
+
+
+### Features
+
+* **chat:** add native reasoning effort controls ([#33016](https://github.com/vm0-ai/vm0/issues/33016)) ([f649925](https://github.com/vm0-ai/vm0/commit/f649925cbb81c11ee5b66d32bcc6072fc2fe80c2))
+
+## [0.88.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.88.2...guest-agent-v0.88.3) (2026-09-10)
+
 ## [0.88.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.88.1...guest-agent-v0.88.2) (2026-09-10)
 
 

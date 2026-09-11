@@ -303,6 +303,8 @@ describe("model-first canonical catalog", () => {
       "anthropic-api-key",
       "openrouter-api-key",
       "vercel-ai-gateway",
+      "azure-foundry",
+      "aws-bedrock",
     ]);
     expect(getProvidersForModel("anthropic/claude-fable-5.1")).toEqual([
       "built-in",
@@ -310,6 +312,8 @@ describe("model-first canonical catalog", () => {
       "anthropic-api-key",
       "openrouter-api-key",
       "vercel-ai-gateway",
+      "azure-foundry",
+      "aws-bedrock",
     ]);
     expect(getProvidersForModel("claude-opus-5")).toEqual([
       "built-in",
@@ -317,6 +321,8 @@ describe("model-first canonical catalog", () => {
       "anthropic-api-key",
       "openrouter-api-key",
       "vercel-ai-gateway",
+      "azure-foundry",
+      "aws-bedrock",
     ]);
     expect(getProvidersForModel("anthropic/claude-opus-5")).toEqual([
       "built-in",
@@ -324,6 +330,8 @@ describe("model-first canonical catalog", () => {
       "anthropic-api-key",
       "openrouter-api-key",
       "vercel-ai-gateway",
+      "azure-foundry",
+      "aws-bedrock",
     ]);
     expect(getProvidersForModel("claude-opus-4-8")).toEqual([
       "built-in",
@@ -331,6 +339,8 @@ describe("model-first canonical catalog", () => {
       "anthropic-api-key",
       "openrouter-api-key",
       "vercel-ai-gateway",
+      "azure-foundry",
+      "aws-bedrock",
     ]);
     expect(getProvidersForModel("anthropic/claude-sonnet-5")).toEqual([
       "built-in",
@@ -338,6 +348,8 @@ describe("model-first canonical catalog", () => {
       "anthropic-api-key",
       "openrouter-api-key",
       "vercel-ai-gateway",
+      "azure-foundry",
+      "aws-bedrock",
     ]);
     expect(getProvidersForModel("gpt-6-astra")).toEqual([
       "built-in",
@@ -377,10 +389,12 @@ describe("model-first canonical catalog", () => {
     expect(getProvidersForModel("deepseek-v4-flash")).toEqual([
       "built-in",
       "deepseek",
+      "openrouter-codex",
     ]);
     expect(getProvidersForModel("deepseek-v4-pro")).toEqual([
       "built-in",
       "deepseek",
+      "openrouter-codex",
     ]);
     expect(getProvidersForModel("kimi-k3")).toEqual([]);
     expect(getProvidersForModel("glm-5.2")).toEqual([]);
