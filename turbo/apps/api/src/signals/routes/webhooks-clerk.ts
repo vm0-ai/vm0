@@ -22,6 +22,7 @@ import {
 } from "../services/webhooks-clerk-cleanup.service";
 import { handleUsagePackInvitationAccepted } from "../services/usage-pack-invitation-purchase.service";
 import { recordMorningBriefMembership } from "../services/morning-brief-enrollment-data.service";
+import { sendUserCreatedLifecycleEvent } from "../services/resend-lifecycle.service";
 import {
   ensureMorningBriefDefaultEnabled$,
   type EnsureMorningBriefDefaultEnabledResult,
@@ -527,6 +528,15 @@ const postClerkWebhook$ = command(
         return missingOrganizationDeletedIdResponse(event.data);
       }
       return await set(handleOrganizationDeletedWebhook$, orgId, signal);
+    }
+
+    if (event.type === "user.created") {
+      waitUntil(
+        tapError(sendUserCreatedLifecycleEvent(event.data), (error) => {
+          L.error("user.created lifecycle event failed", { error });
+        }),
+      );
+      return new Response("OK", { status: 200 });
     }
 
     if (event.type === "user.deleted") {

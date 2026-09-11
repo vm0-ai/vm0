@@ -185,6 +185,10 @@ export interface ApiTestMocks {
   };
   readonly resend: {
     readonly send: AsyncMock;
+    readonly eventsSend: AsyncMock;
+    readonly contactsCreate: AsyncMock;
+    readonly contactsGet: AsyncMock;
+    readonly contactsUpdate: AsyncMock;
   };
   readonly signalTimers: {
     readonly delay: SignalTimerDelayMock;
@@ -329,6 +333,14 @@ export interface ApiTestMocks {
 interface ResendClientMock {
   readonly emails: {
     readonly send: ApiTestMocks["resend"]["send"];
+  };
+  readonly events: {
+    readonly send: ApiTestMocks["resend"]["eventsSend"];
+  };
+  readonly contacts: {
+    readonly create: ApiTestMocks["resend"]["contactsCreate"];
+    readonly get: ApiTestMocks["resend"]["contactsGet"];
+    readonly update: ApiTestMocks["resend"]["contactsUpdate"];
   };
 }
 type SlackWebClientMock = Omit<ApiTestMocks["slack"], "fetchFile">;
@@ -569,6 +581,10 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
     resend: {
       send: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      eventsSend: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      contactsCreate: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      contactsGet: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      contactsUpdate: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     signalTimers: {
       delay:
@@ -964,6 +980,14 @@ vi.mock("resend", () => {
         const client: ResendClientMock = {
           emails: {
             send: apiTestMocks.resend.send,
+          },
+          events: {
+            send: apiTestMocks.resend.eventsSend,
+          },
+          contacts: {
+            create: apiTestMocks.resend.contactsCreate,
+            get: apiTestMocks.resend.contactsGet,
+            update: apiTestMocks.resend.contactsUpdate,
           },
         };
         return client;
@@ -1415,6 +1439,10 @@ export function resetApiTestMocks(): void {
   apiTestMocks.dns.lookupOverrides.clear();
   apiTestMocks.nodeRequest.pinnedAddresses.length = 0;
   apiTestMocks.resend.send.mockReset();
+  apiTestMocks.resend.eventsSend.mockReset();
+  apiTestMocks.resend.contactsCreate.mockReset();
+  apiTestMocks.resend.contactsGet.mockReset();
+  apiTestMocks.resend.contactsUpdate.mockReset();
   apiTestMocks.signalTimers.delay.mockReset();
   apiTestMocks.slack.assistant.threads.setStatus.mockReset();
   apiTestMocks.slack.chat.getPermalink.mockReset();
