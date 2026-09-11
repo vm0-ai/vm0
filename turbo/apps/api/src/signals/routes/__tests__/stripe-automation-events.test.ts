@@ -523,7 +523,8 @@ beforeEach(() => {
 describe("Stripe automation event webhook", () => {
   it("keeps the existing billing webhook operational without the automation secret", async () => {
     mockOptionalEnv("STRIPE_AUTOMATION_WEBHOOK_SECRET", undefined);
-    const billing = await workflows.setupWorkflowOrg();
+    const actor = workflows.user();
+    const billing = { actor, ...(await runs.grantProEntitlement(actor)) };
     expect(billing).toMatchObject({
       actor: { orgId: expect.any(String) },
       customerId: expect.any(String),

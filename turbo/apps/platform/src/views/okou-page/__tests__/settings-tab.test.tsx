@@ -1215,6 +1215,17 @@ test.each(["Cancel", "Close", "Escape", "backdrop"])(
 test.each([false, true])(
   "Retry unfinished rescues without duplicating completed workflows (reopen: %s)",
   async (reopen) => {
+    async function chooseBothWorkflowCopies(dialog: HTMLElement) {
+      for (const title of ["Daily research", "Weekly research"]) {
+        click(
+          within(dialog).getByRole("combobox", {
+            name: `Handle workflow ${title}`,
+          }),
+        );
+        click(await screen.findByRole("option", { name: "Copy to Nova" }));
+      }
+    }
+
     prepareAgentProfile();
     const first = prepareDeleteWorkflow();
     const second: WorkflowSummary = {
@@ -1283,8 +1294,7 @@ test.each([false, true])(
     click(screen.getByText("Delete agent"));
     let dialog = await screen.findByRole("dialog");
     await within(dialog).findByText("Weekly research");
-    await chooseWorkflowCopy(dialog);
-    await chooseWorkflowCopy(dialog, "Weekly research");
+    await chooseBothWorkflowCopies(dialog);
     click(within(dialog).getByText("Delete agent"));
     await expect(within(dialog).findByRole("alert")).resolves.toHaveTextContent(
       "Second copy failed",
@@ -1302,9 +1312,8 @@ test.each([false, true])(
     }
 
     if (reopen) {
-      const user = userEvent.setup({ delay: null });
-      await user.click(within(dialog).getByText("Cancel"));
-      await user.click(screen.getByText("Delete agent"));
+      click(within(dialog).getByText("Cancel"));
+      click(screen.getByText("Delete agent"));
       dialog = await screen.findByRole("dialog");
     }
     for (const select of within(dialog).getAllByRole("combobox")) {
@@ -1313,8 +1322,7 @@ test.each([false, true])(
     expect(
       within(dialog).getByText("Daily research copied to Nova"),
     ).toBeInTheDocument();
-    await chooseWorkflowCopy(dialog);
-    await chooseWorkflowCopy(dialog, "Weekly research");
+    await chooseBothWorkflowCopies(dialog);
     allowSecondCopy = true;
     click(within(dialog).getByText("Delete agent"));
     await screen.findByText("Agent deleted");

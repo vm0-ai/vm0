@@ -405,14 +405,14 @@ test("Show a scheduled package change on a pending invitation", async () => {
 });
 
 test("Configure a member’s package from People", async () => {
-  mockMembersStory();
+  mockMembersStory(undefined, "admin", "owner");
   mockMemberInviteEntitlement(true);
   mockUsagePackManagement();
   mockUsagePackCatalog();
 
   await setupPage({
     context,
-    path: "/?settings=people",
+    path: "/agents?settings=people",
   });
   await expect(screen.findByText("Usage pack")).resolves.toBeInTheDocument();
 
@@ -598,7 +598,7 @@ test.each([
 ] as const)(
   "Invite a member after selecting No package on $tier (subscription: $hasSubscription)",
   async ({ tier, hasSubscription }) => {
-    mockMembersStory();
+    mockMembersStory(undefined, "admin", "owner");
     mockMemberInviteEntitlement(
       true,
       { tier, status: "active" },
@@ -622,7 +622,7 @@ test.each([
     }
     mockUsagePackCatalog(true);
 
-    await setupPage({ context, path: "/?settings=people" });
+    await setupPage({ context, path: "/agents?settings=people" });
     await screen.findByRole("heading", { name: "People" });
     click(buttonByText("Add member"));
     const inviteDialog = await screen.findByRole("dialog", {

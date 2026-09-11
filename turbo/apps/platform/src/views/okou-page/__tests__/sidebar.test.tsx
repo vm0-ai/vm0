@@ -2359,7 +2359,12 @@ test.each(["agent", "thread"] as const)(
   "Refresh the %s unread indicator",
   async (indicator) => {
     mockMobileLayout();
-    prepareAgents();
+    // Both consumers observe Nova and its thread; unrelated agents add no coverage.
+    context.mocks.data.agents(
+      prepareAgents().filter((agent) => {
+        return agent.agentId === AGENT_ID;
+      }),
+    );
     mockSidebarThreadStory([
       createThread(EXISTING_THREAD_ID, "Remote unread conversation"),
     ]);
@@ -2402,7 +2407,7 @@ test.each(["agent", "thread"] as const)(
 
     await setupSidebarPage({
       context,
-      path: `/agents/${AGENT_ID}/chat`,
+      path: "/agents",
       sharedWorkerTestTransport: "message-port",
     });
 
