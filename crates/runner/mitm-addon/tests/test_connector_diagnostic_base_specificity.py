@@ -17,6 +17,7 @@ from tests.request_handler_helpers import (
     _single_firewall_sandbox,
     _write_registry,
 )
+from tests.requestheaders_helpers import await_requestheaders_result
 
 
 def _overlapping_catalog(*, broad_connectors=2, specific_rule="GET /items/{id}"):
@@ -233,6 +234,7 @@ async def test_broader_shared_owners_cannot_interrupt_active_request_authenticat
             firewall_name="broad-b",
             api_entry=firewalls["broad-b"]["apis"][0],
             network_policy={"allow": ["read"], "deny": [], "ask": [], "unknownPolicy": "allow"},
+            sandbox_fields={"captureNetworkBodies": True},
         ),
     )
     flow = real_flow(
@@ -243,6 +245,8 @@ async def test_broader_shared_owners_cannot_interrupt_active_request_authenticat
         method="GET",
     )
     flow.request.headers["X-VM0-Connector-Intent"] = "broad-a"
+    if requestheaders_first:
+        flow.request.headers["Content-Length"] = str(mitm_addon.STREAM_BUFFER_LIMIT + 1)
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.okou.ai"),
@@ -250,9 +254,10 @@ async def test_broader_shared_owners_cannot_interrupt_active_request_authenticat
     ):
         if requestheaders_first:
             pending = mitm_addon.requestheaders(flow)
-            if pending is not None:
-                await pending
+            await await_requestheaders_result(pending)
             assert flow.response is None
+            assert callable(flow.request.stream)
+            assert flow.request.headers["Authorization"] == "Bearer active"
         await mitm_addon.request(flow)
 
     assert flow.response is None
