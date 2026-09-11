@@ -10,6 +10,7 @@ import {
   MEMORY_ARTIFACT_NAME,
   VOLUME_ORG_USER_ID,
 } from "@okouai/core/storage-names";
+import { encode } from "gpt-tokenizer/encoding/o200k_base";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
@@ -790,6 +791,43 @@ describe("memory summary projection", () => {
       status: "pending",
       last_error_class: "read_integrity_mismatch",
       has_content: false,
+    });
+  });
+
+  it("reads an authentic ready projection above the prompt injection budget", async () => {
+    const content = Buffer.from("seeded summary", "utf8");
+    const version = await publishVersion({
+      files: [declaredFile("memory_summary.md", content)],
+      archive: tarGz([{ path: "memory_summary.md", content }]),
+    });
+    await run(version);
+
+    // The runtime renderer applies the 2500-token prompt budget, so a larger
+    // authentic source must not be treated as corrupt on the read path.
+    const largeSummary = Array.from({ length: 300 }, (_, index) => {
+      return `- decision-${index.toString()}: keep repository-native checks`;
+    }).join("\n");
+    const largeTokenCount = encode(largeSummary).length;
+    expect(largeTokenCount).toBeGreaterThan(2500);
+    expect(Buffer.byteLength(largeSummary, "utf8")).toBeLessThanOrEqual(
+      64 * 1024,
+    );
+    await stateAction({
+      action: "seed-ready",
+      ...projectionScope(version),
+      content: largeSummary,
+    });
+
+    await expect(read(version)).resolves.toMatchObject({
+      content: largeSummary,
+      source_size: Buffer.byteLength(largeSummary, "utf8"),
+      token_count: largeTokenCount,
+    });
+    await expect(inspect(version)).resolves.toMatchObject({
+      status: "ready",
+      last_error_class: null,
+      has_content: true,
+      token_count: largeTokenCount,
     });
   });
 });
