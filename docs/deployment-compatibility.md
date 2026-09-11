@@ -574,6 +574,12 @@ host-command claiming until a forward fix. This permanent floor rejects
 pre-drop targets before API or Runner artifact resolution and output
 publication, even while the rollback dashboard still lists those releases.
 
+The floor is effective from `main` as soon as it merges, and no tagged release
+satisfied it at that point. Canonical production rollback is therefore
+unavailable by design until the release carrying `1107` is promoted: the
+resolver rejects every target as predating the drop, and recovery in that
+interval is roll-forward. Promoting that release closes the interval.
+
 The first compatible release is the one carrying migration `1107`; record its
 tag here once that release ships. Apply this floor only to the release/API
 target: the independent Runner ancestry, reader, host architecture, and
