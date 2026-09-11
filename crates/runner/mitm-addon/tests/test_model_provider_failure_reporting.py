@@ -1017,10 +1017,10 @@ def test_bodyless_response_skips_usage_and_failure_observers(
 
 
 @pytest.mark.parametrize(
-    ("content_type", "body", "usage_finish_key"),
+    ("content_types", "body", "usage_finish_key"),
     [
         pytest.param(
-            "Text/Event-Stream; Charset=UTF-8",
+            (b"Text/Event-Stream; Charset=UTF-8",),
             b"event: error\n"
             b'data: {"type":"error","code":"server_error",'
             b'"message":"provider failed","param":null}\n\n',
@@ -1028,16 +1028,36 @@ def test_bodyless_response_skips_usage_and_failure_observers(
             id="parameterized-sse",
         ),
         pytest.param(
-            'application/json; profile="text/event-stream"',
+            (b'application/json; profile="text/event-stream"',),
             b'{"status":"failed","error":{"code":"server_error"}}',
             "model_json_usage_finish",
             id="sse-profile-lookalike",
         ),
         pytest.param(
-            "text/event-stream+json",
+            (b"text/event-stream+json",),
             b'{"status":"failed","error":{"code":"server_error"}}',
             "model_json_usage_finish",
             id="sse-suffix-lookalike",
+        ),
+        pytest.param(
+            (b"text/event-stream; pad=" + b"\xff" * (1024 * 1024),),
+            b"event: error\n"
+            b'data: {"type":"error","code":"server_error",'
+            b'"message":"provider failed","param":null}\n\n',
+            "model_sse_usage_finish",
+            id="oversized-parameterized-sse",
+        ),
+        pytest.param(
+            (b"text/event-stream; charset=utf-8", b"\xff" * (1024 * 1024)),
+            b'{"status":"failed","error":{"code":"server_error"}}',
+            "model_json_usage_finish",
+            id="repeated-content-type",
+        ),
+        pytest.param(
+            (b"text/event-stream" + b" " * (8 * 1024),),
+            b'{"status":"failed","error":{"code":"server_error"}}',
+            "model_json_usage_finish",
+            id="exhausted-media-type-prefix",
         ),
     ],
 )
@@ -1045,7 +1065,7 @@ def test_media_type_classification_is_shared_by_usage_and_failure_observers(
     tmp_path,
     real_flow,
     mitm_ctx,
-    content_type: str,
+    content_types: tuple[bytes, ...],
     body: bytes,
     usage_finish_key: str,
     model_provider_failure_api,
@@ -1055,13 +1075,22 @@ def test_media_type_classification_is_shared_by_usage_and_failure_observers(
         tmp_path / "proxy.jsonl",
         request_path="/v1/responses",
         response_body=body,
-        response_headers=header_map({"content-type": content_type}),
+        response_headers=http.Headers((b"Content-Type", value) for value in content_types),
     )
     flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
+    assert flow.response is not None
+    original_fields = flow.response.headers.fields
+    original_native = http._native
+
+    def reject_oversized_conversion(value: bytes) -> str:
+        assert len(value) <= 8 * 1024, "shared classifier decoded an oversized header"
+        return original_native(value)
 
     model_provider_failure.admit_flow(flow)
-    mitm_addon.responseheaders(flow)
+    with patch.object(http, "_native", reject_oversized_conversion):
+        mitm_addon.responseheaders(flow)
 
+    assert flow.response.headers.fields == original_fields
     assert usage_finish_key in flow.metadata
     other_usage_finish_key = (
         "model_json_usage_finish"
