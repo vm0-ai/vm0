@@ -25801,17 +25801,17 @@ describe("CHAT-02: default assistant identity", () => {
     await cancelChatRun(actor, promoted.runId);
 
     mockEnv("APP_URL", "https://preview.example.test");
-    const customZero = await bdd.createAgent(actor, {
-      displayName: "Zero",
+    const customAgent = await bdd.createAgent(actor, {
+      displayName: "Nova",
       visibility: "private",
     });
     const customRun = await sendChatRun(actor, {
-      agentId: customZero.agentId,
+      agentId: customAgent.agentId,
       prompt: "keep my custom name",
     });
     const customPrompt = (await api.readRun(actor, customRun.runId))
       .appendSystemPrompt;
-    expect(customPrompt).toContain("Your name is Zero.");
+    expect(customPrompt).toContain("Your name is Nova.");
     expect(customPrompt).not.toContain("Your name is Okou.");
     const customClaim = await claimChatRun(runnerGroup, customRun.runId);
     await expectRunAppContext({
@@ -26092,7 +26092,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     const grantedRun = await api.readRun(actor, granted.runId);
     expect(grantedRun.appendSystemPrompt).toContain("# Computer Use");
     expect(grantedRun.appendSystemPrompt).toContain(
-      "Computer Use is enabled for this run on Zero Desktop.",
+      "Computer Use is enabled for this run on BDD Desktop.",
     );
     expect(grantedRun.appendSystemPrompt).not.toContain(hostId);
     const grantedClaim = await claimChatRun(runnerGroup, granted.runId);
@@ -26142,7 +26142,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     });
     const staleRun = await api.readRun(actor, staleGranted.runId);
     expect(staleRun.appendSystemPrompt).toContain(
-      "Computer Use is enabled for this run on Zero Desktop.",
+      "Computer Use is enabled for this run on BDD Desktop.",
     );
     clearMockNow();
     const staleClaim = await claimChatRun(runnerGroup, staleGranted.runId);
