@@ -134,6 +134,29 @@ export const impactStripeMetadata$ = command(
   },
 );
 
+function shouldUpdateImpactMetadata(
+  previous: Readonly<Record<string, string>>,
+  next: {
+    readonly impact_click_id: string;
+    readonly impact_click_at: string;
+    readonly impact_privacy_receipt: string;
+    readonly impact_privacy_user_id: string;
+  },
+): boolean {
+  if (
+    !previous.impact_click_at ||
+    previous.impact_click_at < next.impact_click_at
+  ) {
+    return true;
+  }
+  return (
+    previous.impact_click_at === next.impact_click_at &&
+    previous.impact_click_id === next.impact_click_id &&
+    ((previous.impact_privacy_receipt ?? "") !== next.impact_privacy_receipt ||
+      (previous.impact_privacy_user_id ?? "") !== next.impact_privacy_user_id)
+  );
+}
+
 export async function updateImpactCustomer(
   customerId: string,
   metadata: Readonly<Record<string, string>>,
@@ -147,19 +170,27 @@ export async function updateImpactCustomer(
   const customer = await stripe.customers.retrieve(customerId);
   signal.throwIfAborted();
   if (
-    !customer.deleted &&
-    (!customer.metadata.impact_click_at ||
-      customer.metadata.impact_click_at < capturedAt)
-  ) {
-    await stripe.customers.update(customerId, { metadata: { ...metadata } });
-    signal.throwIfAborted();
-  }
-  if (
     customer.deleted ||
     (customer.metadata.impact_click_at &&
-      customer.metadata.impact_click_at > capturedAt)
+      (customer.metadata.impact_click_at > capturedAt ||
+        (customer.metadata.impact_click_at === capturedAt &&
+          customer.metadata.impact_click_id !== metadata.impact_click_id)))
   ) {
     return;
+  }
+  // Stripe merges metadata updates. Clear absent proof on every caller path so
+  // a click cannot inherit the previous purchaser's receipt. Proof can also
+  // change without a newer click when the current purchaser has no receipt.
+  const nextMetadata = {
+    ...metadata,
+    impact_click_id: metadata.impact_click_id,
+    impact_click_at: capturedAt,
+    impact_privacy_receipt: metadata.impact_privacy_receipt ?? "",
+    impact_privacy_user_id: metadata.impact_privacy_user_id ?? "",
+  };
+  if (shouldUpdateImpactMetadata(customer.metadata, nextMetadata)) {
+    await stripe.customers.update(customerId, { metadata: nextMetadata });
+    signal.throwIfAborted();
   }
   // Stripe copies subscription metadata onto each newly created invoice.
   // Refresh future renewals while existing invoices retain their own snapshot.
@@ -175,12 +206,13 @@ export async function updateImpactCustomer(
     ) {
       continue;
     }
-    const previous = subscription.metadata?.impact_click_at;
-    if (previous && previous >= capturedAt) {
+    if (
+      !shouldUpdateImpactMetadata(subscription.metadata ?? {}, nextMetadata)
+    ) {
       continue;
     }
     await stripe.subscriptions.update(subscription.id, {
-      metadata: { ...metadata },
+      metadata: nextMetadata,
     });
     signal.throwIfAborted();
   }
