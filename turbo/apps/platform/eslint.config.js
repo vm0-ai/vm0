@@ -372,7 +372,8 @@ export default [
       "vite.config.ts",
       "vitest.config.ts",
       "src/mocks/**",
-      "src/__tests__/**",
+      "src/__tests__/**/*",
+      "!src/__tests__/authentication-startup.test.tsx",
       // Asset files — not JS/TS, would cause parse errors when matched by
       // broad file globs in .oxlintrc.json overrides (e.g. src/views/**/*.*)
       "**/*.svg",
