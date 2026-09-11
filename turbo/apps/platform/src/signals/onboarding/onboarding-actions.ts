@@ -7,6 +7,7 @@ import {
 } from "@okouai/api-contracts/contracts/billing";
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
+import { reloadAgents$ } from "../agent.ts";
 import { authenticatedIdentity$ } from "../auth.ts";
 import { ROUTES } from "../route-paths.ts";
 import { billingStatusAsync$ } from "../okou-page/billing.ts";
@@ -60,6 +61,9 @@ export const completeOnboarding$ = command(
     if (role) {
       set(capturePaidOnboardingRoleConfirmed$, role);
     }
+    // A route rendered before onboarding can cache an empty agent list while
+    // the status endpoint is still provisioning the workspace's default agent.
+    set(reloadAgents$);
     set(reloadOnboardingStatus$);
     set(resetOnboardingDraft$);
   },

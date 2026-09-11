@@ -1,4 +1,10 @@
 import { acquisitionAttributionContract } from "@okouai/api-contracts/contracts/acquisition-attribution";
+import {
+  agentsByIdContract,
+  agentsMainContract,
+  type AgentResponse,
+} from "@okouai/api-contracts/contracts/agents";
+import { DEFAULT_AGENT_AVATAR_URL } from "@okouai/core/agent-avatar";
 import { screen, waitFor, within } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import {
@@ -22,7 +28,10 @@ import {
   connectorManualGrantContract,
   connectorOauthStartContract,
 } from "@okouai/api-contracts/contracts/connectors";
-import { onboardingCompleteContract } from "@okouai/api-contracts/contracts/onboarding";
+import {
+  onboardingCompleteContract,
+  onboardingStatusContract,
+} from "@okouai/api-contracts/contracts/onboarding";
 
 import {
   click,
@@ -663,6 +672,79 @@ test("A user can leave the catalog to create a custom workflow", async () => {
   expect(completedTimezone).toBe(
     new Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
   );
+});
+
+test("Okou's avatar appears after onboarding provisions the first agent", async () => {
+  const initialAgentList = context.mocks.deferred<void>();
+  let provisioned = false;
+  let completed = false;
+  const agent = {
+    agentId: "c0000000-0000-4000-a000-000000000001",
+    isDefaultAgent: true,
+    ownerId: "test-user-123",
+    displayName: "Okou",
+    description: null,
+    sound: null,
+    avatarUrl: DEFAULT_AGENT_AVATAR_URL,
+    modelProviderId: null,
+    selectedModel: null,
+    preferPersonalProvider: false,
+    visibility: "public",
+  } satisfies AgentResponse;
+  context.mocks.api(agentsMainContract.list, ({ respond }) => {
+    if (!provisioned) {
+      initialAgentList.resolve();
+      return respond(200, []);
+    }
+    return respond(200, [agent]);
+  });
+  context.mocks.api(agentsByIdContract.get, ({ respond }) => {
+    return respond(200, agent);
+  });
+  context.mocks.api(onboardingStatusContract.getStatus, async ({ respond }) => {
+    // The first status request lazily provisions Okou after the concurrent
+    // agents-page request has read the still-empty workspace.
+    await initialAgentList.promise;
+    provisioned = true;
+    return respond(200, {
+      needsOnboarding: !completed,
+      onboardingComplete: completed,
+      isAdmin: true,
+      hasOrg: true,
+      hasDefaultAgent: true,
+      defaultAgentId: agent.agentId,
+      defaultAgentMetadata: {
+        displayName: agent.displayName,
+        avatarUrl: agent.avatarUrl,
+      },
+    });
+  });
+  context.mocks.api(onboardingCompleteContract.complete, ({ respond }) => {
+    completed = true;
+    return respond(200, {
+      onboardingComplete: true,
+      needsOnboarding: false,
+    });
+  });
+
+  await setupPage({ context, path: "/agents" });
+  await screen.findByRole("heading", {
+    name: "What do you want to make first",
+  });
+  chooseMakeOption("Workflow automation");
+  await screen.findByRole("heading", { name: "What do you work on?" });
+  click(buttonByText("Engineer"));
+  await screen.findByRole("heading", { name: "Engineer workflows" });
+  click(buttonByText("Talk to Okou and make my own"));
+
+  await screen.findByRole("textbox", { name: "Message" });
+  await waitFor(() => {
+    expect(pathname()).toBe(`/agents/${agent.agentId}/chat`);
+    const profile = queryAllByRoleFast("link").find((link) => {
+      return link.getAttribute("aria-label") === "View agent profile";
+    });
+    expect(profile?.querySelector("img")).toBeVisible();
+  });
 });
 
 test("Okou custom workflow onboarding addresses Okou by default", async () => {
