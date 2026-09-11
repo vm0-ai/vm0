@@ -1699,3 +1699,56 @@ describe("GET/PUT /api/model-policies", () => {
     });
   });
 });
+
+test.each([
+  { type: "azure-foundry", selectedModel: undefined },
+  { type: "azure-foundry", selectedModel: "claude-opus-5" },
+  {
+    type: "azure-foundry",
+    selectedModel: "https://private.example/deployment",
+  },
+  { type: "aws-bedrock", selectedModel: undefined },
+  { type: "aws-bedrock", selectedModel: "anthropic.claude-opus-5-v1:0" },
+  { type: "aws-bedrock", selectedModel: "deepseek-v4-pro" },
+] as const)(
+  "rejects an unmapped cloud $type $selectedModel through the public policy API",
+  async ({ type, selectedModel }) => {
+    const fixture = seedFixture();
+    useSession(fixture);
+    const { providerId } = await runsApi.createOrgModelProvider(fixture, {
+      type,
+      selectedModel,
+      authMethod: "api-key",
+      secrets:
+        type === "azure-foundry"
+          ? {
+              ANTHROPIC_FOUNDRY_RESOURCE: "configured-resource",
+              ANTHROPIC_FOUNDRY_API_KEY: "configured-key",
+            }
+          : {
+              AWS_REGION: "us-east-1",
+              AWS_BEARER_TOKEN_BEDROCK: "configured-bearer",
+            },
+    });
+    const response = await accept(
+      apiClient().update({
+        headers: authHeaders(),
+        body: {
+          policies: [
+            {
+              model: "claude-sonnet-4-6",
+              isDefault: true,
+              defaultProviderType: type,
+              credentialScope: "org",
+              modelProviderId: providerId,
+            },
+          ],
+        },
+      }),
+      [400],
+    );
+    expect(response.body.error.message).toContain(
+      "explicit compatible saved deployment or profile",
+    );
+  },
+);

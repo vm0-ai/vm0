@@ -46,6 +46,7 @@ import {
   ACTIVE_RUN_MODELS,
   getCanonicalModelDisplayName,
   getProvidersForModel,
+  getSelectableProviderTypes,
   isBuiltInModelProviderType,
   type ModelProviderResponse,
   type ModelProviderType,
@@ -785,18 +786,22 @@ function ProviderTypeSelect({
         </SelectValue>
       </SelectTrigger>
       <SelectContent>
-        {types.map((type) => {
-          return (
-            <SelectItem key={type} value={type}>
-              <div className="flex min-w-0 items-center gap-2">
-                <ProviderIcon type={type} size={16} />
-                <span className="min-w-0 flex-1 truncate">
-                  {getUILabel(type)}
-                </span>
-              </div>
-            </SelectItem>
-          );
-        })}
+        {types
+          .filter((type) => {
+            return getSelectableProviderTypes().includes(type);
+          })
+          .map((type) => {
+            return (
+              <SelectItem key={type} value={type}>
+                <div className="flex min-w-0 items-center gap-2">
+                  <ProviderIcon type={type} size={16} />
+                  <span className="min-w-0 flex-1 truncate">
+                    {getUILabel(type)}
+                  </span>
+                </div>
+              </SelectItem>
+            );
+          })}
       </SelectContent>
     </Select>
   );

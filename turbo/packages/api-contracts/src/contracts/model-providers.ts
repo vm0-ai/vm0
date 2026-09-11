@@ -960,6 +960,8 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "anthropic-api-key",
     "openrouter-api-key",
     "vercel-ai-gateway",
+    "azure-foundry",
+    "aws-bedrock",
   ],
   "claude-opus-5": [
     "built-in",
@@ -967,6 +969,8 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "anthropic-api-key",
     "openrouter-api-key",
     "vercel-ai-gateway",
+    "azure-foundry",
+    "aws-bedrock",
   ],
   "claude-opus-4-8": [
     "built-in",
@@ -974,6 +978,8 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "anthropic-api-key",
     "openrouter-api-key",
     "vercel-ai-gateway",
+    "azure-foundry",
+    "aws-bedrock",
   ],
   "claude-sonnet-5": [
     "built-in",
@@ -981,6 +987,8 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "anthropic-api-key",
     "openrouter-api-key",
     "vercel-ai-gateway",
+    "azure-foundry",
+    "aws-bedrock",
   ],
   "claude-sonnet-4-6": [
     "built-in",
@@ -988,6 +996,8 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "anthropic-api-key",
     "openrouter-api-key",
     "vercel-ai-gateway",
+    "azure-foundry",
+    "aws-bedrock",
   ],
   "gpt-6-astra": [
     "built-in",
@@ -1023,8 +1033,8 @@ const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
     "openrouter-codex",
     "vercel-ai-gateway-codex",
   ],
-  "deepseek-v4-flash": ["built-in", "deepseek"],
-  "deepseek-v4-pro": ["built-in", "deepseek"],
+  "deepseek-v4-flash": ["built-in", "deepseek", "openrouter-codex"],
+  "deepseek-v4-pro": ["built-in", "deepseek", "openrouter-codex"],
 } as const satisfies Record<ActiveRunModel, readonly ModelProviderType[]>;
 
 const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
@@ -1045,6 +1055,8 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
     "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
   },
   "openrouter-codex": {
+    "deepseek-v4-flash": "deepseek/deepseek-v4-flash",
+    "deepseek-v4-pro": "deepseek/deepseek-v4-pro",
     "gpt-6-astra": "openai/gpt-6-astra",
     "gpt-5.6-sol": "openai/gpt-5.6-sol",
     "gpt-5.6-terra": "openai/gpt-5.6-terra",
@@ -1061,6 +1073,8 @@ const PROVIDER_RUNTIME_MODEL_ALIASES: Partial<
 
 const CANONICAL_RUN_MODEL_ALIASES: Readonly<Record<string, SupportedRunModel>> =
   {
+    "deepseek/deepseek-v4-flash": "deepseek-v4-flash",
+    "deepseek/deepseek-v4-pro": "deepseek-v4-pro",
     "anthropic/claude-fable-5.1": "claude-fable-5-1",
     "anthropic/claude-fable-5": "claude-fable-5",
     "anthropic/claude-opus-5": "claude-opus-5",
