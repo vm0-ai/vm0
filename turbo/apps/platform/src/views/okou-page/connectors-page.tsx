@@ -731,7 +731,9 @@ function ConnectorAgentFilterMenu({
             return (
               <ConnectorFilterOption
                 key={agent.agentId}
-                active={value.kind === "agent" && value.agentId === agent.agentId}
+                active={
+                  value.kind === "agent" && value.agentId === agent.agentId
+                }
                 onSelect={() => {
                   onChange({ kind: "agent", agentId: agent.agentId });
                 }}
