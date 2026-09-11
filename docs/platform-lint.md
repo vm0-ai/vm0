@@ -37,13 +37,14 @@ should await an event or operation completion instead. Testing Library's
 observable UI waits remain supported. Paging, stream reads, synchronous
 iteration, and a loop waiting for an explicit event are not timed polling.
 
-The existing global ESLint exclusions for `src/__tests__` and `src/mocks` also
-exclude those files from these rules. They still follow the polling policy;
-their current loops iterate data or dispatch events. Existing startup
-cancellation tests with child signals carry the same targeted debt marker. Raw
-primitives remain in the Web Animations, MSW, and Ably adapters that model
-external browser/protocol lifetimes. These broad
-exclusions are separate from the explicit primitive exceptions above.
+The existing global ESLint exclusions for `src/mocks` and most top-level
+`src/__tests__` files also exclude those files from these rules. They still
+follow the polling policy; their current loops iterate data or dispatch events.
+`src/__tests__/authentication-startup.test.tsx` remains in scope so its child
+signals carry validated `ccstate/no-create-child-abort-controller` debt markers.
+Raw primitives remain in the Web Animations, MSW, and Ably adapters that model
+external browser/protocol lifetimes. These broad exclusions are separate from
+the explicit primitive exceptions above.
 
 The multipart upload retry uses `setLoop` with its existing bounded attempt
 count and exponential delay. Its terminal error must propagate, so the helper's
