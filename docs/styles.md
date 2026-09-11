@@ -194,9 +194,14 @@ settings all use the select variant. Dimensions, padding, and radius remain
 with the existing control and caller; the appearance does not impose button
 layout on links or select triggers.
 
-The neutral button owns its opaque fill independently of `outline` and
-`default`, including while pressed. It layers hover over that fill instead of
-inheriting another variant's translucent or brand-colored interaction fill.
+The neutral button adds the existing outline interaction fills
+(`hover:bg-state-hover active:bg-state-pressed`) to the shared surface, keeping
+the hover overlay above those fills. Select triggers and native elements use
+only the shared surface and retain their own interaction behavior.
+
+Preserve consumer-specific interaction colors when extracting shared styles.
+The official workflow Configure button, for example, retains its existing
+`hover:bg-primary-hover active:bg-primary-pressed` overrides.
 
 The retired rule hard-coded a `0.7px` border while the rest of the product had
 already moved to `--default-border-width`. The replacement takes the shared
@@ -209,10 +214,6 @@ behaviour the shared token already describes.
 already inherits that foreground. It is kept because the retired rule set it,
 so a control moved onto a differently coloured surface keeps the treatment it
 has today.
-
-Three consumers also carried `hover:bg-state-hover`. The unlayered rule's own
-fill always won, so that class never applied; it is removed rather than newly
-enabled, which the hover measurement confirms.
 
 The `okou-btn-morandi` selector has been removed.
 

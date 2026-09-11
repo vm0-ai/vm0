@@ -469,7 +469,7 @@ function OfficialWorkflowDefinitionPage() {
             {definition.lifecycle === "active" ? (
               <Button
                 variant="neutral"
-                className="h-9 shrink-0 gap-2 rounded-lg"
+                className="h-9 shrink-0 gap-2 rounded-lg hover:bg-primary-hover active:bg-primary-pressed"
                 onClick={() => {
                   setForm(
                     createOfficialWorkflowConfigurationForm({
