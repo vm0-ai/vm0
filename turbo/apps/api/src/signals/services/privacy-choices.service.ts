@@ -45,7 +45,9 @@ function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-function stateOf(row: ChoiceRow | undefined): PrivacyChoiceState {
+export function privacyChoiceStateOf(
+  row: ChoiceRow | undefined,
+): PrivacyChoiceState {
   if (!row) {
     return {
       subjectId: null,
@@ -172,7 +174,7 @@ async function applyChoice(
 ): Promise<ChoiceResult> {
   const choice = gpc ? { source: "gpc" as const } : update;
   if (!choice) {
-    return { ok: true, state: stateOf(row) };
+    return { ok: true, state: privacyChoiceStateOf(row) };
   }
   const normalized = normalizedChoice(choice);
   if (
@@ -183,7 +185,7 @@ async function applyChoice(
   ) {
     return { ok: false, reason: "stale" };
   }
-  const current = stateOf(row).purposes;
+  const current = privacyChoiceStateOf(row).purposes;
   if (
     !mayGrant &&
     ((normalized.purposes.saleSharing === "granted" &&
@@ -206,7 +208,7 @@ async function applyChoice(
     update?.source === "explicit" && allDenied(normalized.purposes),
     signal,
   );
-  return { ok: true, state: stateOf(updated) };
+  return { ok: true, state: privacyChoiceStateOf(updated) };
 }
 
 async function lockUser(
@@ -342,7 +344,7 @@ export const userPrivacyChoice$ = command(
           .from(privacyChoices)
           .where(eq(privacyChoices.userId, args.userId));
         signal.throwIfAborted();
-        return { ok: true as const, state: stateOf(row) };
+        return { ok: true as const, state: privacyChoiceStateOf(row) };
       }
       const row = await lockUser(tx, args.userId, signal);
       return await applyChoice(
@@ -395,9 +397,13 @@ export const associatePrivacyChoice$ = command(
         }
 
         const incoming = args.gpc
-          ? { ...stateOf(browser), purposes: DENIED, source: "gpc" as const }
-          : stateOf(browser);
-        const current = stateOf(person);
+          ? {
+              ...privacyChoiceStateOf(browser),
+              purposes: DENIED,
+              source: "gpc" as const,
+            }
+          : privacyChoiceStateOf(browser);
+        const current = privacyChoiceStateOf(person);
         let merged = person;
         if (incoming.source) {
           // An initial verified browser choice can establish the person's state.
@@ -435,7 +441,7 @@ export const associatePrivacyChoice$ = command(
           .set({ linkedUserId: args.userId })
           .where(eq(privacyChoices.id, browser.id));
         signal.throwIfAborted();
-        return { ok: true, state: stateOf(merged) };
+        return { ok: true, state: privacyChoiceStateOf(merged) };
       },
     );
     signal.throwIfAborted();

@@ -1,3 +1,4 @@
+import { MARKETING_PRIVACY_RECEIPT_KEY } from "@okouai/api-contracts/contracts/marketing-privacy";
 import {
   googleAdsAccountForAttribution,
   GOOGLE_ADS_ADSMARCH_ACCOUNT_ID,
@@ -169,10 +170,22 @@ async function signupAttributionForUser(
   const user = usersResult.value?.data?.find((candidate) => {
     return candidate.id === userId;
   });
-  return user
+  const attribution = user
     ? parseStoredSignupAttribution(
         user.privateMetadata?.[SIGNUP_ATTRIBUTION_KEY],
       )
+    : undefined;
+  const receipt = user?.privateMetadata?.[MARKETING_PRIVACY_RECEIPT_KEY];
+  return attribution
+    ? {
+        ...attribution,
+        ...(typeof receipt === "string"
+          ? {
+              marketing_privacy_receipt: receipt,
+              marketing_privacy_user_id: userId,
+            }
+          : {}),
+      }
     : undefined;
 }
 

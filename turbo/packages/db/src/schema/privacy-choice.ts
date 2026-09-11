@@ -19,6 +19,10 @@ export const privacyChoices = pgTable(
     tokenHash: text("token_hash").unique(),
     linkedUserId: text("linked_user_id"),
     revision: uuid("revision").notNull().defaultRandom(),
+    advertisingEpoch: uuid("advertising_epoch").notNull().defaultRandom(),
+    marketingAnalyticsEpoch: uuid("marketing_analytics_epoch")
+      .notNull()
+      .defaultRandom(),
     saleSharing: text("sale_sharing")
       .$type<PrivacyPurposes["saleSharing"]>()
       .notNull()
@@ -78,3 +82,29 @@ export const privacyChoiceRevisions = pgTable(
     return [index("privacy_choice_revisions_subject_idx").on(table.subjectId)];
   },
 );
+
+// Server-issued capture evidence. A purpose epoch changes on withdrawal, so an
+// old capture cannot become eligible again after a later grant.
+export const marketingPrivacyReceipts = pgTable("marketing_privacy_receipts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  subjectId: uuid("subject_id")
+    .notNull()
+    .references(
+      () => {
+        return privacyChoices.id;
+      },
+      { onDelete: "cascade" },
+    ),
+  privacyRevision: uuid("privacy_revision")
+    .notNull()
+    .references(
+      () => {
+        return privacyChoiceRevisions.revision;
+      },
+      { onDelete: "cascade" },
+    ),
+  advertisingEpoch: uuid("advertising_epoch"),
+  marketingAnalyticsEpoch: uuid("marketing_analytics_epoch"),
+  policyVersion: text("policy_version").notNull(),
+  capturedAt: timestamp("captured_at").notNull(),
+});
