@@ -126,7 +126,7 @@ function iconButtonClassName(className?: string): string {
 }
 
 export function ArtifactActionSeparator() {
-  return <span className="mx-0.5 h-5 w-px shrink-0 bg-border/70" />;
+  return <span className="mx-0.5 h-5 w-px shrink-0 bg-divider/70" />;
 }
 
 export function ArtifactActionTooltip({

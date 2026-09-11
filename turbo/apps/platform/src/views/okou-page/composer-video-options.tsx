@@ -401,7 +401,7 @@ function VideoToolbar({
   const { t } = useTranslation();
   return (
     <div className="hidden shrink-0 items-center gap-0.5 @min-[760px]/composer:flex">
-      <div className="mx-1 h-4 w-px bg-border/60" />
+      <div className="mx-1 h-4 w-px bg-divider/60" />
       <VideoToolbarField
         label={t(($) => {
           return $.chat.templates.videoOptionsRatio;
