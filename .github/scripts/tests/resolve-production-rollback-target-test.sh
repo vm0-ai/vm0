@@ -42,6 +42,8 @@ case "${1:-}" in
     elif [ "${3:-}" = "077a9a644986e13bed4750796f91e55c4a876aad" ]; then
       [ "${4:-}" != "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" ] &&
         [ "${MOCK_GOAL_SCHEMA_REPAIR_VALID:-1}" = "1" ]
+    elif [ "${3:-}" = "669d0befc9a181e44e3f1f9e39093efddabcc0f8" ]; then
+      [ "${MOCK_CLIENT_PRODUCT_FLOOR_VALID:-1}" = "1" ]
     else
       [ "${MOCK_ANCESTRY_VALID:-1}" = "1" ]
     fi
@@ -219,6 +221,18 @@ for floors in "0 0" "1 0" "0 1"; do
     fail "schema rejection must precede API and Runner artifact resolution"
   fi
 done
+
+# Targets that still declare client_product fail before any artifacts.
+: >"${tmp_dir}/boundaries.log"
+assert_failure "Target commit predates the computer_use_hosts.client_product drop" \
+  run_resolver "${tmp_dir}/client-product-floor.output" MOCK_CLIENT_PRODUCT_FLOOR_VALID=0
+grep -Fq "669d0befc9a181e44e3f1f9e39093efddabcc0f8" "${tmp_dir}/failure.err" ||
+  fail "client_product rejection must identify the drop commit"
+[ ! -s "${tmp_dir}/client-product-floor.output" ] || fail "pre-drop API target must not publish outputs"
+[ ! -s "${tmp_dir}/failure.out" ] || fail "pre-drop API target must not print resolved targets"
+if grep -qE '^(curl|ssh|git (show|rev-list)) ' "${tmp_dir}/boundaries.log"; then
+  fail "client_product rejection must precede API and Runner artifact resolution"
+fi
 
 release_target_script="${tmp_dir}/resolve-release-target.sh"
 ruby -e '

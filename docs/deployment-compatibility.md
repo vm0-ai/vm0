@@ -557,6 +557,30 @@ Numbered 014 remains a completed historical operation, not a current execution
 path. Both rollback floors remain unchanged; this cleanup authorizes no release,
 rollback, production operation or official resource/workflow disposition.
 
+### Computer Use host client_product rollback floor
+
+The production rollback resolver requires the release/API target to contain
+`669d0befc9a181e44e3f1f9e39093efddabcc0f8`, which removed the
+`computer_use_hosts.client_product` ORM declaration and dropped the physical
+column in migration `1107`. Drizzle builds column lists from the declaration
+rather than from usage, so the declaration removal and the physical contraction
+had to ship in one release. That release is therefore a rollback barrier.
+
+Canonical rollback promotes App, Runner, and API artifacts and does not restore
+an older database schema. Once `1107` has run, an earlier API build still names
+the dropped column in every insert, bare select, and bare returning, failing
+with `42703` and taking out host registration, heartbeat, host stop, and
+host-command claiming until a forward fix. This permanent floor rejects
+pre-drop targets before API or Runner artifact resolution and output
+publication, even while the rollback dashboard still lists those releases.
+
+The first compatible release is the one carrying migration `1107`; record its
+tag here once that release ships. Apply this floor only to the release/API
+target: the independent Runner ancestry, reader, host architecture, and
+release-asset checks are unchanged. The rollback workflow loads the resolver
+from current `main`, so merging the floor constrains future canonical
+executions without a release or test rollback.
+
 ### Usage pack visibility compatibility retirement
 
 `showUsagePack` has an explicit API writer and billing response starting with
