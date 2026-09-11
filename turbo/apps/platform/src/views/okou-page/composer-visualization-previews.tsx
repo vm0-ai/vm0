@@ -965,56 +965,84 @@ function MapGraticule() {
 
 function WorldOutline() {
   return (
-    <g className="fill-chart-blue-100 stroke-background" strokeWidth="0.8">
-      <path d="M17 24 24 14 39 11 51 17 48 25 39 28 35 39 25 43 18 35 10 32Z" />
-      <path d="m42 46 10 5 5 12-5 18-7 2-4-16-7-12Z" />
-      <path d="m67 20 8-8 15 2 5 6 16-4 15 7 20 2 7 10-7 9-15 1-9 9-15 3-8-9-13-4-8-11Z" />
-      <path d="m82 47 16 2 8 11-7 19-12-3-8-17Z" />
-      <path d="m126 62 12-4 12 7-5 10-15 1-7-7Z" />
-      <path d="m55 12 6-5 7 4-5 7Z" />
+    <g
+      className="fill-chart-blue-100 stroke-chart-blue-200"
+      fillOpacity="0.9"
+      strokeWidth="0.8"
+      strokeLinejoin="round"
+    >
+      <path d="M10 30C15 18 25 11 39 11L52 17L48 24L40 27L35 36L27 40L22 43L17 37Z" />
+      <path d="M47 10L56 6L65 10L61 16L53 17Z" />
+      <path d="M35 49L42 44L52 48L57 56L53 69L47 82L43 74L41 61Z" />
+      <path d="M67 23L77 16L91 18L95 23L88 28L77 27Z" />
+      <path d="M89 20C105 13 124 16 140 23L151 31L145 39L130 40L121 47L109 43L99 35L87 29Z" />
+      <path d="M77 31L91 29L101 40L96 57L87 70L79 60L73 44Z" />
+      <path d="M124 59L139 55L151 63L145 73L130 74L120 68Z" />
     </g>
   );
 }
 
 function RouteMapChartArtwork() {
+  const endpoints = [
+    { className: "fill-chart-blue-600", cx: 27, cy: 29 },
+    { className: "fill-chart-blue-600", cx: 132, cy: 32 },
+    { className: "fill-chart-orange", cx: 48, cy: 61 },
+    { className: "fill-chart-orange", cx: 81, cy: 25 },
+    { className: "fill-chart-green", cx: 137, cy: 64 },
+  ] as const;
   return (
     <>
       <MapGraticule />
       <WorldOutline />
       <path
-        d="M31 33C59 3 104 9 137 65"
+        d="M27 29C56 2 102 4 132 32"
         fill="none"
         className="stroke-chart-blue-600"
-        strokeWidth="1.7"
+        strokeWidth="1.8"
         strokeLinecap="round"
       />
       <path
-        d="M50 65C77 43 102 44 126 31"
+        d="M48 61C53 37 64 26 81 25"
         fill="none"
         className="stroke-chart-orange"
-        strokeDasharray="3 2"
-        strokeWidth="1.4"
+        strokeWidth="1.35"
+        strokeLinecap="round"
       />
-      {[
-        [31, 33, "fill-chart-blue-600"],
-        [137, 65, "fill-chart-blue-600"],
-        [50, 65, "fill-chart-orange"],
-        [126, 31, "fill-chart-orange"],
-      ].map(([cx, cy, className]) => {
+      <path
+        d="M81 25C106 27 123 42 137 64"
+        fill="none"
+        className="stroke-chart-green"
+        strokeDasharray="2.5 2"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+      {endpoints.map(({ className, cx, cy }) => {
         return (
           <g key={`${cx}-${cy}`}>
             <circle
               cx={cx}
               cy={cy}
-              r="4.5"
-              className={className as string}
-              fillOpacity="0.18"
+              r="4.2"
+              className={className}
+              fillOpacity="0.16"
             />
-            <circle cx={cx} cy={cy} r="2.2" className={className as string} />
+            <circle
+              cx={cx}
+              cy={cy}
+              r="2"
+              className={`${className} stroke-background`}
+              strokeWidth="0.8"
+            />
           </g>
         );
       })}
-      <path d="m90 20 7-1-3 6-1-3-4 1Z" className="fill-chart-blue-600" />
+      <circle
+        cx="78"
+        cy="12"
+        r="2.2"
+        className="fill-chart-blue-600 stroke-background"
+        strokeWidth="0.8"
+      />
     </>
   );
 }
@@ -1023,31 +1051,49 @@ function ChoroplethMapChartArtwork() {
   return (
     <>
       <MapGraticule />
-      <g className="stroke-background" strokeWidth="0.9">
+      <g className="stroke-background" strokeWidth="0.9" strokeLinejoin="round">
         <path
-          d="M17 24 24 14 39 11 51 17 48 25 39 28 35 39 25 43 18 35 10 32Z"
+          d="M10 30C15 18 25 11 39 11L52 17L48 24L40 27L35 36L27 40L22 43L17 37Z"
           className="fill-chart-blue-300"
         />
         <path
-          d="m42 46 10 5 5 12-5 18-7 2-4-16-7-12Z"
+          d="M47 10L56 6L65 10L61 16L53 17Z"
+          className="fill-chart-blue-100"
+        />
+        <path
+          d="M35 49L42 44L52 48L57 56L53 69L47 82L43 74L41 61Z"
           className="fill-chart-blue-500"
         />
         <path
-          d="m67 20 8-8 15 2 5 6 16-4 15 7 20 2 7 10-7 9-15 1-9 9-15 3-8-9-13-4-8-11Z"
+          d="M67 23L77 16L91 18L95 23L88 28L77 27Z"
+          className="fill-chart-blue-400"
+        />
+        <path
+          d="M89 20C105 13 124 16 140 23L151 31L145 39L130 40L121 47L109 43L99 35L87 29Z"
           className="fill-chart-blue-200"
         />
         <path
-          d="m82 47 16 2 8 11-7 19-12-3-8-17Z"
+          d="M77 31L91 29L101 40L96 57L87 70L79 60L73 44Z"
           className="fill-chart-blue-600"
         />
         <path
-          d="m126 62 12-4 12 7-5 10-15 1-7-7Z"
+          d="M124 59L139 55L151 63L145 73L130 74L120 68Z"
           className="fill-chart-blue-400"
         />
-        <path d="m55 12 6-5 7 4-5 7Z" className="fill-chart-blue-100" />
       </g>
-      <g transform="translate(113 82)">
-        <text x="-9" y="3" className="fill-muted-foreground" fontSize="5">
+      <g
+        fill="none"
+        className="stroke-background"
+        strokeOpacity="0.85"
+        strokeWidth="0.65"
+      >
+        <path d="M18 28L35 27L42 18M27 40L32 29L47 24" />
+        <path d="M41 53L52 49M42 62L54 59" />
+        <path d="M78 18L81 27M89 20L106 28L121 20M99 35L113 28L130 40" />
+        <path d="M79 42L98 42M82 58L96 51" />
+      </g>
+      <g transform="translate(105 82)">
+        <text x="-8" y="3" className="fill-muted-foreground" fontSize="5">
           0
         </text>
         <rect
@@ -1098,65 +1144,107 @@ function WordCloudChartArtwork() {
     <>
       <text
         x="80"
-        y="38"
+        y="49"
         textAnchor="middle"
         className="fill-chart-blue-600"
-        fontSize="17"
+        fontSize="16"
         fontWeight="700"
       >
         {charts.bar}
       </text>
       <text
-        x="39"
-        y="20"
+        x="78"
+        y="25"
         textAnchor="middle"
-        className="fill-chart-orange"
-        fontSize="9"
+        className="fill-chart-blue-400"
+        fontSize="10"
         fontWeight="600"
       >
         {charts.line}
       </text>
       <text
-        x="122"
-        y="20"
+        x="130"
+        y="39"
         textAnchor="middle"
-        className="fill-chart-green"
-        fontSize="8.5"
+        className="fill-chart-blue-500"
+        fontSize="8"
         fontWeight="600"
       >
         {charts.pie}
       </text>
       <text
-        x="37"
-        y="57"
+        x="27"
+        y="61"
         textAnchor="middle"
-        className="fill-chart-blue-300"
-        fontSize="8"
+        className="fill-muted-foreground"
+        fillOpacity="0.8"
+        fontSize="7.5"
+        fontWeight="600"
+        transform="rotate(-90 27 61)"
       >
         {charts.area}
       </text>
       <text
-        x="119"
-        y="57"
+        x="118"
+        y="65"
         textAnchor="middle"
-        className="fill-chart-purple"
-        fontSize="9.5"
+        className="fill-chart-blue-300"
+        fontSize="8.5"
         fontWeight="600"
       >
         {charts.radar}
       </text>
       <text
-        x="79"
-        y="74"
+        x="72"
+        y="73"
         textAnchor="middle"
-        className="fill-chart-gold"
-        fontSize="7.5"
+        className="fill-chart-orange"
+        fontSize="7"
+        fontWeight="600"
       >
         {charts.heatmap}
       </text>
-      <circle cx="21" cy="35" r="2" className="fill-chart-blue-200" />
-      <circle cx="142" cy="39" r="2.5" className="fill-chart-pink" />
-      <circle cx="51" cy="72" r="1.5" className="fill-chart-green" />
+      <text
+        x="35"
+        y="22"
+        textAnchor="middle"
+        className="fill-chart-blue-500"
+        fillOpacity="0.72"
+        fontSize="6.5"
+      >
+        {charts.bubble}
+      </text>
+      <text
+        x="129"
+        y="18"
+        textAnchor="middle"
+        className="fill-muted-foreground"
+        fillOpacity="0.72"
+        fontSize="5.5"
+      >
+        {charts.scatter}
+      </text>
+      <text
+        x="145"
+        y="76"
+        textAnchor="middle"
+        className="fill-chart-green"
+        fontSize="5.5"
+        fontWeight="600"
+        transform="rotate(-90 145 76)"
+      >
+        {charts.gantt}
+      </text>
+      <text
+        x="42"
+        y="82"
+        textAnchor="middle"
+        className="fill-muted-foreground"
+        fillOpacity="0.65"
+        fontSize="5.5"
+      >
+        {charts.funnel}
+      </text>
     </>
   );
 }
