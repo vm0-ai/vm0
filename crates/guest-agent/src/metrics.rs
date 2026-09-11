@@ -313,7 +313,7 @@ fn elapsed_ms_since(scheduled_at: Instant) -> u64 {
 }
 
 /// Collect one snapshot of system metrics.
-fn collect_metrics(
+async fn collect_metrics(
     cpu_tracker: &mut CpuTracker,
     sources: &MetricsSources,
     scheduled_lag_ms: u64,
@@ -329,17 +329,19 @@ fn collect_metrics(
         .cgroup_cpu_stat
         .as_ref()
         .and_then(|paths| read_cgroup_cpu_stat(paths.workload()));
-    MetricsEntry {
-        memory: sources
-            .evidence
-            .as_ref()
-            .and_then(|(containment, reporter)| {
-                let mut evidence = containment
-                    .oom_evidence(guest_contracts::oom_evidence::CaptureReason::Sample)?;
+    let memory = match sources.evidence.as_ref() {
+        Some((containment, reporter)) => containment
+            .oom_evidence(guest_contracts::oom_evidence::CaptureReason::Sample)
+            .await
+            .map(|mut evidence| {
                 reporter.record(evidence.clone());
                 evidence.incidents.clear();
-                Some(evidence)
+                evidence
             }),
+        None => None,
+    };
+    MetricsEntry {
+        memory,
         ts: guest_telemetry::log::timestamp(),
         cpu: cpu.busy,
         cpu_steal_percent: cpu.steal,
@@ -372,8 +374,13 @@ pub async fn metrics_loop_for_path(
             _ = shutdown.cancelled() => break,
             scheduled_at = interval.tick() => {
                 let scheduled_lag_ms = elapsed_ms_since(scheduled_at);
-                let entry = collect_metrics(&mut cpu_tracker, &sources, scheduled_lag_ms);
-                metrics_sink.append(&entry);
+                tokio::select! {
+                    biased;
+                    _ = shutdown.cancelled() => break,
+                    entry = collect_metrics(&mut cpu_tracker, &sources, scheduled_lag_ms) => {
+                        metrics_sink.append(&entry);
+                    }
+                }
             }
         }
     }
@@ -615,11 +622,11 @@ mod tests {
         assert!(used <= total, "used should be <= total");
     }
 
-    #[test]
-    fn collect_metrics_returns_complete_entry() {
+    #[tokio::test]
+    async fn collect_metrics_returns_complete_entry() {
         let mut tracker = CpuTracker::new();
         let sources = MetricsSources::new(PathBuf::from("/proc/stat"), None);
-        let entry = collect_metrics(&mut tracker, &sources, 0);
+        let entry = collect_metrics(&mut tracker, &sources, 0).await;
         assert!(!entry.ts.is_empty());
         assert!((0.0..=100.0).contains(&entry.cpu));
         assert!((0.0..=100.0).contains(&entry.cpu_steal_percent));
@@ -627,11 +634,11 @@ mod tests {
         assert!(entry.disk_total > 0);
     }
 
-    #[test]
-    fn collect_metrics_serializes_to_valid_jsonl() {
+    #[tokio::test]
+    async fn collect_metrics_serializes_to_valid_jsonl() {
         let mut tracker = CpuTracker::new();
         let sources = MetricsSources::new(PathBuf::from("/proc/stat"), None);
-        let entry = collect_metrics(&mut tracker, &sources, 0);
+        let entry = collect_metrics(&mut tracker, &sources, 0).await;
         let json = serde_json::to_string(&entry).unwrap();
         // Verify it round-trips through the same path metrics_loop uses.
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();

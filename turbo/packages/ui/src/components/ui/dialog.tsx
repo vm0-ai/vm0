@@ -5,6 +5,7 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { X } from "lucide-react";
 
 import { asChildRender } from "../../lib/base-ui-compat";
+import { IconButton } from "./icon-button";
 import {
   dialogBackdropAnimationClassName,
   dialogPopupAnimationClassName,
@@ -210,10 +211,10 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
             )}
           >
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-              <div
+              <DialogBody
                 data-slot="dialog-inner"
                 className={cn(
-                  "grid min-h-0 min-w-0 flex-1 gap-4 p-6 dialog-scrollable",
+                  "grid gap-4 p-6",
                   contentClassName,
                   // A caller's clipping utility must not make footer actions
                   // unreachable when the safe viewport constrains the panel.
@@ -221,14 +222,13 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
                 )}
               >
                 {children}
-              </div>
+              </DialogBody>
               {showCloseButton ? (
                 <DialogPrimitive.Close
                   data-slot="dialog-close"
                   render={
-                    <button
-                      type="button"
-                      className="icon-button absolute right-4 top-4 opacity-70 hover:opacity-100"
+                    <IconButton
+                      className="absolute top-4 right-4 opacity-70 hover:opacity-100"
                       aria-label={closeLabel}
                     />
                   }
@@ -245,11 +245,25 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
 );
 DialogContent.displayName = "DialogContent";
 
-function DialogBody({ className, ...props }: React.ComponentProps<"div">) {
+interface DialogBodyProps extends React.ComponentProps<"div"> {
+  /** Disable when a child owns scrolling, such as a plan grid below a header. */
+  scrollable?: boolean;
+}
+
+function DialogBody({
+  className,
+  scrollable = true,
+  ...props
+}: DialogBodyProps) {
   return (
     <div
       data-slot="dialog-body"
-      className={cn("min-h-0 min-w-0 flex-1 overflow-auto", className)}
+      className={cn(
+        "min-h-0 min-w-0 flex-1",
+        scrollable &&
+          "overflow-auto [scrollbar-width:thin] [scrollbar-color:rgba(128,128,128,0.3)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:my-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-[3px] [&::-webkit-scrollbar-thumb]:bg-[rgba(128,128,128,0.3)] [&::-webkit-scrollbar-thumb:hover]:bg-[rgba(128,128,128,0.5)]",
+        className,
+      )}
       {...props}
     />
   );

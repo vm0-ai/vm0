@@ -11,6 +11,23 @@ import { waitForClerkReadiness } from "./clerk-readiness";
 
 const CLERK_TEST_EMAIL_CODE = "424242";
 
+export async function expectClerkTestInstance(page: Page): Promise<void> {
+  // Clerk can remove its loader script after successfully initializing.
+  // Check the running instance before interacting with auth fixtures.
+  const isTestInstance = await page.evaluate(() => {
+    const clerk = window.Clerk;
+    return (
+      clerk?.loaded === true &&
+      typeof clerk.publishableKey === "string" &&
+      clerk.publishableKey.startsWith("pk_test_")
+    );
+  });
+  expect(
+    isTestInstance,
+    "Auth fixtures require a loaded Clerk test instance",
+  ).toBe(true);
+}
+
 export interface ClerkEmailCodeSignInOptions {
   readonly activeOrganizationId: string;
 }
@@ -49,8 +66,8 @@ export async function signInWithClerkEmailCode(
         (organizationId) => {
           return Boolean(
             window.Clerk?.loaded &&
-              window.Clerk.session &&
-              window.Clerk.organization?.id === organizationId,
+            window.Clerk.session &&
+            window.Clerk.organization?.id === organizationId,
           );
         },
         options.activeOrganizationId,

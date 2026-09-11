@@ -6,6 +6,7 @@ import {
 } from "@okouai/api-contracts/contracts/runners";
 import {
   getModelProviderPiEndpoint,
+  getProviderRuntimeModel,
   getSecretNameForType,
   isBuiltInModelProviderType,
   modelProviderTypeSchema,
@@ -18,6 +19,13 @@ import {
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isCodexFastModeEnabled } from "@okouai/core/model-feature-switch";
 import { isPiAgentModelSupported } from "@okouai/pi-agent-runtime";
+
+import {
+  isPiNativeModel,
+  isPiNativeRoute,
+  resolvePiNativeModelConfig,
+  type PiNativeModelProviderInput,
+} from "./pi-native-model-config";
 
 import type { BuiltInModelRuntimeRoute } from "./built-in-model-runtime-route.service";
 import { GATEWAY_RUNTIME_SECRET_NAME } from "./model-provider-gateway-runtime";
@@ -156,6 +164,13 @@ function isFastGptPiProvider(
   );
 }
 
+function isDeepSeekByokRoute(
+  type: string | null | undefined,
+  deepseek: boolean,
+): boolean {
+  return deepseek && (type === "deepseek" || type === "openrouter-codex");
+}
+
 /**
  * Route canonical chat threads by model and provider policy. Trigger source is
  * intentionally absent so every thread-bound launch shares the same admission.
@@ -180,23 +195,30 @@ export function shouldUsePiExecution(args: {
       args.builtInModelRuntimeRoute,
     ) &&
     isCodexFastModeEnabled(args.featureSwitchContext);
+  const isNative = isPiNativeRoute(args.modelProviderType, args.selectedModel);
+  const isDeepSeekByok = isDeepSeekByokRoute(
+    args.modelProviderType,
+    isExistingPiModel,
+  );
   const isPiModelProvider =
+    isNative ||
+    isDeepSeekByok ||
     isBuiltInModelProviderType(args.modelProviderType) ||
     args.modelProviderType === "custom-openai-responses" ||
-    (args.modelProviderType === "codex-oauth-token" &&
-      (isStandardGpt || isFastGpt)) ||
-    (gptApiKeyPiRoute(args.modelProviderType) !== null &&
+    ((args.modelProviderType === "codex-oauth-token" ||
+      gptApiKeyPiRoute(args.modelProviderType) !== null) &&
       (isStandardGpt || isFastGpt));
   return (
     args.chatThreadId !== undefined &&
     args.chatThreadId.length > 0 &&
     isPiModelProvider &&
-    (isExistingPiModel || isStandardGpt || isFastGpt) &&
+    (isExistingPiModel || isStandardGpt || isFastGpt || isNative) &&
     isFeatureEnabled(FeatureSwitchKey.PiLoop, args.featureSwitchContext)
   );
 }
 
-interface PiModelProviderConfigInput {
+interface PiModelProviderConfigInput extends PiNativeModelProviderInput {
+  readonly piModelConfig?: PiModelConfig;
   readonly type: string;
   readonly concreteType?: string;
   readonly environment: Record<string, string>;
@@ -399,15 +421,34 @@ export function resolvePiSandboxModelConfig(
   if (!provider || !provider.selectedModel) {
     return null;
   }
+  if (provider.piModelConfig) {
+    return provider.piModelConfig;
+  }
+  if (isPiNativeModel(provider.selectedModel)) {
+    return resolvePiNativeModelConfig(provider);
+  }
   if (provider.type === "codex-oauth-token") {
     return resolveCodexSubscriptionPiModelConfig(provider, codexServiceTier);
   }
   if (provider.type === "custom-openai-responses") {
     return resolveCustomGatewayPiModelConfig(provider, codexServiceTier);
   }
-  if (isGptApiKeyPiProviderType(provider.type)) {
+  if (
+    isGptApiKeyPiProviderType(provider.type) &&
+    isPiGptModel(provider.selectedModel)
+  ) {
     return resolveGptApiKeyPiModelConfig(provider, codexServiceTier);
   }
+  return resolveResponsesPiModelConfig(
+    { ...provider, selectedModel: provider.selectedModel },
+    codexServiceTier,
+  );
+}
+
+function resolveResponsesPiModelConfig(
+  provider: PiModelProviderConfigInput & { readonly selectedModel: string },
+  codexServiceTier: "fast" | undefined,
+): PiModelConfig | null {
   if (provider.inlineFirewall) {
     return null;
   }
@@ -423,6 +464,11 @@ export function resolvePiSandboxModelConfig(
     return null;
   }
   const model = provider.environment.OPENAI_MODEL ?? provider.selectedModel;
+  if (
+    model !== getProviderRuntimeModel(concreteType.data, provider.selectedModel)
+  ) {
+    return null;
+  }
   if (!model) {
     return null;
   }

@@ -931,7 +931,7 @@ test("Complete OAuth only after the current attempt succeeds", async () => {
   });
 });
 
-test("Name a newly added manual account", async () => {
+async function addManualAccountForNaming() {
   mockConnectors(context, []);
   const connectionId = crypto.randomUUID();
   let renamed: { readonly id: string; readonly name: string | null } | null =
@@ -989,14 +989,30 @@ test("Name a newly added manual account", async () => {
     name: "Name your Ahrefs account",
   });
   const input = within(naming).getByLabelText("Account name");
+  return {
+    input,
+    naming,
+    connectionId,
+    getRenamed: () => {
+      return renamed;
+    },
+  };
+}
+
+test("A newly added manual account suggests its external identity without prefilling a name", async () => {
+  const { input } = await addManualAccountForNaming();
   expect(input).toHaveValue("");
   expect(input).toHaveAttribute("placeholder", "owner@example.com");
+});
 
+test("Save a name for the exact newly added manual account", async () => {
+  const { input, naming, connectionId, getRenamed } =
+    await addManualAccountForNaming();
   await fill(input, "Work");
   click(getConnectorAction("button", "Save", naming));
 
   await waitFor(() => {
-    expect(renamed).toStrictEqual({ id: connectionId, name: "Work" });
+    expect(getRenamed()).toStrictEqual({ id: connectionId, name: "Work" });
   });
 });
 

@@ -151,7 +151,7 @@ test.each(["pending", "cooldown", 500] as const)(
   },
 );
 
-test("The fallback follows a saved language change and stays stable when reopening the thread", async () => {
+async function openPendingActivitySummary() {
   installActiveRun();
   context.mocks.api(
     chatThreadActivitySummaryContract.summarize,
@@ -162,14 +162,20 @@ test("The fallback follows a saved language change and stays stable when reopeni
 
   await setupPage({ context, path: RUN_PATH, featureSwitches });
   await expect(screen.findByText("Thinking...")).resolves.toBeVisible();
+}
 
+test("The pending summary fallback stays stable when reopening the thread", async () => {
+  await openPendingActivitySummary();
   click(await findLink("Agents"));
   await expect(
     screen.findByRole("heading", { name: "Agents" }),
   ).resolves.toBeVisible();
   click(await findLink("Run conversation"));
   await expect(screen.findByText("Thinking...")).resolves.toBeVisible();
+});
 
+test("The pending summary fallback follows a saved language change", async () => {
+  await openPendingActivitySummary();
   click(await findButton("Test User"));
   const menu = await screen.findByRole("menu");
   const settings = queryAllByRoleFast("menuitem", menu).find((item) => {

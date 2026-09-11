@@ -3173,6 +3173,19 @@
       "categoriesAria": "Categorie di connettori",
       "description": "Connetti servizi di terze parti affinché i tuoi agenti possano utilizzarli.",
       "descriptionWithCount": "Connetti {{value}} servizi affinché i tuoi agenti possano utilizzarli.",
+      "directory": {
+        "browse": "Esplora",
+        "builtin": "Connettori integrati",
+        "builtinLoadFailed": "Impossibile caricare i connettori integrati.",
+        "custom": "Personalizzato",
+        "customLoadFailed": "Impossibile caricare i connettori personalizzati.",
+        "emptyCustom": "Aggiungi un'API HTTP o un server MCP per la tua organizzazione.",
+        "loading": "Caricamento dei connettori…",
+        "noCategoryMatches": "Nessun connettore corrispondente in questa categoria.",
+        "noCustomMatches": "Nessun connettore personalizzato corrisponde alla ricerca.",
+        "retry": "Riprova",
+        "searchAll": "Cerca in tutti i connettori"
+      },
       "empty": {
         "agent": "Nessun connettore per questo agente",
         "connected": "Nessun connettore collegato",
