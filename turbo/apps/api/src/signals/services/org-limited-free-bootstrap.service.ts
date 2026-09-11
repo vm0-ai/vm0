@@ -38,7 +38,6 @@ import {
 } from "./org-plan-entitlements.service";
 import type { Tx } from "../../lib/db-types";
 import { onRejection } from "../utils";
-import { recordMorningBriefDefaultEligibility } from "./morning-brief-default-eligibility.service";
 
 const L = logger("org-limited-free-bootstrap.service");
 
@@ -47,12 +46,9 @@ type DbTransaction = Tx;
 interface EnsureOrgLimitedFreeBootstrapArgs {
   readonly orgId: string;
   readonly ownerUserId: string;
-  readonly morningBriefEligibilitySourceCreatedAt?: Date;
 }
 
-interface BootstrapOwnerMembershipArgs extends EnsureOrgLimitedFreeBootstrapArgs {
-  readonly morningBriefDefaultEligibleAt: Date | null;
-}
+type BootstrapOwnerMembershipArgs = EnsureOrgLimitedFreeBootstrapArgs;
 
 type BootstrapReservation =
   | {
@@ -119,23 +115,15 @@ async function upsertBootstrapOwnerMembership(
       set: { role: "admin", cachedAt },
     });
 
-  if (args.morningBriefDefaultEligibleAt === null) {
-    await tx
-      .insert(orgMembersMetadata)
-      .values({
-        orgId: args.orgId,
-        userId: args.ownerUserId,
-        createdAt: cachedAt,
-        updatedAt: cachedAt,
-      })
-      .onConflictDoNothing();
-    return;
-  }
-  await recordMorningBriefDefaultEligibility(tx, {
-    orgId: args.orgId,
-    userId: args.ownerUserId,
-    eligibleAt: args.morningBriefDefaultEligibleAt,
-  });
+  await tx
+    .insert(orgMembersMetadata)
+    .values({
+      orgId: args.orgId,
+      userId: args.ownerUserId,
+      createdAt: cachedAt,
+      updatedAt: cachedAt,
+    })
+    .onConflictDoNothing();
 }
 
 function isPaidTier(tier: string): boolean {
@@ -272,12 +260,10 @@ export const ensureOrgLimitedFreeBootstrap$ = command(
   ): Promise<EnsureOrgLimitedFreeBootstrapResult> => {
     const writeDb = set(writeDb$);
     const agentId = randomUUID();
-    const eligibleAt = args.morningBriefEligibilitySourceCreatedAt ?? null;
     const reservation = await writeDb.transaction(async (tx) => {
       return await reserveBootstrapAgent(tx, {
         ...args,
         agentId,
-        morningBriefDefaultEligibleAt: eligibleAt,
       });
     });
     signal.throwIfAborted();

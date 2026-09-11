@@ -19,6 +19,7 @@ import {
   bridgeConnected$,
   installedSharedDatabaseBridge$,
 } from "./shared-database-bridge-state.ts";
+import { setupMorningBriefRealtime$ } from "./okou-page/settings/morning-brief-preference.ts";
 import { initializeUserTimezone$ } from "./okou-page/settings/user-preferences.ts";
 
 const runAppRealtimeDaemons$ = command(
@@ -33,6 +34,7 @@ const runAppRealtimeDaemons$ = command(
       set(setupBillingRealtime$, signal),
       set(subscribePresentationTemplatesChanged$, signal),
       set(setupUserPreferenceRealtime$, signal),
+      set(setupMorningBriefRealtime$, signal),
       set(subscribeCustomConnectorListChanged$, signal),
       set(subscribeSshChanged$, signal),
     ]);

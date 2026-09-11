@@ -34,6 +34,25 @@ function nextBriefText(
   return format(state.preference.nextRunAt, state.preference.timezone);
 }
 
+function useEnrollmentStatus(
+  state: MorningBriefPreferenceState | undefined,
+  nextBrief: string | null,
+) {
+  const { t } = useTranslation();
+  let status = nextBrief;
+  if (state?.kind === "ready" && state.preference.status === "preparing") {
+    status = t(($) => {
+      return $.settings.preferences.morningBrief.preparing;
+    });
+  }
+  if (state?.kind === "ready" && state.preference.status === "error") {
+    status = t(($) => {
+      return $.settings.preferences.morningBrief.preparationFailed;
+    });
+  }
+  return status;
+}
+
 function MorningBriefStatus({
   state,
   loading,
@@ -65,7 +84,7 @@ function MorningBriefStatus({
       })
     : null;
 
-  let status = nextBrief;
+  let status = useEnrollmentStatus(state, nextBrief);
   if (loading) {
     status = t(($) => {
       return $.settings.preferences.morningBrief.loading;
@@ -83,6 +102,10 @@ function MorningBriefStatus({
         : t(($) => {
             return $.settings.preferences.morningBrief.conflict;
           });
+  } else if (unavailable === "missing-data-source") {
+    status = t(($) => {
+      return $.settings.preferences.morningBrief.missingDataSource;
+    });
   } else if (unavailable === "missing-timezone") {
     status = t(($) => {
       return $.settings.preferences.morningBrief.missingTimezone;
@@ -114,7 +137,12 @@ function MorningBriefDeliveryStatus({
 }) {
   const { t } = useTranslation();
   const subscription = useLoadable(emailSubscription$);
-  if (!preference || preference.unavailableReason !== null) {
+  if (
+    !preference ||
+    preference.unavailableReason !== null ||
+    preference.status === "preparing" ||
+    preference.status === "error"
+  ) {
     return null;
   }
   if (!preference.enabled) {
@@ -180,7 +208,6 @@ export function MorningBriefSettings() {
   const mutating = mutationLoadable.state === "loading";
   const loadFailed = preferenceLoadable.state === "hasError";
   const mutationFailed = mutationLoadable.state === "hasError";
-  const unavailable = preference?.unavailableReason ?? null;
   const conflicted = state?.kind === "error";
   const enabled = preference?.enabled ?? false;
 
@@ -189,6 +216,10 @@ export function MorningBriefSettings() {
   };
 
   const handleRetry = () => {
+    if (preference?.status === "error") {
+      detach(updatePreference(true, pageSignal), Reason.DomCallback);
+      return;
+    }
     if (mutationFailed && preference) {
       detach(
         updatePreference(!preference.enabled, pageSignal),
@@ -199,7 +230,11 @@ export function MorningBriefSettings() {
     retryPreference();
   };
 
-  const showRetry = loadFailed || mutationFailed || conflicted;
+  const showRetry =
+    loadFailed ||
+    mutationFailed ||
+    conflicted ||
+    preference?.status === "error";
 
   return (
     <div
@@ -257,7 +292,6 @@ export function MorningBriefSettings() {
               mutating ||
               loadFailed ||
               conflicted ||
-              unavailable !== null ||
               preference === undefined
             }
           />

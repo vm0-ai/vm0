@@ -224,9 +224,12 @@ same user can have a different timezone in another organization.
 _Avoid_: Organization timezone, global user timezone
 
 **Default Morning Brief enrollment**:
-A one-time private Morning Brief installation for a newly created user-org
-membership after that membership has a valid timezone. An existing Morning
-Brief installation, including a user-disabled one, always takes precedence.
+A one-time intent to install a private Morning Brief for a Clerk membership
+created on or after the database rollout boundary. Enrollment waits for a valid
+member timezone, a usable default Agent, and a connected source enabled for that
+Agent. The worker retries unfinished enrollment without requiring another visit.
+Cancellation and completed enrollment survive later initialization or membership
+replays. An existing installation, including a paused one, takes precedence.
 _Avoid_: Organization Morning Brief, existing-member backfill
 
 # Product Identity Context

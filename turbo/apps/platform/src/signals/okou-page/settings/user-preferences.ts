@@ -5,6 +5,10 @@ import {
 } from "@okouai/api-contracts/contracts/user-preferences";
 import { apiClient$ } from "../../api-client.ts";
 import { clerk$ } from "../../auth.ts";
+import {
+  initializeMorningBriefEnrollment$,
+  retryMorningBriefPreference$,
+} from "./morning-brief-preference.ts";
 import { accept } from "../../../lib/accept.ts";
 
 // ---------------------------------------------------------------------------
@@ -59,19 +63,21 @@ export const updateUserPreference$ = command(
     signal.throwIfAborted();
 
     set(reloadUserPreferences$);
+    if (update.timezone !== undefined) {
+      set(retryMorningBriefPreference$);
+    }
   },
 );
 
 export const initializeUserTimezone$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const preferences = await get(userPreferences$);
+  async ({ set }, signal: AbortSignal): Promise<void> => {
+    const timezone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+    await set(
+      initializeMorningBriefEnrollment$,
+      timezone ? { timezone } : {},
+      signal,
+    );
     signal.throwIfAborted();
-    if (preferences.timezone !== null) {
-      return;
-    }
-
-    const timezone =
-      new Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-    await set(updateUserPreference$, { timezone }, signal);
+    set(reloadUserPreferences$);
   },
 );
