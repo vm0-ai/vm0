@@ -31,6 +31,7 @@ import {
   type ConnectorAccountTarget,
 } from "@okouai/api-contracts/contracts/connector-accounts";
 import { customConnectorsContract } from "@okouai/api-contracts/contracts/custom-connectors";
+import { sshConnectionsContract } from "@okouai/api-contracts/contracts/ssh-connections";
 import { getAllFeatureStates } from "@okouai/core/feature-switch";
 import { mockApi } from "../msw-contract.ts";
 import {
@@ -429,6 +430,9 @@ function mockConnectorCatalogStatus(): PublicConnectorCatalogStatusItem[] {
 }
 
 export const apiConnectorsHandlers = [
+  mockApi(sshConnectionsContract.observations, ({ respond }) => {
+    return respond(200, { observations: [] });
+  }),
   mockApi(connectorsMainContract.list, ({ respond }) => {
     return respond(200, {
       connectors: mockConnectors,

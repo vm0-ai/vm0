@@ -8,6 +8,153 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.582.3](https://github.com/vm0-ai/vm0/compare/api-v1.582.2...api-v1.582.3) (2026-09-10)
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#33343](https://github.com/vm0-ai/vm0/issues/33343)) ([f670a02](https://github.com/vm0-ai/vm0/commit/f670a0233ae13a11d43f3a2ad72ff30831cab822))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.426.1
+    * @okouai/core bumped to 8.651.2
+    * @okouai/db bumped to 1.251.4
+    * @okouai/pi-agent-runtime bumped to 1.24.14
+
+## [1.582.2](https://github.com/vm0-ai/vm0/compare/api-v1.582.1...api-v1.582.2) (2026-09-10)
+
+
+### Refactoring
+
+* remove final obsolete goal source references ([#33336](https://github.com/vm0-ai/vm0/issues/33336)) ([8ae8492](https://github.com/vm0-ai/vm0/commit/8ae84922a0556340df38b0be2197f55614c0c4f4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.651.1
+    * @okouai/db bumped to 1.251.3
+
+## [1.582.1](https://github.com/vm0-ai/vm0/compare/api-v1.582.0...api-v1.582.1) (2026-09-10)
+
+
+### Refactoring
+
+* retire completed goal transition validation ([#33326](https://github.com/vm0-ai/vm0/issues/33326)) ([e7d8cc5](https://github.com/vm0-ai/vm0/commit/e7d8cc5fa0af14ccf84d931e3f3357f061aa6a22))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.251.2
+
+## [1.582.0](https://github.com/vm0-ai/vm0/compare/api-v1.581.0...api-v1.582.0) (2026-09-10)
+
+
+### Features
+
+* **ssh:** enable access by default for staff ([#33304](https://github.com/vm0-ai/vm0/issues/33304)) ([5e019e4](https://github.com/vm0-ai/vm0/commit/5e019e4f0a8ee96c89df9f636e0749c8beda9828))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.651.0
+    * @okouai/db bumped to 1.251.1
+
+## [1.581.0](https://github.com/vm0-ai/vm0/compare/api-v1.580.0...api-v1.581.0) (2026-09-10)
+
+
+### Features
+
+* add calendly oauth support ([#33204](https://github.com/vm0-ai/vm0/issues/33204)) ([0dccd68](https://github.com/vm0-ai/vm0/commit/0dccd685a1435bab424e287dd2bb5d998e40b4a2))
+* **api:** add reusable image reference catalog ([#33203](https://github.com/vm0-ai/vm0/issues/33203)) ([fefeaa0](https://github.com/vm0-ai/vm0/commit/fefeaa0e895e774b3ae35161476d30588d9dcfbc))
+* **chat:** add atomic runless welcome thread creation ([#33279](https://github.com/vm0-ai/vm0/issues/33279)) ([68fd2e2](https://github.com/vm0-ai/vm0/commit/68fd2e2bd3d3c99ef0f09831a4475b0ccf3abdf1)), closes [#33252](https://github.com/vm0-ai/vm0/issues/33252)
+* **lint:** prohibit nested ccstate commands ([#33166](https://github.com/vm0-ai/vm0/issues/33166)) ([fcab1ad](https://github.com/vm0-ai/vm0/commit/fcab1adf39a2157c21810604e94288455628a1fb))
+* **ssh:** surface host connection failures and recovery ([#33165](https://github.com/vm0-ai/vm0/issues/33165)) ([f56df60](https://github.com/vm0-ai/vm0/commit/f56df6068d35f5591020a5bb61fb4197cb6cd820))
+* support gated ramp oauth authentication ([#33267](https://github.com/vm0-ai/vm0/issues/33267)) ([e80de8f](https://github.com/vm0-ai/vm0/commit/e80de8f4562dd64898901236e573767c8742d012))
+
+
+### Bug Fixes
+
+* **agent:** protect default okou identity and visibility ([#33266](https://github.com/vm0-ai/vm0/issues/33266)) ([58e76a8](https://github.com/vm0-ai/vm0/commit/58e76a815bcdaa297f8ac6086b50cd10c55316eb))
+* **api:** classify initial thinking rate limits as degraded ([#33241](https://github.com/vm0-ai/vm0/issues/33241)) ([5d915b9](https://github.com/vm0-ai/vm0/commit/5d915b9750079872f3c18dbfcc6bbc809d8e0250))
+* **api:** classify on-demand activity-summary deadlines as optional degradation ([#33239](https://github.com/vm0-ai/vm0/issues/33239)) ([4f7b32c](https://github.com/vm0-ai/vm0/commit/4f7b32c45845802d1a854cadd3ad4e2220fa5c95)), closes [#33081](https://github.com/vm0-ai/vm0/issues/33081)
+* **api:** classify openai image provider failures ([#33117](https://github.com/vm0-ai/vm0/issues/33117)) ([c879277](https://github.com/vm0-ai/vm0/commit/c87927703b2552e038988ce8db2c187e316b791d)), closes [#33080](https://github.com/vm0-ai/vm0/issues/33080)
+* **api:** describe every category while browsing one of them ([#33292](https://github.com/vm0-ai/vm0/issues/33292)) ([1bc57b1](https://github.com/vm0-ai/vm0/commit/1bc57b173e6fdfb0ee8bacda13e4a552f2ef30c8))
+* **api:** keep sandbox telemetry batches alive and name oom upload failures ([#33287](https://github.com/vm0-ai/vm0/issues/33287)) ([ff65e65](https://github.com/vm0-ai/vm0/commit/ff65e65da0231a4fcad15645c041cdd57a3d7d46))
+* **api:** serve desktop update feeds through transient manifest 5xx ([#33237](https://github.com/vm0-ai/vm0/issues/33237)) ([3524c84](https://github.com/vm0-ai/vm0/commit/3524c84e6978bd15757f46c7459e0dd16a6b005c))
+* **artifacts:** use a.okou.io for public file sharing ([#32959](https://github.com/vm0-ai/vm0/issues/32959)) ([50663a2](https://github.com/vm0-ai/vm0/commit/50663a2f204f55d9fe296c7767fdf7c63c4b61c7))
+* **chat:** honor retained chat thread event cursors ([#33299](https://github.com/vm0-ai/vm0/issues/33299)) ([66b0c79](https://github.com/vm0-ai/vm0/commit/66b0c79b2c26ab059da034c89af3bb2982f85a3b))
+* **chat:** make explicit thread creation safe for duplicate client ids ([#33236](https://github.com/vm0-ai/vm0/issues/33236)) ([239a1f0](https://github.com/vm0-ai/vm0/commit/239a1f022029b50274a9ee80d29c8bc0d68ebeb5))
+* extend storage url lifetime and preserve download error details ([#33181](https://github.com/vm0-ai/vm0/issues/33181)) ([93ccb22](https://github.com/vm0-ai/vm0/commit/93ccb227278b0e384594abffea5d1244219164cf))
+* **pi:** surface api first-turn recovery outcomes in production ([#33243](https://github.com/vm0-ai/vm0/issues/33243)) ([549ef35](https://github.com/vm0-ai/vm0/commit/549ef35a7ead8fa945edc71923a512d3acd732ca))
+
+
+### Refactoring
+
+* **db:** contract retired goal schema after verified preservation ([#33297](https://github.com/vm0-ai/vm0/issues/33297)) ([7c8539a](https://github.com/vm0-ai/vm0/commit/7c8539a0a26a6877da42a253ac5e0832c53943f0))
+
+
+### Performance Improvements
+
+* **api:** reuse trusted clerk organization identity ([#33286](https://github.com/vm0-ai/vm0/issues/33286)) ([250aff3](https://github.com/vm0-ai/vm0/commit/250aff33dfaa031b6ead698bc7e3602dd7dc1e07))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.426.0
+    * @okouai/connectors bumped to 3.9.0
+    * @okouai/core bumped to 8.650.0
+    * @okouai/db bumped to 1.251.0
+    * @okouai/pi-agent-runtime bumped to 1.24.13
+
+## [1.580.0](https://github.com/vm0-ai/vm0/compare/api-v1.579.3...api-v1.580.0) (2026-09-10)
+
+
+### Features
+
+* **api:** answer a named category with the whole category ([#33112](https://github.com/vm0-ai/vm0/issues/33112)) ([04d3c7e](https://github.com/vm0-ai/vm0/commit/04d3c7e5b600b195e272e80b2bcef2b66ffc7c26))
+* **api:** hand the intro-video skill its entry form and name it intro video everywhere ([#33119](https://github.com/vm0-ai/vm0/issues/33119)) ([850ec24](https://github.com/vm0-ai/vm0/commit/850ec247513051216bc44da4b246fd047fcb0ceb))
+
+
+### Bug Fixes
+
+* **api:** avoid unrelated archives for current chat writes ([#33175](https://github.com/vm0-ai/vm0/issues/33175)) ([077a9a6](https://github.com/vm0-ai/vm0/commit/077a9a644986e13bed4750796f91e55c4a876aad))
+* **api:** classify transient provider failures from completion envelopes ([#33115](https://github.com/vm0-ai/vm0/issues/33115)) ([04a0686](https://github.com/vm0-ai/vm0/commit/04a0686614dc4e96d9e8276a7181061c9e98fdc4))
+* **api:** reconcile intro videos when heygen session lookup fails ([#32988](https://github.com/vm0-ai/vm0/issues/32988)) ([00eed51](https://github.com/vm0-ai/vm0/commit/00eed51b3f7cc78fbb10fd52172eee3385cc17d6))
+* **api:** record expected chat event snapshot timeouts without warn noise ([#33114](https://github.com/vm0-ai/vm0/issues/33114)) ([c6d8cee](https://github.com/vm0-ai/vm0/commit/c6d8cee88c8a8aa1a729ea8074310c3dbafd5a2e))
+* **api:** retain safe causes for failed activity snapshot writes ([#33132](https://github.com/vm0-ai/vm0/issues/33132)) ([8bf5810](https://github.com/vm0-ai/vm0/commit/8bf5810b283571936daa288f349872409a6f1a0a))
+* **api:** silence expected oauth refresh failures without stopping retries ([#33110](https://github.com/vm0-ai/vm0/issues/33110)) ([5c14cdc](https://github.com/vm0-ai/vm0/commit/5c14cdc5664aebebcc6e2cf4a951e3ae5609bae3))
+* **guest-agent:** classify upstream content policy rejections ([#33180](https://github.com/vm0-ai/vm0/issues/33180)) ([f61db10](https://github.com/vm0-ai/vm0/commit/f61db105d0965c93bffb84f061d1027db8d79e36))
+* recognize invalid claude oauth tokens ([#33113](https://github.com/vm0-ai/vm0/issues/33113)) ([4803ac0](https://github.com/vm0-ai/vm0/commit/4803ac067beffb4501a0b15160bd39a87430adf8))
+
+
+### Refactoring
+
+* **ads:** normalize okou attribution with rollout compatibility ([#33149](https://github.com/vm0-ai/vm0/issues/33149)) ([a222108](https://github.com/vm0-ai/vm0/commit/a222108b4eccfdab77fa3f6f3c08fa6ea2bdfac7))
+* remove dropbox connector feature switch ([#33130](https://github.com/vm0-ai/vm0/issues/33130)) ([bd0f81c](https://github.com/vm0-ai/vm0/commit/bd0f81c3c9baddabf67a28f01c57d6a16b1f8f63))
+* retire goal backend authority and application orm consumers ([#33105](https://github.com/vm0-ai/vm0/issues/33105)) ([2c23176](https://github.com/vm0-ai/vm0/commit/2c231766e383b651867893852cfb47dcc78af0bd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.425.0
+    * @okouai/core bumped to 8.649.0
+    * @okouai/db bumped to 1.250.5
+    * @okouai/pi-agent-runtime bumped to 1.24.12
+
 ## [1.579.3](https://github.com/vm0-ai/vm0/compare/api-v1.579.2...api-v1.579.3) (2026-09-09)
 
 

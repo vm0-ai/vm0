@@ -119,6 +119,20 @@ export const uninstallSlackOrg$ = command(
   },
 );
 
+const onSlackChanged$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const previous = get(internalSlackStatus$);
+  set(reloadSlackOrg$);
+  const next = await get(slackOrgData$);
+  signal.throwIfAborted();
+  set(internalSlackStatus$, next);
+
+  if (hasSlackStatusChanged(previous, next)) {
+    toastSlackStatusChange(previous, next);
+  }
+
+  return false;
+});
+
 /**
  * Subscribe to Slack connection changes for the /works route lifetime.
  */
@@ -127,20 +141,6 @@ export const watchSlackConnection$ = command(
     const current = await get(slackOrgData$);
     signal.throwIfAborted();
     set(internalSlackStatus$, current);
-
-    const onSlackChanged$ = command(async ({ get, set }, sig: AbortSignal) => {
-      const previous = get(internalSlackStatus$);
-      set(reloadSlackOrg$);
-      const next = await get(slackOrgData$);
-      sig.throwIfAborted();
-      set(internalSlackStatus$, next);
-
-      if (hasSlackStatusChanged(previous, next)) {
-        toastSlackStatusChange(previous, next);
-      }
-
-      return false;
-    });
 
     await set(
       setAblyLoop$,

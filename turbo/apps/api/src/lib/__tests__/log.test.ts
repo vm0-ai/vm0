@@ -370,6 +370,75 @@ describe("Axiom log source field", () => {
     });
   });
 
+  it("lifts desktop update manifest outcome fields into the Axiom event root", () => {
+    const log = logger("desktop-update-manifest-test");
+    log.warn("Desktop update manifest upstream unavailable", {
+      type: "desktop_update_manifest_upstream",
+      outcome: "unavailable",
+      provider: "github_release_asset",
+      provider_status: 503,
+      failure_class: "transient_read_exhausted",
+      attempts: 3,
+      line: "ai-okou-desktop",
+      method: "GET",
+      route:
+        "/api/desktop/updates/:product/:channel/:platform/:arch/RELEASES.json",
+    });
+
+    expect(axiomLogging.warn).toHaveBeenCalledWith(
+      "Desktop update manifest upstream unavailable",
+      {
+        type: "desktop_update_manifest_upstream",
+        outcome: "unavailable",
+        provider: "github_release_asset",
+        provider_status: 503,
+        failure_class: "transient_read_exhausted",
+        attempts: 3,
+        line: "ai-okou-desktop",
+        method: "GET",
+        route:
+          "/api/desktop/updates/:product/:channel/:platform/:arch/RELEASES.json",
+        context: "desktop-update-manifest-test",
+        [EVENT]: {
+          source: "api",
+          type: "desktop_update_manifest_upstream",
+          outcome: "unavailable",
+          provider: "github_release_asset",
+          provider_status: 503,
+          failure_class: "transient_read_exhausted",
+          attempts: 3,
+          line: "ai-okou-desktop",
+          method: "GET",
+          route:
+            "/api/desktop/updates/:product/:channel/:platform/:arch/RELEASES.json",
+        },
+      },
+    );
+  });
+
+  it("does not lift a desktop update manifest event with an unknown outcome", () => {
+    const log = logger("desktop-update-manifest-outcome-test");
+    log.warn("manifest event", {
+      type: "desktop_update_manifest_upstream",
+      outcome: "degraded",
+      provider: "github_release_asset",
+      failure_class: "transient_read",
+      attempts: 1,
+      line: "ai-okou-desktop",
+    });
+
+    expect(axiomLogging.warn).toHaveBeenCalledWith("manifest event", {
+      type: "desktop_update_manifest_upstream",
+      outcome: "degraded",
+      provider: "github_release_asset",
+      failure_class: "transient_read",
+      attempts: 1,
+      line: "ai-okou-desktop",
+      context: "desktop-update-manifest-outcome-test",
+      [EVENT]: { source: "api" },
+    });
+  });
+
   it("does not lift unknown type fields into the Axiom event root", () => {
     const log = logger("unknown-type-test");
     log.error("custom event", {

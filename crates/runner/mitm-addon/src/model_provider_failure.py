@@ -58,6 +58,7 @@ import openai_responses_events
 import platform_api
 import runtime_url_parsing
 from logging_utils import log_proxy_entry
+from thread_pool import start_thread_pool
 from usage.json_selective import JsonSelectiveExtractor
 from usage.model_http import (
     FAILURE_SCALAR_FIELDS,
@@ -881,25 +882,6 @@ def _mark_websocket_ambiguous(
     _log_suppressed(flow, reason)
 
 
-def _start_report_executor() -> ThreadPoolExecutor:
-    executor = ThreadPoolExecutor(
-        max_workers=_REPORT_WORKERS,
-        thread_name_prefix="model-provider-failure",
-    )
-    release_workers = threading.Event()
-    try:
-        # submit() queues before starting a worker and can then raise without returning
-        # its future. Start every worker with report-free tasks before enqueueing HTTP.
-        for _ in range(_REPORT_WORKERS):
-            executor.submit(release_workers.wait)
-    except BaseException:
-        release_workers.set()
-        executor.shutdown(wait=True, cancel_futures=True)
-        raise
-    release_workers.set()
-    return executor
-
-
 def _enqueue_report(flow: http.HTTPFlow, run_id: str, failure: Failure) -> None:
     global _report_executor
     with _report_lock:
@@ -935,7 +917,10 @@ def _enqueue_report(flow: http.HTTPFlow, run_id: str, failure: Failure) -> None:
             try:
                 if _report_executor is None:
                     omission_reason = "worker_start_failed"
-                    _report_executor = _start_report_executor()
+                    _report_executor = start_thread_pool(
+                        max_workers=_REPORT_WORKERS,
+                        thread_name_prefix="model-provider-failure",
+                    )
                 omission_reason = "reporter_shut_down"
                 future = _report_executor.submit(
                     _post_report,

@@ -40,6 +40,24 @@ async function announceBillingChange(): Promise<void> {
   });
 }
 
+/**
+ * Drop the realtime connection long enough that Ably discards channel state,
+ * then restore it. The reattach reports no continuity, which is the only signal
+ * a tab gets that it may have missed events while it was away.
+ */
+async function surviveConnectionGap(): Promise<void> {
+  await waitFor(() => {
+    expect(context.mocks.ably.hasSubscription("billing:changed")).toBeTruthy();
+  });
+  act(() => {
+    context.mocks.ably.triggerSharedWorkerConnectionState("suspended", {
+      code: 80_003,
+      message: "Unable to connect (network unreachable)",
+    });
+    context.mocks.ably.triggerSharedWorkerConnectionState("connected");
+  });
+}
+
 function buttonLabel(button: HTMLElement): string {
   return (
     button.getAttribute("aria-label") ??
@@ -441,4 +459,55 @@ test("The open queue reflects billing capacity changes in real time", async () =
   expect(
     screen.getByRole("dialog", { name: "Your agent is waiting in line" }),
   ).toBe(drawer);
+});
+
+test("Queue plan details recover after a realtime connection gap", async () => {
+  // A reattach Ably could not replay leaves the tab holding whatever it read
+  // before the outage, and no event arrives to correct it. Only the connection
+  // itself can produce that state, so the case is driven through the page with
+  // the transport interrupted rather than through a published event.
+  const fixture = installQueuePageFixture(context, {
+    billing: billingStatus({
+      tier: "team",
+      canBuyConcurrency: true,
+      concurrencyLimit: 5,
+      concurrencyUnitAmountCents: 4200,
+    }),
+    queue: queueResponse({
+      tier: "team",
+      limit: 5,
+      active: 3,
+      available: 2,
+      memberUsage: [],
+    }),
+  });
+
+  await setupPage({ context, path: openQueuePath() });
+
+  const drawer = await visibleQueueDrawer();
+  expect(within(drawer).getByText("3 of 5 slots in use")).toBeVisible();
+
+  // The plan changes while the connection is unusable, so the `billing:changed`
+  // event announcing it can never reach this tab.
+  fixture.setQueueResponse(
+    queueResponse({
+      tier: "custom",
+      limit: 10,
+      active: 10,
+      available: 0,
+      memberUsage: [],
+    }),
+  );
+  fixture.setBillingStatus(
+    billingStatus({
+      tier: "custom",
+      canBuyConcurrency: true,
+      concurrencyLimit: 10,
+      concurrencyUnitAmountCents: 10_000,
+    }),
+  );
+  await surviveConnectionGap();
+
+  await expect(within(drawer).findByText("Custom")).resolves.toBeVisible();
+  expect(within(drawer).getByText("10 of 10 slots in use")).toBeVisible();
 });

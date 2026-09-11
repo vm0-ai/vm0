@@ -28,6 +28,7 @@ const REVENUECAT_PROMPT =
 
 function agentFixture(): AgentResponse {
   return {
+    isDefaultAgent: false,
     agentId: AGENT_ID,
     ownerId: "test-user-123",
     description: "Helps turn ideas into work",

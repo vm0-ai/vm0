@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.1](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.5.0...nbd-cow-v0.5.1) (2026-09-10)
+
+
+### Bug Fixes
+
+* **nbd-cow:** derive buffered bytes from retained blocks ([#33244](https://github.com/vm0-ai/vm0/issues/33244)) ([b637ee5](https://github.com/vm0-ai/vm0/commit/b637ee50e364b0c4b064801603ce6902e06abb53))
+* **nbd-cow:** offload unobserved connect cleanup from async workers ([#33250](https://github.com/vm0-ai/vm0/issues/33250)) ([b5de2de](https://github.com/vm0-ai/vm0/commit/b5de2de96a35ca9eeb5c903830641e12d743c7e8))
+
 ## [0.5.0](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.85...nbd-cow-v0.5.0) (2026-09-08)
 
 

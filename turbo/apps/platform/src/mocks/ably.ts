@@ -74,8 +74,21 @@ interface MockChannelStateChange {
   readonly current: MockChannelState;
   readonly previous: MockChannelState;
   readonly reason?: MockErrorInfo;
+  /** Ably's continuity signal: false means the reattach could not replay. */
+  readonly resumed: boolean;
 }
 type ChannelStateListener = (stateChange: MockChannelStateChange) => void;
+
+/**
+ * Ably rejects `channel.attach()` outright in these connection states rather
+ * than queueing it, and the rejection leaves the channel where it was. Mirrors
+ * `ConnectionManager.activeState()` and Ably's `INACTIVE_CONNECTION_STATES`.
+ */
+const INACTIVE_MOCK_CONNECTION_STATES: ReadonlySet<MockConnectionState> =
+  new Set(["suspended", "closing", "closed", "failed"]);
+
+/** The error Ably surfaces from `ConnectionManager.getError()` on attach. */
+const MOCK_UNREACHABLE_MESSAGE = "Unable to connect (network unreachable)";
 
 let capturedAuthCallback: AuthCallback | null = null;
 let tokenBodies: AuthCallbackToken[] = [];
@@ -122,6 +135,7 @@ class FakeChannel {
   readonly subscriptions = new Map<string, Set<Callback>>();
   readonly channelSubscriptions = new Set<Callback>();
   state: MockChannelState = "initialized";
+  attachOnSubscribe = true;
   private readonly stateListeners = new Set<ChannelStateListener>();
 
   constructor(private readonly connectionState: () => MockConnectionState) {}
@@ -163,12 +177,27 @@ class FakeChannel {
     this.transition("suspended", reason);
   }
 
+  /**
+   * Reattach after a drop. Ably discards channel state on suspension, so this
+   * reattach reports `resumed: false`; use `resume()` for a short interruption
+   * that Ably was able to replay.
+   */
   reconnect(): void {
     if (this.state !== "suspended") {
       return;
     }
     this.transition("attaching");
     this.transition("attached");
+  }
+
+  /** Reattach with continuity preserved, as after a brief disconnect. */
+  resume(): void {
+    if (this.state === "attached") {
+      this.transition("attached", undefined, true);
+      return;
+    }
+    this.transition("attaching");
+    this.transition("attached", undefined, true);
   }
 
   on(callback: ChannelStateListener): void {
@@ -179,23 +208,31 @@ class FakeChannel {
     this.stateListeners.delete(callback);
   }
 
-  private transition(state: MockChannelState, reason?: MockErrorInfo): void {
+  private transition(
+    state: MockChannelState,
+    reason?: MockErrorInfo,
+    resumed = false,
+  ): void {
     const previous = this.state;
     this.state = state;
-    const stateChange = { current: state, previous, reason };
+    const stateChange = { current: state, previous, reason, resumed };
     for (const listener of this.stateListeners) {
       listener(stateChange);
     }
   }
 
-  // Mirror real Ably: subscribe registers the callback synchronously before
-  // waiting for the channel attach to complete.
+  /**
+   * Mirror real Ably: subscribe registers the callback synchronously, and only
+   * attaches as a side effect when `attachOnSubscribe` is left at its default.
+   */
   async subscribe(
     topicOrCallback: string | Callback,
     callback?: Callback,
   ): Promise<void> {
-    if (this.state === "initialized" || this.state === "detached") {
-      this.transition("attaching");
+    if (this.state === "failed") {
+      throw new Error(
+        `Channel operation failed as channel state is ${this.state}`,
+      );
     }
     if (typeof topicOrCallback === "function") {
       this.channelSubscriptions.add(topicOrCallback);
@@ -215,9 +252,6 @@ class FakeChannel {
       subscribeGate.started.resolve(undefined);
       await subscribeGate.release.promise;
     }
-    if (this.connectionState() === "closed") {
-      throw new Error("Connection closed");
-    }
     if (typeof topicOrCallback === "string") {
       const failure = subscribeErrors.get(topicOrCallback);
       if (failure) {
@@ -231,9 +265,26 @@ class FakeChannel {
       nextSubscribeError = null;
       throw error;
     }
-    if (this.state === "attaching") {
-      this.transition("attached");
+    if (this.attachOnSubscribe) {
+      await this.attach();
     }
+  }
+
+  /**
+   * Mirror `RealtimeChannel._attach()`: an inactive connection rejects the
+   * attach before the channel ever reaches `attaching`, so a channel that has
+   * never attached stays outside the set Ably reattaches on reconnect.
+   */
+  async attach(): Promise<void> {
+    await Promise.resolve();
+    if (this.state === "attached") {
+      return;
+    }
+    if (INACTIVE_MOCK_CONNECTION_STATES.has(this.connectionState())) {
+      throw new Error(MOCK_UNREACHABLE_MESSAGE);
+    }
+    this.transition("attaching");
+    this.transition("attached");
   }
 
   unsubscribe(topicOrCallback: string | Callback, callback?: Callback): void {
@@ -256,7 +307,12 @@ export class Realtime {
     on: ConnectionOn;
     off: ConnectionOff;
   };
-  readonly channels: { get: (_name: string) => FakeChannel };
+  readonly channels: {
+    get: (
+      _name: string,
+      options?: { attachOnSubscribe?: boolean },
+    ) => FakeChannel;
+  };
 
   private readonly channelsByName = new Map<string, FakeChannel>();
   private readonly authController = new AbortController();
@@ -323,8 +379,12 @@ export class Realtime {
     };
     this.channel = this.getChannel("user:test-user-123");
     this.channels = {
-      get: (name) => {
-        return this.getChannel(name);
+      get: (name, options) => {
+        const channel = this.getChannel(name);
+        if (options?.attachOnSubscribe !== undefined) {
+          channel.attachOnSubscribe = options.attachOnSubscribe;
+        }
+        return channel;
       },
     };
     realtimeInstances.add(this);
@@ -596,6 +656,21 @@ export function getAuthTokenHistory(): readonly AuthCallbackToken[] {
   return tokenBodies;
 }
 
+/**
+ * Reattach every channel with continuity preserved, as Ably does after a brief
+ * disconnect it could replay. Subscribers must not re-read their baseline.
+ */
+export function triggerAblyResume(): void {
+  for (const realtime of realtimeInstances) {
+    if (realtime.connection.state === "closed") {
+      continue;
+    }
+    for (const channel of realtime.allChannels()) {
+      channel.resume();
+    }
+  }
+}
+
 /** Fire a reconnect event on every connected Realtime instance. */
 export function triggerAblyReconnect(): void {
   for (const realtime of realtimeInstances) {
@@ -694,15 +769,23 @@ export function triggerAblyConnectionState(
   );
 }
 
-/** Put the newest connected client into Ably's terminal failed state. */
+/**
+ * Put the newest live client into Ably's terminal failed state. Connected
+ * clients win, so existing callers keep selecting the same client; a suspended
+ * client is still eligible, because Ably reaches `failed` from there too.
+ */
 export function triggerAblyFailure(message = "connection failed"): void {
   let connectedRealtime: Realtime | null = null;
+  let liveRealtime: Realtime | null = null;
   for (const realtime of realtimeInstances) {
     if (realtime.connection.state === "connected") {
       connectedRealtime = realtime;
     }
+    if (realtime.connection.state !== "closed") {
+      liveRealtime = realtime;
+    }
   }
-  connectedRealtime?.fail(message);
+  (connectedRealtime ?? liveRealtime)?.fail(message);
 }
 
 /** Close every active client, including its channel subscriptions. */

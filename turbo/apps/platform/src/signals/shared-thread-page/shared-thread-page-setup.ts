@@ -81,10 +81,6 @@ export const setupSharedThreadPage$ = command(
         }),
     );
     set(updatePage$, createElement(SharedThreadPage, { sharedThread }));
-    const richContentLoad = sharedThread?.richContent
-      ? set(sharedThread.richContent.load$, signal)
-      : undefined;
     await set(hideAppSkeleton$, signal);
-    await richContentLoad;
   },
 );

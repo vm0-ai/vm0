@@ -169,6 +169,41 @@
       "when": 1788961849484,
       "tag": "1101_zippy_daimon_hellstrom",
       "breakpoints": true
+    },
+    {
+      "idx": 1102,
+      "version": "7",
+      "when": 1789009799537,
+      "tag": "1102_impact_attribution",
+      "breakpoints": true
+    },
+    {
+      "idx": 1103,
+      "version": "7",
+      "when": 1789032100587,
+      "tag": "1103_minor_molecule_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 1104,
+      "version": "7",
+      "when": 1789038329413,
+      "tag": "1104_flawless_alex_power",
+      "breakpoints": true
+    },
+    {
+      "idx": 1105,
+      "version": "7",
+      "when": 1789049108125,
+      "tag": "1105_prepare_goal_metadata_contraction",
+      "breakpoints": true
+    },
+    {
+      "idx": 1106,
+      "version": "7",
+      "when": 1789049110365,
+      "tag": "1106_contract_retired_goal_schema",
+      "breakpoints": true
     }
   ]
 }

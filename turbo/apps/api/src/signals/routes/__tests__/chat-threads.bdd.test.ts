@@ -1030,18 +1030,16 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     await expectExpiredThreadEventCursor(actor, firstEvent.seqId + 1);
   });
 
-  it("reads an exact markerless snapshot watermark atomically", async () => {
+  it("reads retained and exact markerless snapshot cursors atomically", async () => {
     const scenario = await createSnapshotCursorScenario("Markerless cursor");
     const { actor, agent, firstEvent, snapshot, thread } = scenario;
 
-    // The unbounded read proves that the covered cursor row still physically
-    // exists even though the snapshot watermark makes it intentionally stale.
-    expect(
-      (await allThreadEvents(actor)).some((event) => {
-        return event.id === firstEvent.id;
-      }),
-    ).toBeTruthy();
-    await expectExpiredThreadEventCursor(actor, firstEvent.seqId);
+    await expect(
+      threadEventPage(actor, firstEvent.seqId),
+    ).resolves.toStrictEqual({
+      events: [expect.objectContaining({ id: snapshot.latestEventId })],
+      hasMore: false,
+    });
     await deleteSnapshotCursorMarker(scenario);
 
     const held = await holdChatThreadEventInsertTransactionFixture({
@@ -1935,17 +1933,12 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         return event.id === liveCreateEvent.id;
       }),
     ).toBeTruthy();
-    const coveredBoundaryCursor = await chat.requestThreadEvents(
+    const retainedBoundaryCursor = await chat.requestThreadEvents(
       actor,
       { sinceSeqId: liveCreateEvent.seqId },
-      [410],
+      [200],
     );
-    expect(coveredBoundaryCursor.body).toStrictEqual({
-      error: {
-        message: "Chat thread events cursor has expired",
-        code: "CHAT_THREAD_EVENTS_EXPIRED",
-      },
-    });
+    expect(retainedBoundaryCursor.status).toBe(200);
 
     mockNow(retentionBoundary + 1);
     const retentionCompact = await compactChatThreadSnapshots(actor);
@@ -1964,12 +1957,12 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     mockNow(Date.parse(deletedCreateEvent.createdAt) + 7 * DAY_MS + 1);
     await compactChatThreadSnapshots(actor);
-    const coveredDeletedAgentCursor = await chat.requestThreadEvents(
+    const prunedDeletedAgentCursor = await chat.requestThreadEvents(
       actor,
       { sinceSeqId: deletedCreateEvent.seqId },
       [410],
     );
-    expect(coveredDeletedAgentCursor.body).toStrictEqual({
+    expect(prunedDeletedAgentCursor.body).toStrictEqual({
       error: {
         message: "Chat thread events cursor has expired",
         code: "CHAT_THREAD_EVENTS_EXPIRED",
@@ -4508,12 +4501,17 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       code: "drive-reconnected-again",
       state: stateFromAuthorizationUrl(secondReconnectStart.authorizationUrl),
     });
+    context.mocks.axiomLogging.warn.mockClear();
     artifacts = await chat.listThreadArtifacts(actor, run.threadId);
     expectDriveStatuses(artifacts, {
       status: "disconnected",
       recovery: { action: "reconnect", connectionId: connected.id },
     });
     expect(unknownSubtypeRefresh.refreshBodies).toHaveLength(1);
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+      "Connector credential refresh failed",
+      expect.objectContaining({ connectorSlug: "google-drive" }),
+    );
     await expect(
       connectorsApi.readConnectorBySlug(actor, "google-drive"),
     ).resolves.toMatchObject({

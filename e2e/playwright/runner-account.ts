@@ -3,6 +3,7 @@ import { appendFile } from "node:fs/promises";
 import {
   cleanupCurrentClerkTestGeneration,
   cleanupCurrentClerkTestRun,
+  cleanupRecordedClerkTestResources,
   createOrganization,
   createUser,
   runnerTestAccounts,
@@ -32,9 +33,17 @@ async function main(): Promise<void> {
     case "cleanup-run":
       await cleanupRunnerAccountRun();
       break;
+    case "cleanup-recorded-generation":
+    case "cleanup-recorded-run":
+      requiredEnvironmentVariable("JOB_REF");
+      await cleanupRecordedClerkTestResources(
+        RUNNER_TEST_ROLES,
+        command === "cleanup-recorded-run" ? "run" : "generation",
+      );
+      break;
     default:
       throw new Error(
-        "Usage: runner-account.ts <prepare|cleanup-generation|cleanup-run>",
+        "Usage: runner-account.ts <prepare|cleanup-generation|cleanup-run|cleanup-recorded-generation|cleanup-recorded-run>",
       );
   }
 }

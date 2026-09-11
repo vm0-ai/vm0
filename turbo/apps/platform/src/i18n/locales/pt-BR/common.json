@@ -479,14 +479,14 @@
       "attach": "Anexar marcações",
       "draftOnly": "As marcações ficam no rascunho — você pode alterá-las até enviar",
       "inkLabel": "Cor {{color}}",
-      "notePlaceholder": "Diga o que deve mudar aqui",
+      "notePlaceholder": "O que deve mudar?",
       "open": "Anotar",
       "redo": "Refazer",
       "removeMark": "Remover marcação",
       "subtitle_one": "{{count}} marcação",
       "subtitle_many": "{{count}} marcações",
       "subtitle_other": "{{count}} marcações",
-      "textPlaceholder": "Digite o rótulo",
+      "textPlaceholder": "Digite aqui",
       "tools": {
         "arrow": "Seta",
         "box": "Retângulo",
@@ -1914,12 +1914,15 @@
       "create": {
         "addStyle": "Adicionar estilo",
         "addTemplate": "Adicionar modelo",
+        "chooseScene": "Escolha o que criar",
         "chooseType": "Escolha um tipo",
         "description": "Apresentações, vídeos e imagens",
         "exit": "Sair do modo de criação",
         "image": "Criar imagem",
+        "imageDescription": "Transforme uma ideia em uma imagem",
         "imagePlaceholder": "Descreva a imagem que você quer criar…",
         "presentation": "Criar apresentação",
+        "presentationDescription": "Slides para sua história",
         "presentationPlaceholder": "Qual é o tema da sua apresentação?",
         "question": "O que você gostaria de realizar?",
         "settingsAdjusted": "Algumas configurações de vídeo foram ajustadas para este modelo",
@@ -1928,6 +1931,7 @@
         "slideCountRange": "{{range}} slides",
         "title": "Criar",
         "video": "Criar vídeo",
+        "videoDescription": "Dê movimento às suas ideias",
         "videoPlaceholder": "Descreva o vídeo que você quer criar…"
       },
       "createWorkflow": "Criar fluxo de trabalho",
@@ -2076,8 +2080,6 @@
       "placeholder": "O que deveria mudar aqui?",
       "quote": "Citar",
       "remove": "Remover feedback",
-      "selectionEnd": "Ajustar fim da seleção",
-      "selectionStart": "Ajustar início da seleção",
       "sentEmailDescription": "um e-mail enviado (ID do e-mail: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", ID de envio: {{sentId}}",
       "sourcePartHeading": "Feedback sobre esta parte de {{description}}:",
@@ -2575,12 +2577,296 @@
       "moreIdeas": "Mais ideias",
       "moreTemplates": "Mais modelos",
       "presentationTemplates": "Modelos de apresentação",
+      "removeTask": "Remover {{task}}",
       "tasks": {
         "image": "Imagem",
         "presentation": "Slides",
         "video": "Vídeo",
         "website": "Site",
         "workflow": "Fluxo de trabalho"
+      },
+      "workflows": {
+        "back": "Explorar workflows",
+        "browse": "Explorar workflows",
+        "close": "Fechar",
+        "contextPrefix": "O que importa para mim: {{context}}",
+        "heading": "Qual tarefa você gostaria de delegar?",
+        "items": {
+          "competitors": {
+            "cadence": "Diariamente ou semanalmente",
+            "description": "Acompanhe preços e recursos nos sites dos concorrentes, registre no Notion e avise no Slack.",
+            "name": "Monitor da concorrência",
+            "next": "Prepare primeiro um rascunho. Confirme as fontes, o escopo, o horário e o destino antes de ativar.",
+            "prompt": "Ajude-me a configurar este workflow: Monitor da concorrência. Verificar as páginas de concorrentes escolhidas regularmente. Identificar mudanças relevantes em preços, planos ou mensagens. Salvar resultados com fontes no Notion e alertar no Slack se desejar. Prepare primeiro um rascunho. Confirme as fontes, o escopo, o horário e o destino antes de ativar.",
+            "results": {
+              "one": "Comparações de antes e depois",
+              "three": "Breve explicação das mudanças",
+              "two": "Links de fontes para cada descoberta"
+            },
+            "scope": "Acompanhe preços e recursos nos sites dos concorrentes, registre no Notion e avise no Slack.",
+            "steps": {
+              "one": "Verificar as páginas de concorrentes escolhidas regularmente",
+              "three": "Salvar resultados com fontes no Notion e alertar no Slack se desejar",
+              "two": "Identificar mudanças relevantes em preços, planos ou mensagens"
+            },
+            "title": "Saiba quando os concorrentes mudarem"
+          },
+          "inbox": {
+            "cadence": "Quando um email chega",
+            "description": "Classifique sua caixa de entrada e rascunhe respostas para os e-mails que precisam delas.",
+            "name": "Classificar Gmail e rascunhar respostas",
+            "next": "Prepare primeiro um rascunho. Confirme as fontes, o escopo, o horário e o destino antes de ativar.",
+            "prompt": "Ajude-me a configurar este workflow: Classificar Gmail e rascunhar respostas. Ler mensagens no escopo de entrada escolhido. Organizar por urgência e pelas regras combinadas. Salvar sugestões de resposta como rascunhos do Gmail. Prepare primeiro um rascunho. Confirme as fontes, o escopo, o horário e o destino antes de ativar. As respostas a emails devem ficar como rascunhos para eu revisar e enviar.",
+            "results": {
+              "one": "Emails organizados por urgência",
+              "three": "Rascunhos de resposta no Gmail",
+              "two": "Solicitações importantes destacadas"
+            },
+            "scope": "Classifique sua caixa de entrada e rascunhe respostas para os e-mails que precisam delas.",
+            "steps": {
+              "one": "Ler mensagens no escopo de entrada escolhido",
+              "three": "Salvar sugestões de resposta como rascunhos do Gmail",
+              "two": "Organizar por urgência e pelas regras combinadas"
+            },
+            "title": "Dê andamento aos emails importantes"
+          },
+          "invoices": {
+            "cadence": "Quando você marca uma fatura",
+            "description": "Arquive e-mails de faturas no Drive e registre cada um em uma planilha.",
+            "name": "Arquivar faturas do Gmail no Google Drive",
+            "next": "Prepare primeiro um rascunho. Confirme as fontes, o escopo, o horário e o destino antes de ativar.",
+            "prompt": "Ajude-me a configurar este workflow: Arquivar faturas do Gmail no Google Drive. Identificar a fatura pelo marcador do Gmail escolhido. Arquivar o anexo na pasta do Drive combinada. Registrar detalhes no Google Sheets se desejar. Prepare primeiro um rascunho. Confirme as fontes, o escopo, o horário e o destino antes de ativar.",
+            "results": {
+              "one": "Faturas na pasta correta",
+              "three": "Registro opcional de faturas no Sheets",
+              "two": "Histórico de arquivamento consistente"
+            },
+            "scope": "Arquive e-mails de faturas no Drive e registre cada um em uma planilha.",
+            "steps": {
+              "one": "Identificar a fatura pelo marcador do Gmail escolhido",
+              "three": "Registrar detalhes no Google Sheets se desejar",
+              "two": "Arquivar o anexo na pasta do Drive combinada"
+            },
+            "title": "Mantenha suas faturas organizadas"
+          },
+          "meetings": {
+            "cadence": "Quando uma reunião é adicionada",
+            "description": "Pesquise as pessoas que você vai encontrar antes de cada evento no calendário.",
+            "name": "Pesquise suas reuniões no calendário",
+            "next": "Prepare primeiro um rascunho. Confirme as fontes, o escopo, o horário e o destino antes de ativar.",
+            "prompt": "Ajude-me a configurar este workflow: Pesquise suas reuniões no calendário. Ler participantes e detalhes de um novo evento. Pesquisar o contexto profissional e das empresas. Preparar um resumo com fontes e pontos de discussão. Prepare primeiro um rascunho. Confirme as fontes, o escopo, o horário e o destino antes de ativar.",
+            "results": {
+              "one": "Contexto dos participantes e empresas",
+              "three": "Sugestões de pontos de discussão",
+              "two": "Informações relevantes com fontes"
+            },
+            "scope": "Pesquise as pessoas que você vai encontrar antes de cada evento no calendário.",
+            "steps": {
+              "one": "Ler participantes e detalhes de um novo evento",
+              "three": "Preparar um resumo com fontes e pontos de discussão",
+              "two": "Pesquisar o contexto profissional e das empresas"
+            },
+            "title": "Chegue preparado às reuniões"
+          },
+          "metrics": {
+            "cadence": "Toda manhã",
+            "description": "Publicar visitantes diários, inscrições e números de ativação no Slack.",
+            "name": "Publicar métricas diárias no Slack",
+            "next": "Prepare primeiro um rascunho. Confirme as fontes, o escopo, o horário e o destino antes de ativar.",
+            "prompt": "Ajude-me a configurar este workflow: Publicar métricas diárias no Slack. Consultar as métricas de site e cadastro combinadas. Montar um resumo diário com o período claramente indicado. Compartilhar no destino Slack escolhido. Prepare primeiro um rascunho. Confirme as fontes, o escopo, o horário e o destino antes de ativar.",
+            "results": {
+              "one": "Visitantes diários",
+              "three": "Período de análise claro",
+              "two": "Cadastros e ativações quando disponíveis"
+            },
+            "scope": "Publicar visitantes diários, inscrições e números de ativação no Slack.",
+            "steps": {
+              "one": "Consultar as métricas de site e cadastro combinadas",
+              "three": "Compartilhar no destino Slack escolhido",
+              "two": "Montar um resumo diário com o período claramente indicado"
+            },
+            "title": "Acompanhe o desempenho do seu negócio"
+          },
+          "morning": {
+            "cadence": "Toda manhã",
+            "description": "Transforme as novidades do Gmail, Agenda e Notion em um plano diário curto no Slack.",
+            "name": "Resumo da manhã",
+            "next": "Prepare primeiro um rascunho. Confirme as fontes, o escopo, o horário e o destino antes de ativar.",
+            "prompt": "Ajude-me a configurar este workflow: Resumo da manhã. Ler emails importantes e as reuniões de hoje. Priorizar decisões, acompanhamentos e tempo de foco. Entregar um breve plano da manhã no Slack. Prepare primeiro um rascunho. Confirme as fontes, o escopo, o horário e o destino antes de ativar.",
+            "results": {
+              "one": "Prioridades do dia",
+              "three": "Respostas e decisões a acompanhar",
+              "two": "Reuniões e tempo de foco"
+            },
+            "scope": "Transforme as novidades do Gmail, Agenda e Notion em um plano diário curto no Slack.",
+            "steps": {
+              "one": "Ler emails importantes e as reuniões de hoje",
+              "three": "Entregar um breve plano da manhã no Slack",
+              "two": "Priorizar decisões, acompanhamentos e tempo de foco"
+            },
+            "title": "Comece o dia com um plano claro"
+          },
+          "recap": {
+            "cadence": "Verificação periódica de novas notas",
+            "description": "Compartilhe um resumo com decisões e itens de ação após cada reunião.",
+            "name": "Receber resumos de reuniões no Slack",
+            "next": "Prepare primeiro um rascunho. Confirme as fontes, o escopo, o horário e o destino antes de ativar.",
+            "prompt": "Ajude-me a configurar este workflow: Receber resumos de reuniões no Slack. Ler uma nova transcrição de reunião. Extrair decisões, ações, responsáveis e prazos informados. Entregar um resumo breve no destino escolhido. Prepare primeiro um rascunho. Confirme as fontes, o escopo, o horário e o destino antes de ativar.",
+            "results": {
+              "one": "Decisões da conversa",
+              "three": "Informações ausentes claramente sinalizadas",
+              "two": "Ações e responsáveis mencionados"
+            },
+            "scope": "Compartilhe um resumo com decisões e itens de ação após cada reunião.",
+            "steps": {
+              "one": "Ler uma nova transcrição de reunião",
+              "three": "Entregar um resumo breve no destino escolhido",
+              "two": "Extrair decisões, ações, responsáveis e prazos informados"
+            },
+            "title": "Transforme reuniões em próximos passos"
+          },
+          "reply": {
+            "cadence": "Quando uma resposta correspondente chega",
+            "description": "Acompanhe uma conversa e receba os pontos principais de cada resposta e os próximos passos.",
+            "name": "Acompanhamento de respostas por email",
+            "next": "Prepare primeiro um rascunho. Confirme as fontes, o escopo, o horário e o destino antes de ativar.",
+            "prompt": "Ajude-me a configurar este workflow: Acompanhamento de respostas por email. Acompanhar uma conversa de email e os remetentes combinados. Identificar uma nova resposta e resumir os pontos principais. Notificar uma vez e preparar um rascunho se necessário. Prepare primeiro um rascunho. Confirme as fontes, o escopo, o horário e o destino antes de ativar. As respostas a emails devem ficar como rascunhos para eu revisar e enviar.",
+            "results": {
+              "one": "Resposta recebida e pontos principais",
+              "three": "Rascunho de acompanhamento quando útil",
+              "two": "Ações solicitadas ou prazos"
+            },
+            "scope": "Acompanhe uma conversa e receba os pontos principais de cada resposta e os próximos passos.",
+            "steps": {
+              "one": "Acompanhar uma conversa de email e os remetentes combinados",
+              "three": "Notificar uma vez e preparar um rascunho se necessário",
+              "two": "Identificar uma nova resposta e resumir os pontos principais"
+            },
+            "title": "Não perca a resposta que está esperando"
+          },
+          "weekly": {
+            "cadence": "Toda semana",
+            "description": "Resuma a atividade do GitHub, Gmail e Agenda em uma atualização semanal no Slack.",
+            "name": "Resumo semanal pessoal",
+            "next": "Prepare primeiro um rascunho. Confirme as fontes, o escopo, o horário e o destino antes de ativar.",
+            "prompt": "Ajude-me a configurar este workflow: Resumo semanal pessoal. Reunir atividades das fontes escolhidas. Agrupar conquistas, decisões pendentes e acompanhamentos. Compartilhar um resumo semanal no destino Slack escolhido. Prepare primeiro um rascunho. Confirme as fontes, o escopo, o horário e o destino antes de ativar.",
+            "results": {
+              "one": "Conquistas da semana",
+              "three": "Compromissos futuros",
+              "two": "Decisões pendentes e acompanhamentos"
+            },
+            "scope": "Resuma a atividade do GitHub, Gmail e Agenda em uma atualização semanal no Slack.",
+            "steps": {
+              "one": "Reunir atividades das fontes escolhidas",
+              "three": "Compartilhar um resumo semanal no destino Slack escolhido",
+              "two": "Agrupar conquistas, decisões pendentes e acompanhamentos"
+            },
+            "title": "Feche a semana com clareza"
+          }
+        },
+        "next": "Próximo workflow",
+        "ownSources": "Seu workflow usará suas próprias fontes e conteúdos.",
+        "placeholder": "Opcional — conte o que importa para você",
+        "preview": {
+          "competitors": {
+            "changed": "Changed",
+            "footer": "Source page and change history included",
+            "heading": "One change worth a closer look.",
+            "label": "Monitor da concorrência",
+            "now": "Now",
+            "plan": "Example company’s team plan",
+            "previous": "Previous",
+            "unit": "/ mo"
+          },
+          "inbox": {
+            "draft": "Reply draft",
+            "label": "Classificar Gmail e rascunhar respostas",
+            "later": "Your weekly digest",
+            "needsReply": "Needs reply",
+            "readLater": "Read later",
+            "review": "Review before sending",
+            "subject": "Re: Next steps",
+            "text": "Thanks for the details. I’ve reviewed the proposal and…"
+          },
+          "invoices": {
+            "amount": "Amount",
+            "example": "Example studio",
+            "file": "Invoice — September",
+            "filed": "Filed",
+            "footer": "An optional Sheet keeps the record together",
+            "label": "Arquivar faturas do Gmail no Google Drive",
+            "path": "Finance / Invoices / Sep",
+            "second": "Sample supply co.",
+            "status": "Status",
+            "vendor": "Vendor"
+          },
+          "meetings": {
+            "heading": "Your next conversation.",
+            "initials": "JL",
+            "label": "Pesquise suas reuniões no calendário",
+            "note": "A useful place to begin",
+            "person": "Jordan Lee",
+            "question": "Ask how the team handles customer handoffs.",
+            "role": "Operations lead · Example company",
+            "tagOne": "Company context",
+            "tagTwo": "Discussion points"
+          },
+          "metrics": {
+            "activated": "Activated",
+            "footer": "A clear period. Only the metrics you choose.",
+            "label": "Publicar métricas diárias no Slack",
+            "period": "Yesterday vs. prior day",
+            "signups": "Signups",
+            "visitors": "Visitors"
+          },
+          "morning": {
+            "footer": "2 emails need your attention",
+            "heading": "A little clarity for your day.",
+            "label": "Resumo da manhã",
+            "meetingOne": "Team check-in",
+            "meetingTwo": "Client discovery",
+            "priority": "First things first",
+            "task": "Review the proposal before your client call"
+          },
+          "recap": {
+            "assign": "To assign",
+            "decision": "Decision: move ahead with a pilot",
+            "due": "Due",
+            "friday": "Fri",
+            "label": "Receber resumos de reuniões no Slack",
+            "monday": "Mon",
+            "one": "Send the revised brief",
+            "owner": "Owner",
+            "task": "Next step",
+            "team": "Team",
+            "three": "Book the next check-in",
+            "two": "Confirm the pilot scope",
+            "you": "You"
+          },
+          "reply": {
+            "heading": "The reply you were waiting for.",
+            "label": "Acompanhamento de respostas por email",
+            "next": "Next step",
+            "quote": "“Thursday works for us. Could you share a short agenda?”",
+            "subject": "Re: Our next conversation",
+            "task": "Confirm the time and prepare an agenda"
+          },
+          "weekly": {
+            "heading": "A week worth looking back on.",
+            "label": "Resumo semanal pessoal",
+            "next": "Carry into next week",
+            "one": "Shared the revised proposal",
+            "task": "Confirm the launch date with the team",
+            "two": "Wrapped up the onboarding guide"
+          }
+        },
+        "previous": "Workflow anterior",
+        "sample": "Exemplo",
+        "tailor": "O que você gostaria de ajustar?",
+        "use": "Usar este workflow",
+        "whatHappens": "O que acontece a cada execução",
+        "whatYouGet": "O que você recebe",
+        "worksWith": "Aplicativos utilizados"
       }
     },
     "templates": {
@@ -2692,34 +2978,6 @@
       "transcribing": "Transcrevendo",
       "transcribingProgress": "Transcrevendo...",
       "transcriptionFailed": "Falha na transcrição de voz. Tente novamente."
-    },
-    "welcomeThread": {
-      "content": "# Olá, eu sou {{assistantName}}\n\nSou seu colega de equipe de IA. Conte qual resultado você precisa, e eu posso trabalhar com suas ferramentas para trazer o resultado final de volta para esta conversa.\n\n## O que eu posso entregar\n\n### Imagens\n\nPosso criar visuais de campanha, ilustrações de produto, peças para redes sociais e criativos de anúncios.\n\n![Visual de campanha entregue por {{assistantName}}]({{imageUrl}})\n\n`campaign-visual.png`\n\n### Apresentações\n\nPosso transformar um briefing inicial em uma apresentação estruturada, bem desenhada e pronta para apresentar.\n\n![Apresentação entregue por {{assistantName}}]({{presentationPreviewUrl}})\n\n[`sproutpop-launch-deck.pptx`]({{presentationUrl}}) · {{slideCount}} slides\n\n### Vídeos\n\nPosso entregar demos de produto editadas, filmes de lançamento, vídeos explicativos e cortes para redes sociais com legendas.\n\n[Product launch video](<{{videoUrl}}>)\n\n`product-launch-film.mp4` · pronto para compartilhar\n\n### Recomendações de automação\n\nPosso analisar tarefas recorrentes da equipe e devolver uma lista priorizada do que vale a pena automatizar.\n\n| Prioridade | Tarefa | Gatilho | Entrega |\n| --- | --- | --- | --- |\n| 1 | Qualificar leads de entrada | Nova resposta de formulário | Registro enriquecido no CRM e rascunho de resposta |\n| 2 | Transformar reuniões em acompanhamentos | Chamada concluída | Resumo, nota no CRM e rascunho de e-mail |\n| 3 | Revisão semanal de crescimento | Segunda-feira de manhã | Resumo de métricas e relatório de anomalias |\n\n## Por que as equipes aproveitam mais o {{assistantName}}\n\nUm bom resultado não precisa ficar na conversa de uma só pessoa. Salve o processo como um workflow compartilhado, e a próxima pessoa já começa com o que funciona.\n\n```mermaid\nflowchart TB\n  A[\"1. Descubra o que funciona<br/>Uma pessoa da equipe e {{assistantName}} concluem a tarefa\"]\n  B[\"2. Compartilhe o workflow<br/>O processo e o contexto se tornam reutilizáveis\"]\n  C[\"3. Reutilize o que funciona<br/>Outras pessoas começam pelo processo validado\"]\n  D[\"4. Melhorem juntos<br/>O feedback melhora as próximas execuções\"]\n  A --> B\n  B --> C\n  C --> D\n  D --> A\n```\n\n- **Compartilhe o workflow, não apenas o arquivo final.**\n- Dê a todas as pessoas da equipe o mesmo contexto inicial.\n- Melhore um processo uma vez e deixe toda a equipe aproveitar.\n\n## Como trabalhar comigo em equipe\n\nUma boa resposta ajuda uma pessoa. Um fluxo de trabalho salvo ajuda todas as que fizerem esse trabalho depois de você.\n\n[Diagrama do fluxo de trabalho da equipe](<{{teamDiagramUrl}}>)\n\n1. **Faça a tarefa comigo uma vez.** Descreva o resultado que você quer em vez dos passos para chegar até ele, e me corrija enquanto o trabalho ainda está em andamento. É justamente essa correção que vale a pena guardar.\n2. **Salve como fluxo de trabalho.** Escolha **Criar fluxo de trabalho** na caixa de mensagem abaixo. Vou perguntar qual resultado você quer, o que deve iniciá-lo e o que fazer com o resultado, e então escrevo tudo como um fluxo de trabalho que você pode executar de novo.\n3. **Mude a visibilidade para Público.** Abra o fluxo de trabalho e ajuste **Visibilidade**. Um fluxo **Privado** fica só com você; um **Público** pode ser executado por qualquer pessoa do espaço de trabalho.\n4. **Execute pelo nome.** Digite `/` seguido do nome do fluxo de trabalho em qualquer conversa. Adicione uma automação quando ele precisar rodar por agendamento ou por um gatilho, em vez de sob demanda.\n\nComece pela tarefa que sua equipe repete com mais frequência, não pela mais difícil. Um fluxo de trabalho que roda toda semana vale mais do que um engenhoso que roda uma vez.\n\n## Fale comigo no Slack\n\nBoa parte desse trabalho já é discutida no Slack. Depois que eu estiver instalado lá, a resposta chega no próprio tópico, e não em outra aba.\n\n[Diagrama da conversa no Slack](<{{slackDiagramUrl}}>)\n\n**Configure uma vez**\n\n1. Abra **Onde {{assistantName}} trabalha** na barra lateral esquerda.\n2. No cartão do Slack, escolha **Instalar no Slack** e aprove as permissões. Só quem administra o espaço de trabalho pode instalar, então peça a essa pessoa se não for o seu caso.\n3. As demais pessoas abrem o mesmo cartão e escolhem **Conectar** para vincular a própria conta do Slack.\n\n**Depois, me use como qualquer outra pessoa da equipe**\n\n| No Slack | O que eu faço |\n| --- | --- |\n| Me mande uma mensagem direta | Trabalhamos em particular, em uma conversa contínua |\n| `@{{assistantName}}` em um canal | Respondo em um tópico na sua mensagem, onde a equipe pode acompanhar |\n| `@{{assistantName}}` de novo dentro de um tópico | Retomo aquele tópico e continuo trabalhando nele |\n| `/okou` | Abre minha lista de comandos: conectar, trocar de agente, trocar de modelo, desconectar |\n\nDuas coisas valem a pena saber. Em um canal, só respondo quando sou mencionado, então fico fora dos tópicos para os quais não fui chamado. E você pode anexar um arquivo a uma mensagem direta: eu leio antes de responder.\n\n[Configurar o Slack]({{worksUrl}}) para que os fluxos de trabalho salvos acima possam ser iniciados sem sair do canal.\n\n[Convide sua equipe]({{inviteUrl}}) para que o próximo workflow que você criar já possa ser reutilizado por quem precisa dele.\n\n[Leia a documentação]({{docsUrl}}) para entender como funcionam os workflows compartilhados.",
-      "slackDiagram": {
-        "caption": "Onde a resposta chega no Slack: no tópico da sua mensagem ou em uma mensagem direta privada",
-        "channelEyebrow": "Em um canal",
-        "channelNote": "A resposta fica na sua mensagem, então o canal não é inundado e a equipe ainda acompanha.",
-        "directEyebrow": "Em uma mensagem direta",
-        "directLabel": "Você e o {{assistantName}}",
-        "directNote": "Uma conversa privada que mantém o contexto entre as tarefas.",
-        "mentionLabel": "Você menciona o {{assistantName}}",
-        "replyLabel": "O {{assistantName}} responde no tópico"
-      },
-      "teamDiagram": {
-        "automationBody": "Executa por agendamento ou gatilho, sem ninguém pedir.",
-        "automationTitle": "Uma automação",
-        "caption": "Uma conversa que deu certo vira um fluxo de trabalho do qual a equipe e a sua agenda partem",
-        "chatBody": "Você e {{assistantName}} acertam a tarefa uma vez.",
-        "chatTitle": "Uma conversa que funcionou",
-        "savedEyebrow": "Salvo uma vez",
-        "teamEyebrow": "De todo mundo",
-        "teammateBody": "Executa pelo nome e começa do que já funciona.",
-        "teammateTitle": "Qualquer pessoa da equipe",
-        "workflowBody": "O processo e o contexto dele, guardados e reutilizáveis.",
-        "workflowTitle": "Um fluxo de trabalho",
-        "yoursEyebrow": "Sua"
-      },
-      "title": "Boas-vindas ao {{assistantName}}"
     },
     "workflows": {
       "named": "Fluxo de trabalho {{title}}",
@@ -3611,9 +3869,7 @@
       "requestFailed": "Falha na solicitação"
     },
     "realtime": {
-      "degraded": "As atualizações em tempo real encontraram um problema. Atualize a página.",
-      "disconnected": "Conexão em tempo real desconectada",
-      "reconnecting": "Reconectando a conexão em tempo real"
+      "degraded": "As atualizações em tempo real encontraram um problema. Atualize a página."
     }
   },
   "invitationRedirect": {
@@ -5521,6 +5777,14 @@
           "description": "Escolha o modelo para entrada de voz v2. Os modelos de transcrição usam {{model}} para refinar o texto.",
           "title": "Modelo de entrada de voz",
           "unavailable": "Modelo indisponível ({{model}})"
+        },
+        "welcomeThread": {
+          "create": "Criar conversa de boas-vindas",
+          "creating": "Criando…",
+          "defaultAgentNotReady": "Configure o agente padrão do espaço de trabalho e tente novamente.",
+          "description": "Crie uma conversa de boas-vindas com a introdução e os exemplos.",
+          "failed": "Não foi possível criar a conversa de boas-vindas. Tente novamente.",
+          "title": "Conversa de boas-vindas"
         }
       },
       "emailSubscription": {
@@ -5805,6 +6069,23 @@
     "cancel": "Cancelar",
     "chooseFile": "Escolher arquivo",
     "choosePrivateKeyFile": "Escolher arquivo de chave privada",
+    "connectionStatus": {
+      "attention_one": "{{count}} host SSH precisa de atenção",
+      "attention_many": "{{count}} hosts SSH precisam de atenção",
+      "attention_other": "{{count}} hosts SSH precisam de atenção",
+      "authenticationFailed": "A autenticação SSH falhou. Verifique o nome de usuário, a chave privada e a autorização no servidor; edite o host ou substitua as credenciais se necessário.",
+      "credentialResourceLimit": "A chave privada excede os limites de processamento compatíveis. Exporte-a novamente com criptografia compatível e substitua as credenciais.",
+      "hostKeyMismatch": "A chave do host do servidor não corresponde à identidade salva. Verifique o servidor de forma independente antes de redefinir a chave do host.",
+      "invalidCredential": "Não foi possível ler a chave privada ou a frase secreta. Substitua as credenciais pela chave completa e pela frase secreta correta.",
+      "networkFailure": "A última conexão SSH falhou. Verifique o nome do host, a porta, a disponibilidade do servidor e o acesso pelo firewall a partir do Runner.",
+      "observedAt": "Observado: {{time}}",
+      "protocol": "A negociação SSH falhou. Verifique se esta porta oferece SSH e se o servidor aceita algoritmos compatíveis.",
+      "timedOut": "A última conexão SSH expirou antes da conclusão da autenticação. Verifique o endpoint, o firewall e a disponibilidade do servidor.",
+      "unavailable": "O status da conexão SSH está indisponível",
+      "unsafeDestination": "Este host não resolve para um endereço público permitido. Use um endpoint SSH público.",
+      "unsupportedCredential": "O formato ou algoritmo da chave privada não é compatível. Substitua-a por uma chave OpenSSH, PKCS8 ou RSA PEM compatível.",
+      "unsupportedHostKey": "A chave do host do servidor não é compatível. Configure uma chave de host Ed25519, ECDSA ou RSA compatível no servidor."
+    },
     "credentialsHelp": "As credenciais são somente para gravação e ficam fora do sandbox. Cole a chave completa; os espaços são preservados. Os campos são limpos ao enviar ou fechar o formulário.",
     "delete": "Excluir host",
     "deleteHelp": "Excluir este host e suas credenciais salvas? Os Agents deixarão de vê-lo no inventário atual.",
@@ -6581,6 +6862,7 @@
       "install": "Instalar",
       "installDescription": "Escolha um agente e preencha todos os parâmetros obrigatórios. Todas as automações incluídas serão instaladas.",
       "installed": "Fluxo de trabalho oficial instalado",
+      "installedStatus": "Instalado",
       "installErrorDescription": "Verifique o agente e os valores dos parâmetros e tente novamente.",
       "installErrorTitle": "Não foi possível instalar o fluxo de trabalho oficial",
       "installTitle": "Instalar {{name}}",

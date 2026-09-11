@@ -33,6 +33,7 @@ interface AuthorizationState {
 
 function recoveryAgent() {
   return {
+    isDefaultAgent: false,
     agentId: AGENT_ID,
     avatarUrl: null,
     description: "Reviews authentication recovery",

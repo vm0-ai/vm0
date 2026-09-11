@@ -25,7 +25,7 @@ function createIntroVideoVoicePickerSignals() {
       apiBase: "api",
     });
     const filters = get(internalFilters$);
-    return async (token: string | undefined, signal?: AbortSignal) => {
+    return async (token: string | undefined) => {
       const result = await accept(
         client.voices({
           query: {
@@ -34,10 +34,8 @@ function createIntroVideoVoicePickerSignals() {
             ...(filters.language ? { language: filters.language } : {}),
             ...(filters.gender ? { gender: filters.gender } : {}),
           },
-          ...(signal ? { fetchOptions: { signal } } : {}),
         }),
         [200],
-        signal,
       );
       return {
         items: result.body.voices,

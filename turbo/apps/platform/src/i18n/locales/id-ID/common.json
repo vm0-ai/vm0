@@ -465,12 +465,12 @@
       "attach": "Lampirkan tanda",
       "draftOnly": "Tanda tersimpan di draf — Anda bisa mengubahnya sampai dikirim",
       "inkLabel": "Warna {{color}}",
-      "notePlaceholder": "Tulis apa yang harus diubah di sini",
+      "notePlaceholder": "Apa yang harus diubah?",
       "open": "Anotasi",
       "redo": "Ulangi",
       "removeMark": "Hapus tanda",
       "subtitle_other": "{{count}} tanda",
-      "textPlaceholder": "Ketik labelnya",
+      "textPlaceholder": "Ketik di sini",
       "tools": {
         "arrow": "Panah",
         "box": "Kotak",
@@ -1882,12 +1882,15 @@
       "create": {
         "addStyle": "Tambahkan gaya",
         "addTemplate": "Tambahkan templat",
+        "chooseScene": "Pilih yang ingin dibuat",
         "chooseType": "Pilih jenis",
         "description": "Presentasi, video, dan gambar",
         "exit": "Keluar dari mode pembuatan",
         "image": "Buat gambar",
+        "imageDescription": "Ubah ide menjadi visual",
         "imagePlaceholder": "Jelaskan gambar yang ingin Anda buat…",
         "presentation": "Buat presentasi",
+        "presentationDescription": "Slide untuk cerita Anda",
         "presentationPlaceholder": "Apa topik presentasi Anda?",
         "question": "Apa yang ingin Anda wujudkan?",
         "settingsAdjusted": "Beberapa pengaturan video disesuaikan untuk model ini",
@@ -1896,6 +1899,7 @@
         "slideCountRange": "{{range}} slide",
         "title": "Buat",
         "video": "Buat video",
+        "videoDescription": "Hidupkan ide Anda dengan gerakan",
         "videoPlaceholder": "Jelaskan video yang ingin Anda buat…"
       },
       "createWorkflow": "Buat alur kerja",
@@ -2034,8 +2038,6 @@
       "placeholder": "Apa yang harus diubah dari ini?",
       "quote": "Kutip",
       "remove": "Hapus masukan",
-      "selectionEnd": "Sesuaikan akhir pilihan",
-      "selectionStart": "Sesuaikan awal pilihan",
       "sentEmailDescription": "email yang telah dikirim (ID mail: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", ID terkirim: {{sentId}}",
       "sourcePartHeading": "Masukan untuk bagian {{description}} ini:",
@@ -2522,12 +2524,296 @@
       "moreIdeas": "Ide lainnya",
       "moreTemplates": "Template lainnya",
       "presentationTemplates": "Template presentasi",
+      "removeTask": "Hapus {{task}}",
       "tasks": {
         "image": "Gambar",
         "presentation": "Slide",
         "video": "Video",
         "website": "Situs web",
         "workflow": "Alur kerja"
+      },
+      "workflows": {
+        "back": "Jelajahi workflow",
+        "browse": "Jelajahi workflow",
+        "close": "Tutup",
+        "contextPrefix": "Yang penting bagi saya: {{context}}",
+        "heading": "Pekerjaan apa yang ingin Anda delegasikan?",
+        "items": {
+          "competitors": {
+            "cadence": "Harian atau mingguan",
+            "description": "Pantau perubahan harga dan fitur di situs kompetitor, simpan temuannya di Notion, dan beri tahu Slack.",
+            "name": "Pemantau kompetitor",
+            "next": "Buat draf terlebih dahulu. Konfirmasikan sumber, cakupan, waktu, dan tujuan sebelum mengaktifkannya.",
+            "prompt": "Bantu saya menyiapkan workflow ini: Pemantau kompetitor. Memeriksa halaman pesaing pilihan secara terjadwal. Menemukan perubahan penting pada harga, paket, atau pesan. Menyimpan temuan dan sumber ke Notion serta memberi tahu Slack jika diinginkan. Buat draf terlebih dahulu. Konfirmasikan sumber, cakupan, waktu, dan tujuan sebelum mengaktifkannya.",
+            "results": {
+              "one": "Perbandingan sebelum dan sesudah",
+              "three": "Penjelasan singkat tentang perubahan",
+              "two": "Tautan sumber untuk setiap temuan"
+            },
+            "scope": "Pantau perubahan harga dan fitur di situs kompetitor, simpan temuannya di Notion, dan beri tahu Slack.",
+            "steps": {
+              "one": "Memeriksa halaman pesaing pilihan secara terjadwal",
+              "three": "Menyimpan temuan dan sumber ke Notion serta memberi tahu Slack jika diinginkan",
+              "two": "Menemukan perubahan penting pada harga, paket, atau pesan"
+            },
+            "title": "Ketahui perubahan pesaing"
+          },
+          "inbox": {
+            "cadence": "Saat email baru tiba",
+            "description": "Sortir inbox Anda dan buat draf balasan untuk email yang membutuhkannya.",
+            "name": "Sortir Gmail dan buat draf balasan",
+            "next": "Buat draf terlebih dahulu. Konfirmasikan sumber, cakupan, waktu, dan tujuan sebelum mengaktifkannya.",
+            "prompt": "Bantu saya menyiapkan workflow ini: Sortir Gmail dan buat draf balasan. Membaca pesan dalam cakupan kotak masuk pilihan. Mengurutkan berdasarkan urgensi dan aturan yang disepakati. Menyimpan saran balasan sebagai draf Gmail. Buat draf terlebih dahulu. Konfirmasikan sumber, cakupan, waktu, dan tujuan sebelum mengaktifkannya. Balasan email hanya berupa draf yang akan saya tinjau dan kirim sendiri.",
+            "results": {
+              "one": "Email terurut berdasarkan urgensi",
+              "three": "Draf balasan di Gmail",
+              "two": "Permintaan penting ditampilkan"
+            },
+            "scope": "Sortir inbox Anda dan buat draf balasan untuk email yang membutuhkannya.",
+            "steps": {
+              "one": "Membaca pesan dalam cakupan kotak masuk pilihan",
+              "three": "Menyimpan saran balasan sebagai draf Gmail",
+              "two": "Mengurutkan berdasarkan urgensi dan aturan yang disepakati"
+            },
+            "title": "Tindak lanjuti email penting"
+          },
+          "invoices": {
+            "cadence": "Saat Anda memberi label pada faktur",
+            "description": "Simpan email invoice ke Drive dan catat semuanya di Sheet.",
+            "name": "Simpan invoice Gmail ke Google Drive",
+            "next": "Buat draf terlebih dahulu. Konfirmasikan sumber, cakupan, waktu, dan tujuan sebelum mengaktifkannya.",
+            "prompt": "Bantu saya menyiapkan workflow ini: Simpan invoice Gmail ke Google Drive. Mengidentifikasi faktur dari label Gmail pilihan. Menyimpan lampiran faktur di folder Drive yang disepakati. Mencatat detail di Google Sheets jika diinginkan. Buat draf terlebih dahulu. Konfirmasikan sumber, cakupan, waktu, dan tujuan sebelum mengaktifkannya.",
+            "results": {
+              "one": "Faktur di folder yang benar",
+              "three": "Log faktur Sheets opsional",
+              "two": "Catatan penyimpanan yang konsisten"
+            },
+            "scope": "Simpan email invoice ke Drive dan catat semuanya di Sheet.",
+            "steps": {
+              "one": "Mengidentifikasi faktur dari label Gmail pilihan",
+              "three": "Mencatat detail di Google Sheets jika diinginkan",
+              "two": "Menyimpan lampiran faktur di folder Drive yang disepakati"
+            },
+            "title": "Jaga faktur tetap rapi"
+          },
+          "meetings": {
+            "cadence": "Saat rapat ditambahkan",
+            "description": "Teliti orang yang akan Anda temui sebelum setiap event kalender.",
+            "name": "Teliti meeting kalender Anda",
+            "next": "Buat draf terlebih dahulu. Konfirmasikan sumber, cakupan, waktu, dan tujuan sebelum mengaktifkannya.",
+            "prompt": "Bantu saya menyiapkan workflow ini: Teliti meeting kalender Anda. Membaca peserta dan detail acara kalender baru. Meneliti konteks profesional dan perusahaan. Menyiapkan ringkasan dengan sumber dan topik diskusi. Buat draf terlebih dahulu. Konfirmasikan sumber, cakupan, waktu, dan tujuan sebelum mengaktifkannya.",
+            "results": {
+              "one": "Konteks peserta dan perusahaan",
+              "three": "Saran topik diskusi",
+              "two": "Latar belakang relevan beserta sumber"
+            },
+            "scope": "Teliti orang yang akan Anda temui sebelum setiap event kalender.",
+            "steps": {
+              "one": "Membaca peserta dan detail acara kalender baru",
+              "three": "Menyiapkan ringkasan dengan sumber dan topik diskusi",
+              "two": "Meneliti konteks profesional dan perusahaan"
+            },
+            "title": "Hadiri rapat dengan persiapan matang"
+          },
+          "metrics": {
+            "cadence": "Setiap pagi",
+            "description": "Posting jumlah pengunjung, signup, dan aktivasi harian ke Slack.",
+            "name": "Posting metrik harian ke Slack",
+            "next": "Buat draf terlebih dahulu. Konfirmasikan sumber, cakupan, waktu, dan tujuan sebelum mengaktifkannya.",
+            "prompt": "Bantu saya menyiapkan workflow ini: Posting metrik harian ke Slack. Membaca metrik situs dan pendaftaran yang disepakati. Menyusun ringkasan harian dengan periode yang jelas. Membagikannya ke tujuan Slack pilihan. Buat draf terlebih dahulu. Konfirmasikan sumber, cakupan, waktu, dan tujuan sebelum mengaktifkannya.",
+            "results": {
+              "one": "Pengunjung harian",
+              "three": "Periode pelaporan yang jelas",
+              "two": "Pendaftaran dan aktivasi jika tersedia"
+            },
+            "scope": "Posting jumlah pengunjung, signup, dan aktivasi harian ke Slack.",
+            "steps": {
+              "one": "Membaca metrik situs dan pendaftaran yang disepakati",
+              "three": "Membagikannya ke tujuan Slack pilihan",
+              "two": "Menyusun ringkasan harian dengan periode yang jelas"
+            },
+            "title": "Pantau perkembangan bisnis Anda"
+          },
+          "morning": {
+            "cadence": "Setiap pagi",
+            "description": "Ubah update Gmail, Calendar, dan Notion jadi rencana harian singkat di Slack.",
+            "name": "Ringkasan pagi",
+            "next": "Buat draf terlebih dahulu. Konfirmasikan sumber, cakupan, waktu, dan tujuan sebelum mengaktifkannya.",
+            "prompt": "Bantu saya menyiapkan workflow ini: Ringkasan pagi. Membaca email penting dan rapat hari ini. Memprioritaskan keputusan, tindak lanjut, dan waktu fokus. Mengirim rencana pagi singkat ke Slack. Buat draf terlebih dahulu. Konfirmasikan sumber, cakupan, waktu, dan tujuan sebelum mengaktifkannya.",
+            "results": {
+              "one": "Prioritas hari ini",
+              "three": "Balasan dan keputusan untuk ditindaklanjuti",
+              "two": "Rapat dan waktu fokus"
+            },
+            "scope": "Ubah update Gmail, Calendar, dan Notion jadi rencana harian singkat di Slack.",
+            "steps": {
+              "one": "Membaca email penting dan rapat hari ini",
+              "three": "Mengirim rencana pagi singkat ke Slack",
+              "two": "Memprioritaskan keputusan, tindak lanjut, dan waktu fokus"
+            },
+            "title": "Mulai hari dengan rencana yang jelas"
+          },
+          "recap": {
+            "cadence": "Memeriksa catatan rapat baru secara berkala",
+            "description": "Bagikan rangkuman berisi keputusan dan item aksi setelah setiap rapat.",
+            "name": "Dapatkan rangkuman rapat di Slack",
+            "next": "Buat draf terlebih dahulu. Konfirmasikan sumber, cakupan, waktu, dan tujuan sebelum mengaktifkannya.",
+            "prompt": "Bantu saya menyiapkan workflow ini: Dapatkan rangkuman rapat di Slack. Membaca transkrip rapat baru. Mengambil keputusan, tindakan, penanggung jawab, dan tanggal yang disebutkan. Mengirim rangkuman singkat ke tujuan pilihan. Buat draf terlebih dahulu. Konfirmasikan sumber, cakupan, waktu, dan tujuan sebelum mengaktifkannya.",
+            "results": {
+              "one": "Keputusan dalam percakapan",
+              "three": "Informasi yang belum ada ditandai jelas",
+              "two": "Tindakan dan penanggung jawab yang disebutkan"
+            },
+            "scope": "Bagikan rangkuman berisi keputusan dan item aksi setelah setiap rapat.",
+            "steps": {
+              "one": "Membaca transkrip rapat baru",
+              "three": "Mengirim rangkuman singkat ke tujuan pilihan",
+              "two": "Mengambil keputusan, tindakan, penanggung jawab, dan tanggal yang disebutkan"
+            },
+            "title": "Ubah rapat menjadi langkah berikutnya"
+          },
+          "reply": {
+            "cadence": "Saat balasan yang sesuai tiba",
+            "description": "Pantau satu percakapan dan dapatkan poin penting balasan baru serta langkah berikutnya.",
+            "name": "Pemantauan balasan email",
+            "next": "Buat draf terlebih dahulu. Konfirmasikan sumber, cakupan, waktu, dan tujuan sebelum mengaktifkannya.",
+            "prompt": "Bantu saya menyiapkan workflow ini: Pemantauan balasan email. Mengikuti satu percakapan email dan pengirim yang disepakati. Mendeteksi balasan baru dan merangkum poin penting. Memberi tahu sekali dan menyiapkan draf jika diperlukan. Buat draf terlebih dahulu. Konfirmasikan sumber, cakupan, waktu, dan tujuan sebelum mengaktifkannya. Balasan email hanya berupa draf yang akan saya tinjau dan kirim sendiri.",
+            "results": {
+              "one": "Balasan masuk dan poin penting",
+              "three": "Draf tindak lanjut jika bermanfaat",
+              "two": "Tindakan yang diminta atau tenggat"
+            },
+            "scope": "Pantau satu percakapan dan dapatkan poin penting balasan baru serta langkah berikutnya.",
+            "steps": {
+              "one": "Mengikuti satu percakapan email dan pengirim yang disepakati",
+              "three": "Memberi tahu sekali dan menyiapkan draf jika diperlukan",
+              "two": "Mendeteksi balasan baru dan merangkum poin penting"
+            },
+            "title": "Jangan lewatkan balasan yang ditunggu"
+          },
+          "weekly": {
+            "cadence": "Setiap minggu",
+            "description": "Rangkum aktivitas GitHub, Gmail, dan Calendar jadi satu update mingguan di Slack.",
+            "name": "Ringkasan mingguan pribadi",
+            "next": "Buat draf terlebih dahulu. Konfirmasikan sumber, cakupan, waktu, dan tujuan sebelum mengaktifkannya.",
+            "prompt": "Bantu saya menyiapkan workflow ini: Ringkasan mingguan pribadi. Mengumpulkan aktivitas dari sumber pilihan. Mengelompokkan pencapaian, keputusan tertunda, dan tindak lanjut. Membagikan rangkuman mingguan ke tujuan Slack pilihan. Buat draf terlebih dahulu. Konfirmasikan sumber, cakupan, waktu, dan tujuan sebelum mengaktifkannya.",
+            "results": {
+              "one": "Pencapaian minggu ini",
+              "three": "Komitmen mendatang",
+              "two": "Keputusan tertunda dan tindak lanjut"
+            },
+            "scope": "Rangkum aktivitas GitHub, Gmail, dan Calendar jadi satu update mingguan di Slack.",
+            "steps": {
+              "one": "Mengumpulkan aktivitas dari sumber pilihan",
+              "three": "Membagikan rangkuman mingguan ke tujuan Slack pilihan",
+              "two": "Mengelompokkan pencapaian, keputusan tertunda, dan tindak lanjut"
+            },
+            "title": "Tutup pekan kerja dengan rangkuman jelas"
+          }
+        },
+        "next": "Workflow berikutnya",
+        "ownSources": "Workflow Anda akan menggunakan sumber dan konten milik Anda sendiri.",
+        "placeholder": "Opsional — beri tahu apa yang penting bagi Anda",
+        "preview": {
+          "competitors": {
+            "changed": "Changed",
+            "footer": "Source page and change history included",
+            "heading": "One change worth a closer look.",
+            "label": "Pemantau kompetitor",
+            "now": "Now",
+            "plan": "Example company’s team plan",
+            "previous": "Previous",
+            "unit": "/ mo"
+          },
+          "inbox": {
+            "draft": "Reply draft",
+            "label": "Sortir Gmail dan buat draf balasan",
+            "later": "Your weekly digest",
+            "needsReply": "Needs reply",
+            "readLater": "Read later",
+            "review": "Review before sending",
+            "subject": "Re: Next steps",
+            "text": "Thanks for the details. I’ve reviewed the proposal and…"
+          },
+          "invoices": {
+            "amount": "Amount",
+            "example": "Example studio",
+            "file": "Invoice — September",
+            "filed": "Filed",
+            "footer": "An optional Sheet keeps the record together",
+            "label": "Simpan invoice Gmail ke Google Drive",
+            "path": "Finance / Invoices / Sep",
+            "second": "Sample supply co.",
+            "status": "Status",
+            "vendor": "Vendor"
+          },
+          "meetings": {
+            "heading": "Your next conversation.",
+            "initials": "JL",
+            "label": "Teliti meeting kalender Anda",
+            "note": "A useful place to begin",
+            "person": "Jordan Lee",
+            "question": "Ask how the team handles customer handoffs.",
+            "role": "Operations lead · Example company",
+            "tagOne": "Company context",
+            "tagTwo": "Discussion points"
+          },
+          "metrics": {
+            "activated": "Activated",
+            "footer": "A clear period. Only the metrics you choose.",
+            "label": "Posting metrik harian ke Slack",
+            "period": "Yesterday vs. prior day",
+            "signups": "Signups",
+            "visitors": "Visitors"
+          },
+          "morning": {
+            "footer": "2 emails need your attention",
+            "heading": "A little clarity for your day.",
+            "label": "Ringkasan pagi",
+            "meetingOne": "Team check-in",
+            "meetingTwo": "Client discovery",
+            "priority": "First things first",
+            "task": "Review the proposal before your client call"
+          },
+          "recap": {
+            "assign": "To assign",
+            "decision": "Decision: move ahead with a pilot",
+            "due": "Due",
+            "friday": "Fri",
+            "label": "Dapatkan rangkuman rapat di Slack",
+            "monday": "Mon",
+            "one": "Send the revised brief",
+            "owner": "Owner",
+            "task": "Next step",
+            "team": "Team",
+            "three": "Book the next check-in",
+            "two": "Confirm the pilot scope",
+            "you": "You"
+          },
+          "reply": {
+            "heading": "The reply you were waiting for.",
+            "label": "Pemantauan balasan email",
+            "next": "Next step",
+            "quote": "“Thursday works for us. Could you share a short agenda?”",
+            "subject": "Re: Our next conversation",
+            "task": "Confirm the time and prepare an agenda"
+          },
+          "weekly": {
+            "heading": "A week worth looking back on.",
+            "label": "Ringkasan mingguan pribadi",
+            "next": "Carry into next week",
+            "one": "Shared the revised proposal",
+            "task": "Confirm the launch date with the team",
+            "two": "Wrapped up the onboarding guide"
+          }
+        },
+        "previous": "Workflow sebelumnya",
+        "sample": "Contoh",
+        "tailor": "Apa yang ingin Anda sesuaikan?",
+        "use": "Gunakan workflow ini",
+        "whatHappens": "Proses setiap kali dijalankan",
+        "whatYouGet": "Hasil yang Anda dapatkan",
+        "worksWith": "Aplikasi yang digunakan"
       }
     },
     "templates": {
@@ -2639,34 +2925,6 @@
       "transcribing": "Mentranskripsi",
       "transcribingProgress": "Mentranskripsi...",
       "transcriptionFailed": "Transkripsi suara gagal. Coba lagi."
-    },
-    "welcomeThread": {
-      "content": "# Hai, saya {{assistantName}}\n\nSaya adalah rekan satu tim AI Anda. Beri tahu hasil yang Anda butuhkan, lalu saya dapat bekerja di berbagai alat Anda dan membawa hasil akhirnya kembali ke sini.\n\n## Yang dapat saya hasilkan\n\n### Gambar\n\nSaya dapat membuat visual kampanye, ilustrasi produk, grafis media sosial, dan materi iklan.\n\n![Visual kampanye yang dihasilkan oleh {{assistantName}}]({{imageUrl}})\n\n`campaign-visual.png`\n\n### Presentasi\n\nSaya dapat mengubah brief awal menjadi deck yang terstruktur, didesain, dan siap dipresentasikan.\n\n![Presentasi yang dihasilkan oleh {{assistantName}}]({{presentationPreviewUrl}})\n\n[`sproutpop-launch-deck.pptx`]({{presentationUrl}}) · {{slideCount}} slide\n\n### Video\n\nSaya dapat menghasilkan demo produk yang telah diedit, film peluncuran, video penjelasan, dan potongan media sosial dengan teks.\n\n[Product launch video](<{{videoUrl}}>)\n\n`product-launch-film.mp4` · siap dibagikan\n\n### Rekomendasi otomatisasi\n\nSaya dapat meninjau pekerjaan tim yang berulang dan memberikan daftar prioritas tugas yang layak diotomatisasi.\n\n| Prioritas | Tugas | Pemicu | Hasil |\n| --- | --- | --- | --- |\n| 1 | Menyeleksi lead masuk | Respons formulir baru | Catatan CRM yang diperkaya dan draf balasan |\n| 2 | Mengubah rapat menjadi tindak lanjut | Panggilan selesai | Ringkasan, catatan CRM, dan draf email |\n| 3 | Tinjauan pertumbuhan mingguan | Senin pagi | Ringkasan metrik dan laporan anomali |\n\n## Mengapa tim mendapatkan lebih banyak manfaat dari {{assistantName}}\n\nHasil yang bagus tidak perlu tetap berada di dalam chat satu orang. Simpan proses yang berhasil sebagai workflow bersama, lalu rekan berikutnya dapat memulai dari cara yang sudah terbukti.\n\n```mermaid\nflowchart TB\n  A[\"1. Temukan yang berhasil<br/>Rekan tim dan {{assistantName}} menyelesaikan tugas bersama\"]\n  B[\"2. Bagikan workflow<br/>Proses dan konteks dapat digunakan kembali\"]\n  C[\"3. Gunakan kembali yang berhasil<br/>Rekan lain memulai dari proses yang sudah terbukti\"]\n  D[\"4. Tingkatkan bersama<br/>Masukan membuat proses berikutnya lebih baik\"]\n  A --> B\n  B --> C\n  C --> D\n  D --> A\n```\n\n- **Bagikan workflow, bukan hanya file akhirnya.**\n- Berikan konteks awal yang sama kepada setiap rekan tim.\n- Tingkatkan satu proses sekali, lalu biarkan seluruh tim memanfaatkannya.\n\n## Cara bekerja bersama saya dalam tim\n\nJawaban yang bagus membantu satu orang. Alur kerja yang disimpan membantu semua orang yang mengerjakan tugas itu setelah Anda.\n\n[Diagram alur kerja tim](<{{teamDiagramUrl}}>)\n\n1. **Kerjakan tugasnya bersama saya sekali.** Jelaskan hasil yang Anda inginkan, bukan langkah-langkah untuk mencapainya, dan koreksi saya selagi pekerjaan masih berjalan. Koreksi itulah yang layak disimpan.\n2. **Simpan sebagai alur kerja.** Pilih **Buat alur kerja** di kotak pesan di bawah. Saya akan menanyakan hasil yang Anda inginkan, apa yang memicunya, dan apa yang harus dilakukan dengan hasilnya, lalu menuliskannya sebagai alur kerja yang bisa Anda jalankan lagi.\n3. **Ubah visibilitasnya menjadi Publik.** Buka alur kerja dan atur **Visibilitas**. Alur kerja **Pribadi** hanya milik Anda; yang **Publik** bisa dijalankan siapa pun di ruang kerja ini.\n4. **Jalankan lewat namanya.** Ketik `/` diikuti nama alur kerja di obrolan mana pun. Tambahkan otomatisasi bila alur itu perlu berjalan sesuai jadwal atau pemicu, bukan atas permintaan.\n\nMulailah dari tugas yang paling sering diulang tim Anda, bukan yang paling sulit. Alur kerja yang berjalan setiap minggu lebih berharga daripada alur kerja cerdik yang berjalan sekali.\n\n## Ajak saya bicara di Slack\n\nSebagian besar pekerjaan ini sudah dibahas di Slack. Setelah saya terpasang di sana, jawabannya muncul di utasnya, bukan di tab lain.\n\n[Diagram percakapan Slack](<{{slackDiagramUrl}}>)\n\n**Siapkan sekali saja**\n\n1. Buka **Tempat {{assistantName}} bekerja** di bilah sisi kiri.\n2. Pada kartu Slack, pilih **Pasang ke Slack** dan setujui izinnya. Hanya admin ruang kerja yang bisa memasang, jadi mintalah bantuan admin bila Anda bukan admin.\n3. Anggota lain membuka kartu yang sama dan memilih **Hubungkan** untuk menautkan akun Slack masing-masing.\n\n**Setelah itu, perlakukan saya seperti rekan tim lainnya**\n\n| Di Slack | Yang saya lakukan |\n| --- | --- |\n| Kirimi saya pesan langsung | Kita bekerja secara privat dalam satu percakapan berkelanjutan |\n| `@{{assistantName}}` di sebuah kanal | Saya menjawab di utas pada pesan Anda, tempat tim bisa mengikutinya |\n| `@{{assistantName}}` lagi di dalam utas | Saya melanjutkan utas itu dan terus mengerjakannya |\n| `/okou` | Membuka daftar perintah saya: hubungkan, ganti agen, ganti model, putuskan sambungan |\n\nDua hal yang perlu diketahui. Di kanal saya hanya membalas bila disebut, jadi saya tidak masuk ke utas yang tidak memanggil saya. Dan Anda bisa melampirkan berkas pada pesan langsung; saya akan membacanya sebelum menjawab.\n\n[Siapkan Slack]({{worksUrl}}) supaya alur kerja yang Anda simpan di atas bisa dijalankan tanpa meninggalkan kanal.\n\n[Undang tim Anda]({{inviteUrl}}) agar workflow berikutnya yang Anda buat langsung dapat digunakan kembali oleh orang yang membutuhkannya.\n\n[Baca dokumentasi]({{docsUrl}}) untuk memahami cara kerja workflow bersama.",
-      "slackDiagram": {
-        "caption": "Ke mana jawaban muncul di Slack: di utas pada pesan Anda, atau di pesan langsung yang privat",
-        "channelEyebrow": "Di sebuah kanal",
-        "channelNote": "Jawabannya tetap di pesan Anda, jadi kanal tidak penuh dan tim tetap bisa mengikutinya.",
-        "directEyebrow": "Di pesan langsung",
-        "directLabel": "Anda dan {{assistantName}}",
-        "directNote": "Satu percakapan privat yang menjaga konteksnya antar tugas.",
-        "mentionLabel": "Anda menyebut {{assistantName}}",
-        "replyLabel": "{{assistantName}} menjawab di utas"
-      },
-      "teamDiagram": {
-        "automationBody": "Menjalankannya sesuai jadwal atau pemicu, tanpa diminta.",
-        "automationTitle": "Sebuah otomatisasi",
-        "caption": "Satu obrolan yang berhasil menjadi alur kerja yang dipakai seluruh tim dan jadwal Anda",
-        "chatBody": "Anda dan {{assistantName}} menyelesaikan tugas dengan benar sekali.",
-        "chatTitle": "Obrolan yang berhasil",
-        "savedEyebrow": "Disimpan sekali",
-        "teamEyebrow": "Milik semua",
-        "teammateBody": "Menjalankannya lewat nama dan mulai dari yang sudah terbukti.",
-        "teammateTitle": "Siapa pun di tim",
-        "workflowBody": "Prosesnya beserta konteksnya, tersimpan dan bisa dipakai ulang.",
-        "workflowTitle": "Sebuah alur kerja",
-        "yoursEyebrow": "Milik Anda"
-      },
-      "title": "Selamat datang di {{assistantName}}"
     },
     "workflows": {
       "named": "Alur kerja {{title}}",
@@ -3546,9 +3804,7 @@
       "requestFailed": "Permintaan gagal"
     },
     "realtime": {
-      "degraded": "Pembaruan langsung mengalami masalah. Segarkan halaman.",
-      "disconnected": "Koneksi realtime terputus",
-      "reconnecting": "Menyambungkan kembali koneksi realtime"
+      "degraded": "Pembaruan langsung mengalami masalah. Segarkan halaman."
     }
   },
   "invitationRedirect": {
@@ -5448,6 +5704,14 @@
           "description": "Pilih model untuk input suara v2. Model transkripsi menggunakan {{model}} untuk merapikan teks.",
           "title": "Model input suara",
           "unavailable": "Model tidak tersedia ({{model}})"
+        },
+        "welcomeThread": {
+          "create": "Buat obrolan sambutan",
+          "creating": "Membuat…",
+          "defaultAgentNotReady": "Konfigurasikan agen default ruang kerja, lalu coba lagi.",
+          "description": "Buat obrolan sambutan berisi pengantar dan contoh.",
+          "failed": "Tidak dapat membuat obrolan sambutan. Coba lagi.",
+          "title": "Obrolan sambutan"
         }
       },
       "emailSubscription": {
@@ -5732,6 +5996,21 @@
     "cancel": "Batal",
     "chooseFile": "Pilih file",
     "choosePrivateKeyFile": "Pilih file kunci privat",
+    "connectionStatus": {
+      "attention_other": "{{count}} host SSH perlu diperhatikan",
+      "authenticationFailed": "Autentikasi SSH gagal. Periksa nama pengguna, kunci privat, dan izin pada server; edit host atau ganti kredensial jika perlu.",
+      "credentialResourceLimit": "Kunci privat melebihi batas pemrosesan yang didukung. Ekspor ulang dengan enkripsi yang didukung, lalu ganti kredensial.",
+      "hostKeyMismatch": "Kunci host server tidak cocok dengan identitas tersimpan. Verifikasi server secara independen sebelum mereset kunci host.",
+      "invalidCredential": "Kunci privat atau frasa sandi tidak dapat dibaca. Ganti kredensial dengan kunci lengkap dan frasa sandi yang benar.",
+      "networkFailure": "Koneksi SSH terakhir gagal. Periksa nama host, port, ketersediaan server, dan akses firewall dari Runner.",
+      "observedAt": "Diamati: {{time}}",
+      "protocol": "Handshake SSH gagal. Pastikan port ini menyediakan SSH dan server mendukung algoritma yang kompatibel.",
+      "timedOut": "Koneksi SSH terakhir kehabisan waktu sebelum autentikasi selesai. Periksa endpoint, firewall, dan ketersediaan server.",
+      "unavailable": "Status koneksi SSH tidak tersedia",
+      "unsafeDestination": "Host ini tidak mengarah ke alamat publik yang diizinkan. Gunakan endpoint SSH publik.",
+      "unsupportedCredential": "Format atau algoritma kunci privat tidak didukung. Ganti dengan kunci OpenSSH, PKCS8, atau RSA PEM yang didukung.",
+      "unsupportedHostKey": "Kunci host server tidak didukung. Konfigurasikan kunci host Ed25519, ECDSA, atau RSA yang didukung pada server."
+    },
     "credentialsHelp": "Kredensial hanya dapat ditulis dan tetap berada di luar sandbox. Tempelkan kunci lengkap; spasi dipertahankan. Kolom dikosongkan saat formulir dikirim atau ditutup.",
     "delete": "Hapus host",
     "deleteHelp": "Hapus host ini beserta kredensial tersimpannya? Agent tidak lagi melihatnya dalam inventaris terkini.",
@@ -6500,6 +6779,7 @@
       "install": "Instal",
       "installDescription": "Pilih Agen dan lengkapi setiap parameter wajib. Semua automasi yang disertakan akan diinstal.",
       "installed": "Workflow Resmi telah diinstal",
+      "installedStatus": "Terinstal",
       "installErrorDescription": "Periksa Agen dan nilai parameter, lalu coba lagi.",
       "installErrorTitle": "Workflow Resmi tidak dapat diinstal",
       "installTitle": "Instal {{name}}",

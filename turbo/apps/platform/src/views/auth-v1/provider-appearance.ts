@@ -22,6 +22,8 @@ function clerkVariables(theme: "light" | "dark"): Record<string, string> {
     // Use the readable brand pair and retain its native control hierarchy.
     colorPrimary: "hsl(var(--brand-text))",
     colorBackground: "hsl(var(--card))",
+    // Clerk derives its border scale from this value. Passing our --border
+    // token through colorBorder collides with Clerk's local --border variable.
     colorNeutral: "hsl(var(--foreground))",
     colorForeground: "hsl(var(--foreground))",
     colorMutedForeground: "hsl(var(--muted-foreground))",
@@ -32,7 +34,6 @@ function clerkVariables(theme: "light" | "dark"): Record<string, string> {
     colorMuted: "hsl(var(--muted))",
     colorInput: "hsl(var(--input))",
     colorInputForeground: "hsl(var(--foreground))",
-    colorBorder: "hsl(var(--border))",
     colorRing: "hsl(var(--ring))",
     colorDanger: "hsl(var(--destructive))",
     fontFamily: "var(--font-family-sans)",

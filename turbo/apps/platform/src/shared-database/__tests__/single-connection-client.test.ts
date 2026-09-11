@@ -13,7 +13,6 @@ import type {
   SharedDatabaseQueryResult,
 } from "../data-key.ts";
 import type {
-  SharedDatabaseConnectionStatus,
   SharedDatabaseRealtimeMessage,
   SharedDatabaseRealtimeScope,
 } from "../protocol.ts";
@@ -88,7 +87,6 @@ function createEvents(): SharedDatabaseBridgeEvents {
     computedReloaded: vi.fn<(computedKey: ComputedKey) => void>(),
     databaseInvalidated: vi.fn<(dataKey: SharedDatabaseDataKey) => void>(),
     workerUnavailable: vi.fn<SharedDatabaseBridgeEvents["workerUnavailable"]>(),
-    statusChanged: vi.fn<(status: SharedDatabaseConnectionStatus) => void>(),
   };
 }
 

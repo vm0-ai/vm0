@@ -41,6 +41,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { mockNow } from "../../../__tests__/time.ts";
+import type { ChatThreadEventQueryResult } from "../../../shared-database/data-key.ts";
 import { emptySearchImg } from "../platform-assets.ts";
 import {
   testContext,
@@ -119,6 +120,7 @@ function prepareDefaultAgent(
 function prepareAgents(targetContext = context): AgentResponse[] {
   const agents: AgentResponse[] = [
     {
+      isDefaultAgent: false,
       agentId: AGENT_ID,
       ownerId: "test-user-123",
       displayName: "Zero",
@@ -131,6 +133,7 @@ function prepareAgents(targetContext = context): AgentResponse[] {
       visibility: "public",
     },
     {
+      isDefaultAgent: false,
       agentId: RESEARCH_AGENT_ID,
       ownerId: "test-user-123",
       displayName: "Research Agent",
@@ -143,6 +146,7 @@ function prepareAgents(targetContext = context): AgentResponse[] {
       visibility: "public",
     },
     {
+      isDefaultAgent: false,
       agentId: SUPPORT_AGENT_ID,
       ownerId: "test-user-123",
       displayName: "Support Agent",
@@ -163,6 +167,7 @@ function prepareAgents(targetContext = context): AgentResponse[] {
       [SUPPORT_AGENT_ID]: "Support Agent",
     };
     return respond(200, {
+      isDefaultAgent: false,
       agentId: params.id,
       ownerId: "test-user-123",
       description: null,
@@ -246,41 +251,47 @@ function createThread(
   };
 }
 
+function sidebarThreadSnapshot(
+  threads: readonly SidebarThread[],
+): NonNullable<ChatThreadEventQueryResult["snapshot"]> {
+  return {
+    chatThreads: threads.map((thread, index) => {
+      return {
+        id: thread.id,
+        agentId: thread.agent.id,
+        title: thread.title,
+        sortAt:
+          thread.sortAt ??
+          new Date(
+            Date.parse("2026-03-10T00:00:00Z") +
+              (threads.length - index) * 1000,
+          ).toISOString(),
+        createdAt: thread.createdAt,
+        updatedAt: thread.updatedAt,
+        pinnedAt: thread.pinnedAt ?? null,
+        renamedAt: thread.renamedAt ?? null,
+        selectedModel: null,
+        serviceTier: null,
+        computerUseHostId: null,
+        selectedVideoModel: null,
+      };
+    }),
+    latestEventId: null,
+    latestSeqId: null,
+  };
+}
+
 function mockChatThreadSnapshot(
   threads: () => readonly SidebarThread[],
   activeThreadIds: () => readonly string[] = () => {
     return [];
   },
   targetContext = context,
+  remoteGate?: Promise<void>,
 ): void {
-  targetContext.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
-    const snapshotThreads = threads();
-    const response = respond(200, {
-      chatThreads: snapshotThreads.map((thread, index) => {
-        return {
-          id: thread.id,
-          agentId: thread.agent.id,
-          title: thread.title,
-          sortAt:
-            thread.sortAt ??
-            new Date(
-              Date.parse("2026-03-10T00:00:00Z") +
-                (snapshotThreads.length - index) * 1000,
-            ).toISOString(),
-          createdAt: thread.createdAt,
-          updatedAt: thread.updatedAt,
-          pinnedAt: thread.pinnedAt ?? null,
-          renamedAt: thread.renamedAt ?? null,
-          selectedModel: null,
-          serviceTier: null,
-          computerUseHostId: null,
-          selectedVideoModel: null,
-        };
-      }),
-      latestEventId: null,
-      latestSeqId: null,
-    });
-    return response;
+  targetContext.mocks.api(chatThreadsContract.snapshot, async ({ respond }) => {
+    await remoteGate;
+    return respond(200, sidebarThreadSnapshot(threads()));
   });
   targetContext.mocks.api(chatThreadsContract.events, ({ respond }) => {
     return respond(200, { events: [], hasMore: false });
@@ -692,7 +703,8 @@ function mockSidebarThreadStory(
   extraThreads: SidebarThread[] = [],
   activeThreadIds: readonly string[] = [],
   targetContext = context,
-): { threads: SidebarThread[] } {
+  remoteGate?: Promise<void>,
+): ChatThreadEventQueryResult {
   let threads = [...firstPageThreads];
 
   mockChatThreadSnapshot(
@@ -703,6 +715,7 @@ function mockSidebarThreadStory(
       return activeThreadIds;
     },
     targetContext,
+    remoteGate,
   );
 
   targetContext.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
@@ -753,10 +766,15 @@ function mockSidebarThreadStory(
     },
   );
 
-  return { threads };
+  return {
+    snapshot: sidebarThreadSnapshot([...threads, ...extraThreads]),
+    events: [],
+  };
 }
 
-function mockLongSidebarHistory(): void {
+function mockLongSidebarHistory(
+  remoteGate?: Promise<void>,
+): ChatThreadEventQueryResult {
   prepareDefaultAgent();
   const overflowThreads = Array.from({ length: 23 }, (_, index) => {
     return createThread(
@@ -764,22 +782,23 @@ function mockLongSidebarHistory(): void {
       `Refresh overflow ${index + 1}`,
     );
   });
-  mockSidebarThreadStory([
-    createThread(EXISTING_THREAD_ID, "Release plan"),
-    createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
-    ...overflowThreads,
-    createThread(ARCHIVED_THREAD_ID, "Archived context"),
-  ]);
+  return mockSidebarThreadStory(
+    [
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+      ...overflowThreads,
+      createThread(ARCHIVED_THREAD_ID, "Archived context"),
+    ],
+    [],
+    [],
+    context,
+    remoteGate,
+  );
 }
 
 async function scrollToArchivedContext(): Promise<HTMLElement> {
   await waitFor(() => {
-    expect(
-      within(sidebar()).getByTestId("sidebar-chat-threads-virtual-list"),
-    ).toBeInTheDocument();
-    expect(
-      within(sidebar()).getAllByTestId("sidebar-chat-thread-virtual-row"),
-    ).toHaveLength(14);
+    expect(threadLinkByTitle("Release plan")).toBeInTheDocument();
   });
 
   const scrollArea = within(sidebar()).getByTestId("sidebar-scroll-area");
@@ -795,12 +814,13 @@ async function scrollToArchivedContext(): Promise<HTMLElement> {
 }
 
 test("Browse a long sidebar chat history", async () => {
-  mockLongSidebarHistory();
+  const cachedChatThreadEvents = mockLongSidebarHistory();
   mockSidebarViewport(200, 1000);
 
   await setupSidebarPage({
     context,
     path: `/chats/${EXISTING_THREAD_ID}`,
+    cachedChatThreadEvents,
   });
 
   const scrollArea = await scrollToArchivedContext();
@@ -808,15 +828,19 @@ test("Browse a long sidebar chat history", async () => {
 });
 
 test("Refresh a long sidebar after deleting an offscreen chat", async () => {
-  mockLongSidebarHistory();
+  const remote = context.mocks.deferred<void>();
+  const cachedChatThreadEvents = mockLongSidebarHistory(remote.promise);
   mockSidebarViewport(200, 1000);
 
   await setupSidebarPage({
     context,
     path: `/agents/${AGENT_ID}/chat`,
+    cachedChatThreadEvents,
   });
 
+  // The existing-list scene must be usable before remote synchronization.
   const scrollArea = await scrollToArchivedContext();
+  remote.resolve();
   openThreadMenu("Archived context");
   click(menuItemByText("Delete chat"));
   const dialog = await screen.findByRole("dialog", {
@@ -1175,7 +1199,7 @@ test("Keep chat navigation usable while secondary data is unavailable", async ()
   const draftResponse = context.mocks.deferred<void>();
   const draftRequestStarted = context.mocks.deferred<void>();
   const draftResponseReturned = context.mocks.deferred<void>();
-  mockSidebarThreadStory([
+  const cachedChatThreadEvents = mockSidebarThreadStory([
     createThread(EXISTING_THREAD_ID, "Existing conversation"),
   ]);
   context.mocks.api(chatThreadsContract.indicators, async ({ respond }) => {
@@ -1195,7 +1219,11 @@ test("Keep chat navigation usable while secondary data is unavailable", async ()
     return response;
   });
 
-  await setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+  await setupSidebarPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    cachedChatThreadEvents,
+  });
 
   await waitFor(() => {
     expect(
@@ -1575,12 +1603,17 @@ test("Mark all current-agent chats read from the chat-list menu", async () => {
   });
 });
 
-test("Show mark all read in the mobile chat-list menu", async () => {
+test("Show mark all read in the mobile chat-list menu before conversations load", async () => {
   mockMobileLayout();
   prepareDefaultAgent();
-  mockSidebarThreadStory([
-    createThread(INCIDENT_THREAD_ID, "Unread conversation"),
-  ]);
+  const remote = context.mocks.deferred<void>();
+  mockSidebarThreadStory(
+    [createThread(INCIDENT_THREAD_ID, "Unread conversation")],
+    [],
+    [],
+    context,
+    remote.promise,
+  );
   mockUnreadAgents(() => {
     return [AGENT_ID];
   });
@@ -1590,18 +1623,21 @@ test("Show mark all read in the mobile chat-list menu", async () => {
     path: `/agents/${AGENT_ID}/chat`,
   });
 
-  const list = await waitFor(() => {
-    const current = mobileSidebar();
-    expect(
-      within(current).getByText("Unread conversation"),
-    ).toBeInTheDocument();
-    return current;
+  const list = await screen.findByRole("complementary", {
+    name: "Sidebar",
   });
+  expect(
+    within(list).queryByText("Unread conversation"),
+  ).not.toBeInTheDocument();
   click(within(list).getByLabelText("Open chat list menu"));
 
   await waitFor(() => {
     expect(menuItemByText("Mark all read")).toBeInTheDocument();
   });
+  expect(
+    within(list).queryByText("Unread conversation"),
+  ).not.toBeInTheDocument();
+  remote.resolve();
 });
 
 test("Mark all of an agent’s chats read", async () => {

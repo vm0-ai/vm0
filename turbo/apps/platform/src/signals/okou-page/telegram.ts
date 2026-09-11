@@ -353,13 +353,13 @@ export const reloadTelegramBots$ = command(({ set }) => {
   });
 });
 
+const onTelegramChanged$ = command(({ set }) => {
+  set(reloadTelegramBots$);
+  return false;
+});
+
 export const startTelegramSettingsRealtime$ = command(
   async ({ set }, signal: AbortSignal) => {
-    const onTelegramChanged$ = command(({ set }) => {
-      set(reloadTelegramBots$);
-      return false;
-    });
-
     await set(
       setAblyLoop$,
       {

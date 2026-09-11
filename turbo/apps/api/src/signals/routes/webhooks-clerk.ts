@@ -1,9 +1,11 @@
 import { webhookClerkContract } from "@okouai/api-contracts/contracts/webhooks";
+import { orgCache } from "@okouai/db/schema/org-cache";
 import { command } from "ccstate";
 
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { isLockNotAvailable } from "../../lib/pg-errors";
+import { nowDate } from "../../lib/time";
 import { request$ } from "../context/hono";
 import { type ClerkWebhookEvent, verifyClerkWebhook } from "../external/clerk";
 import { waitUntil } from "../context/wait-until";
@@ -335,6 +337,50 @@ const handleOrganizationDeletedWebhook$ = command(
   },
 );
 
+const handleOrganizationCreatedWebhook$ = command(
+  async ({ set }, data: unknown, signal: AbortSignal): Promise<Response> => {
+    const identity = organizationCreatedIdentity(data);
+    if (!identity) {
+      L.error(
+        "organization.created event missing org/creator user ID or creation time",
+        { data },
+      );
+      return new Response("OK", { status: 200 });
+    }
+
+    enqueueOrgBootstrap({
+      eventType: "organization.created",
+      orgId: identity.orgId,
+      userId: identity.userId,
+      task: set(
+        ensureOrgLimitedFreeBootstrap$,
+        {
+          orgId: identity.orgId,
+          ownerUserId: identity.userId,
+          morningBriefEligibilitySourceCreatedAt: identity.createdAt,
+        },
+        signal,
+      ),
+    });
+
+    const name = stringPropertyOf(data, "name");
+    if (name?.trim()) {
+      await set(writeDb$)
+        .insert(orgCache)
+        .values({
+          orgId: identity.orgId,
+          name,
+          createdBy: identity.userId,
+          cachedAt: nowDate(),
+        })
+        // A duplicate or delayed creation event must not undo a rename.
+        .onConflictDoNothing({ target: orgCache.orgId });
+      signal.throwIfAborted();
+    }
+    return new Response("OK", { status: 200 });
+  },
+);
+
 const postClerkWebhook$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const event = await verifiedClerkWebhook(get(request$).raw);
@@ -345,30 +391,7 @@ const postClerkWebhook$ = command(
     L.debug("clerk webhook received", { type: event.type });
 
     if (event.type === "organization.created") {
-      const identity = organizationCreatedIdentity(event.data);
-      if (!identity) {
-        L.error(
-          "organization.created event missing org/creator user ID or creation time",
-          { data: event.data },
-        );
-        return new Response("OK", { status: 200 });
-      }
-
-      enqueueOrgBootstrap({
-        eventType: "organization.created",
-        orgId: identity.orgId,
-        userId: identity.userId,
-        task: set(
-          ensureOrgLimitedFreeBootstrap$,
-          {
-            orgId: identity.orgId,
-            ownerUserId: identity.userId,
-            morningBriefEligibilitySourceCreatedAt: identity.createdAt,
-          },
-          signal,
-        ),
-      });
-      return new Response("OK", { status: 200 });
+      return await set(handleOrganizationCreatedWebhook$, event.data, signal);
     }
 
     if (event.type === "organizationInvitation.accepted") {

@@ -168,10 +168,10 @@ function svgFile(markup: string): File {
 
 /**
  * Pure factory for a diagram's signals. `ownerSignal` must match the consumer
- * surface: preview trees create signals per disposable tree, while surfaces
- * that re-parse — the chat transcript, the shared thread page — go through a
- * `MermaidDiagramRegistry` so a streaming message keeps stable signal
- * identities for fences its growing body re-parses.
+ * surface. Streaming surfaces use `MermaidDiagramRegistry` so reparsing a
+ * growing message preserves signal identities. Immutable surfaces such as a
+ * shared thread or preview tree can instead use a factory-scoped resolver and
+ * reuse its signals when that tree is prepared again.
  */
 export function createMermaidDiagramSignals(
   code: string,
@@ -181,6 +181,7 @@ export function createMermaidDiagramSignals(
     "light" | "dark",
     Promise<MermaidDiagramImage | null>
   >();
+  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const diagram$ = computed((get): Promise<MermaidDiagramImage | null> => {
     const theme = get(theme$);
     const existing = imagesByTheme.get(theme);

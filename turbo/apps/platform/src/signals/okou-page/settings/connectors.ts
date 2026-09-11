@@ -2330,6 +2330,7 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
   ): Promise<ConnectorConnectionResult | false> => {
     const { connectorSlug, method, options, account, oauthStart } = args;
     let completedConnectionId: string | null = null;
+    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
     const completionAvailable$ = command(async ({ get }, sig: AbortSignal) => {
       const connectionId = await readConnectorOAuthCompletion(
         get(apiClient$),
@@ -2343,6 +2344,7 @@ const completeConnectorOAuthAuthCodeFlow$ = command(
       return completedConnectionId !== null;
     });
     const waitSignal = set(resetOAuthAuthCodeWaitSignal$, signal);
+    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
     const onMatchingConnectorChanged$ = command(
       async ({ set }, payload: unknown, sig: AbortSignal): Promise<boolean> => {
         return isConnectorChangedPayloadFor(payload, connectorSlug)

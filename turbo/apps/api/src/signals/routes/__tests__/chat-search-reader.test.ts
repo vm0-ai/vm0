@@ -90,7 +90,8 @@ describe("GET /api/chat/search durable reader", () => {
     const prompts = [
       `${sparseKeyword} older`,
       `${sparseKeyword} newer`,
-      ...Array.from({ length: 80 }, (_, index) => {
+      // One extra match proves the 25-result cap without redundant API sends.
+      ...Array.from({ length: 26 }, (_, index) => {
         return `${frequentKeyword} ${index}`;
       }),
     ];
@@ -123,7 +124,7 @@ describe("GET /api/chat/search durable reader", () => {
       }),
     ).toStrictEqual(
       Array.from({ length: 25 }, (_, index) => {
-        return `${frequentKeyword} ${79 - index}`;
+        return `${frequentKeyword} ${25 - index}`;
       }),
     );
     expect(frequent).not.toHaveProperty("hasMore");

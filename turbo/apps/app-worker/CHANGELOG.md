@@ -1,5 +1,57 @@
 # Changelog
 
+## [1.6.19](https://github.com/vm0-ai/vm0/compare/app-worker-v1.6.18...app-worker-v1.6.19) (2026-09-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.651.2
+
+## [1.6.18](https://github.com/vm0-ai/vm0/compare/app-worker-v1.6.17...app-worker-v1.6.18) (2026-09-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.651.1
+
+## [1.6.17](https://github.com/vm0-ai/vm0/compare/app-worker-v1.6.16...app-worker-v1.6.17) (2026-09-10)
+
+
+### Bug Fixes
+
+* **app:** serve favicon.ico from the worker ([#33329](https://github.com/vm0-ai/vm0/issues/33329)) ([c9e1010](https://github.com/vm0-ai/vm0/commit/c9e10107d98ce13bd50d97b6d01d9a6a94b7e4d1))
+
+## [1.6.16](https://github.com/vm0-ai/vm0/compare/app-worker-v1.6.15...app-worker-v1.6.16) (2026-09-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.651.0
+
+## [1.6.15](https://github.com/vm0-ai/vm0/compare/app-worker-v1.6.14...app-worker-v1.6.15) (2026-09-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.650.0
+
+## [1.6.14](https://github.com/vm0-ai/vm0/compare/app-worker-v1.6.13...app-worker-v1.6.14) (2026-09-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.649.0
+
 ## [1.6.13](https://github.com/vm0-ai/vm0/compare/app-worker-v1.6.12...app-worker-v1.6.13) (2026-09-09)
 
 

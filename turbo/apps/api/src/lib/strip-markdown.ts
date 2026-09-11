@@ -1,7 +1,7 @@
 /**
  * Remove the Markdown syntax a model tends to emit even when asked for plain
  * text. Shared by every surface that renders generated text unstyled: chat
- * titles, run summaries, and goal objective briefs.
+ * titles and run summaries.
  */
 export function stripMarkdown(text: string): string {
   return text

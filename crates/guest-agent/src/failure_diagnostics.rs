@@ -12,6 +12,7 @@ use crate::failure_patterns;
 use crate::paths;
 use crate::session_history;
 use crate::session_metadata::CapturedSessionMetadata;
+use crate::upstream_error_text::upstream_non_api_response_status;
 use guest_contracts::diagnostics::{
     AgentFramework, CliObservedExitDiagnostic, CliTerminationDiagnostic, CliTerminationReason,
     EventDeliveryDiagnostic, FailureClass, FailureDetailSource, FailureDiagnostic, FailureReason,
@@ -24,6 +25,8 @@ use serde_json::Value;
 const LOG_TAG: &str = "sandbox:guest-agent";
 const MAX_LOGGED_CLI_STDERR_LINES: usize = 20;
 const MAX_LOGGED_CLI_STDERR_LINE_BYTES: usize = 4096;
+/// Lowercased marker the Pi model boundary writes before an observed status.
+const PI_PROVIDER_HTTP_MARKER: &str = "provider http ";
 const CODEX_SAFETY_POLICY_REFUSAL_MESSAGE: &str = concat!(
     "This content was flagged for possible cybersecurity risk. ",
     "If this seems wrong, try rephrasing your request. ",
@@ -285,6 +288,12 @@ fn classify_cli_failure_reason(
     }
     if matches!(framework, AgentFramework::Codex)
         && source == FailureDetailSource::CodexJsonl
+        && failure_patterns::is_content_policy_rejection_message(failure_message)
+    {
+        return Some(FailureReason::SafetyPolicyRefusal);
+    }
+    if matches!(framework, AgentFramework::Codex)
+        && source == FailureDetailSource::CodexJsonl
         && failure_patterns::is_codex_rate_limit_retry_exhausted_message(failure_message)
     {
         return Some(FailureReason::ProviderRateLimited);
@@ -294,6 +303,12 @@ fn classify_cli_failure_reason(
         && is_codex_chatgpt_account_unsupported_model_run_error(failure_message)
     {
         return Some(FailureReason::UnsupportedModel);
+    }
+    if matches!(framework, AgentFramework::Pi)
+        && source == FailureDetailSource::PiResult
+        && let Some(reason) = pi_upstream_non_api_response_reason(failure_message)
+    {
+        return Some(reason);
     }
 
     let normalized = failure_message.to_ascii_lowercase();
@@ -306,7 +321,7 @@ fn classify_cli_failure_reason(
         return Some(FailureReason::TermsAcceptanceRequired);
     }
     if matches!(framework, AgentFramework::ClaudeCode)
-        && is_claude_oauth_token_revoked_error(&normalized)
+        && is_claude_oauth_reconnect_required_error(&normalized)
     {
         return Some(FailureReason::ReconnectRequired);
     }
@@ -379,7 +394,68 @@ fn classify_cli_failure_reason(
     {
         return Some(FailureReason::UsageLimit);
     }
+    // Quota and subscription wording above stays authoritative for the statuses
+    // it also covers, so the observed provider status is read last.
+    if matches!(framework, AgentFramework::Pi)
+        && let Some(reason) = pi_provider_http_failure_reason(source, &normalized)
+    {
+        return Some(reason);
+    }
     None
+}
+
+/// Classify the provider status the Pi runtime records for an opaque body.
+///
+/// The Pi model boundary restates a non-JSON provider error as
+/// `provider HTTP <status>: <phrase>`, so an Envoy or edge reply that used to
+/// arrive as bare prose now carries its stage. Only the server-unavailability
+/// family is classified here; every other status keeps whatever message-shaped
+/// classification already applies, or stays unknown.
+fn pi_provider_http_failure_reason(
+    source: FailureDetailSource,
+    normalized: &str,
+) -> Option<FailureReason> {
+    if source != FailureDetailSource::PiResult {
+        return None;
+    }
+    normalized
+        .match_indices(PI_PROVIDER_HTTP_MARKER)
+        .find_map(|(index, _)| {
+            if normalized[..index]
+                .chars()
+                .next_back()
+                .is_some_and(is_error_type_char)
+            {
+                return None;
+            }
+            let detail = &normalized[index + PI_PROVIDER_HTTP_MARKER.len()..];
+            let status_len = detail
+                .find(|c: char| !c.is_ascii_digit())
+                .unwrap_or(detail.len());
+            let (status, remaining) = detail.split_at(status_len);
+            if remaining.chars().next().is_some_and(is_error_type_char) {
+                return None;
+            }
+            match status {
+                "500" | "502" | "503" | "504" => Some(FailureReason::ProviderServerError),
+                "529" => Some(FailureReason::ProviderOverloaded),
+                _ => None,
+            }
+        })
+}
+
+/// Classify a Pi model error whose upstream answered with a document.
+///
+/// Only a status the Pi runtime actually observed is trusted. An unknown status
+/// stays unclassified so the failure keeps its error-level report instead of
+/// being presented as an expected upstream condition.
+fn pi_upstream_non_api_response_reason(failure_message: &str) -> Option<FailureReason> {
+    match upstream_non_api_response_status(failure_message)? {
+        429 => Some(FailureReason::ProviderRateLimited),
+        529 => Some(FailureReason::ProviderOverloaded),
+        500..=599 => Some(FailureReason::ProviderServerError),
+        _ => None,
+    }
 }
 
 fn is_codex_safety_policy_refusal(source: FailureDetailSource, failure_message: &str) -> bool {
@@ -403,7 +479,7 @@ fn has_insufficient_credits_response_envelope(normalized: &str) -> bool {
     };
 
     let Some((Some(value), _)) =
-        parse_next_json_object(normalized, status_index + STATUS_MARKER.len())
+        failure_patterns::parse_next_json_object(normalized, status_index + STATUS_MARKER.len())
     else {
         return false;
     };
@@ -416,11 +492,20 @@ fn is_claude_invalid_credentials_error(normalized: &str) -> bool {
         && normalized.contains("api error: 401 invalid authentication credentials")
 }
 
-fn is_claude_oauth_token_revoked_error(normalized: &str) -> bool {
+fn is_claude_oauth_reconnect_required_error(normalized: &str) -> bool {
+    const INVALID_TOKEN: &str = "oauth access token is invalid";
+
     normalized.contains("failed to authenticate")
         && has_claude_api_status(normalized, "401")
         && normalized.contains("oauth access token")
-        && normalized.contains("revoked")
+        && (normalized.contains("revoked")
+            || normalized.match_indices(INVALID_TOKEN).any(|(index, _)| {
+                !normalized[..index]
+                    .chars()
+                    .next_back()
+                    .is_some_and(is_error_type_char)
+                    && strip_word_prefix(&normalized[index..], INVALID_TOKEN).is_some()
+            }))
 }
 
 fn is_claude_terms_acceptance_required_error(normalized: &str) -> bool {
@@ -567,7 +652,9 @@ fn is_codex_oauth_reconnect_required_run_error(error_message: &str) -> bool {
     }
 
     let mut search_start = 0;
-    while let Some((value, end_index)) = parse_next_json_object(error_message, search_start) {
+    while let Some((value, end_index)) =
+        failure_patterns::parse_next_json_object(error_message, search_start)
+    {
         if value
             .as_ref()
             .is_some_and(is_codex_oauth_reconnect_required_value)
@@ -581,7 +668,9 @@ fn is_codex_oauth_reconnect_required_run_error(error_message: &str) -> bool {
 
 fn is_codex_chatgpt_account_unsupported_model_run_error(error_message: &str) -> bool {
     let mut search_start = 0;
-    while let Some((value, end_index)) = parse_next_json_object(error_message, search_start) {
+    while let Some((value, end_index)) =
+        failure_patterns::parse_next_json_object(error_message, search_start)
+    {
         if value.as_ref().is_some_and(|value| {
             value.get("type").and_then(Value::as_str) == Some("error")
                 && value.get("status").and_then(Value::as_u64) == Some(400)
@@ -597,18 +686,6 @@ fn is_codex_chatgpt_account_unsupported_model_run_error(error_message: &str) -> 
         search_start = end_index;
     }
     false
-}
-
-fn parse_next_json_object(message: &str, search_start: usize) -> Option<(Option<Value>, usize)> {
-    let body_start = message[search_start.min(message.len())..]
-        .find('{')
-        .map(|offset| search_start + offset)?;
-    let mut stream = serde_json::Deserializer::from_str(&message[body_start..]).into_iter();
-
-    match stream.next() {
-        Some(Ok(value)) => Some((Some(value), body_start + stream.byte_offset())),
-        Some(Err(_)) | None => Some((None, body_start + 1)),
-    }
 }
 
 fn is_codex_oauth_reconnect_required_value(value: &Value) -> bool {
@@ -661,7 +738,23 @@ fn cli_failure_message(
         };
     }
 
-    if stderr_lines.is_empty() {
+    // Structured agent telemetry shares stderr with real failure output. It
+    // stays in the guest log below, but must never become the user-visible
+    // reason a run failed.
+    let mut reported_lines = Vec::with_capacity(stderr_lines.len());
+    for line in stderr_lines {
+        if is_structured_agent_diagnostic_line(line) {
+            log_info!(
+                LOG_TAG,
+                "CLI stderr diagnostic: {}",
+                truncate_cli_stderr_line(line)
+            );
+        } else {
+            reported_lines.push(line);
+        }
+    }
+
+    if reported_lines.is_empty() {
         return CliFailureMessage {
             message: format!("Agent exited with code {code}"),
             source: FailureDetailSource::FallbackExitCode,
@@ -670,11 +763,11 @@ fn cli_failure_message(
     }
 
     log_info!(LOG_TAG, "Captured {} stderr lines", stderr_lines.len());
-    let omitted_lines = stderr_lines
+    let omitted_lines = reported_lines
         .len()
         .saturating_sub(MAX_LOGGED_CLI_STDERR_LINES);
     let mut message_lines = Vec::with_capacity(
-        stderr_lines.len().min(MAX_LOGGED_CLI_STDERR_LINES) + usize::from(omitted_lines > 0),
+        reported_lines.len().min(MAX_LOGGED_CLI_STDERR_LINES) + usize::from(omitted_lines > 0),
     );
     if omitted_lines > 0 {
         log_warn!(
@@ -686,7 +779,7 @@ fn cli_failure_message(
             "...[omitted {omitted_lines} earlier stderr line(s)]"
         ));
     }
-    for line in stderr_lines.iter().skip(omitted_lines) {
+    for line in reported_lines.into_iter().skip(omitted_lines) {
         let line = truncate_cli_stderr_line(line);
         log_warn!(LOG_TAG, "CLI stderr: {line}");
         message_lines.push(line.into_owned());
@@ -696,6 +789,23 @@ fn cli_failure_message(
         source: FailureDetailSource::Stderr,
         failure_reason: stdout_failure_reason,
     }
+}
+
+/// Structured agent telemetry envelopes that agent runtimes emit on stderr.
+///
+/// Only these exact `type` values are recognized. Any other JSON object, and
+/// any line that is not a JSON object, remains user-visible failure output.
+const STRUCTURED_AGENT_DIAGNOSTIC_TYPES: [&str; 2] =
+    ["pi_memory_recall_outcome", "pi_memory_tool_source_use"];
+
+fn is_structured_agent_diagnostic_line(line: &str) -> bool {
+    let Ok(Value::Object(fields)) = serde_json::from_str::<Value>(line.trim()) else {
+        return false;
+    };
+    fields
+        .get("type")
+        .and_then(Value::as_str)
+        .is_some_and(|value| STRUCTURED_AGENT_DIAGNOSTIC_TYPES.contains(&value))
 }
 
 fn is_generic_stdout_failure_diagnostic(source: FailureDetailSource, message: &str) -> bool {

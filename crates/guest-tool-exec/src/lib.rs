@@ -192,7 +192,7 @@ fn is_canonical_runtime_path(path: &Path) -> bool {
 }
 
 fn place_current_process(endpoint: &str) -> io::Result<()> {
-    let stream = process_control_ipc::connect_abstract(endpoint)?;
+    let stream = process_control_ipc::connect_abstract_with_timeout(endpoint, PLACEMENT_TIMEOUT)?;
     stream.set_read_timeout(Some(PLACEMENT_TIMEOUT))?;
     stream.set_write_timeout(Some(PLACEMENT_TIMEOUT))?;
     let placement = process_control_ipc::receive_tool_placement(&stream)?;
@@ -283,6 +283,8 @@ fn shell_invocation(mut arguments: Vec<OsString>) -> io::Result<(OsString, Vec<O
 mod tests {
     use super::*;
     use std::os::unix::ffi::OsStringExt;
+
+    mod placement;
 
     #[test]
     fn recognizes_only_canonical_runtime_leaf() {

@@ -192,8 +192,8 @@ test("Campaign attribution survives a switch from sign-in to sign-up", async () 
   expect(completion.pathname).toBe("/onboarding");
   expect(completion.searchParams.get("gclid")).toBe("click-123");
   expect(completion.searchParams.get("utm_campaign")).toBe("summer");
-  expect(completion.searchParams.get("vm0_campaign_id")).toBe("24220469665");
-  expect(completion.searchParams.get("vm0_ad_group_id")).toBe("123456");
+  expect(completion.searchParams.get("okou_campaign_id")).toBe("24220469665");
+  expect(completion.searchParams.get("okou_ad_group_id")).toBe("123456");
 
   click(signUp);
 

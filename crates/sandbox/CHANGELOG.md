@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.5](https://github.com/vm0-ai/vm0/compare/sandbox-v0.22.4...sandbox-v0.22.5) (2026-09-10)
+
+
+### Documentation
+
+* **rust:** correct snapshot socket-id listener limits ([#33273](https://github.com/vm0-ai/vm0/issues/33273)) ([e36f6c7](https://github.com/vm0-ai/vm0/commit/e36f6c7cdba31e96ec284d1063286a14e05f9d37))
+
 ## [0.22.4](https://github.com/vm0-ai/vm0/compare/sandbox-v0.22.3...sandbox-v0.22.4) (2026-09-09)
 
 

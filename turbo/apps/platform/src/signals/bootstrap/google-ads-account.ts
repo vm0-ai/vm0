@@ -1,3 +1,4 @@
+import { legacyGoogleAdsAttribution } from "@okouai/core/google-ads-attribution";
 import { command } from "ccstate";
 import { acquisitionAttributionContract } from "@okouai/api-contracts/contracts/acquisition-attribution";
 import { googleAdsAccountForAttribution } from "@okouai/core/google-ads-account";
@@ -17,7 +18,11 @@ export const resolveGoogleAdsAccount$ = command(
     const client = get(apiClient$)(acquisitionAttributionContract);
     const result = await accept(
       client.resolveGoogleAdsAccount({
-        body: { attribution },
+        body: {
+          attribution: attribution
+            ? legacyGoogleAdsAttribution(attribution)
+            : undefined,
+        },
         fetchOptions: { signal },
       }),
       [200, 404],

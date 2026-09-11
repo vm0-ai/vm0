@@ -465,13 +465,13 @@
       "attach": "Markierungen anhängen",
       "draftOnly": "Markierungen bleiben im Entwurf — bis zum Senden änderbar",
       "inkLabel": "Farbe {{color}}",
-      "notePlaceholder": "Beschreiben Sie, was sich hier ändern soll",
+      "notePlaceholder": "Was soll sich ändern?",
       "open": "Markieren",
       "redo": "Wiederholen",
       "removeMark": "Markierung entfernen",
       "subtitle_one": "{{count}} Markierung",
       "subtitle_other": "{{count}} Markierungen",
-      "textPlaceholder": "Beschriftung eingeben",
+      "textPlaceholder": "Hier eingeben",
       "tools": {
         "arrow": "Pfeil",
         "box": "Rechteck",
@@ -1885,12 +1885,15 @@
       "create": {
         "addStyle": "Stil hinzufügen",
         "addTemplate": "Vorlage hinzufügen",
+        "chooseScene": "Wähle, was du erstellen möchtest",
         "chooseType": "Typ auswählen",
         "description": "Präsentationen, Videos und Bilder",
         "exit": "Erstellungsmodus verlassen",
         "image": "Bild erstellen",
+        "imageDescription": "Verwandle eine Idee in ein Bild",
         "imagePlaceholder": "Beschreibe das gewünschte Bild…",
         "presentation": "Präsentation erstellen",
+        "presentationDescription": "Folien für deine Geschichte",
         "presentationPlaceholder": "Worum geht es in deiner Präsentation?",
         "question": "Was möchtest du möglich machen?",
         "settingsAdjusted": "Einige Videoeinstellungen wurden an dieses Modell angepasst",
@@ -1899,6 +1902,7 @@
         "slideCountRange": "{{range}} Folien",
         "title": "Erstellen",
         "video": "Video erstellen",
+        "videoDescription": "Bringe deine Ideen in Bewegung",
         "videoPlaceholder": "Beschreibe das gewünschte Video…"
       },
       "createWorkflow": "Workflow erstellen",
@@ -2041,8 +2045,6 @@
       "placeholder": "Was soll sich daran ändern?",
       "quote": "Zitieren",
       "remove": "Feedback entfernen",
-      "selectionEnd": "Auswahlende anpassen",
-      "selectionStart": "Auswahlbeginn anpassen",
       "sentEmailDescription": "eine gesendete E-Mail (Mail-ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", gesendete ID: {{sentId}}",
       "sourcePartHeading": "Feedback zu diesem Teil von {{description}}:",
@@ -2530,12 +2532,296 @@
       "moreIdeas": "Weitere Ideen",
       "moreTemplates": "Weitere Vorlagen",
       "presentationTemplates": "Präsentationsvorlagen",
+      "removeTask": "{{task}} entfernen",
       "tasks": {
         "image": "Bild",
         "presentation": "Folien",
         "video": "Video",
         "website": "Website",
         "workflow": "Workflow"
+      },
+      "workflows": {
+        "back": "Workflows entdecken",
+        "browse": "Workflows entdecken",
+        "close": "Schließen",
+        "contextPrefix": "Das ist mir wichtig: {{context}}",
+        "heading": "Welche Aufgabe möchten Sie abgeben?",
+        "items": {
+          "competitors": {
+            "cadence": "Täglich oder wöchentlich",
+            "description": "Beobachten Sie Preise und Funktionen auf Wettbewerber-Websites, sichern Sie die Funde in Notion und melden Sie sie in Slack.",
+            "name": "Wettbewerbsbeobachtung",
+            "next": "Erstellen Sie zuerst einen Entwurf. Bestätigen Sie Quellen, Umfang, Zeitpunkt und Ziel vor der Aktivierung.",
+            "prompt": "Helfen Sie mir, diesen Workflow einzurichten: Wettbewerbsbeobachtung. Gewählte Wettbewerberseiten regelmäßig prüfen. Wichtige Änderungen bei Preisen, Angeboten und Botschaften erkennen. Ergebnisse mit Quellen in Notion speichern und optional Slack benachrichtigen. Erstellen Sie zuerst einen Entwurf. Bestätigen Sie Quellen, Umfang, Zeitpunkt und Ziel vor der Aktivierung.",
+            "results": {
+              "one": "Vorher-Nachher-Vergleiche",
+              "three": "Kurze Erläuterung der Änderungen",
+              "two": "Quellenlinks für jedes Ergebnis"
+            },
+            "scope": "Beobachten Sie Preise und Funktionen auf Wettbewerber-Websites, sichern Sie die Funde in Notion und melden Sie sie in Slack.",
+            "steps": {
+              "one": "Gewählte Wettbewerberseiten regelmäßig prüfen",
+              "three": "Ergebnisse mit Quellen in Notion speichern und optional Slack benachrichtigen",
+              "two": "Wichtige Änderungen bei Preisen, Angeboten und Botschaften erkennen"
+            },
+            "title": "Änderungen bei Wettbewerbern erkennen"
+          },
+          "inbox": {
+            "cadence": "Wenn eine neue E-Mail eingeht",
+            "description": "Sortieren Sie Ihren Posteingang und entwerfen Sie Antworten auf die E-Mails, die sie benötigen.",
+            "name": "Sortieren Sie Gmail- und Antwortentwürfe",
+            "next": "Erstellen Sie zuerst einen Entwurf. Bestätigen Sie Quellen, Umfang, Zeitpunkt und Ziel vor der Aktivierung.",
+            "prompt": "Helfen Sie mir, diesen Workflow einzurichten: Sortieren Sie Gmail- und Antwortentwürfe. Eingehende Nachrichten im gewählten Bereich lesen. Nach Dringlichkeit und vereinbarten Regeln sortieren. Antwortvorschläge als Gmail-Entwürfe speichern. Erstellen Sie zuerst einen Entwurf. Bestätigen Sie Quellen, Umfang, Zeitpunkt und Ziel vor der Aktivierung. E-Mail-Antworten bleiben Entwürfe, die ich selbst prüfe und versende.",
+            "results": {
+              "one": "Nach Dringlichkeit sortierte E-Mails",
+              "three": "Antwortentwürfe in Gmail",
+              "two": "Hervorgehobene wichtige Anfragen"
+            },
+            "scope": "Sortieren Sie Ihren Posteingang und entwerfen Sie Antworten auf die E-Mails, die sie benötigen.",
+            "steps": {
+              "one": "Eingehende Nachrichten im gewählten Bereich lesen",
+              "three": "Antwortvorschläge als Gmail-Entwürfe speichern",
+              "two": "Nach Dringlichkeit und vereinbarten Regeln sortieren"
+            },
+            "title": "Wichtige E-Mails voranbringen"
+          },
+          "invoices": {
+            "cadence": "Wenn Sie eine Rechnung markieren",
+            "description": "Legen Sie Rechnungs-E-Mails in Google Drive ab und protokollieren Sie jede einzelne in Google Sheets.",
+            "name": "Reichen Sie Gmail-Rechnungen in Google Drive ein",
+            "next": "Erstellen Sie zuerst einen Entwurf. Bestätigen Sie Quellen, Umfang, Zeitpunkt und Ziel vor der Aktivierung.",
+            "prompt": "Helfen Sie mir, diesen Workflow einzurichten: Reichen Sie Gmail-Rechnungen in Google Drive ein. Rechnungen anhand des gewählten Gmail-Labels erkennen. Rechnungsanhänge im vereinbarten Drive-Ordner ablegen. Details auf Wunsch in Google Sheets protokollieren. Erstellen Sie zuerst einen Entwurf. Bestätigen Sie Quellen, Umfang, Zeitpunkt und Ziel vor der Aktivierung.",
+            "results": {
+              "one": "Rechnungen im richtigen Ordner",
+              "three": "Optionales Rechnungsregister in Sheets",
+              "two": "Einheitlicher Ablageverlauf"
+            },
+            "scope": "Legen Sie Rechnungs-E-Mails in Google Drive ab und protokollieren Sie jede einzelne in Google Sheets.",
+            "steps": {
+              "one": "Rechnungen anhand des gewählten Gmail-Labels erkennen",
+              "three": "Details auf Wunsch in Google Sheets protokollieren",
+              "two": "Rechnungsanhänge im vereinbarten Drive-Ordner ablegen"
+            },
+            "title": "Rechnungen geordnet ablegen"
+          },
+          "meetings": {
+            "cadence": "Wenn ein Meeting hinzugefügt wird",
+            "description": "Informieren Sie sich vor jedem Kalenderereignis über die Personen, die Sie treffen.",
+            "name": "Recherchieren Sie Ihre Kalenderbesprechungen",
+            "next": "Erstellen Sie zuerst einen Entwurf. Bestätigen Sie Quellen, Umfang, Zeitpunkt und Ziel vor der Aktivierung.",
+            "prompt": "Helfen Sie mir, diesen Workflow einzurichten: Recherchieren Sie Ihre Kalenderbesprechungen. Teilnehmer und Details eines neuen Termins lesen. Beruflichen Kontext und Unternehmen recherchieren. Ein Briefing mit Quellen und Gesprächsthemen vorbereiten. Erstellen Sie zuerst einen Entwurf. Bestätigen Sie Quellen, Umfang, Zeitpunkt und Ziel vor der Aktivierung.",
+            "results": {
+              "one": "Hintergrund zu Teilnehmern und Unternehmen",
+              "three": "Vorgeschlagene Gesprächsthemen",
+              "two": "Relevante Informationen mit Quellen"
+            },
+            "scope": "Informieren Sie sich vor jedem Kalenderereignis über die Personen, die Sie treffen.",
+            "steps": {
+              "one": "Teilnehmer und Details eines neuen Termins lesen",
+              "three": "Ein Briefing mit Quellen und Gesprächsthemen vorbereiten",
+              "two": "Beruflichen Kontext und Unternehmen recherchieren"
+            },
+            "title": "Gut vorbereitet in Meetings gehen"
+          },
+          "metrics": {
+            "cadence": "Jeden Morgen",
+            "description": "Veröffentlichen Sie tägliche Besucher, Anmeldungen und Aktivierungsnummern in Slack.",
+            "name": "Veröffentlichen Sie tägliche Kennzahlen auf Slack",
+            "next": "Erstellen Sie zuerst einen Entwurf. Bestätigen Sie Quellen, Umfang, Zeitpunkt und Ziel vor der Aktivierung.",
+            "prompt": "Helfen Sie mir, diesen Workflow einzurichten: Veröffentlichen Sie tägliche Kennzahlen auf Slack. Vereinbarte Website- und Registrierungskennzahlen abrufen. Eine Tagesübersicht mit eindeutigem Berichtszeitraum erstellen. Die Übersicht im gewählten Slack-Ziel teilen. Erstellen Sie zuerst einen Entwurf. Bestätigen Sie Quellen, Umfang, Zeitpunkt und Ziel vor der Aktivierung.",
+            "results": {
+              "one": "Tägliche Besucher",
+              "three": "Klar ausgewiesener Berichtszeitraum",
+              "two": "Registrierungen und Aktivierungen, soweit verfügbar"
+            },
+            "scope": "Veröffentlichen Sie tägliche Besucher, Anmeldungen und Aktivierungsnummern in Slack.",
+            "steps": {
+              "one": "Vereinbarte Website- und Registrierungskennzahlen abrufen",
+              "three": "Die Übersicht im gewählten Slack-Ziel teilen",
+              "two": "Eine Tagesübersicht mit eindeutigem Berichtszeitraum erstellen"
+            },
+            "title": "Die Geschäftsentwicklung im Blick behalten"
+          },
+          "morning": {
+            "cadence": "Jeden Morgen",
+            "description": "Machen Sie aus Gmail-, Kalender- und Notion-Updates einen kurzen Tagesplan in Slack.",
+            "name": "Morgenbriefing",
+            "next": "Erstellen Sie zuerst einen Entwurf. Bestätigen Sie Quellen, Umfang, Zeitpunkt und Ziel vor der Aktivierung.",
+            "prompt": "Helfen Sie mir, diesen Workflow einzurichten: Morgenbriefing. Wichtige E-Mails und heutige Termine lesen. Entscheidungen, Nachfassaufgaben und Fokuszeit priorisieren. Einen kurzen Morgenplan in Slack bereitstellen. Erstellen Sie zuerst einen Entwurf. Bestätigen Sie Quellen, Umfang, Zeitpunkt und Ziel vor der Aktivierung.",
+            "results": {
+              "one": "Heutige Prioritäten",
+              "three": "Offene Antworten und Entscheidungen",
+              "two": "Meetings und Fokuszeit"
+            },
+            "scope": "Machen Sie aus Gmail-, Kalender- und Notion-Updates einen kurzen Tagesplan in Slack.",
+            "steps": {
+              "one": "Wichtige E-Mails und heutige Termine lesen",
+              "three": "Einen kurzen Morgenplan in Slack bereitstellen",
+              "two": "Entscheidungen, Nachfassaufgaben und Fokuszeit priorisieren"
+            },
+            "title": "Mit einem klaren Plan in den Tag starten"
+          },
+          "recap": {
+            "cadence": "Regelmäßig auf neue Meetingnotizen prüfen",
+            "description": "Teilen Sie nach jedem Meeting eine Zusammenfassung mit Entscheidungen und Aktionspunkten.",
+            "name": "Erhalten Sie Besprechungsrückblicke in Slack",
+            "next": "Erstellen Sie zuerst einen Entwurf. Bestätigen Sie Quellen, Umfang, Zeitpunkt und Ziel vor der Aktivierung.",
+            "prompt": "Helfen Sie mir, diesen Workflow einzurichten: Erhalten Sie Besprechungsrückblicke in Slack. Ein neues Meetingtranskript lesen. Genannte Entscheidungen, Aufgaben, Verantwortliche und Fristen extrahieren. Eine kurze Zusammenfassung an das gewählte Ziel senden. Erstellen Sie zuerst einen Entwurf. Bestätigen Sie Quellen, Umfang, Zeitpunkt und Ziel vor der Aktivierung.",
+            "results": {
+              "one": "Entscheidungen aus dem Gespräch",
+              "three": "Klar gekennzeichnete fehlende Angaben",
+              "two": "Aufgaben und genannte Verantwortliche"
+            },
+            "scope": "Teilen Sie nach jedem Meeting eine Zusammenfassung mit Entscheidungen und Aktionspunkten.",
+            "steps": {
+              "one": "Ein neues Meetingtranskript lesen",
+              "three": "Eine kurze Zusammenfassung an das gewählte Ziel senden",
+              "two": "Genannte Entscheidungen, Aufgaben, Verantwortliche und Fristen extrahieren"
+            },
+            "title": "Aus Meetings nächste Schritte machen"
+          },
+          "reply": {
+            "cadence": "Wenn eine passende Antwort eingeht",
+            "description": "Verfolgen Sie eine Unterhaltung und erhalten Sie die Kernpunkte neuer Antworten sowie nächste Schritte.",
+            "name": "E-Mail-Antworten verfolgen",
+            "next": "Erstellen Sie zuerst einen Entwurf. Bestätigen Sie Quellen, Umfang, Zeitpunkt und Ziel vor der Aktivierung.",
+            "prompt": "Helfen Sie mir, diesen Workflow einzurichten: E-Mail-Antworten verfolgen. Eine E-Mail-Unterhaltung und vereinbarte Absender verfolgen. Eine neue Antwort erkennen und Kernpunkte zusammenfassen. Einmal benachrichtigen und bei Bedarf einen Antwortentwurf erstellen. Erstellen Sie zuerst einen Entwurf. Bestätigen Sie Quellen, Umfang, Zeitpunkt und Ziel vor der Aktivierung. E-Mail-Antworten bleiben Entwürfe, die ich selbst prüfe und versende.",
+            "results": {
+              "one": "Eingegangene Antwort und Kernpunkte",
+              "three": "Bei Bedarf ein Entwurf für die Folgeantwort",
+              "two": "Erforderliche Schritte oder Fristen"
+            },
+            "scope": "Verfolgen Sie eine Unterhaltung und erhalten Sie die Kernpunkte neuer Antworten sowie nächste Schritte.",
+            "steps": {
+              "one": "Eine E-Mail-Unterhaltung und vereinbarte Absender verfolgen",
+              "three": "Einmal benachrichtigen und bei Bedarf einen Antwortentwurf erstellen",
+              "two": "Eine neue Antwort erkennen und Kernpunkte zusammenfassen"
+            },
+            "title": "Die erwartete Antwort nicht verpassen"
+          },
+          "weekly": {
+            "cadence": "Jede Woche",
+            "description": "Fassen Sie GitHub-, Gmail- und Kalenderaktivität zu einem wöchentlichen Slack-Update zusammen.",
+            "name": "Persönlicher Wochenüberblick",
+            "next": "Erstellen Sie zuerst einen Entwurf. Bestätigen Sie Quellen, Umfang, Zeitpunkt und Ziel vor der Aktivierung.",
+            "prompt": "Helfen Sie mir, diesen Workflow einzurichten: Persönlicher Wochenüberblick. Aktivitäten aus gewählten Quellen sammeln. Erfolge, offene Entscheidungen und Nachfassaufgaben gliedern. Einen Wochenrückblick im gewählten Slack-Ziel teilen. Erstellen Sie zuerst einen Entwurf. Bestätigen Sie Quellen, Umfang, Zeitpunkt und Ziel vor der Aktivierung.",
+            "results": {
+              "one": "Erfolge der Woche",
+              "three": "Bevorstehende Verpflichtungen",
+              "two": "Offene Entscheidungen und Nachfassaufgaben"
+            },
+            "scope": "Fassen Sie GitHub-, Gmail- und Kalenderaktivität zu einem wöchentlichen Slack-Update zusammen.",
+            "steps": {
+              "one": "Aktivitäten aus gewählten Quellen sammeln",
+              "three": "Einen Wochenrückblick im gewählten Slack-Ziel teilen",
+              "two": "Erfolge, offene Entscheidungen und Nachfassaufgaben gliedern"
+            },
+            "title": "Die Arbeitswoche übersichtlich abschließen"
+          }
+        },
+        "next": "Nächster Workflow",
+        "ownSources": "Ihr Workflow verwendet Ihre eigenen Quellen und Inhalte.",
+        "placeholder": "Optional — was ist Ihnen wichtig?",
+        "preview": {
+          "competitors": {
+            "changed": "Changed",
+            "footer": "Source page and change history included",
+            "heading": "One change worth a closer look.",
+            "label": "Wettbewerbsbeobachtung",
+            "now": "Now",
+            "plan": "Example company’s team plan",
+            "previous": "Previous",
+            "unit": "/ mo"
+          },
+          "inbox": {
+            "draft": "Reply draft",
+            "label": "Sortieren Sie Gmail- und Antwortentwürfe",
+            "later": "Your weekly digest",
+            "needsReply": "Needs reply",
+            "readLater": "Read later",
+            "review": "Review before sending",
+            "subject": "Re: Next steps",
+            "text": "Thanks for the details. I’ve reviewed the proposal and…"
+          },
+          "invoices": {
+            "amount": "Amount",
+            "example": "Example studio",
+            "file": "Invoice — September",
+            "filed": "Filed",
+            "footer": "An optional Sheet keeps the record together",
+            "label": "Reichen Sie Gmail-Rechnungen in Google Drive ein",
+            "path": "Finance / Invoices / Sep",
+            "second": "Sample supply co.",
+            "status": "Status",
+            "vendor": "Vendor"
+          },
+          "meetings": {
+            "heading": "Your next conversation.",
+            "initials": "JL",
+            "label": "Recherchieren Sie Ihre Kalenderbesprechungen",
+            "note": "A useful place to begin",
+            "person": "Jordan Lee",
+            "question": "Ask how the team handles customer handoffs.",
+            "role": "Operations lead · Example company",
+            "tagOne": "Company context",
+            "tagTwo": "Discussion points"
+          },
+          "metrics": {
+            "activated": "Activated",
+            "footer": "A clear period. Only the metrics you choose.",
+            "label": "Veröffentlichen Sie tägliche Kennzahlen auf Slack",
+            "period": "Yesterday vs. prior day",
+            "signups": "Signups",
+            "visitors": "Visitors"
+          },
+          "morning": {
+            "footer": "2 emails need your attention",
+            "heading": "A little clarity for your day.",
+            "label": "Morgenbriefing",
+            "meetingOne": "Team check-in",
+            "meetingTwo": "Client discovery",
+            "priority": "First things first",
+            "task": "Review the proposal before your client call"
+          },
+          "recap": {
+            "assign": "To assign",
+            "decision": "Decision: move ahead with a pilot",
+            "due": "Due",
+            "friday": "Fri",
+            "label": "Erhalten Sie Besprechungsrückblicke in Slack",
+            "monday": "Mon",
+            "one": "Send the revised brief",
+            "owner": "Owner",
+            "task": "Next step",
+            "team": "Team",
+            "three": "Book the next check-in",
+            "two": "Confirm the pilot scope",
+            "you": "You"
+          },
+          "reply": {
+            "heading": "The reply you were waiting for.",
+            "label": "E-Mail-Antworten verfolgen",
+            "next": "Next step",
+            "quote": "“Thursday works for us. Could you share a short agenda?”",
+            "subject": "Re: Our next conversation",
+            "task": "Confirm the time and prepare an agenda"
+          },
+          "weekly": {
+            "heading": "A week worth looking back on.",
+            "label": "Persönlicher Wochenüberblick",
+            "next": "Carry into next week",
+            "one": "Shared the revised proposal",
+            "task": "Confirm the launch date with the team",
+            "two": "Wrapped up the onboarding guide"
+          }
+        },
+        "previous": "Vorheriger Workflow",
+        "sample": "Beispiel",
+        "tailor": "Was möchten Sie anpassen?",
+        "use": "Diesen Workflow verwenden",
+        "whatHappens": "Ablauf bei jeder Ausführung",
+        "whatYouGet": "Ihre Ergebnisse",
+        "worksWith": "Verwendete Apps"
       }
     },
     "templates": {
@@ -2647,34 +2933,6 @@
       "transcribing": "Transkribieren",
       "transcribingProgress": "Transkribieren...",
       "transcriptionFailed": "Die Sprachtranskription ist fehlgeschlagen. Versuchen Sie es erneut."
-    },
-    "welcomeThread": {
-      "content": "# Hallo, ich bin {{assistantName}}\n\nIch bin dein KI-Teammitglied. Sag mir, welches Ergebnis du brauchst, und ich arbeite mit deinen Tools, um das fertige Ergebnis hierher zurückzubringen.\n\n## Das kann ich liefern\n\n### Bilder\n\nIch kann Kampagnenmotive, Produktillustrationen, Social-Media-Grafiken und Werbemittel erstellen.\n\n![Von {{assistantName}} geliefertes Kampagnenmotiv]({{imageUrl}})\n\n`campaign-visual.png`\n\n### Präsentationen\n\nIch kann aus einem groben Briefing eine strukturierte, gestaltete und präsentationsfertige Präsentation machen.\n\n![Von {{assistantName}} gelieferte Präsentation]({{presentationPreviewUrl}})\n\n[`sproutpop-launch-deck.pptx`]({{presentationUrl}}) · {{slideCount}} Folien\n\n### Videos\n\nIch kann geschnittene Produktdemos, Launchfilme, Erklärvideos und Social-Media-Clips mit Untertiteln liefern.\n\n[Product launch video](<{{videoUrl}}>)\n\n`product-launch-film.mp4` · bereit zum Teilen\n\n### Automatisierungsempfehlungen\n\nIch kann wiederkehrende Teamarbeit prüfen und eine priorisierte Liste der Aufgaben erstellen, deren Automatisierung sich lohnt.\n\n| Priorität | Aufgabe | Auslöser | Ergebnis |\n| --- | --- | --- | --- |\n| 1 | Eingehende Leads qualifizieren | Neue Formularantwort | Angereicherter CRM-Datensatz und Antwortentwurf |\n| 2 | Aus Meetings Follow-ups machen | Anruf beendet | Zusammenfassung, CRM-Notiz und E-Mail-Entwurf |\n| 3 | Wöchentlicher Wachstumsbericht | Montagmorgen | Kennzahlenübersicht und Anomaliebericht |\n\n## Warum Teams mehr aus {{assistantName}} herausholen\n\nEin gutes Ergebnis muss nicht im Chat einer einzigen Person bleiben. Speichere den funktionierenden Prozess als gemeinsamen Workflow, damit das nächste Teammitglied mit dem beginnt, was bereits funktioniert.\n\n```mermaid\nflowchart TB\n  A[\"1. Herausfinden, was funktioniert<br/>Ein Teammitglied und {{assistantName}} erledigen die Aufgabe gemeinsam\"]\n  B[\"2. Workflow teilen<br/>Prozess und Kontext werden wiederverwendbar\"]\n  C[\"3. Bewährtes wiederverwenden<br/>Andere beginnen mit dem erprobten Prozess\"]\n  D[\"4. Gemeinsam verbessern<br/>Feedback verbessert zukünftige Ausführungen\"]\n  A --> B\n  B --> C\n  C --> D\n  D --> A\n```\n\n- **Teile den Workflow, nicht nur die fertige Datei.**\n- Gib jedem Teammitglied denselben Ausgangskontext.\n- Verbessere einen Prozess einmal, damit das ganze Team profitiert.\n\n## So arbeiten Sie mit mir im Team\n\nEine gute Antwort hilft einer Person. Ein gespeicherter Workflow hilft allen, die diese Aufgabe nach Ihnen übernehmen.\n\n[Diagramm des Team-Workflows](<{{teamDiagramUrl}}>)\n\n1. **Erledigen Sie die Aufgabe einmal mit mir.** Beschreiben Sie das gewünschte Ergebnis statt der einzelnen Schritte, und korrigieren Sie mich, während die Arbeit noch läuft. Genau diese Korrektur lohnt sich zu bewahren.\n2. **Speichern Sie das Ergebnis als Workflow.** Wählen Sie unten im Eingabefeld **Workflow erstellen**. Ich frage nach dem gewünschten Ergebnis, dem Auslöser und dem, was mit dem Ergebnis geschehen soll, und schreibe daraus einen Workflow, den Sie erneut ausführen können.\n3. **Stellen Sie die Sichtweite auf Öffentlich.** Öffnen Sie den Workflow und ändern Sie **Sichtweite**. Ein **Privat** gestellter Workflow bleibt bei Ihnen, ein **Öffentlich** gestellter kann von allen im Workspace ausgeführt werden.\n4. **Starten Sie ihn über seinen Namen.** Geben Sie in einem beliebigen Chat `/` und den Namen des Workflows ein. Ergänzen Sie eine Automatisierung, wenn er nach Zeitplan oder Auslöser statt auf Zuruf laufen soll.\n\nBeginnen Sie mit der Aufgabe, die Ihr Team am häufigsten wiederholt, nicht mit der schwierigsten. Ein Workflow, der jede Woche läuft, ist mehr wert als ein raffinierter, der einmal läuft.\n\n## Sprechen Sie mit mir in Slack\n\nEin Großteil dieser Arbeit wird ohnehin in Slack besprochen. Sobald ich dort installiert bin, landet die Antwort im Thread statt in einem weiteren Tab.\n\n[Diagramm des Slack-Gesprächs](<{{slackDiagramUrl}}>)\n\n**Einmal einrichten**\n\n1. Öffnen Sie **Einsatzorte von {{assistantName}}** in der linken Seitenleiste.\n2. Wählen Sie auf der Slack-Karte **Auf Slack installieren** und bestätigen Sie die Berechtigungen. Nur Workspace-Admins können installieren; fragen Sie andernfalls Ihre Administration.\n3. Alle anderen öffnen dieselbe Karte und wählen **Verbinden**, um ihr eigenes Slack-Konto zu verknüpfen.\n\n**Danach nutzen Sie mich wie jedes andere Teammitglied**\n\n| In Slack | Was ich tue |\n| --- | --- |\n| Schreiben Sie mir eine Direktnachricht | Wir arbeiten privat in einem durchgehenden Gespräch |\n| `@{{assistantName}}` in einem Kanal | Ich antworte im Thread zu Ihrer Nachricht, wo das Team mitlesen kann |\n| `@{{assistantName}}` erneut in einem Thread | Ich nehme diesen Thread wieder auf und arbeite darin weiter |\n| `/okou` | Öffnet meine Befehlsliste: verbinden, Agent wechseln, Modell wechseln, trennen |\n\nZwei Dinge sind gut zu wissen. In einem Kanal antworte ich nur, wenn ich erwähnt werde, und halte mich aus Threads heraus, in die ich nicht gebeten wurde. Und Sie können einer Direktnachricht eine Datei anhängen, die ich vor meiner Antwort lese.\n\n[Slack einrichten]({{worksUrl}}), damit die oben gespeicherten Workflows gestartet werden können, ohne den Kanal zu verlassen.\n\n[Lade dein Team ein]({{inviteUrl}}), damit der nächste Workflow sofort von den Menschen wiederverwendet werden kann, die ihn brauchen.\n\nIn der [Dokumentation]({{docsUrl}}) erfährst du mehr über gemeinsame Workflows.",
-      "slackDiagram": {
-        "caption": "Wo eine Antwort in Slack landet: im Thread zu Ihrer Nachricht oder in einer privaten Direktnachricht",
-        "channelEyebrow": "In einem Kanal",
-        "channelNote": "Die Antwort bleibt an Ihrer Nachricht, der Kanal wird nicht geflutet und das Team liest trotzdem mit.",
-        "directEyebrow": "In einer Direktnachricht",
-        "directLabel": "Sie und {{assistantName}}",
-        "directNote": "Ein privates Gespräch, das seinen Kontext über Aufgaben hinweg behält.",
-        "mentionLabel": "Sie erwähnen {{assistantName}}",
-        "replyLabel": "{{assistantName}} antwortet im Thread"
-      },
-      "teamDiagram": {
-        "automationBody": "Startet ihn nach Zeitplan oder Auslöser, ganz ohne Nachfrage.",
-        "automationTitle": "Eine Automatisierung",
-        "caption": "Ein gelungener Chat wird zum Workflow, von dem das ganze Team und Ihr Zeitplan ausgehen",
-        "chatBody": "Sie und {{assistantName}} lösen die Aufgabe einmal richtig.",
-        "chatTitle": "Ein Chat, der funktioniert hat",
-        "savedEyebrow": "Einmal gespeichert",
-        "teamEyebrow": "Für alle",
-        "teammateBody": "Startet ihn über seinen Namen und beginnt bei dem, was schon funktioniert.",
-        "teammateTitle": "Jede Person im Team",
-        "workflowBody": "Der Ablauf samt Kontext, bewahrt und wiederverwendbar.",
-        "workflowTitle": "Ein Workflow",
-        "yoursEyebrow": "Ihres"
-      },
-      "title": "Willkommen bei {{assistantName}}"
     },
     "workflows": {
       "named": "Workflow {{title}}",
@@ -3558,9 +3816,7 @@
       "requestFailed": "Die Anfrage ist fehlgeschlagen"
     },
     "realtime": {
-      "degraded": "Bei Live-Updates ist ein Problem aufgetreten. Bitte aktualisieren Sie die Seite.",
-      "disconnected": "Echtzeitverbindung getrennt",
-      "reconnecting": "Echtzeitverbindung wird wiederhergestellt"
+      "degraded": "Bei Live-Updates ist ein Problem aufgetreten. Bitte aktualisieren Sie die Seite."
     }
   },
   "invitationRedirect": {
@@ -5461,6 +5717,14 @@
           "description": "Wähle das Modell für Spracheingabe v2. Spracherkennungsmodelle verwenden {{model}} zur Textbereinigung.",
           "title": "Modell für Spracheingabe",
           "unavailable": "Modell nicht verfügbar ({{model}})"
+        },
+        "welcomeThread": {
+          "create": "Willkommenschat erstellen",
+          "creating": "Wird erstellt…",
+          "defaultAgentNotReady": "Konfiguriere den Standardagenten des Arbeitsbereichs und versuche es erneut.",
+          "description": "Erstelle einen Willkommenschat mit einer Einführung und Beispielen.",
+          "failed": "Der Willkommenschat konnte nicht erstellt werden. Versuche es erneut.",
+          "title": "Willkommenschat"
         }
       },
       "emailSubscription": {
@@ -5745,6 +6009,22 @@
     "cancel": "Abbrechen",
     "chooseFile": "Datei auswählen",
     "choosePrivateKeyFile": "Datei mit privatem Schlüssel auswählen",
+    "connectionStatus": {
+      "attention_one": "{{count}} SSH-Host benötigt Aufmerksamkeit",
+      "attention_other": "{{count}} SSH-Hosts benötigen Aufmerksamkeit",
+      "authenticationFailed": "SSH-Authentifizierung fehlgeschlagen. Prüfen Sie Benutzername, privaten Schlüssel und die Berechtigung auf dem Server. Bearbeiten Sie den Host oder ersetzen Sie die Zugangsdaten.",
+      "credentialResourceLimit": "Der private Schlüssel überschreitet die unterstützten Verarbeitungsgrenzen. Exportieren Sie ihn mit unterstützter Verschlüsselung erneut und ersetzen Sie die Zugangsdaten.",
+      "hostKeyMismatch": "Der Hostschlüssel des Servers stimmt nicht mit der gespeicherten Identität überein. Überprüfen Sie den Server unabhängig, bevor Sie den Hostschlüssel zurücksetzen.",
+      "invalidCredential": "Der private Schlüssel oder die Passphrase konnte nicht gelesen werden. Ersetzen Sie die Zugangsdaten durch den vollständigen Schlüssel und die korrekte Passphrase.",
+      "networkFailure": "Die letzte SSH-Verbindung ist fehlgeschlagen. Prüfen Sie Hostname, Port, Serververfügbarkeit und Firewall-Zugriff vom Runner.",
+      "observedAt": "Beobachtet: {{time}}",
+      "protocol": "Der SSH-Handshake ist fehlgeschlagen. Prüfen Sie, ob dieser Port SSH bereitstellt und der Server kompatible Algorithmen unterstützt.",
+      "timedOut": "Die letzte SSH-Verbindung hat vor Abschluss der Authentifizierung das Zeitlimit überschritten. Prüfen Sie Endpunkt, Firewall und Serververfügbarkeit.",
+      "unavailable": "SSH-Verbindungsstatus nicht verfügbar",
+      "unsafeDestination": "Dieser Host wird nicht in eine zulässige öffentliche Adresse aufgelöst. Verwenden Sie einen öffentlichen SSH-Endpunkt.",
+      "unsupportedCredential": "Das Format oder der Algorithmus des privaten Schlüssels wird nicht unterstützt. Ersetzen Sie ihn durch einen unterstützten OpenSSH-, PKCS8- oder RSA-PEM-Schlüssel.",
+      "unsupportedHostKey": "Der Hostschlüssel des Servers wird nicht unterstützt. Konfigurieren Sie auf dem Server einen unterstützten Ed25519-, ECDSA- oder RSA-Hostschlüssel."
+    },
     "credentialsHelp": "Zugangsdaten können nur geschrieben werden und bleiben außerhalb der Sandbox. Fügen Sie den vollständigen Schlüssel ein; Leerzeichen bleiben erhalten. Die Felder werden beim Absenden oder Schließen geleert.",
     "delete": "Host löschen",
     "deleteHelp": "Diesen Host und seine gespeicherten Zugangsdaten löschen? Agents sehen ihn dann nicht mehr im aktuellen Inventar.",
@@ -6513,6 +6793,7 @@
       "install": "Installieren",
       "installDescription": "Wähle einen Agenten und fülle alle erforderlichen Parameter aus. Alle enthaltenen Automatisierungen werden installiert.",
       "installed": "Offizieller Workflow installiert",
+      "installedStatus": "Installiert",
       "installErrorDescription": "Prüfe den Agenten und die Parameterwerte und versuche es erneut.",
       "installErrorTitle": "Offizieller Workflow konnte nicht installiert werden",
       "installTitle": "{{name}} installieren",

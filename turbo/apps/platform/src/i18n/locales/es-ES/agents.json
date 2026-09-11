@@ -61,11 +61,16 @@
     "success": "Agente eliminado",
     "title": "¿Eliminar {{agentName}}?",
     "workflows": {
+      "copiedTitle": "Ya copiados",
+      "copiedTo": "{{workflowTitle}} copiado a {{agentName}}",
       "copyTo": "Copiar a {{agentName}}",
       "deleteWithAgent": "Eliminar con el agente",
       "description": "Copia un flujo de trabajo a otro agente para conservarlo. Todo lo que quede se eliminará.",
       "handle": "Gestiona el flujo de trabajo {{workflowTitle}}",
-      "title": "¿Mantener algún flujo de trabajo?"
+      "loadFailed": "No se pudieron cargar los flujos de trabajo. Vuelve a intentarlo antes de eliminar este agente.",
+      "loading": "Cargando flujos de trabajo…",
+      "title": "¿Mantener algún flujo de trabajo?",
+      "untitled": "Flujo de trabajo"
     }
   },
   "detail": {
@@ -553,6 +558,7 @@
         "label": "Cómo suena"
       },
       "visibility": {
+        "defaultDescription": "El agente predeterminado del espacio de trabajo debe permanecer público para todos sus miembros.",
         "description": "Visible para todos en este espacio de trabajo.",
         "label": "Hacer público"
       }

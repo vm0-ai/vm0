@@ -490,6 +490,20 @@ impl IdlePool {
         self.parking_gate.clone()
     }
 
+    /// Detach only the currently pool-owned exact entries. Reservations and
+    /// blanks are not part of this one-shot operation; later parking stays open.
+    pub(crate) fn drain_exact(&mut self) -> Vec<IdleDestroyJob> {
+        let jobs: Vec<_> = self
+            .exact_entries
+            .drain()
+            .map(|(_, entry)| entry.into_destroy_job())
+            .collect();
+        if !jobs.is_empty() {
+            self.bump_revision();
+        }
+        jobs
+    }
+
     /// Drain all entries from the pool. Parking permission is controlled by
     /// [`ParkingGate`] so soft-drain resume can reopen parking before
     /// [`crate::lifecycle::RunnerMode::Running`] becomes visible.

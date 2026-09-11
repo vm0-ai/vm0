@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { sshConnectionObservationSchema } from "./ssh-connection-observations";
 
 const c = initContract();
 
@@ -104,6 +105,21 @@ export const sshConnectionsSummaryResponseSchema = z
   .strict();
 
 export const sshConnectionsContract = c.router({
+  observations: {
+    method: "GET",
+    path: "/api/ssh/connections/observations",
+    headers: authHeadersSchema,
+    responses: {
+      200: z
+        .object({ observations: z.array(sshConnectionObservationSchema) })
+        .strict(),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Read the owner's latest SSH connection observations",
+  },
   list: {
     method: "GET",
     path: "/api/ssh/connections",

@@ -6,7 +6,11 @@ import { authorization$, setResHeader$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { db$, writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
-import { pinRunnerSsh, resolveRunnerSsh } from "../services/runner-ssh.service";
+import {
+  pinRunnerSsh,
+  resolveRunnerSsh,
+  recordRunnerSshObservation,
+} from "../services/runner-ssh.service";
 
 const authorizeSshRunner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -75,7 +79,27 @@ const pinSsh$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: result };
 });
 
+const observeSsh$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const error = await set(authorizeSshRunner$, signal);
+  if (error) {
+    return error;
+  }
+  const body = await get(bodyResultOf(runnerSshContract.observe));
+  signal.throwIfAborted();
+  if (!body.ok) {
+    return body.response;
+  }
+  const { runId } = get(pathParamsOf(runnerSshContract.observe));
+  const result = await recordRunnerSshObservation(
+    set(writeDb$),
+    { runId, ...body.data },
+    signal,
+  );
+  return { status: 200 as const, body: result };
+});
+
 export const runnerSshRoutes: readonly RouteEntry[] = [
+  { route: runnerSshContract.observe, handler: observeSsh$ },
   { route: runnerSshContract.resolve, handler: resolveSsh$ },
   { route: runnerSshContract.pin, handler: pinSsh$ },
 ];

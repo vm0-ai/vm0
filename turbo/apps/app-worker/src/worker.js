@@ -36,6 +36,7 @@ const SECURITY_HEADERS = {
   "X-Frame-Options": "DENY",
 };
 const EMBEDDED_SHELL_CONTENT_TYPES = new Map([
+  ["/favicon.ico", "image/x-icon"],
   ["/index.html", "text/html; charset=UTF-8"],
   ["/sw.js", "application/javascript; charset=UTF-8"],
   ["/manifest.webmanifest", "application/manifest+json; charset=UTF-8"],
@@ -624,6 +625,8 @@ function gatewayResponse(status) {
 
 function embeddedShellAsset(pathname, embeddedShell) {
   switch (pathname) {
+    case "/favicon.ico":
+      return embeddedShell.favicon;
     case "/index.html":
       return embeddedShell.indexHtml;
     case "/sw.js":
@@ -664,9 +667,10 @@ function embeddedShellResponse(request, embeddedShell) {
     pathname === "/index.html" && typeof sourceBody === "string"
       ? previewAppAssetHtml(sourceBody, requestUrl)
       : sourceBody;
+  const isImage = exactContentType?.startsWith("image/") ?? false;
   if (
-    (pathname.startsWith("/icons/") && !(body instanceof ArrayBuffer)) ||
-    (!pathname.startsWith("/icons/") && typeof body !== "string")
+    (isImage && !(body instanceof ArrayBuffer)) ||
+    (!isImage && typeof body !== "string")
   ) {
     return gatewayResponse(503);
   }
@@ -770,7 +774,10 @@ function withAppHeaders(response, requestUrl) {
     headers.set("Service-Worker-Allowed", "/");
   } else if (requestUrl.pathname === "/robots.txt") {
     headers.set("Cache-Control", "public, max-age=3600, must-revalidate");
-  } else if (requestUrl.pathname.startsWith("/icons/")) {
+  } else if (
+    requestUrl.pathname === "/favicon.ico" ||
+    requestUrl.pathname.startsWith("/icons/")
+  ) {
     headers.set("Cache-Control", "public, max-age=3600, must-revalidate");
   }
   return new Response(response.body, {

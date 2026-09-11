@@ -117,22 +117,20 @@ credential is substituted only inside the API first-turn process or the
 Sandbox's protected runtime boundary.
 _Avoid_: API key header value, stored credential
 
-# Goal Automation Context
+# Retired Goal History Context
 
-This context defines the persistent goal lifecycle used by chat-triggered
-workflow automations.
+Okou's persistent Goal lifecycle was retired through S5 on 2026-09-10; see the
+[accepted archival record](docs/goal-retirement-archival.md). Retained events
+and archives describe historical objectives and status, with no scheduling or
+lifecycle authority. Ordinary chat and Workflow Automations remain separate.
 
 ## Language
 
-**Active thread goal**:
-A persistent autonomous objective whose current status is `active` for a chat
-thread.
+**Recorded Goal status**:
+The historical `active`, `paused`, `blocked`, or `complete` status preserved in
+an immutable retirement archive. Retirement did not mark unfinished objectives
+complete, and a recorded `active` status does not identify current work.
 _Avoid_: Active run, running automation
-
-**Goal stop**:
-The boundary where an active thread goal becomes `paused`, `blocked`, or
-`complete`.
-_Avoid_: Run finish, goal iteration finish
 
 # Billing Context
 

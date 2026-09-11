@@ -17,7 +17,6 @@ import { onboardingStatus$ } from "./okou-page/onboarding.ts";
 import { apiClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { retryTransientLoad } from "./utils.ts";
-import { rootSignal$ } from "./root-signal.ts";
 import { assistantName$ } from "./branding.ts";
 
 export const defaultAgentId$ = computed(async (get) => {
@@ -31,12 +30,9 @@ export function agentById(id: string): Computed<Promise<AgentResponse>> {
   return computed(async (get) => {
     get(internalAgentByIdReload$);
     const client = get(apiClient$)(agentsByIdContract);
-    const result = await retryTransientLoad((signal) => {
-      return accept(
-        client.get({ params: { id }, fetchOptions: { signal } }),
-        [200],
-      );
-    }, get(rootSignal$));
+    const result = await retryTransientLoad(() => {
+      return accept(client.get({ params: { id } }), [200]);
+    });
     return result.body;
   });
 }

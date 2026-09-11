@@ -1,5 +1,63 @@
 # Changelog
 
+## [9.323.9](https://github.com/vm0-ai/vm0/compare/cli-v9.323.8...cli-v9.323.9) (2026-09-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.426.1
+    * @okouai/core bumped to 8.651.2
+    * @okouai/pi-agent-runtime bumped to 1.24.14
+
+## [9.323.8](https://github.com/vm0-ai/vm0/compare/cli-v9.323.7...cli-v9.323.8) (2026-09-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.651.1
+
+## [9.323.7](https://github.com/vm0-ai/vm0/compare/cli-v9.323.6...cli-v9.323.7) (2026-09-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.651.0
+
+## [9.323.6](https://github.com/vm0-ai/vm0/compare/cli-v9.323.5...cli-v9.323.6) (2026-09-10)
+
+
+### Bug Fixes
+
+* **agent:** protect default okou identity and visibility ([#33266](https://github.com/vm0-ai/vm0/issues/33266)) ([58e76a8](https://github.com/vm0-ai/vm0/commit/58e76a815bcdaa297f8ac6086b50cd10c55316eb))
+* **pi-memory:** retain the cause of failed phase 2 maintenance sessions ([#33235](https://github.com/vm0-ai/vm0/issues/33235)) ([dfc4635](https://github.com/vm0-ai/vm0/commit/dfc4635d9597fefefd51c24875401d0be8f04992)), closes [#33066](https://github.com/vm0-ai/vm0/issues/33066)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.426.0
+    * @okouai/connectors bumped to 3.9.0
+    * @okouai/core bumped to 8.650.0
+    * @okouai/pi-agent-runtime bumped to 1.24.13
+
+## [9.323.5](https://github.com/vm0-ai/vm0/compare/cli-v9.323.4...cli-v9.323.5) (2026-09-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.425.0
+    * @okouai/core bumped to 8.649.0
+    * @okouai/pi-agent-runtime bumped to 1.24.12
+
 ## [9.323.4](https://github.com/vm0-ai/vm0/compare/cli-v9.323.3...cli-v9.323.4) (2026-09-09)
 
 

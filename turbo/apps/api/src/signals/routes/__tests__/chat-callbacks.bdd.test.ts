@@ -1494,8 +1494,6 @@ describe("CHAT-02: completed chat callback", () => {
     await chatCallbacks.registerPushSubscription(actor);
     chatCallbacks.enableVapid();
     const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
-    // Separate the eager title from the callback's three generations.
-    const beforeComplete = auxiliaryResults(context).length;
     chatCallbacks.mockChatOutputEvents([
       assistantEvent(0, "The main answer survives"),
     ]);
@@ -1520,31 +1518,32 @@ describe("CHAT-02: completed chat callback", () => {
     ).toContainEqual(
       expect.objectContaining({ body: "Your task is complete" }),
     );
-    const results = auxiliaryResults(context);
-    expect(results.slice(0, beforeComplete)).toStrictEqual([
-      expect.objectContaining({
-        feature: "chat_title",
-        outcome: "degraded",
-        reason: "rate_limited",
-      }),
-    ]);
+    // The eager title runs at send time; the callback owns the other three.
+    const rateLimited = auxiliaryResults(context).filter((event) => {
+      return event.feature !== "chat_initial_thinking";
+    });
     expect(
-      results
-        .slice(beforeComplete)
+      rateLimited
         .map(({ feature }) => {
           return feature;
         })
         .sort(),
     ).toStrictEqual([
+      "chat_title",
       "notification_summary",
       "recommended_followups",
       "run_summary",
     ]);
     expect(
-      results.every((event) => {
+      rateLimited.every((event) => {
         return event.outcome === "degraded" && event.reason === "rate_limited";
       }),
     ).toBeTruthy();
+    // Only the four are rejected, so the optional progress copy still proves
+    // the boundary reports a real success next to the degraded generations.
+    expect(auxiliaryResults(context, "chat_initial_thinking")).toStrictEqual([
+      expect.objectContaining({ outcome: "success", reason: "none" }),
+    ]);
     expect(context.mocks.axiomLogging.warn.mock.calls).toStrictEqual([]);
     expect(context.mocks.axiomLogging.error.mock.calls).toStrictEqual([]);
   });
@@ -1700,6 +1699,11 @@ describe("CHAT-02: completed chat callback", () => {
           return a.feature.localeCompare(b.feature);
         }),
     ).toStrictEqual([
+      {
+        feature: "chat_initial_thinking",
+        outcome: "success",
+        reason: "none",
+      },
       { feature: "chat_title", outcome: "success", reason: "none" },
       { feature: "notification_summary", outcome: "success", reason: "none" },
       { feature: "recommended_followups", outcome: "success", reason: "none" },
@@ -4417,6 +4421,8 @@ describe("CHAT-02: failed chat callbacks", () => {
       "Failed to authenticate. API Error: 401 Invalid authentication credentials";
     const revokedOAuthError =
       "Failed to authenticate. API Error: 401 OAuth access token has been revoked.";
+    const invalidOAuthError =
+      "Failed to authenticate. API Error: 401 OAuth access token is invalid.";
 
     async function failAndReadError(params: {
       readonly prompt: string;
@@ -4476,6 +4482,48 @@ describe("CHAT-02: failed chat callbacks", () => {
       }
       expect(marker.content).toBe(marker.error);
       expect(marker.error).not.toContain("Report this issue");
+      await expect(
+        api.readRun(fixture.actor, run.runId),
+      ).resolves.toMatchObject({
+        status: "failed",
+        error: params.errorMessage ?? upstreamAuthError,
+      });
+      if (params.failureReason === "reconnect_required") {
+        expect(marker.failureReason).toBe("reconnect_required");
+        expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ runId: run.runId }),
+        );
+        expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+        expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+        await misc.upsertPersonalModelProvider(
+          fixture.actor,
+          {
+            type: "claude-code-oauth-token",
+            secret: "sk-ant-oat-reconnected-bdd",
+          },
+          [200],
+        );
+        const retry = await startChatRun(fixture.actor, {
+          agentId: fixture.agentId,
+          threadId: run.threadId,
+          prompt: "retry after replacing the Claude OAuth token",
+          selectedModel: "claude-opus-4-8",
+        });
+        const retryHeaders = await claimChatRun(
+          fixture.runnerGroup,
+          retry.runId,
+        );
+        await completeChatRunOk(retry.runId, retryHeaders);
+        await expect(
+          api.readRun(fixture.actor, retry.runId),
+        ).resolves.toMatchObject({ status: "completed" });
+      } else if (params.failureReason === undefined) {
+        expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
+          "Run failed",
+          expect.objectContaining({ runId: run.runId }),
+        );
+      }
       return marker.error;
     }
 
@@ -4516,6 +4564,48 @@ describe("CHAT-02: failed chat callbacks", () => {
         selectedModel: "claude-sonnet-5",
       }),
     ).resolves.toBe("Oops, something went wrong. Please try again later.");
+    await expect(
+      failAndReadError({
+        prompt: "invalid subscription credential failed",
+        errorMessage: invalidOAuthError,
+        selectedModel: "claude-opus-4-8",
+        configureProvider: configureClaudeCodeSubscriptionProvider,
+      }),
+    ).resolves.toBe(
+      "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: https://app.okou.ai/?settings=model",
+    );
+    await expect(
+      failAndReadError({
+        prompt: "structured invalid subscription credential failed",
+        errorMessage: invalidOAuthError,
+        failureReason: "reconnect_required",
+        selectedModel: "claude-opus-4-8",
+        configureProvider: configureClaudeCodeSubscriptionProvider,
+      }),
+    ).resolves.toBe(
+      "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: https://app.okou.ai/?settings=model",
+    );
+    await expect(
+      failAndReadError({
+        prompt: "invalid OAuth text with an Anthropic API key",
+        errorMessage: invalidOAuthError,
+        selectedModel: "claude-sonnet-5",
+      }),
+    ).resolves.toBe("Oops, something went wrong. Please try again later.");
+    for (const errorMessage of [
+      "Failed to authenticate. API Error: 4010 OAuth access token is invalid.",
+      "Failed to authenticate. API Error: 401 OAuth access token is invalidated.",
+      "Failed to authenticate. API Error: 401 OAuth access token validation is invalid.",
+    ]) {
+      await expect(
+        failAndReadError({
+          prompt: "unclassified OAuth failure",
+          errorMessage,
+          selectedModel: "claude-opus-4-8",
+          configureProvider: configureClaudeCodeSubscriptionProvider,
+        }),
+      ).resolves.toBe("Oops, something went wrong. Please try again later.");
+    }
     await expect(
       failAndReadError({
         prompt: "legacy callback without public brand failed for admin",

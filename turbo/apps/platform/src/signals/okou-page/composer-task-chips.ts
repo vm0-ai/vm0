@@ -1,6 +1,10 @@
 import { command, computed, state } from "ccstate";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { featureSwitch$ } from "../external/feature-switch.ts";
+import {
+  createWorkflowRecommendationSignals,
+  type WorkflowRecommendationActions,
+} from "./composer-workflow-recommendations.ts";
 import type {
   ComposerCreateMode,
   ComposerCreateSignals,
@@ -9,21 +13,32 @@ import type {
 export type ComposerTask = ComposerCreateMode | "workflow" | "website";
 export type ComposerIdeaTask = Exclude<ComposerTask, "presentation">;
 
-export function createComposerTaskChipsSignals(create: ComposerCreateSignals) {
+export function createComposerTaskChipsSignals(
+  create: ComposerCreateSignals,
+  workflowActions: WorkflowRecommendationActions,
+) {
   const enabled$ = computed((get) => {
     return get(featureSwitch$)[FeatureSwitchKey.ComposerTaskChips];
   });
-  const internalGeneralTask$ = state<"workflow" | "website" | null>("workflow");
+  const internalGeneralTask$ = state<"workflow" | "website" | null>(null);
   const task$ = computed((get): ComposerTask | null => {
     if (!get(enabled$) || get(create.choosing$)) {
       return null;
     }
     return get(create.mode$) ?? get(internalGeneralTask$);
   });
+  const workflowVisible$ = computed((get) => {
+    return get(task$) === "workflow";
+  });
+  const workflows = createWorkflowRecommendationSignals(
+    workflowVisible$,
+    workflowActions,
+  );
   const selectTask$ = command(({ get, set }, task: ComposerTask | null) => {
     if (!get(enabled$)) {
       return;
     }
+    set(workflows.close$);
     const next = get(task$) === task ? null : task;
     set(
       internalGeneralTask$,
@@ -53,7 +68,14 @@ export function createComposerTaskChipsSignals(create: ComposerCreateSignals) {
       });
     },
   );
-  return { enabled$, task$, selectTask$, ideaPages$, nextIdeas$ };
+  return {
+    enabled$,
+    task$,
+    selectTask$,
+    ideaPages$,
+    nextIdeas$,
+    workflows,
+  };
 }
 
 export type ComposerTaskChipsSignals = ReturnType<

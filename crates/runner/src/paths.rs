@@ -229,6 +229,10 @@ impl HomePaths {
         self.root.join("live-runner-instances")
     }
 
+    pub(crate) fn runner_control_dir(&self) -> PathBuf {
+        self.root.join("control")
+    }
+
     pub fn live_runner_instance_record_path(&self, pid: u32, starttime: u64) -> PathBuf {
         self.live_runner_instances_dir()
             .join(format!("{pid}-{starttime}.json"))

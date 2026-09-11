@@ -312,7 +312,9 @@ test("Only exact trusted public links receive rich attachment previews", async (
   ).toBeFalsy();
 });
 
-test("Persisted chat attachments open in the appropriate preview", async () => {
+async function setupPersistedAttachmentMessage(): Promise<{
+  readonly markdownShareUrl: string;
+}> {
   const specifications = [
     ["private-audio", "voice.mp3", "audio/mpeg"],
     ["private-video", "demo.mp4", "video/mp4"],
@@ -373,19 +375,26 @@ test("Persisted chat attachments open in the appropriate preview", async () => {
       return HttpResponse.html("<main>Quarterly presentation</main>");
     },
   );
-  const clipboard = context.mocks.browser.clipboardWriteText();
-  const downloads = context.mocks.browser.blobDownload();
-
   await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
 
   await expect(
     screen.findByText("Files from the completed review"),
   ).resolves.toBeVisible();
+  return { markdownShareUrl };
+}
+
+test("Persisted audio attachments open from their private URL", async () => {
+  await setupPersistedAttachmentMessage();
+
   click(await findNamedButton("Open audio preview for voice.mp3"));
   await expect(
     screen.findByLabelText("Audio preview for voice.mp3"),
   ).resolves.toHaveAttribute("src", "https://private-files.example/voice.mp3");
   await closeFocusedPreview();
+});
+
+test("Persisted video attachments open in the video sidebar", async () => {
+  await setupPersistedAttachmentMessage();
 
   click(getNamedButton("Preview demo.mp4"));
   await expect(
@@ -396,14 +405,30 @@ test("Persisted chat attachments open in the appropriate preview", async () => {
     screen.findByTestId("artifact-sidebar-body-video"),
   ).resolves.toBeVisible();
   click(getNamedButton("Close artifact"));
+  await waitFor(() => {
+    expect(screen.queryByTestId("artifact-sidebar-body-video")).toBeNull();
+  });
+});
+
+test("Persisted JSON attachments render their contents", async () => {
+  await setupPersistedAttachmentMessage();
 
   click(getNamedButton("Open json preview for payload.json"));
   await expect(screen.findByText(/"status": "ready"/u)).resolves.toBeVisible();
   await closeFocusedPreview();
+});
+
+test("Persisted CSV attachments render their rows and values", async () => {
+  await setupPersistedAttachmentMessage();
+
   click(getNamedButton("Open csv preview for metrics.csv"));
   await expect(screen.findByText("latency")).resolves.toBeVisible();
   expect(screen.getByText("42")).toBeVisible();
   await closeFocusedPreview();
+});
+
+test("Persisted PDF attachments use the document sidebar", async () => {
+  await setupPersistedAttachmentMessage();
 
   click(getNamedButton("Open pdf preview for brief.pdf"));
   click(await findNamedButton("Open in split view"));
@@ -412,6 +437,14 @@ test("Persisted chat attachments open in the appropriate preview", async () => {
   ).resolves.toBeVisible();
   expect(screen.queryByTestId("presentation-artifact-viewport")).toBeNull();
   click(getNamedButton("Close artifact"));
+  await waitFor(() => {
+    expect(screen.queryByTestId("artifact-sidebar-body-pdf")).toBeNull();
+  });
+});
+
+test("Persisted HTML attachments use the document sidebar", async () => {
+  await setupPersistedAttachmentMessage();
+
   click(getNamedButton("Open html preview for prototype.html"));
   click(await findNamedButton("Open in split view"));
   await expect(
@@ -419,6 +452,14 @@ test("Persisted chat attachments open in the appropriate preview", async () => {
   ).resolves.toBeVisible();
   expect(screen.queryByTestId("presentation-artifact-viewport")).toBeNull();
   click(getNamedButton("Close artifact"));
+  await waitFor(() => {
+    expect(screen.queryByTestId("artifact-sidebar-body-html")).toBeNull();
+  });
+});
+
+test("Persisted Markdown attachments render and share their public URL", async () => {
+  const clipboard = context.mocks.browser.clipboardWriteText();
+  const { markdownShareUrl } = await setupPersistedAttachmentMessage();
 
   click(getNamedButton("Open markdown preview for notes.md"));
   await expect(screen.findByText("Review notes")).resolves.toBeVisible();
@@ -427,9 +468,19 @@ test("Persisted chat attachments open in the appropriate preview", async () => {
     expect(clipboard.writes).toContain(markdownShareUrl);
   });
   await closeFocusedPreview();
+});
+
+test("Persisted text attachments render their contents", async () => {
+  await setupPersistedAttachmentMessage();
+
   click(getNamedButton("Open text preview for summary.txt"));
   await expect(screen.findByText("Plain text summary")).resolves.toBeVisible();
   await closeFocusedPreview();
+});
+
+test("Persisted HTML presentations open and download as presentations", async () => {
+  const downloads = context.mocks.browser.blobDownload();
+  await setupPersistedAttachmentMessage();
 
   click(getNamedButton("Open html preview for quarterly-deck.html"));
   await expect(

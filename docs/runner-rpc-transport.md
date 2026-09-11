@@ -4,7 +4,9 @@ The transport delivered by #32012 is infrastructure under #31932. Its first
 consumer is the [Runner SSH dispatcher](runner-ssh-execution.md), installed by
 #32387 for official API-backed Runs. The generic transport itself has no API
 calls or business validators. Local/mock sandbox providers expose no capability.
-SSH remains disabled until the Agent/UI and activation slices are complete.
+The [SSH CLI and owner/Agent UI](ssh-access.md) are delivered. SSH availability
+uses the existing staff-default `sshAccess` switch and current API authority;
+the transport itself does not grant SSH access.
 
 ## Guest boundary
 
@@ -166,15 +168,15 @@ ship together. The old SSH-specific helper was unmerged/unexposed when renamed,
 so there is no compatibility alias. API and control-channel contracts are
 unchanged.
 
-Before activation in #32015, verify complete eligible Runner/rootfs convergence
-and compatible API, UI and selected commit-addressed CLI artifacts. Add no
-negotiation header, fallback routing, plugin registry, batching or pooling.
-See [deployment compatibility](deployment-compatibility.md).
+The staff-default SSH rollout changes no transport or CLI contract. Runner/rootfs,
+API, UI and selected commit-addressed CLI artifacts retain their independent
+deployment boundaries. Add no negotiation header, fallback routing, plugin
+registry, batching or pooling. See [deployment compatibility](deployment-compatibility.md).
 
 Local tests use real sockets, files, the real control handshake and operation
 tracker, plus unrelated external test methods. They require no web server.
-Actual fresh/restored KVM boot and packaged-helper execution remain separate
-metal-host CI/E2E checks before activation.
+Actual fresh/restored KVM boot and packaged-helper execution have separate
+metal-host CI coverage.
 
 The `guest-rpc-firecracker-test` CI job runs the native `guest_rpc` integration
 test against the matching runner-build rootfs and snapshot. It covers a generic
@@ -187,6 +189,8 @@ and one execution even when more request frames arrive.
 For #32804, Runner and bundled helper remain one artifact; guest binary bytes
 participate in rootfs identity and the snapshot identity includes that rootfs.
 There is no cross-version helper negotiation, fallback or replay. CLI stdin/stdout
-and API contracts are unchanged. Keep #32014's owner-authorized packaged CLI/SSH,
-TOFU, live inventory, revoke/invalidation and non-chat acceptance outstanding until
-actually exercised; generic native success alone does not enable #32015.
+and API contracts are unchanged. PR #32722 records owner-authorized two-host SSH,
+TOFU, live inventory, delivered revoke/invalidation and non-chat acceptance
+through the snapshot restore/reuse path. These results are distinct from generic
+native transport coverage and retain their recorded artifact identities. No
+separate cold-boot business SSH path is required.

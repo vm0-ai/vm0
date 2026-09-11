@@ -9,7 +9,6 @@ import type {
 } from "./bridge.ts";
 import type { ComputedKey } from "./computed-key.ts";
 import type {
-  SharedDatabaseConnectionStatus,
   SharedDatabaseWorkerUnavailableReason,
   SharedDatabaseWorkerMessage,
 } from "./protocol.ts";
@@ -35,14 +34,12 @@ type WorkerConnectionMessage = Extract<
   {
     readonly type:
       | "realtime-event"
+      | "realtime-resync"
       | "realtime-subscribed"
       | "realtime-subscription-error";
   }
 >;
 
-const lastConnectionStatusState$ = state<SharedDatabaseConnectionStatus | null>(
-  null,
-);
 const connectionControllersState$ = state<
   ReadonlyMap<ConnectionId, AbortController>
 >(new Map());
@@ -142,12 +139,6 @@ export const registerConnection$ = command(
       },
       { once: true },
     );
-    // The Worker owns the realtime connection and boots without waiting for a
-    // tab, so a tab that registers later has to be told the status it missed.
-    const status = get(lastConnectionStatusState$);
-    if (status) {
-      connection.port.postMessage({ type: "status", status });
-    }
     return signal;
   },
 );
@@ -234,12 +225,5 @@ export const reportWorkerUnavailableForConnections$ = command(
       type: "worker-unavailable",
       reason,
     });
-  },
-);
-
-export const updateRealtimeStatusForConnections$ = command(
-  ({ set }, status: SharedDatabaseConnectionStatus): void => {
-    set(lastConnectionStatusState$, status);
-    set(broadcastSharedDatabaseWorkerMessage$, { type: "status", status });
   },
 );

@@ -34,7 +34,6 @@ describe("agentRuns circular foreign keys", () => {
     const { chatThreads } = await import("../schema/chat-thread");
     const { orgMembersMetadata } =
       await import("../schema/org-members-metadata");
-    const { threadGoals } = await import("../schema/thread-goal");
     const { workflowAutomations } = await import("../schema/workflow");
 
     const { agentRuns: runtimeAgentRuns } =
@@ -79,15 +78,6 @@ describe("agentRuns circular foreign keys", () => {
     expect(workflowAutomation.reference.foreignColumns).toEqual([
       workflowAutomations.id,
     ]);
-
-    const goal = foreignKeyReference(agentRuns, "goal_id");
-    expect(goal.foreignKey.getName()).toBe(
-      "agent_runs_goal_id_thread_goals_id_fk",
-    );
-    expect(goal.foreignKey.onDelete).toBe("set null");
-    expect(goal.reference.columns).toEqual([agentRuns.goalId]);
-    expect(goal.reference.foreignTable).toBe(threadGoals);
-    expect(goal.reference.foreignColumns).toEqual([threadGoals.id]);
 
     const agentRunConfig = getTableConfig(agentRuns);
     expect(agentRuns.triggerSource.notNull).toBe(false);
@@ -138,7 +128,6 @@ describe("agentRuns circular foreign keys", () => {
       "trigger_source",
       "autonomy_budget",
       "workflow_automation_id",
-      "goal_id",
       "model_provider",
       "model_provider_id",
       "model_provider_credential_scope",
@@ -158,7 +147,7 @@ describe("agentRuns circular foreign keys", () => {
     for (const column of metadataColumns) {
       expect(metadataPresenceSql).toContain(`"agent_runs"."${column}" IS NULL`);
     }
-    expect(metadataPresenceSql.match(/ IS NULL/gu)).toHaveLength(19);
+    expect(metadataPresenceSql.match(/ IS NULL/gu)).toHaveLength(18);
     expect(metadataPresenceSql.match(/ IS NOT NULL/gu)).toHaveLength(2);
     expect(metadataPresenceSql).toContain(
       '"agent_runs"."trigger_source" IS NOT NULL',

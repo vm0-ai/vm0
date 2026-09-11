@@ -2,9 +2,34 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
-const [workerPath, indexPath, manifestPath] = process.argv.slice(2);
-if (!workerPath || !indexPath || !manifestPath) {
-  throw new Error("worker, index, and manifest paths are required");
+const [workerPath, indexPath, manifestPath, faviconPath] =
+  process.argv.slice(2);
+if (!workerPath || !indexPath || !manifestPath || !faviconPath) {
+  throw new Error("worker, index, manifest, and favicon paths are required");
+}
+
+function faviconEntries(favicon) {
+  assert.equal(favicon.readUInt16LE(0), 0);
+  assert.equal(favicon.readUInt16LE(2), 1);
+  const count = favicon.readUInt16LE(4);
+  const entries = [];
+  for (let index = 0; index < count; index += 1) {
+    const entryOffset = 6 + index * 16;
+    const dataLength = favicon.readUInt32LE(entryOffset + 8);
+    const dataOffset = favicon.readUInt32LE(entryOffset + 12);
+    assert.ok(dataOffset >= 6 + count * 16);
+    assert.ok(dataOffset + dataLength <= favicon.length);
+    assert.equal(
+      favicon.subarray(dataOffset, dataOffset + 8).toString("hex"),
+      "89504e470d0a1a0a",
+    );
+    entries.push({
+      bitDepth: favicon.readUInt16LE(entryOffset + 6),
+      height: favicon[entryOffset + 1] || 256,
+      width: favicon[entryOffset] || 256,
+    });
+  }
+  return entries;
 }
 
 function parseAttributes(tag) {
@@ -253,10 +278,18 @@ globalThis.HTMLRewriter = class HTMLRewriter {
   }
 };
 
-const [indexTemplate, manifestTemplate, workerModule] = await Promise.all([
-  readFile(indexPath, "utf8"),
-  readFile(manifestPath, "utf8"),
-  import(pathToFileURL(workerPath).href),
+const [indexTemplate, manifestTemplate, favicon, workerModule] =
+  await Promise.all([
+    readFile(indexPath, "utf8"),
+    readFile(manifestPath, "utf8"),
+    readFile(faviconPath),
+    import(pathToFileURL(workerPath).href),
+  ]);
+assert.deepEqual(faviconEntries(favicon), [
+  { bitDepth: 32, height: 16, width: 16 },
+  { bitDepth: 32, height: 32, width: 32 },
+  { bitDepth: 32, height: 48, width: 48 },
+  { bitDepth: 32, height: 256, width: 256 },
 ]);
 const sharedThreadId = "10000000-0000-4000-8000-000000000001";
 const previewOrigin = "https://pr-25304-api.vm6.ai";
@@ -296,6 +329,10 @@ const embeddedIndexTemplate = builtIndexTemplate
     '<script type="module" src="https://static.okou.io/okou-app/assets/index-Test1234.js"></script>\n</body>',
   );
 const embeddedShell = {
+  favicon: favicon.buffer.slice(
+    favicon.byteOffset,
+    favicon.byteOffset + favicon.byteLength,
+  ),
   icon192: new TextEncoder().encode("icon-192").buffer,
   icon512: new TextEncoder().encode("icon-512").buffer,
   icon512Maskable: new TextEncoder().encode("icon-maskable").buffer,
@@ -1184,6 +1221,18 @@ const embeddedIcon = await embeddedWorker.fetch(
 );
 assert.equal(embeddedIcon.headers.get("content-type"), "image/png");
 assert.equal(await embeddedIcon.text(), "icon-192");
+
+const embeddedFavicon = await embeddedWorker.fetch(
+  new Request("https://app.okou.ai/favicon.ico"),
+  {},
+);
+assert.equal(embeddedFavicon.status, 200);
+assert.equal(embeddedFavicon.headers.get("content-type"), "image/x-icon");
+assert.equal(
+  embeddedFavicon.headers.get("cache-control"),
+  "public, max-age=3600, must-revalidate",
+);
+assert.deepEqual(Buffer.from(await embeddedFavicon.arrayBuffer()), favicon);
 
 const manifestResponse = await worker.fetch(
   new Request("https://app.okou.ai/manifest.webmanifest"),

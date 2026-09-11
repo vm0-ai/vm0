@@ -5,7 +5,6 @@ import type {
 } from "./data-key.ts";
 import type { ComputedKey, ComputedValue } from "./computed-key.ts";
 import type {
-  SharedDatabaseConnectionStatus,
   SharedDatabaseRealtimeMessage,
   SharedDatabaseRealtimeScope,
   SharedDatabaseWorkerUnavailableReason,
@@ -18,6 +17,7 @@ export interface SharedDatabaseBridge {
     scope: SharedDatabaseRealtimeScope,
     topic: string,
     listener: (message: SharedDatabaseRealtimeMessage) => void,
+    onResync: () => void,
   ): Promise<void>;
   unsubscribeRealtime(subscriptionId: string): void;
   getComputed<TKey extends ComputedKey>(
@@ -42,7 +42,6 @@ export interface SharedDatabaseBridgeEvents {
   ) => void;
   readonly computedReloaded: (computedKey: ComputedKey) => void;
   readonly chatThreadReadCursorUpdated: (payload: unknown) => void;
-  readonly statusChanged: (status: SharedDatabaseConnectionStatus) => void;
 }
 
 export interface SharedDatabasePortLike {

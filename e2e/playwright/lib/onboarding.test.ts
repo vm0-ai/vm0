@@ -48,12 +48,16 @@ test(
           );
           return;
         }
+        if (url.pathname === "/api/billing/usage-pack-checkout") {
+          response.writeHead(200).end("{}");
+          return;
+        }
         if (url.pathname === "/onboarding/video-run") {
           sendHtml(
             response,
             [
               "<h1>Customize your video</h1>",
-              "<button onclick=\"location.href='https://checkout.stripe.com/test-session'\">Upgrade Pro to run</button>",
+              "<button onclick=\"fetch('/api/billing/usage-pack-checkout', {method: 'POST'}).then(() => location.href='https://checkout.stripe.com/test-session')\">Upgrade Pro to run</button>",
             ].join(""),
           );
           return;
@@ -67,7 +71,10 @@ test(
             route.fulfill({ contentType: "text/html", body: "Checkout" }),
           );
 
-          await startVideoOnboardingCheckout(page, { appUrl: fixture.origin });
+          await startVideoOnboardingCheckout(page, {
+            appUrl: fixture.origin,
+            apiUrl: fixture.origin,
+          });
 
           assert.equal(videoTemplateRequests, 2);
           assert.equal(
@@ -110,7 +117,10 @@ test(
         const page = await browser.newPage();
         try {
           await assert.rejects(
-            startVideoOnboardingCheckout(page, { appUrl: fixture.origin }),
+            startVideoOnboardingCheckout(page, {
+              appUrl: fixture.origin,
+              apiUrl: fixture.origin,
+            }),
             /bootstrapSkeleton=removed/u,
           );
           assert.equal(videoTemplateRequests, 1);
@@ -122,6 +132,46 @@ test(
       }
     } finally {
       await browser.close();
+    }
+  },
+);
+
+test(
+  "video onboarding surfaces a failed checkout response without waiting for a Stripe redirect",
+  { timeout: 30_000 },
+  async () => {
+    let checkoutRequests = 0;
+    const fixture = await listen((request, response) => {
+      const url = new URL(request.url ?? "/", "http://fixture.invalid");
+      if (url.pathname === "/api/billing/usage-pack-checkout") {
+        checkoutRequests += 1;
+        response.writeHead(503, { "retry-after": "10" }).end("unavailable");
+        return;
+      }
+      const pages: Record<string, string> = {
+        "/onboarding": "<h1>What do you want to make first</h1>",
+        "/onboarding/video-template":
+          "<h1>Pick a video template to start from</h1><button aria-pressed=\"false\" onclick=\"this.setAttribute('aria-pressed', 'true')\">Video template</button><button onclick=\"location.href='/onboarding/video-run'\">Continue</button>",
+        "/onboarding/video-run":
+          "<h1>Customize your video</h1><button onclick=\"fetch('/api/billing/usage-pack-checkout', {method: 'POST', headers: {'x-client-request-id': 'checkout-fixture'}})\">Upgrade Pro to run</button>",
+      };
+      sendHtml(response, pages[url.pathname] ?? "Not found");
+    });
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      await assert.rejects(
+        startVideoOnboardingCheckout(page, {
+          appUrl: fixture.origin,
+          apiUrl: fixture.origin,
+        }),
+        /HTTP 503; request_id=checkout-fixture; retry_after=10/,
+      );
+      assert.equal(checkoutRequests, 1);
+      assert.equal(new URL(page.url()).pathname, "/onboarding/video-run");
+    } finally {
+      await browser.close();
+      await close(fixture.server);
     }
   },
 );

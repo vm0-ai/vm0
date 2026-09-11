@@ -9,6 +9,8 @@ export function findWorkflowQueryMatches(
   const matches: {
     workflow: ComposerSlashWorkflowMatch;
     rank: number;
+    skippedCharacters: number;
+    start: number;
   }[] = [];
 
   for (const workflow of workflows) {
@@ -22,23 +24,35 @@ export function findWorkflowQueryMatches(
         },
         rank:
           fuzzy && normalizedName === normalizedQuery ? 0 : start === 0 ? 1 : 2,
+        skippedCharacters: 0,
+        start,
       });
       continue;
     }
     if (fuzzy && normalizedQuery.length >= 3) {
-      const matchRanges = findWorkflowSubsequence(
-        normalizedName,
-        normalizedQuery,
-      );
-      if (matchRanges) {
-        matches.push({ workflow: { ...workflow, matchRanges }, rank: 3 });
+      const match = findWorkflowSubsequence(normalizedName, normalizedQuery);
+      if (match) {
+        matches.push({
+          workflow: { ...workflow, matchRanges: match.ranges },
+          rank: 3,
+          skippedCharacters: match.skippedCharacters,
+          start: match.start,
+        });
       }
     }
   }
 
   return matches
     .sort((left, right) => {
-      return left.rank - right.rank;
+      if (left.rank !== 3 || right.rank !== 3) {
+        return left.rank - right.rank;
+      }
+      // Prefer compact abbreviations, then earlier matches and shorter names.
+      return (
+        left.skippedCharacters - right.skippedCharacters ||
+        left.start - right.start ||
+        left.workflow.name.length - right.workflow.name.length
+      );
     })
     .map((match) => {
       return match.workflow;
@@ -48,15 +62,26 @@ export function findWorkflowQueryMatches(
 function findWorkflowSubsequence(
   name: string,
   query: string,
-): readonly WorkflowMatchRange[] | null {
+): {
+  readonly ranges: readonly WorkflowMatchRange[];
+  readonly skippedCharacters: number;
+  readonly start: number;
+} | null {
   const ranges: WorkflowMatchRange[] = [];
   let offset = 0;
+  let skippedCharacters = 0;
+  let matchStart = 0;
 
   // Keep numeric identifiers contiguous while allowing letters to skip ahead.
   for (const [part] of query.matchAll(/\d+|\D/g)) {
     const start = name.indexOf(part, offset);
     if (start === -1) {
       return null;
+    }
+    if (ranges.length === 0) {
+      matchStart = start;
+    } else {
+      skippedCharacters += start - offset;
     }
     offset = start + part.length;
     const previous = ranges.at(-1);
@@ -67,7 +92,7 @@ function findWorkflowSubsequence(
     }
   }
 
-  return ranges;
+  return { ranges, skippedCharacters, start: matchStart };
 }
 
 export interface SlashWorkflowRange {

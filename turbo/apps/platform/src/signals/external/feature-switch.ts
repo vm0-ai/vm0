@@ -74,6 +74,7 @@ function isSameFeatureSwitchIdentity(
 
 // Pinned to the API backend: feature switches bootstrap before the platform API
 // client is available.
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const apiFeatureSwitchClient$ = computed((get) => {
   const apiBaseUrl = resolveApiBaseForTarget("api");
   const clerkPromise = get(clerk$);
@@ -113,6 +114,7 @@ export const featureSwitch$ = computed((get) => {
   return get(featureSwitchState$);
 });
 
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const initialFeatureSwitchHydrationDeferred$ = computed((get) => {
   return createDeferredPromise<void>(get(rootSignal$));
 });

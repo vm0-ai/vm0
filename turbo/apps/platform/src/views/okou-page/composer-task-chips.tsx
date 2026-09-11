@@ -11,14 +11,12 @@ import {
   MessageSquare,
   Presentation,
   RefreshCw,
-  Search,
   Sparkles,
   UserRound,
   Video,
   Workflow,
 } from "lucide-react";
 import { Button } from "@okouai/ui";
-import { cn } from "@okouai/ui/lib/utils";
 import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
 import type {
   ComposerIdeaTask,
@@ -27,6 +25,7 @@ import type {
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ComposerPresentationRecommendations } from "./chat-composer.tsx";
+import { ComposerWorkflowRecommendations } from "./composer-workflow-recommendations.tsx";
 
 const TASK_ICONS = {
   workflow: Workflow,
@@ -43,16 +42,6 @@ const IDEA_ICONS = {
     Sparkles,
     FileText,
     ChartNoAxesCombined,
-  ],
-  workflow: [
-    Mail,
-    Search,
-    FileText,
-    ChartNoAxesCombined,
-    CalendarDays,
-    FileText,
-    MessageSquare,
-    FileText,
   ],
   video: [
     Image,
@@ -75,7 +64,7 @@ const IDEA_ICONS = {
     CalendarDays,
   ],
 } as const;
-const IDEAS_PER_PAGE = { image: 6, workflow: 4, video: 4, website: 4 } as const;
+const IDEAS_PER_PAGE = 4;
 const IMAGE_IDEAS = [
   "productScene",
   "headshot",
@@ -95,16 +84,6 @@ const IMAGE_IDEAS = [
   "finishedSketch",
   "greetingCard",
   "brandCharacter",
-] as const;
-const WORKFLOW_IDEAS = [
-  "emailBrief",
-  "topicUpdates",
-  "progressRecap",
-  "numbersBrief",
-  "meetingPrep",
-  "meetingActions",
-  "replyWatch",
-  "fileOrganization",
 ] as const;
 const VIDEO_IDEAS = [
   "animatePhoto",
@@ -134,7 +113,7 @@ function ComposerTaskIdeas({
   task,
 }: {
   readonly signals: ComposerSignals;
-  readonly task: ComposerIdeaTask;
+  readonly task: Exclude<ComposerIdeaTask, "workflow">;
 }) {
   const { t } = useTranslation();
   const copy = t(
@@ -147,9 +126,6 @@ function ComposerTaskIdeas({
     image: IMAGE_IDEAS.map((key) => {
       return copy.image[key];
     }),
-    workflow: WORKFLOW_IDEAS.map((key) => {
-      return copy.workflow[key];
-    }),
     video: VIDEO_IDEAS.map((key) => {
       return copy.video[key];
     }),
@@ -157,7 +133,6 @@ function ComposerTaskIdeas({
       return copy.website[key];
     }),
   }[task];
-  const ideasPerPage = IDEAS_PER_PAGE[task];
   const page = useGet(signals.taskChips.ideaPages$)[task];
   const nextIdeas = useSet(signals.taskChips.nextIdeas$);
   const insertPrompt = useSet(signals.editor.selectOrAppendText$);
@@ -165,16 +140,66 @@ function ComposerTaskIdeas({
   const pageSignal = useGet(pageSignal$);
   const openTemplates = useSet(signals.template.openTemplatePicker$);
   const icons = IDEA_ICONS[task];
+  const pageIdeas = Array.from({ length: IDEAS_PER_PAGE }, (_, index) => {
+    return ideas[(page * IDEAS_PER_PAGE + index) % ideas.length]!;
+  });
   return (
     <div
-      className="flex flex-col gap-2"
+      className="grid min-w-0 grid-cols-1 gap-x-6 gap-y-2 sm:grid-cols-[minmax(0,1fr)_auto]"
       role="group"
       aria-label={t(($) => {
         return $.chat.taskChips.ideasLabel;
       })}
     >
-      {task === "website" && (
-        <div className="flex justify-end">
+      <div className="grid min-w-0 grid-cols-1 gap-1">
+        {pageIdeas.map((idea, index) => {
+          const ideaIndex = (page * IDEAS_PER_PAGE + index) % ideas.length;
+          const Icon = icons[ideaIndex % icons.length]!;
+          return (
+            <Button
+              key={idea.label}
+              type="button"
+              variant="quiet"
+              size="sm"
+              className="group h-auto min-h-11 min-w-0 justify-start gap-3 px-3 py-2 text-left font-normal hover:bg-gray-50"
+              onClick={() => {
+                insertPrompt(idea.prompt);
+                detach(saveDraft(pageSignal), Reason.DomCallback);
+              }}
+            >
+              <Icon
+                size={16}
+                className="shrink-0 text-muted-foreground"
+                aria-hidden
+              />
+              <span className="min-w-0 flex-1 whitespace-normal text-[13px] leading-5">
+                {idea.label}
+              </span>
+              <ArrowUpRight
+                size={14}
+                className="shrink-0 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
+                aria-hidden
+              />
+            </Button>
+          );
+        })}
+      </div>
+      <div className="flex flex-col items-end gap-1 sm:pt-2">
+        <Button
+          type="button"
+          variant="quiet"
+          size="xs"
+          className="gap-2 font-normal hover:bg-gray-50"
+          onClick={() => {
+            nextIdeas(task, Math.ceil(ideas.length / IDEAS_PER_PAGE));
+          }}
+        >
+          <RefreshCw size={14} aria-hidden />
+          {t(($) => {
+            return $.chat.taskChips.moreIdeas;
+          })}
+        </Button>
+        {task === "website" && (
           <Button
             type="button"
             variant="quiet"
@@ -188,57 +213,7 @@ function ComposerTaskIdeas({
               return $.chat.taskChips.moreTemplates;
             })}
           </Button>
-        </div>
-      )}
-      <div className="grid min-w-0 grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2">
-        {ideas
-          .slice(page * ideasPerPage, (page + 1) * ideasPerPage)
-          .map((idea, index) => {
-            const Icon = icons[(page * ideasPerPage + index) % icons.length]!;
-            return (
-              <Button
-                key={idea.label}
-                type="button"
-                variant="quiet"
-                size="sm"
-                className="group h-auto min-h-9 min-w-0 justify-start gap-3 px-3 py-2 text-left font-normal hover:bg-gray-50"
-                onClick={() => {
-                  insertPrompt(idea.prompt);
-                  detach(saveDraft(pageSignal), Reason.DomCallback);
-                }}
-              >
-                <Icon
-                  size={16}
-                  className="shrink-0 text-muted-foreground"
-                  aria-hidden
-                />
-                <span className="min-w-0 flex-1 whitespace-normal text-[13px] leading-5">
-                  {idea.label}
-                </span>
-                <ArrowUpRight
-                  size={14}
-                  className="shrink-0 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"
-                  aria-hidden
-                />
-              </Button>
-            );
-          })}
-      </div>
-      <div className="flex justify-end">
-        <Button
-          type="button"
-          variant="quiet"
-          size="xs"
-          className="gap-2 font-normal hover:bg-gray-50"
-          onClick={() => {
-            nextIdeas(task, Math.ceil(ideas.length / ideasPerPage));
-          }}
-        >
-          <RefreshCw size={14} aria-hidden />
-          {t(($) => {
-            return $.chat.taskChips.moreIdeas;
-          })}
-        </Button>
+        )}
       </div>
     </div>
   );
@@ -272,51 +247,53 @@ export function ComposerTaskChips({
         return $.chat.taskChips.label;
       })}
     >
-      <div
-        className="flex flex-wrap items-center gap-1.5"
-        role="group"
-        aria-label={t(($) => {
-          return $.chat.taskChips.chooseTask;
-        })}
-      >
-        {tasks
-          .filter((task) => {
-            return (
-              task === "workflow" ||
-              task === "website" ||
-              signals.create.modes.includes(task)
-            );
-          })
-          .map((task) => {
-            const Icon = TASK_ICONS[task];
-            return (
-              <Button
-                key={task}
-                type="button"
-                size="sm"
-                variant="quiet"
-                aria-pressed={selected === task}
-                className={cn(
-                  CHIP_CLASS,
-                  selected === task &&
-                    "border-border bg-gray-50 text-foreground",
-                )}
-                onClick={() => {
-                  selectTask(task);
-                }}
-              >
-                <Icon size={16} aria-hidden />
-                {labels[task]}
-              </Button>
-            );
+      {selected === null && (
+        <div
+          className="flex flex-wrap items-center justify-start gap-1.5"
+          role="group"
+          aria-label={t(($) => {
+            return $.chat.taskChips.chooseTask;
           })}
-      </div>
+        >
+          {tasks
+            .filter((task) => {
+              return (
+                task === "workflow" ||
+                task === "website" ||
+                signals.create.modes.includes(task)
+              );
+            })
+            .map((task) => {
+              const Icon = TASK_ICONS[task];
+              return (
+                <Button
+                  key={task}
+                  type="button"
+                  size="sm"
+                  variant="quiet"
+                  className={CHIP_CLASS}
+                  onClick={() => {
+                    selectTask(task);
+                  }}
+                >
+                  <Icon size={16} aria-hidden />
+                  {labels[task]}
+                </Button>
+              );
+            })}
+        </div>
+      )}
       {selected === "presentation" && (
         <ComposerPresentationRecommendations signals={signals} />
       )}
-      {selected !== null && selected !== "presentation" && (
-        <ComposerTaskIdeas signals={signals} task={selected} />
+      {selected === "workflow" && (
+        <ComposerWorkflowRecommendations signals={signals} />
       )}
+      {selected !== null &&
+        selected !== "presentation" &&
+        selected !== "workflow" && (
+          <ComposerTaskIdeas signals={signals} task={selected} />
+        )}
     </section>
   );
 }

@@ -1,5 +1,73 @@
 # Changelog
 
+## [8.651.2](https://github.com/vm0-ai/vm0/compare/core-v8.651.1...core-v8.651.2) (2026-09-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.426.1
+
+## [8.651.1](https://github.com/vm0-ai/vm0/compare/core-v8.651.0...core-v8.651.1) (2026-09-10)
+
+
+### Refactoring
+
+* remove final obsolete goal source references ([#33336](https://github.com/vm0-ai/vm0/issues/33336)) ([8ae8492](https://github.com/vm0-ai/vm0/commit/8ae84922a0556340df38b0be2197f55614c0c4f4))
+
+## [8.651.0](https://github.com/vm0-ai/vm0/compare/core-v8.650.0...core-v8.651.0) (2026-09-10)
+
+
+### Features
+
+* **ssh:** enable access by default for staff ([#33304](https://github.com/vm0-ai/vm0/issues/33304)) ([5e019e4](https://github.com/vm0-ai/vm0/commit/5e019e4f0a8ee96c89df9f636e0749c8beda9828))
+
+## [8.650.0](https://github.com/vm0-ai/vm0/compare/core-v8.649.0...core-v8.650.0) (2026-09-10)
+
+
+### Features
+
+* add calendly oauth support ([#33204](https://github.com/vm0-ai/vm0/issues/33204)) ([0dccd68](https://github.com/vm0-ai/vm0/commit/0dccd685a1435bab424e287dd2bb5d998e40b4a2))
+* **api:** add reusable image reference catalog ([#33203](https://github.com/vm0-ai/vm0/issues/33203)) ([fefeaa0](https://github.com/vm0-ai/vm0/commit/fefeaa0e895e774b3ae35161476d30588d9dcfbc))
+* **app:** show the template cover on the inline template chip behind a switch ([#33293](https://github.com/vm0-ai/vm0/issues/33293)) ([20d1c99](https://github.com/vm0-ai/vm0/commit/20d1c9967ec42823bf71b01366290880012dda09))
+* **chat:** add atomic runless welcome thread creation ([#33279](https://github.com/vm0-ai/vm0/issues/33279)) ([68fd2e2](https://github.com/vm0-ai/vm0/commit/68fd2e2bd3d3c99ef0f09831a4475b0ccf3abdf1)), closes [#33252](https://github.com/vm0-ai/vm0/issues/33252)
+* enable mailchimp oauth with doppler credentials ([#33193](https://github.com/vm0-ai/vm0/issues/33193)) ([bb87ee9](https://github.com/vm0-ai/vm0/commit/bb87ee9e24001ea97fb270856cd6e010dcccf2e6))
+
+
+### Bug Fixes
+
+* **agent:** protect default okou identity and visibility ([#33266](https://github.com/vm0-ai/vm0/issues/33266)) ([58e76a8](https://github.com/vm0-ai/vm0/commit/58e76a815bcdaa297f8ac6086b50cd10c55316eb))
+* **artifacts:** use a.okou.io for public file sharing ([#32959](https://github.com/vm0-ai/vm0/issues/32959)) ([50663a2](https://github.com/vm0-ai/vm0/commit/50663a2f204f55d9fe296c7767fdf7c63c4b61c7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.426.0
+
+## [8.649.0](https://github.com/vm0-ai/vm0/compare/core-v8.648.3...core-v8.649.0) (2026-09-10)
+
+
+### Features
+
+* **api:** hand the intro-video skill its entry form and name it intro video everywhere ([#33119](https://github.com/vm0-ai/vm0/issues/33119)) ([850ec24](https://github.com/vm0-ai/vm0/commit/850ec247513051216bc44da4b246fd047fcb0ceb))
+
+
+### Refactoring
+
+* **ads:** normalize okou attribution with rollout compatibility ([#33149](https://github.com/vm0-ai/vm0/issues/33149)) ([a222108](https://github.com/vm0-ai/vm0/commit/a222108b4eccfdab77fa3f6f3c08fa6ea2bdfac7))
+* remove dropbox connector feature switch ([#33130](https://github.com/vm0-ai/vm0/issues/33130)) ([bd0f81c](https://github.com/vm0-ai/vm0/commit/bd0f81c3c9baddabf67a28f01c57d6a16b1f8f63))
+* retire goal backend authority and application orm consumers ([#33105](https://github.com/vm0-ai/vm0/issues/33105)) ([2c23176](https://github.com/vm0-ai/vm0/commit/2c231766e383b651867893852cfb47dcc78af0bd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.425.0
+
 ## [8.648.3](https://github.com/vm0-ai/vm0/compare/core-v8.648.2...core-v8.648.3) (2026-09-09)
 
 

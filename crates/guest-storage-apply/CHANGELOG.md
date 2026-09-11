@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.23.78](https://github.com/vm0-ai/vm0/compare/guest-storage-apply-v0.23.77...guest-storage-apply-v0.23.78) (2026-09-10)
+
+## [0.23.77](https://github.com/vm0-ai/vm0/compare/guest-storage-apply-v0.23.76...guest-storage-apply-v0.23.77) (2026-09-10)
+
+
+### Bug Fixes
+
+* extend storage url lifetime and preserve download error details ([#33181](https://github.com/vm0-ai/vm0/issues/33181)) ([93ccb22](https://github.com/vm0-ai/vm0/commit/93ccb227278b0e384594abffea5d1244219164cf))
+
+## [0.23.76](https://github.com/vm0-ai/vm0/compare/guest-storage-apply-v0.23.75...guest-storage-apply-v0.23.76) (2026-09-10)
+
+
+### Bug Fixes
+
+* **rust:** preserve mountinfo path bytes across consumers ([#33131](https://github.com/vm0-ai/vm0/issues/33131)) ([137593b](https://github.com/vm0-ai/vm0/commit/137593b186149940e8d83550844c59553c044002))
+
 ## [0.23.75](https://github.com/vm0-ai/vm0/compare/guest-storage-apply-v0.23.74...guest-storage-apply-v0.23.75) (2026-09-09)
 
 ## [0.23.74](https://github.com/vm0-ai/vm0/compare/guest-storage-apply-v0.23.73...guest-storage-apply-v0.23.74) (2026-09-09)

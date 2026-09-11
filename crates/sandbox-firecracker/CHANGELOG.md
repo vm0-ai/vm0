@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.41.4](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.41.3...sandbox-firecracker-v0.41.4) (2026-09-10)
+
+## [0.41.3](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.41.2...sandbox-firecracker-v0.41.3) (2026-09-10)
+
+
+### Bug Fixes
+
+* **sandbox-firecracker:** bound incomplete control socket requests ([#33281](https://github.com/vm0-ai/vm0/issues/33281)) ([74df5b6](https://github.com/vm0-ai/vm0/commit/74df5b628e6ca3c4c6158e32ab41b3cfe377ffc7))
+
+
+### Documentation
+
+* **rust:** correct snapshot socket-id listener limits ([#33273](https://github.com/vm0-ai/vm0/issues/33273)) ([e36f6c7](https://github.com/vm0-ai/vm0/commit/e36f6c7cdba31e96ec284d1063286a14e05f9d37))
+
+
+### Performance Improvements
+
+* **sandbox-firecracker:** share direct cgroup process launches ([#33141](https://github.com/vm0-ai/vm0/issues/33141)) ([61f225c](https://github.com/vm0-ai/vm0/commit/61f225cf47679330cd2be973addd8723b9e3fbf9))
+
+## [0.41.2](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.41.1...sandbox-firecracker-v0.41.2) (2026-09-10)
+
+
+### Bug Fixes
+
+* **rust:** preserve mountinfo path bytes across consumers ([#33131](https://github.com/vm0-ai/vm0/issues/33131)) ([137593b](https://github.com/vm0-ai/vm0/commit/137593b186149940e8d83550844c59553c044002))
+
 ## [0.41.1](https://github.com/vm0-ai/vm0/compare/sandbox-firecracker-v0.41.0...sandbox-firecracker-v0.41.1) (2026-09-09)
 
 

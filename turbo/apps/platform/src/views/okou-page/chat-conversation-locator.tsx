@@ -77,7 +77,8 @@ function ConversationLocatorRail({ thread }: { thread: ChatPanelSignals }) {
         className={cn(
           // Hidden on narrow viewports: the rail needs a gutter the phone
           // layout does not have, and those threads are short enough to scroll.
-          "absolute inset-y-0 left-0 z-10 hidden w-14 cursor-pointer transition-opacity duration-300 md:block",
+          // Keep the hit area inside the message content's 24px left gutter.
+          "absolute inset-y-0 left-0 z-10 hidden w-6 cursor-pointer transition-opacity duration-300 md:block",
           !layout.visible && "pointer-events-none opacity-0",
           layout.visible && (engaged ? "opacity-100" : "opacity-[0.68]"),
         )}
@@ -104,7 +105,8 @@ function ConversationLocatorRail({ thread }: { thread: ChatPanelSignals }) {
               className={cn(
                 // Width is written per pointer frame by the locator signals;
                 // React owns everything that only changes with the layout.
-                "absolute left-[14px] h-0.5 -translate-y-1/2 rounded-full transition-colors duration-150",
+                // Magnified ticks must not extend the rail's hit area.
+                "pointer-events-none absolute left-[14px] h-0.5 -translate-y-1/2 rounded-full transition-colors duration-150",
                 tick.current ? "bg-primary/60" : "bg-border",
                 // The turn under the cursor only changes colour — thickness
                 // stays put so the rail keeps one rhythm.

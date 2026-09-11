@@ -26,6 +26,7 @@ function agent(
   },
 ): AgentResponse {
   return {
+    isDefaultAgent: false,
     agentId,
     ownerId: options.ownerId ?? "test-user-123",
     description: options.description ?? null,

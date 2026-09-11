@@ -1,5 +1,7 @@
 import { errors, expect, type Page } from "@playwright/test";
 
+import { apiFailureMessage } from "./api-response";
+
 import {
   captureClerkReadiness,
   describeClerkReadiness,
@@ -87,7 +89,7 @@ export async function completeExploreOnboarding(
 
 export async function startVideoOnboardingCheckout(
   page: Page,
-  options: OnboardingFlowOptions,
+  options: OnboardingFlowOptions & { readonly apiUrl: string },
 ): Promise<void> {
   await openOnboarding(page, options);
   // The primary video choice now completes onboarding and opens the in-product
@@ -115,7 +117,31 @@ export async function startVideoOnboardingCheckout(
   ).toBeVisible({ timeout: 30_000 });
   expect(new URL(page.url()).pathname).toBe("/onboarding/video-run");
 
-  await clickOnboardingButton(page, /^Upgrade Pro to run$/i);
+  const apiOrigin = new URL(options.apiUrl).origin;
+  const [response] = await Promise.all([
+    page.context().waitForEvent("response", {
+      predicate: (response) => {
+        const url = new URL(response.url());
+        return (
+          url.origin === apiOrigin &&
+          url.pathname === "/api/billing/usage-pack-checkout" &&
+          response.request().method() === "POST"
+        );
+      },
+      timeout: 60_000,
+    }),
+    clickOnboardingButton(page, /^Upgrade Pro to run$/i),
+  ]);
+  if (!response.ok()) {
+    throw new Error(
+      apiFailureMessage(
+        "Create onboarding checkout",
+        response.status(),
+        response.request().headers()["x-client-request-id"] ?? null,
+        response.headers()["retry-after"] ?? null,
+      ),
+    );
+  }
   await expect(page).toHaveURL(/checkout\.stripe\.com/, { timeout: 60_000 });
 }
 

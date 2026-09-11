@@ -16,7 +16,7 @@ import {
 import { activeRoute$ } from "../active-route.ts";
 import { apiClient$ } from "../api-client.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
-import { rootSignal$ } from "../root-signal.ts";
+import { rootSignal$, rootVersion$ } from "../root-signal.ts";
 import { pathParams$ } from "../route.ts";
 import {
   createChildAbortController,
@@ -147,10 +147,12 @@ const registerBootstrapThreadMeta$ = command(
   },
 );
 
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const initialLocalChatThreadEventsLoadedDeferred$ = computed((get) => {
   return createDeferredPromise<void>(get(rootSignal$));
 });
 
+// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const initialRemoteChatThreadEventsSyncedDeferred$ = computed((get) => {
   return createDeferredPromise<void>(get(rootSignal$));
 });
@@ -160,32 +162,15 @@ const initialLocalChatThreadEventsLoaded$ = computed((get) => {
 });
 
 interface ChatThreadEventSyncBarrier {
-  inFlight: boolean;
-  next: ReturnType<typeof createDeferredPromise<void>>;
+  work: Promise<void> | null;
 }
 
 const chatThreadEventSyncBarrier$ = computed(
   (get): ChatThreadEventSyncBarrier => {
-    return {
-      inFlight: false,
-      next: createDeferredPromise<void>(get(rootSignal$)),
-    };
+    get(rootVersion$);
+    return { work: null };
   },
 );
-
-const markChatThreadEventSyncPending$ = command(({ get }) => {
-  get(chatThreadEventSyncBarrier$).inFlight = true;
-});
-
-const resolveNextChatThreadEventSync$ = command(({ get }) => {
-  const barrier = get(chatThreadEventSyncBarrier$);
-  const completed = barrier.next;
-  barrier.inFlight = false;
-  barrier.next = createDeferredPromise<void>(get(rootSignal$));
-  if (!completed.settled()) {
-    completed.resolve();
-  }
-});
 
 const optimisticChatThreadCreateIds$ = computed((get): ReadonlySet<string> => {
   return new Set(
@@ -255,43 +240,57 @@ const applySharedChatThreadEventResult$ = command(
     if (!synced.settled()) {
       synced.resolve();
     }
-    set(resolveNextChatThreadEventSync$);
   },
 );
 
 const syncSharedEventDrivenChatThreads$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    set(markChatThreadEventSyncPending$);
-    const dataKey = await get(sharedChatThreadEventDataKey$);
-    signal.throwIfAborted();
-    const currentSeqId = get(chatThreadEventState$).latestSeqId;
-    const cached = await set(
-      queryChatThreadEventSharedDatabase$,
-      {
-        dataKey,
-        afterSeqId: currentSeqId,
-        consistency: "cache-only",
+  ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const barrier = get(chatThreadEventSyncBarrier$);
+    // Keep explicit refreshes independent: a mutation can commit after an
+    // older sync has already read its result. Readers await the latest work.
+    const work = withCleanup(
+      (async () => {
+        const dataKey = await get(sharedChatThreadEventDataKey$);
+        signal.throwIfAborted();
+        const currentSeqId = get(chatThreadEventState$).latestSeqId;
+        const cached = await set(
+          queryChatThreadEventSharedDatabase$,
+          {
+            dataKey,
+            afterSeqId: currentSeqId,
+            consistency: "cache-only",
+          },
+          signal,
+        );
+        signal.throwIfAborted();
+        const cachedLastSeqId =
+          cached.events.at(-1)?.seqId ?? cached.snapshot?.latestSeqId ?? null;
+        const result =
+          cachedLastSeqId !== null &&
+          (currentSeqId === null || cachedLastSeqId > currentSeqId)
+            ? cached
+            : await set(
+                queryChatThreadEventSharedDatabase$,
+                {
+                  dataKey,
+                  afterSeqId: currentSeqId,
+                  consistency: "catch-up",
+                },
+                signal,
+              );
+        signal.throwIfAborted();
+        set(applySharedChatThreadEventResult$, result, "remote", signal);
+      })(),
+      () => {
+        // Failure remains a rejection, never authoritative not-found. An
+        // older completion must not release a newer caller's ownership.
+        if (barrier.work === work) {
+          barrier.work = null;
+        }
       },
-      signal,
     );
-    signal.throwIfAborted();
-    const cachedLastSeqId =
-      cached.events.at(-1)?.seqId ?? cached.snapshot?.latestSeqId ?? null;
-    const result =
-      cachedLastSeqId !== null &&
-      (currentSeqId === null || cachedLastSeqId > currentSeqId)
-        ? cached
-        : await set(
-            queryChatThreadEventSharedDatabase$,
-            {
-              dataKey,
-              afterSeqId: currentSeqId,
-              consistency: "catch-up",
-            },
-            signal,
-          );
-    signal.throwIfAborted();
-    set(applySharedChatThreadEventResult$, result, "remote", signal);
+    barrier.work = work;
+    return work;
   },
 );
 
@@ -531,11 +530,11 @@ export const resolveThreadMeta$ = command(
     const initialRemoteSync = get(initialRemoteChatThreadEventsSyncedDeferred$);
     const syncBarrier = get(chatThreadEventSyncBarrier$);
     // Refresh missing threads against current server state after initial sync.
-    const canonicalSync = syncBarrier.inFlight
-      ? syncBarrier.next.promise
-      : initialRemoteSync.settled()
+    const canonicalSync =
+      syncBarrier.work ??
+      (initialRemoteSync.settled()
         ? set(syncSharedEventDrivenChatThreads$, get(rootSignal$))
-        : initialRemoteSync.promise;
+        : initialRemoteSync.promise);
     const syncVersion = get(chatThreadEventSyncVersion$);
     const resolution = await set(
       resolveColdThreadMeta$,

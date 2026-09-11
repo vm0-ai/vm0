@@ -22,6 +22,8 @@ import {
 } from "@okouai/api-contracts/contracts/model-providers";
 import { useTranslation } from "react-i18next";
 import type { ModelPickerMenuSignals } from "../../../signals/okou-page/model-picker-menu.ts";
+import { pageSignal$ } from "../../../signals/page-signal.ts";
+import { detach, Reason } from "../../../signals/utils.ts";
 import { PriceTierBadge } from "./model-picker-price-tier.tsx";
 import {
   getMediaModelPriceTierLabel,
@@ -29,6 +31,7 @@ import {
 } from "./settings/provider-ui-config.ts";
 import { ProviderIcon } from "./settings/provider-icons.tsx";
 import type {
+  MediaModelCategoryId,
   MediaModelPanelState,
   ModelProviderSelection,
 } from "./model-provider-picker.tsx";
@@ -576,7 +579,7 @@ function MediaModelList({
  * and `shadow-lg` reproduces exactly.
  */
 const FLYOUT_PANEL_CLASS =
-  "rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-1 text-foreground shadow-lg outline-none";
+  "rounded-[12px] border border-[hsl(var(--gray-400))] bg-card p-1 text-foreground shadow-lg outline-none";
 
 /**
  * Flyout layout: model types on the left, that type's models in a panel beside
@@ -592,6 +595,8 @@ function ModelPickerFlyoutTypeRow({
   index,
   total,
   onActivate,
+  onHover,
+  onHoverEnd,
 }: {
   icon: ReactNode;
   label: string;
@@ -600,6 +605,8 @@ function ModelPickerFlyoutTypeRow({
   index: number;
   total: number;
   onActivate: () => void;
+  onHover: () => void;
+  onHoverEnd: () => void;
 }) {
   return (
     <Button
@@ -616,7 +623,10 @@ function ModelPickerFlyoutTypeRow({
         "h-11 w-full shrink-0 justify-start gap-2 px-2 text-left font-normal",
         active && "bg-state-hover",
       )}
-      onMouseEnter={onActivate}
+      // Hover waits for the pointer to settle; a click or a keyboard move is
+      // deliberate and swaps the panel straight away.
+      onMouseEnter={onHover}
+      onMouseLeave={onHoverEnd}
       onFocus={onActivate}
       onClick={onActivate}
     >
@@ -840,6 +850,66 @@ function ModelPickerFlyoutPanel({
   );
 }
 
+interface ModelPickerFlyoutType {
+  readonly id: "chat" | MediaModelCategoryId;
+  readonly label: string;
+  readonly current: string;
+  readonly icon: ReactNode;
+}
+
+/**
+ * The type rail owns hover intent for the whole flyout: a row opens its panel
+ * on a settled pointer, and a pointer that leaves before then opens nothing.
+ * Reaching the panel means crossing the rows between it and the pointer, and
+ * without the dwell each of those rows would swap the panel on the way past.
+ */
+function ModelPickerFlyoutTypeRail({
+  signals,
+  types,
+  activeType,
+}: {
+  signals: ModelPickerMenuSignals;
+  types: readonly ModelPickerFlyoutType[];
+  activeType: ModelPickerFlyoutType["id"];
+}) {
+  const { t } = useTranslation();
+  const setCategory = useSet(signals.setFlyoutCategory$);
+  const hoverCategory = useSet(signals.hoverFlyoutCategory$);
+  const cancelCategoryHover = useSet(signals.cancelFlyoutCategoryHover$);
+  const pageSignal = useGet(pageSignal$);
+  return (
+    <div
+      role="tablist"
+      aria-orientation="vertical"
+      aria-label={t(($) => {
+        return $.settings.models.picker.models;
+      })}
+      className="flex flex-col gap-0.5"
+    >
+      {types.map((type, index) => {
+        return (
+          <ModelPickerFlyoutTypeRow
+            key={type.id}
+            icon={type.icon}
+            label={type.label}
+            current={type.current}
+            active={type.id === activeType}
+            index={index}
+            total={types.length}
+            onActivate={() => {
+              setCategory(type.id);
+            }}
+            onHover={() => {
+              detach(hoverCategory(type.id, pageSignal), Reason.DomCallback);
+            }}
+            onHoverEnd={cancelCategoryHover}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 export function ModelPickerFlyoutContent({
   signals,
   value,
@@ -852,7 +922,6 @@ export function ModelPickerFlyoutContent({
   const { t } = useTranslation();
   const category = useGet(signals.flyoutCategory$);
   const side = useGet(signals.flyoutSide$);
-  const setCategory = useSet(signals.setFlyoutCategory$);
   const rootRef = useSet(signals.flyoutRootRef$);
   const selectedOption = options.find((option) => {
     return option.model === value?.selectedModel;
@@ -903,31 +972,11 @@ export function ModelPickerFlyoutContent({
       }}
     >
       {types.length > 1 && (
-        <div
-          role="tablist"
-          aria-orientation="vertical"
-          aria-label={t(($) => {
-            return $.settings.models.picker.models;
-          })}
-          className="flex flex-col gap-0.5"
-        >
-          {types.map((type, index) => {
-            return (
-              <ModelPickerFlyoutTypeRow
-                key={type.id}
-                icon={type.icon}
-                label={type.label}
-                current={type.current}
-                active={type.id === activeType}
-                index={index}
-                total={types.length}
-                onActivate={() => {
-                  setCategory(type.id);
-                }}
-              />
-            );
-          })}
-        </div>
+        <ModelPickerFlyoutTypeRail
+          signals={signals}
+          types={types}
+          activeType={activeType}
+        />
       )}
       <div
         className={cn(

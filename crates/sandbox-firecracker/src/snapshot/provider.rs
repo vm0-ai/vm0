@@ -12,15 +12,9 @@ use super::{SnapshotError, create_uncommitted_snapshot};
 /// Firecracker-backed snapshot provider.
 ///
 /// Snapshot creation uses [`SnapshotCreateConfig::id`] as the runtime socket
-/// directory identifier. The ID must be a single, non-empty normal ASCII path
-/// segment containing only letters, digits, `.`, `-`, and `_`. The special `.`
-/// and `..` components, nested, parent-relative, and composite values such as
-/// `<rootfs>/<snapshot>` are invalid. The complete generated
-/// `/run/vm0/sock/<id>/vsock/vsock.sock` path must be at most 107 bytes.
-///
-/// The provider validates this contract before checking prerequisites or
-/// cleaning snapshot output. Invalid IDs fail as `sandbox::SnapshotError::Setup`.
-/// Other [`SnapshotProvider`] implementations may impose different
+/// directory identifier. See that field for the Firecracker ID requirements,
+/// including the `_1000` guest-control listener suffix and the limits of early
+/// validation. Other [`SnapshotProvider`] implementations may impose different
 /// requirements on the same provider-neutral configuration type.
 ///
 /// Stateless — can be created with zero cost and used immediately.

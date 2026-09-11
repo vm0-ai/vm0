@@ -9,8 +9,10 @@ import {
 } from "./composer-actions.ts";
 import {
   ComposerCreateControls,
+  ComposerCreatePicker,
   ComposerCreateImageModelPicker,
   ComposerCreateVideoModelPicker,
+  ComposerSelectedTask,
 } from "./composer-create.tsx";
 import type { ComposerVoiceInputStatus } from "../../signals/okou-page/composer-voice-input.ts";
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
@@ -5191,7 +5193,7 @@ function ImportedPresentationTemplateRenameControl({
       }}
     >
       <div
-        className="grid min-h-10 min-w-0 flex-1 rounded-lg border-[0.7px] border-transparent px-1 py-[5px] text-xl font-semibold leading-7 text-foreground transition-colors after:col-start-1 after:row-start-1 after:invisible after:whitespace-pre-wrap after:break-words after:content-[attr(data-value)_'_'] hover:border-[hsl(var(--gray-400))] focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/10"
+        className="grid min-h-10 min-w-0 flex-1 rounded-lg border border-transparent px-1 py-[5px] text-xl font-semibold leading-7 text-foreground transition-colors after:col-start-1 after:row-start-1 after:invisible after:whitespace-pre-wrap after:break-words after:content-[attr(data-value)_'_'] hover:border-[hsl(var(--gray-400))] focus-within:border-primary focus-within:ring-[3px] focus-within:ring-primary/10"
         data-value={title}
       >
         <textarea
@@ -5942,6 +5944,7 @@ export function ComposerPresentationRecommendations({
 
 function PptTemplateGrid({
   items,
+  importedItems,
   runtime,
   value,
   onSelect,
@@ -5952,6 +5955,7 @@ function PptTemplateGrid({
   signals,
 }: {
   items: readonly PresentationTemplateItem[];
+  importedItems: readonly ImportedPresentationTemplatePickerItem[];
   runtime: TemplatePreviewRuntime;
   value: GenerationTemplateRequest | undefined;
   onSelect: (item: PresentationTemplateItem, colorSystemId?: string) => void;
@@ -5963,12 +5967,10 @@ function PptTemplateGrid({
 }) {
   // Import tile, then accessible uploaded decks (owned decks are sorted first),
   // then the built-in templates.
-  const importedTemplateItems =
-    useImportedPresentationTemplatePickerItems(signals);
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <PptImportCard signals={signals} onImported={onImported} />
-      {importedTemplateItems.map(({ imageBuffers, template }) => {
+      {importedItems.map(({ imageBuffers, template }) => {
         return (
           <ImportedPptCard
             key={template.id}
@@ -6402,94 +6404,90 @@ function TemplatePickerDialog({
         }
         initialFocus={false}
       >
-        <div
-          inert={isPreviewing}
-          aria-hidden={isPreviewing}
-          className={cn(
-            "min-h-0 flex-1 flex-col",
-            isPreviewing ? "hidden" : "flex",
-          )}
-        >
-          <DialogHeader className="shrink-0 border-b border-border px-5 py-4 sm:hidden">
-            <DialogTitle>
-              {t(($) => {
-                return $.artifacts.templates.template;
-              })}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
-            <TemplatePickerCategoryNav
-              selectedCategory={selectedCategory}
-              introVideoEnabled={introVideoEnabled}
-              onChange={handleCategoryChange}
-            />
-            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-              {selectedCategory === "intro-video" ? (
-                <IntroVideoPicker
-                  signals={signals.template.introVideo}
-                  onCancel={closeTemplatePicker}
-                  onSelect={(template) => {
-                    onChange(template);
-                    closeTemplatePicker();
-                  }}
-                />
-              ) : (
-                <>
-                  <div
-                    className={cn(
-                      "relative h-[68px] shrink-0 items-center px-6 pr-14",
-                      showTemplatePickerSearch || showAvatarPickerToolbar
-                        ? "flex"
-                        : "hidden sm:flex",
-                    )}
-                  >
-                    {showTemplatePickerSearch ? (
-                      <TemplatePickerWorkflowSearch
-                        search={search}
-                        onSearchChange={handleSearchChange}
-                      />
-                    ) : null}
-                    {showAvatarPickerToolbar ? (
-                      <AvatarTemplatePickerToolbar signals={signals} />
-                    ) : null}
-                  </div>
-                  <TemplatePickerCategoryContent
-                    signals={signals}
-                    selectedCategory={selectedCategory}
-                    pptItems={presentationItems}
-                    websiteItems={WEBSITE_TEMPLATE_ITEMS}
-                    illustrationItems={ILLUSTRATION_TEMPLATE_ITEMS}
-                    videoItems={VIDEO_TEMPLATE_ITEMS}
-                    videoGenerationAllowed={videoGenerationAllowed}
-                    workflowCatalog={workflowCatalog}
-                    value={value}
-                    illustrationVariantIndex={illustrationVariantIndex}
-                    onPresentationScroll={setPresentationGridScrollTop}
-                    onRestorePresentationScroll={
-                      restorePresentationGridScrollNode
-                    }
-                    onSelectPresentation={handleSelectPresentation}
-                    onSelectImportedPresentation={
-                      handleSelectImportedPresentation
-                    }
-                    onPreviewPresentation={handlePreview}
-                    onPreviewImportedPresentation={handlePreviewImported}
-                    onImportedPresentation={closeTemplatePicker}
-                    onSelectWebsite={handleSelectWebsite}
-                    onPreviewWebsite={handlePreviewWebsite}
-                    onSelectIllustration={handleSelectIllustration}
-                    onIllustrationVariantChange={setIllustrationVariantIndex}
-                    onSelectVideo={handleSelectVideo}
-                    onSelectAvatar={handleSelectAvatar}
-                    onWorkflowCategoryChange={setWorkflowCategoryFilter}
-                    onSelectWorkflow={handleSelectWorkflow}
-                    runtime={runtime}
+        {!isPreviewing ? (
+          <div className="min-h-0 flex flex-1 flex-col">
+            <DialogHeader className="shrink-0 border-b border-border px-5 py-4 sm:hidden">
+              <DialogTitle>
+                {t(($) => {
+                  return $.artifacts.templates.template;
+                })}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+              <TemplatePickerCategoryNav
+                selectedCategory={selectedCategory}
+                introVideoEnabled={introVideoEnabled}
+                onChange={handleCategoryChange}
+              />
+              <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
+                {selectedCategory === "intro-video" ? (
+                  <IntroVideoPicker
+                    signals={signals.template.introVideo}
+                    onCancel={closeTemplatePicker}
+                    onSelect={(template) => {
+                      onChange(template);
+                      closeTemplatePicker();
+                    }}
                   />
-                </>
-              )}
+                ) : (
+                  <>
+                    <div
+                      className={cn(
+                        "relative h-[68px] shrink-0 items-center px-6 pr-14",
+                        showTemplatePickerSearch || showAvatarPickerToolbar
+                          ? "flex"
+                          : "hidden sm:flex",
+                      )}
+                    >
+                      {showTemplatePickerSearch ? (
+                        <TemplatePickerWorkflowSearch
+                          search={search}
+                          onSearchChange={handleSearchChange}
+                        />
+                      ) : null}
+                      {showAvatarPickerToolbar ? (
+                        <AvatarTemplatePickerToolbar signals={signals} />
+                      ) : null}
+                    </div>
+                    <TemplatePickerCategoryContent
+                      signals={signals}
+                      selectedCategory={selectedCategory}
+                      pptItems={presentationItems}
+                      importedPptItems={importedTemplateItems}
+                      websiteItems={WEBSITE_TEMPLATE_ITEMS}
+                      illustrationItems={ILLUSTRATION_TEMPLATE_ITEMS}
+                      videoItems={VIDEO_TEMPLATE_ITEMS}
+                      videoGenerationAllowed={videoGenerationAllowed}
+                      workflowCatalog={workflowCatalog}
+                      value={value}
+                      illustrationVariantIndex={illustrationVariantIndex}
+                      onPresentationScroll={setPresentationGridScrollTop}
+                      onRestorePresentationScroll={
+                        restorePresentationGridScrollNode
+                      }
+                      onSelectPresentation={handleSelectPresentation}
+                      onSelectImportedPresentation={
+                        handleSelectImportedPresentation
+                      }
+                      onPreviewPresentation={handlePreview}
+                      onPreviewImportedPresentation={handlePreviewImported}
+                      onImportedPresentation={closeTemplatePicker}
+                      onSelectWebsite={handleSelectWebsite}
+                      onPreviewWebsite={handlePreviewWebsite}
+                      onSelectIllustration={handleSelectIllustration}
+                      onIllustrationVariantChange={setIllustrationVariantIndex}
+                      onSelectVideo={handleSelectVideo}
+                      onSelectAvatar={handleSelectAvatar}
+                      onWorkflowCategoryChange={setWorkflowCategoryFilter}
+                      onSelectWorkflow={handleSelectWorkflow}
+                      runtime={runtime}
+                    />
+                  </>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        ) : null}
         {previewItem ? (
           <TemplatePreviewPage
             item={previewItem}
@@ -6519,6 +6517,7 @@ function TemplatePickerCategoryContent({
   signals,
   selectedCategory,
   pptItems,
+  importedPptItems,
   websiteItems,
   illustrationItems,
   videoItems,
@@ -6546,6 +6545,7 @@ function TemplatePickerCategoryContent({
   signals: ComposerSignals;
   selectedCategory: string;
   pptItems: readonly PresentationTemplateItem[];
+  importedPptItems: readonly ImportedPresentationTemplatePickerItem[];
   websiteItems: readonly WebsiteTemplateItem[];
   illustrationItems: readonly IllustrationTemplateItem[];
   videoItems: readonly VideoTemplateItem[];
@@ -6595,6 +6595,7 @@ function TemplatePickerCategoryContent({
       >
         <PptTemplateGrid
           items={pptItems}
+          importedItems={importedPptItems}
           value={value}
           onSelect={onSelectPresentation}
           onSelectImported={onSelectImportedPresentation}
@@ -8935,7 +8936,7 @@ function formatVoiceRecordingDuration(elapsedTime: number): string {
 }
 
 const VOICE_DRAFT_TRAY_CLASS =
-  "min-h-12 rounded-xl bg-neutral-50 py-2 dark:bg-neutral-900";
+  "min-h-12 rounded-xl bg-neutral-50 px-3 py-2 dark:bg-neutral-900";
 
 function VoiceDraftFooter({
   signals,
@@ -8962,10 +8963,7 @@ function VoiceDraftFooter({
   if (status === "failed") {
     return (
       <div
-        className={cn(
-          "flex w-full items-center gap-3 px-1",
-          VOICE_DRAFT_TRAY_CLASS,
-        )}
+        className={cn("flex w-full items-center gap-3", VOICE_DRAFT_TRAY_CLASS)}
         data-composer-voice-tray
       >
         <span
@@ -9039,7 +9037,6 @@ function VoiceDraftFooter({
       <div
         className={cn(
           "grid w-full grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-3 text-sm",
-          "px-1",
           VOICE_DRAFT_TRAY_CLASS,
         )}
         role="status"
@@ -9064,10 +9061,7 @@ function VoiceDraftFooter({
   });
   return (
     <div
-      className={cn(
-        "flex w-full items-center gap-2 px-3",
-        VOICE_DRAFT_TRAY_CLASS,
-      )}
+      className={cn("flex w-full items-center gap-2", VOICE_DRAFT_TRAY_CLASS)}
       data-composer-voice-tray
     >
       <span
@@ -9366,6 +9360,7 @@ function ComposerInputSlot({
   actions: ComposerActions;
   minimumHeightClassName: string;
 }) {
+  const createPickerOpen = useGet(signals.create.pickerOpen$);
   const sending = useLastResolved(signals.submission.sending$) ?? false;
   const notifyDraftChanged = useComposerDraftChange(signals);
   const restoreAttachments = useSet(signals.draft.restoreAttachments$);
@@ -9380,13 +9375,6 @@ function ComposerInputSlot({
   const sendModeLoadable = useLastLoadable(sendMode$);
   const sendMode =
     sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
-  const voiceInputV2Enabled = useGet(voiceInputV2Enabled$);
-  const hasInput = useGet(signals.editor.hasInput$);
-  const showVoiceTranscriptionSkeleton =
-    voiceInputV2Enabled &&
-    !hasInput &&
-    (actions.voiceAction === "finish" || actions.voiceAction === "retry");
-
   const handlePaste = (event: ComposerPasteEvent) => {
     if (
       restoreChatClipboardPayload({
@@ -9483,7 +9471,10 @@ function ComposerInputSlot({
         minimumHeightClassName,
       )}
     >
-      <div className="col-start-1 row-start-1 min-h-0">
+      <div
+        className="col-start-1 row-start-1 min-h-0"
+        hidden={createPickerOpen}
+      >
         <TiptapWorkflowComposer
           signals={signals}
           onDraftChange={notifyDraftChanged}
@@ -9492,15 +9483,7 @@ function ComposerInputSlot({
           onPaste={handlePaste}
         />
       </div>
-      {showVoiceTranscriptionSkeleton ? (
-        <div
-          className="pointer-events-none col-start-1 row-start-1 flex min-h-0 flex-col justify-center gap-2 bg-card px-6"
-          aria-hidden="true"
-        >
-          <span className="h-2 w-[62%] animate-pulse rounded-full bg-muted/50 motion-reduce:animate-none" />
-          <span className="h-2 w-[44%] animate-pulse rounded-full bg-muted/50 [animation-delay:-350ms] motion-reduce:animate-none" />
-        </div>
-      ) : null}
+      <ComposerCreatePicker signals={signals} />
     </div>
   );
 }
@@ -10602,6 +10585,9 @@ function ComposerConnectorsSlot({
   const agents = useLastResolved(agents$) ?? [];
   const connectorUi = useGet(signals.connector.connectorUiState$);
   const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
+  const openAddConnectorsDialog = useSet(
+    signals.connector.openAddConnectorsDialog$,
+  );
 
   const pageSignal = useGet(pageSignal$);
   const selectedConnectorSlug = connectorUi.selectedConnectorSlug;
@@ -10773,9 +10759,7 @@ function ComposerConnectorsSlot({
         connectorsLoading={connectorData === undefined}
         actions={actions}
         computerUse={computerUse}
-        onOpenAddDialog={() => {
-          return updateConnectorUi({ showAddDialog: true });
-        }}
+        onOpenAddDialog={openAddConnectorsDialog}
         onToggle={handleToggle}
         onToggleCustom={handleCustomToggle}
       />
@@ -10808,6 +10792,7 @@ function ComposerConnectorsSlot({
             categoryCounts={connectorData?.categoryConnectorCounts}
             categoryMetadata={connectorData?.categoryMetadata}
             loading={connectorData === undefined}
+            chipCatalog={connectorData?.relatedCatalogItems ?? []}
             connected={agentConnectors}
             unconnected={unconnectedConnectors}
             connectedCustom={agentCustomConnectors}
@@ -10895,11 +10880,7 @@ function ComposerFooter({
     <div
       className={cn(
         "flex shrink-0 items-center justify-between gap-1 sm:gap-2",
-        activeVoiceDraftStatus === "recording"
-          ? "px-2 pb-3 pt-3"
-          : activeVoiceDraftStatus
-            ? "px-3 pb-3 pt-3"
-            : "px-4 pb-4 pt-1",
+        activeVoiceDraftStatus ? "px-2 pb-3 pt-3" : "px-4 pb-4 pt-1",
         narrowVideoGap,
         createMode === "video" && "@max-[344px]/composer:px-3",
       )}
@@ -11000,15 +10981,16 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
           className={cn("flex flex-col", layoutHeightClassNames.shell)}
         >
           <ComposerImportedTemplateUrlRefreshLifecycle signals={signals} />
+          <ComposerCreateControls signals={signals} />
           <ComposerAttachments signals={signals} />
+          <ComposerSelectedTask signals={signals} />
           <ComposerInputSlot
             signals={signals}
             actions={actions}
             minimumHeightClassName={layoutHeightClassNames.input}
           />
-          {/* Recording retains the established 8px/12px outer tray spacing,
-              with 12px/8px inner padding for the taller voice controls. Other
-              voice states retain their 12px tray inset. */}
+          {/* Voice states share 8px/12px outer tray spacing and 12px/8px
+              inner padding so their surfaces stay aligned through handoff. */}
           <ComposerFooter
             signals={signals}
             actions={actions}
@@ -11035,7 +11017,6 @@ export function ChatComposer({
         className="relative flex w-full min-w-0 flex-col"
       >
         {showPendingItems ? <PendingItemsStrip signals={signals} /> : null}
-        <ComposerCreateControls signals={signals} />
         <ComposerCard signals={signals} />
         <ComposerTemporaryModelNoticeSlot signals={signals} />
         <ReplaceComposerDraftDialog signals={signals} />

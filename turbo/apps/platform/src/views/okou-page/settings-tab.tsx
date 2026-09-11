@@ -38,7 +38,6 @@ import type { Command } from "ccstate";
 import { InlineSettingsRow } from "./components/inline-settings-row.tsx";
 import {
   AgentDeleteDialog,
-  type AgentDeleteWorkflow,
   type AgentDeleteCopyTarget,
 } from "./components/delete-agent-dialog.tsx";
 import { toast } from "@okouai/ui/components/ui/sonner";
@@ -52,6 +51,7 @@ import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import { AvatarMaker } from "./avatar-maker.tsx";
 import { AvatarFromUrl } from "./sidebar-shared.tsx";
 import {
+  type AgentDeleteWorkflow,
   settingsFormDraft$,
   patchSettingsForm$,
   resetSettingsForm$,
@@ -69,6 +69,7 @@ interface SettingsTabProps {
   canEditVisibility?: boolean;
   /** Workflows bound to this agent, offered for rescue in the delete dialog. */
   deleteWorkflows?: readonly AgentDeleteWorkflow[];
+  deleteWorkflowsState: "loading" | "error" | "ready";
   /** Agents the caller can copy a workflow onto before deleting this agent. */
   deleteCopyTargets?: readonly AgentDeleteCopyTarget[];
   /** Copy a workflow onto another agent before the agent is deleted. */
@@ -80,7 +81,7 @@ interface SettingsTabProps {
     Promise<void>,
     [
       {
-        displayName: string;
+        displayName?: string;
         sound: string;
         description: string;
         avatarUrl?: string | null;
@@ -90,7 +91,7 @@ interface SettingsTabProps {
     ]
   >;
   inputId?: string;
-  /** Whether this is the default agent (cannot be deleted). */
+  /** Authoritative identity; undefined keeps protected controls read-only. */
   isDefaultAgent?: boolean;
   /** Callback to delete the agent. */
   onDelete?: () => Promise<void>;
@@ -102,12 +103,12 @@ function AvatarSettingsControl({
   alt,
   onConfirm,
 }: {
-  isDefaultAgent: boolean;
+  isDefaultAgent: boolean | undefined;
   avatarUrl: string | null;
   alt: string;
   onConfirm: (config: AvatarSvgConfig, signal: AbortSignal) => Promise<void>;
 }) {
-  if (isDefaultAgent) {
+  if (isDefaultAgent !== false) {
     return (
       <AvatarFromUrl
         avatarUrl={avatarUrl}
@@ -174,7 +175,10 @@ function AvatarEditButton({
   );
 }
 
-function resolveAgentName(name: string, isDefaultAgent: boolean): string {
+function resolveAgentName(
+  name: string,
+  isDefaultAgent: boolean | undefined,
+): string {
   if (isDefaultAgent) {
     return DEFAULT_AGENT_DISPLAY_NAME;
   }
@@ -183,9 +187,9 @@ function resolveAgentName(name: string, isDefaultAgent: boolean): string {
 
 function omitForDefaultAgent<T>(
   value: T,
-  isDefaultAgent: boolean,
+  isDefaultAgent: boolean | undefined,
 ): T | undefined {
-  if (isDefaultAgent) {
+  if (isDefaultAgent !== false) {
     return undefined;
   }
   return value;
@@ -200,13 +204,13 @@ function AgentNameControl({
   onChange,
 }: {
   name: string;
-  isDefaultAgent: boolean;
+  isDefaultAgent: boolean | undefined;
   inputId: string;
   label: string;
   placeholder: string;
   onChange: (name: string) => void;
 }) {
-  if (isDefaultAgent) {
+  if (isDefaultAgent !== false) {
     return (
       <p className="flex h-9 items-center text-sm text-foreground">{name}</p>
     );
@@ -226,6 +230,51 @@ function AgentNameControl({
   );
 }
 
+function DefaultAgentVisibility({
+  isDefaultAgent,
+  visibility,
+}: {
+  isDefaultAgent: boolean | undefined;
+  visibility: "public" | "private";
+}) {
+  const { t } = useTranslation("agents");
+  if (isDefaultAgent !== true) {
+    return null;
+  }
+  return (
+    <InlineSettingsRow
+      label={t(($) => {
+        return $.list.create.visibilityLabel;
+      })}
+      description={t(($) => {
+        return $.profile.fields.visibility.defaultDescription;
+      })}
+    >
+      <p className="text-sm text-foreground">
+        {visibility === "public"
+          ? t(($) => {
+              return $.list.tabs.public;
+            })
+          : t(($) => {
+              return $.list.tabs.private;
+            })}
+      </p>
+    </InlineSettingsRow>
+  );
+}
+
+function willDemoteAgentVisibility(
+  canChangeVisibility: boolean,
+  initialVisibility: "public" | "private",
+  visibility: "public" | "private",
+) {
+  return (
+    canChangeVisibility &&
+    initialVisibility === "public" &&
+    visibility === "private"
+  );
+}
+
 export function SettingsTab({
   agentId,
   displayName: resolvedAgentName,
@@ -236,9 +285,10 @@ export function SettingsTab({
   canEditVisibility = true,
   updateSettings$,
   inputId = "okou-agent-name",
-  isDefaultAgent = false,
+  isDefaultAgent,
   onDelete,
-  deleteWorkflows = [],
+  deleteWorkflows,
+  deleteWorkflowsState,
   deleteCopyTargets = [],
   onCopyWorkflowBeforeDelete,
 }: SettingsTabProps) {
@@ -286,8 +336,12 @@ export function SettingsTab({
 
   const demoteConfirmOpen = useGet(agentDemoteConfirmOpen$);
   const setDemoteConfirmOpen = useSet(setAgentDemoteConfirmOpen$);
-  const willDemoteVisibility =
-    initialVisibility === "public" && visibility === "private";
+  const canChangeVisibility = canEditVisibility && isDefaultAgent === false;
+  const willDemoteVisibility = willDemoteAgentVisibility(
+    canChangeVisibility,
+    initialVisibility,
+    visibility,
+  );
   const toneCopy = {
     professional: {
       label: t(($) => {
@@ -355,11 +409,11 @@ export function SettingsTab({
       (async () => {
         await triggerUpdateSettings(
           {
-            displayName: agentName,
+            displayName: omitForDefaultAgent(agentName, isDefaultAgent),
             description: desc,
             sound: tone,
-            avatarUrl,
-            ...(canEditVisibility ? { visibility } : {}),
+            avatarUrl: omitForDefaultAgent(avatarUrl, isDefaultAgent),
+            ...(canChangeVisibility ? { visibility } : {}),
           },
           pageSignal,
         );
@@ -413,11 +467,14 @@ export function SettingsTab({
                       });
                       await triggerUpdateSettings(
                         {
-                          displayName: agentName,
+                          displayName: omitForDefaultAgent(
+                            agentName,
+                            isDefaultAgent,
+                          ),
                           description: desc,
                           sound: tone,
                           avatarUrl: newAvatarUrl,
-                          ...(canEditVisibility ? { visibility } : {}),
+                          ...(canChangeVisibility ? { visibility } : {}),
                         },
                         signal,
                       );
@@ -539,7 +596,8 @@ export function SettingsTab({
                   })}
                 </div>
                 <div
-                  className="rounded-lg bg-muted/30 px-3 py-2 w-full okou-border"
+                  data-slot="tone-preview"
+                  className="rounded-lg bg-muted/30 px-3 py-2 w-full border-(length:--border-width-surface) border-solid border-surface-border"
                   key={tone}
                 >
                   <p className="text-xs text-muted-foreground italic min-h-[1.25rem] leading-relaxed">
@@ -548,7 +606,10 @@ export function SettingsTab({
                   <div className="my-2 border-t border-border/30" />
                   <div className="flex flex-col gap-1.5 pb-1.5">
                     <div className="flex justify-end">
-                      <div className="okou-bubble-cool max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed transition-colors duration-200">
+                      <div
+                        data-slot="tone-preview-user-message"
+                        className="bg-gray-100/95 text-foreground max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed transition-colors duration-200"
+                      >
                         {toneCopy[tone].user}
                       </div>
                     </div>
@@ -561,7 +622,11 @@ export function SettingsTab({
                 </div>
               </div>
             </InlineSettingsRow>
-            {canEditVisibility && (
+            <DefaultAgentVisibility
+              isDefaultAgent={isDefaultAgent}
+              visibility={initialVisibility}
+            />
+            {canChangeVisibility && (
               <InlineSettingsRow
                 label={t(($) => {
                   return $.profile.fields.visibility.label;
@@ -587,11 +652,13 @@ export function SettingsTab({
           </CardContent>
         </Card>
 
-        {!isDefaultAgent && onDelete && (
+        {isDefaultAgent === false && onDelete && (
           <AgentDeleteDialog
+            agentId={agentId}
             resolvedAgentName={presentedAgentName}
             onDelete={onDelete}
             deleteWorkflows={deleteWorkflows}
+            deleteWorkflowsState={deleteWorkflowsState}
             deleteCopyTargets={deleteCopyTargets}
             onCopyWorkflowBeforeDelete={onCopyWorkflowBeforeDelete}
           />
@@ -615,7 +682,10 @@ export function SettingsTab({
         />
       )}
 
-      <Dialog open={demoteConfirmOpen} onOpenChange={setDemoteConfirmOpen}>
+      <Dialog
+        open={isDefaultAgent === false && demoteConfirmOpen}
+        onOpenChange={setDemoteConfirmOpen}
+      >
         <DialogContent
           closeLabel={t(($) => {
             return $.actions.close;
