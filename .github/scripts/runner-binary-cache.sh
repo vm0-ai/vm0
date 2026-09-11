@@ -509,7 +509,7 @@ validate_resolution_context() {
 
 producer_is_main_reachable() {
   local ancestor_sha=$1 comparison_json
-  if ! comparison_json=$(timeout --kill-after=5s 60s gh api \
+  if ! comparison_json=$(timeout --foreground --kill-after=5s 60s gh api \
     "repos/${REPO}/compare/${ancestor_sha}...${DEFAULT_BRANCH}" 2>/dev/null); then
     return 1
   fi
@@ -572,7 +572,7 @@ collect_trusted_candidates() {
     [ "$run_id" != "$CURRENT_RUN_ID" ] || continue
     inspected=$((inspected + 1))
 
-    run_json=$(timeout --kill-after=5s 60s gh api "repos/${REPO}/actions/runs/${run_id}" 2>/dev/null) || continue
+    run_json=$(timeout --foreground --kill-after=5s 60s gh api "repos/${REPO}/actions/runs/${run_id}" 2>/dev/null) || continue
     if ! jq -e --arg repo "$REPO" --arg workflow "$RUNNER_BINARY_WORKFLOW_PATH" \
       --argjson run "$run_id" --argjson attempt "$attempt" '
       .id == $run and .repository.full_name == $repo and .path == $workflow and
@@ -875,7 +875,7 @@ download_current() {
   require_env EXPECTED_PRODUCER_HEAD_SHA
   runner_ci_config
   local run jobs name manifest status=0
-  run=$(timeout --kill-after=5s 60s gh api "repos/${REPO}/actions/runs/${CURRENT_RUN_ID}")
+  run=$(timeout --foreground --kill-after=5s 60s gh api "repos/${REPO}/actions/runs/${CURRENT_RUN_ID}")
   jq -e --arg repo "$REPO" --arg head "$EXPECTED_PRODUCER_HEAD_SHA" \
     --arg workflow "$RUNNER_BINARY_WORKFLOW_PATH" --argjson run "$CURRENT_RUN_ID" '
     .id == $run and .repository.full_name == $repo and .path == $workflow and .head_sha == $head

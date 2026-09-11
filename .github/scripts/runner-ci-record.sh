@@ -20,13 +20,15 @@ runner_ci_config() {
 runner_ci_aws() {
   # Bound the whole client process, including SDK retries. Cache planning has
   # its own shorter owner deadline; required transfers get at most 120s.
+  # Foreground mode keeps nested clients in that owner's process group so its
+  # cancellation reaches them instead of leaving detached transfers behind.
   local seconds=120
   if [ -n "${RUNNER_CI_DEADLINE:-}" ]; then
     local remaining=$((RUNNER_CI_DEADLINE - $(date +%s)))
     [ "$remaining" -gt 0 ] || return 124
     if [ "$remaining" -lt "$seconds" ]; then seconds=$remaining; fi
   fi
-  timeout --kill-after=5s "${seconds}s" env AWS_RETRY_MODE=standard AWS_MAX_ATTEMPTS=3 \
+  timeout --foreground --kill-after=5s "${seconds}s" env AWS_RETRY_MODE=standard AWS_MAX_ATTEMPTS=3 \
     aws s3api "$@" --endpoint-url "https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com" \
     --bucket "$R2_BUCKET_NAME" --cli-connect-timeout 5 --cli-read-timeout 30
 }
@@ -117,7 +119,7 @@ runner_ci_record_fresh() {
 
 runner_ci_jobs() {
   local run_id=$1
-  timeout --kill-after=5s 60s gh api --paginate --slurp \
+  timeout --foreground --kill-after=5s 60s gh api --paginate --slurp \
     "repos/${REPO}/actions/runs/${run_id}/jobs?filter=all&per_page=100"
 }
 

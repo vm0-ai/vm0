@@ -61,6 +61,8 @@ retrieval fail if they cannot be verified; they do not silently fall back to
 GitHub artifacts. Each R2 client operation has a 120-second total bound and three
 SDK attempts. Cache planning has a shorter 60-second per-target owner deadline;
 image waiting preserves its existing deadline and GitHub rate-limit cooldowns.
+Nested client timers stay in their owner's process group so cancelling a cache
+lookup also interrupts its active network operations.
 
 Records expire for readers after seven days, based on both storage metadata and
 the independently recorded GitHub receipt time. Refreshing an R2 timestamp cannot

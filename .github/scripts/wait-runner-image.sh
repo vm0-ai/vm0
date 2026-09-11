@@ -53,7 +53,8 @@ RUNNER_CI_DEADLINE=$(( $(date +%s) + TIMEOUT_SECONDS ))
 deadline=$RUNNER_CI_DEADLINE
 
 check_deadline() {
-  if [ "$(date +%s)" -ge "$deadline" ]; then
+  WAIT_REMAINING_SECONDS=$((deadline - $(date +%s)))
+  if [ "$WAIT_REMAINING_SECONDS" -le 0 ]; then
     echo "timed out waiting for runner image workflow ${WORKFLOW} at ${LOOKUP_SHA} with record ${RECORD_NAME}" >&2
     exit 1
   fi
@@ -81,7 +82,7 @@ api_get() {
   local status retry_after remaining reset delay now
   while true; do
     check_deadline
-    if timeout --kill-after=5s "$((deadline - $(date +%s)))s" gh api "$endpoint" --include >"$GH_RESPONSE" 2>"$GH_ERR"; then
+    if timeout --foreground --kill-after=5s "${WAIT_REMAINING_SECONDS}s" gh api "$endpoint" --include >"$GH_RESPONSE" 2>"$GH_ERR"; then
       sed '1,/^\r\{0,1\}$/d' "$GH_RESPONSE"
       return
     fi

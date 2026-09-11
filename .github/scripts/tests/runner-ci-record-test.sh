@@ -94,4 +94,36 @@ for object in "$key" "$outside_key" "$invalid_key"; do
   [ -f "${AWS_STORE}/${object}" ] || fail "cleanup exceeded its scope: $object"
 done
 expect_failure env AWS_MODE=list-fail "$RECORD" cleanup
+
+# The cache planner owns a shorter process-group deadline than individual
+# transfers. Cancelling that owner must also interrupt a nested AWS operation.
+mkdir "${TEST_DIR}/cancel-bin"
+mkfifo "${TEST_DIR}/ready" "${TEST_DIR}/terminated" "${TEST_DIR}/block"
+export CANCEL_READY="${TEST_DIR}/ready" CANCEL_TERMINATED="${TEST_DIR}/terminated" CANCEL_BLOCK="${TEST_DIR}/block"
+exec {ready_fd}<>"$CANCEL_READY" {terminated_fd}<>"$CANCEL_TERMINATED"
+cat >"${TEST_DIR}/cancel-bin/aws" <<'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+trap 'printf "terminated\n" >"$CANCEL_TERMINATED"; exit 143' TERM
+exec 3<>"$CANCEL_BLOCK"
+printf '%s\n' "$BASHPID" >"$CANCEL_READY"
+read -r blocked <&3
+BASH
+chmod +x "${TEST_DIR}/cancel-bin/aws"
+timeout --kill-after=5s 60s env PATH="${TEST_DIR}/cancel-bin:$PATH" \
+  MANIFEST_PATH="${TEST_DIR}/manifest.json" "$RECORD" publish >"${TEST_DIR}/cancel.out" 2>&1 &
+owner_pid=$!
+if ! read -r -t 10 aws_pid <&"$ready_fd"; then
+  kill -TERM "$owner_pid"
+  wait "$owner_pid" || true
+  fail "AWS operation did not reach the cancellation boundary"
+fi
+kill -TERM "$owner_pid"
+if ! read -r -t 5 state <&"$terminated_fd"; then
+  kill -TERM "$aws_pid"
+  wait "$owner_pid" || true
+  fail "owner cancellation left the nested AWS operation running"
+fi
+wait "$owner_pid" && fail "cancelled owner unexpectedly succeeded"
+[ "$state" = terminated ] || fail "AWS operation did not acknowledge termination"
 echo "runner-ci-record-test: ok"
