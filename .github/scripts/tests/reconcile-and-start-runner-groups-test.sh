@@ -151,16 +151,15 @@ chmod +x "${tmp_dir}/bin/gh" "${tmp_dir}/bin/aws"
 printf '#!/usr/bin/env bash\nprintf "cached runner fixture\\n"\n' >"${tmp_dir}/cached-runner"
 zstd -q -3 -o "${tmp_dir}/cached-runner.zst" "${tmp_dir}/cached-runner"
 cached_sha=$(sha256sum "${tmp_dir}/cached-runner" | awk '{print $1}')
-. "${repo_root}/.github/scripts/runner-guest-binaries.sh"
-. "${repo_root}/.github/scripts/runner-binary-build/contract.env"
-runner_guest_binaries_load
-guests=$(printf '%s\n' "${RUNNER_GUEST_BINARIES[@]}" |
-  jq -Rn --arg sha "$cached_sha" '[inputs | {key: ., value: $sha}] | from_entries')
+guests=$(jq -c --arg sha "$cached_sha" \
+  'map({key: .binary, value: $sha}) | from_entries' \
+  "${repo_root}/crates/runner/guest-binaries.json")
 for target in aarch64-unknown-linux-musl x86_64-unknown-linux-musl; do
-  digest=$("${repo_root}/.github/scripts/runner-binary-build/digest.sh" "$target" |
-    sed -n 's/^binary-input-digest=//p')
+  digest_output=$("${repo_root}/.github/scripts/runner-binary-build/digest.sh" "$target")
+  digest=$(sed -n 's/^binary-input-digest=//p' <<<"$digest_output")
+  toolchain=$(sed -n 's/^toolchain-image=//p' <<<"$digest_output")
   jq -n --arg target "$target" --arg digest "$digest" \
-    --arg sha "$cached_sha" --arg toolchain "$RUNNER_BINARY_TOOLCHAIN_IMAGE" \
+    --arg sha "$cached_sha" --arg toolchain "$toolchain" \
     --argjson guests "$guests" '{
       schemaVersion: 1, target: $target, binaryInputDigest: $digest,
       toolchainImage: $toolchain, guests: $guests,
