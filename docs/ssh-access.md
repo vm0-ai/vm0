@@ -78,6 +78,13 @@ listing and credential creation/update/deletion. Host writes select
 Responses never return plaintext or ciphertext. A composite database foreign key
 requires the host and credential to have the same organization and user.
 
+Current encrypted storage is `ssh_credentials.encrypted_private_key` plus
+optional `encrypted_passphrase`, or `ssh_credentials.encrypted_password`.
+The selected method is enforced by a database check; changing methods clears
+the previous method's ciphertext columns. These fields use the normal stored
+secret encryption envelope. Historical KMS rotation scripts remain immutable
+records of the schema they migrated, not an inventory of current encrypted fields.
+
 Migration `1113_reusable_ssh_credentials` implements the explicitly approved
 pre-GA reset: it deletes old SSH hosts, their bound credentials, observations and
 learned pins. Agent SSH grants and unrelated data are retained. There is no
