@@ -4688,176 +4688,206 @@ describe.sequential("Official Workflow installations", () => {
     }
   });
 
-  it("compensates a later provider-watch failure and retries without a visible partial installation", async () => {
-    installCatalogStorageFixture();
-    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
-    const definitionName = `api-test-watch-${suffix}`;
-    await syncCatalog(
-      catalog([
-        activeDefinition(definitionName, [
-          scheduledBlueprint(),
-          gmailBlueprint(),
+  it.each(["installation retry", "resume retry", "agent deletion"] as const)(
+    "preserves official workflow state through %s",
+    async (scenario) => {
+      installCatalogStorageFixture();
+      const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+      const definitionName = `api-test-watch-${suffix}`;
+      await syncCatalog(
+        catalog([
+          activeDefinition(definitionName, [
+            scheduledBlueprint(),
+            gmailBlueprint(),
+          ]),
         ]),
-      ]),
-    );
+      );
 
-    const setup = await workflowBdd.setupWorkflowOrg({
-      timezone: "Asia/Shanghai",
-    });
-    const actor = setup.actor;
-    const { agentId } = await workflowBdd.createAgent(actor);
-    let agentDeleted = false;
-    onTestFinished(async () => {
-      if (!agentDeleted) {
-        installCatalogStorageFixture();
-        await bdd.deleteAgent(actor, agentId);
-      }
-      await cleanupCatalog();
-    });
-    mockGmailConnectorOAuth({ email: `official-${suffix}@example.test` });
-    await workflowBdd.connectConnector(actor, "gmail");
-    mockOptionalEnv("GMAIL_PUBSUB_TOPIC_NAME", GMAIL_TOPIC_NAME);
-    let stopCalls = 0;
-    server.use(
-      http.post("https://gmail.googleapis.com/gmail/v1/users/me/watch", () => {
-        return HttpResponse.json({ error: "watch failed" }, { status: 500 });
-      }),
-      http.post("https://gmail.googleapis.com/gmail/v1/users/me/stop", () => {
-        stopCalls++;
-        return new HttpResponse(null, { status: 204 });
-      }),
-    );
-    await setOfficialWorkflowsEnabled(actor, true);
-    const headers = authHeaders(actor);
-    const body = {
-      agentId,
-      blueprints: [
-        {
-          blueprintKey: "daily",
-          bindings: [{ key: "cron-expression", value: "0 6 * * *" }],
-        },
-        { blueprintKey: "gmail-trigger", bindings: [] },
-      ],
-    };
+      const setup = await workflowBdd.setupWorkflowOrg({
+        timezone: "Asia/Shanghai",
+      });
+      const actor = setup.actor;
+      const { agentId } = await workflowBdd.createAgent(actor);
+      let agentDeleted = false;
+      onTestFinished(async () => {
+        if (!agentDeleted) {
+          installCatalogStorageFixture();
+          await bdd.deleteAgent(actor, agentId);
+        }
+        await cleanupCatalog();
+      });
+      mockGmailConnectorOAuth({ email: `official-${suffix}@example.test` });
+      await workflowBdd.connectConnector(actor, "gmail");
+      mockOptionalEnv("GMAIL_PUBSUB_TOPIC_NAME", GMAIL_TOPIC_NAME);
+      let stopCalls = 0;
+      server.use(
+        http.post(
+          "https://gmail.googleapis.com/gmail/v1/users/me/watch",
+          () => {
+            return scenario === "installation retry"
+              ? HttpResponse.json({ error: "watch failed" }, { status: 500 })
+              : HttpResponse.json({
+                  historyId: "100",
+                  expiration: "4102444800000",
+                });
+          },
+        ),
+        http.post("https://gmail.googleapis.com/gmail/v1/users/me/stop", () => {
+          stopCalls++;
+          return new HttpResponse(null, { status: 204 });
+        }),
+      );
+      await setOfficialWorkflowsEnabled(actor, true);
+      const headers = authHeaders(actor);
+      const body = {
+        agentId,
+        blueprints: [
+          {
+            blueprintKey: "daily",
+            bindings: [{ key: "cron-expression", value: "0 6 * * *" }],
+          },
+          { blueprintKey: "gmail-trigger", bindings: [] },
+        ],
+      };
 
-    await accept(
-      officialClient().install({
-        headers,
-        params: { definitionName },
-        body,
-      }),
-      [400],
-    );
-    const listedAfterFailure = await accept(
-      workflowCollectionClient().list({
-        headers,
-        query: { agentId },
-      }),
-      [200],
-    );
-    expect(
-      listedAfterFailure.body.some((workflow) => {
-        return workflow.name === definitionName;
-      }),
-    ).toBeFalsy();
-
-    server.use(
-      http.post("https://gmail.googleapis.com/gmail/v1/users/me/watch", () => {
-        return HttpResponse.json({
-          historyId: "100",
-          expiration: "4102444800000",
-        });
-      }),
-    );
-    const retried = await accept(
-      officialClient().install({
-        headers,
-        params: { definitionName },
-        body,
-      }),
-      [201],
-    );
-    expect(retried.body.workflow.automations).toHaveLength(2);
-    expect(
-      retried.body.workflow.automations.every((automation) => {
-        return automation.enabled;
-      }),
-    ).toBeTruthy();
-    const gmailAutomation = retried.body.workflow.automations.find(
-      (automation) => {
-        return automation.official?.blueprintKey === "gmail-trigger";
-      },
-    );
-    if (!gmailAutomation) {
-      throw new Error("Expected retried Official Gmail automation");
-    }
-    await accept(
-      automationClient().disable({
-        headers,
-        params: { id: gmailAutomation.id },
-      }),
-      [200],
-    );
-    server.use(
-      http.post("https://gmail.googleapis.com/gmail/v1/users/me/watch", () => {
-        return HttpResponse.json(
-          { error: "resume watch failed" },
-          { status: 500 },
+      if (scenario === "installation retry") {
+        await accept(
+          officialClient().install({
+            headers,
+            params: { definitionName },
+            body,
+          }),
+          [400],
         );
-      }),
-    );
-    await accept(
-      automationClient().enable({
-        headers,
-        params: { id: gmailAutomation.id },
-      }),
-      [400],
-    );
-    const afterFailedResume = await accept(
-      installationClient().get({
-        headers,
-        params: { workflowId: retried.body.workflow.id },
-      }),
-      [200],
-    );
-    expect(
-      afterFailedResume.body.workflow.automations.find((automation) => {
-        return automation.id === gmailAutomation.id;
-      }),
-    ).toMatchObject({
-      enabled: false,
-      official: {
-        intendedEnabled: false,
-        reconciliationStatus: "current",
-      },
-    });
-    server.use(
-      http.post("https://gmail.googleapis.com/gmail/v1/users/me/watch", () => {
-        return HttpResponse.json({
-          historyId: "101",
-          expiration: "4102444800000",
+        const listedAfterFailure = await accept(
+          workflowCollectionClient().list({
+            headers,
+            query: { agentId },
+          }),
+          [200],
+        );
+        expect(
+          listedAfterFailure.body.some((workflow) => {
+            return workflow.name === definitionName;
+          }),
+        ).toBeFalsy();
+      }
+
+      server.use(
+        http.post(
+          "https://gmail.googleapis.com/gmail/v1/users/me/watch",
+          () => {
+            return HttpResponse.json({
+              historyId: "100",
+              expiration: "4102444800000",
+            });
+          },
+        ),
+      );
+      const retried = await accept(
+        officialClient().install({
+          headers,
+          params: { definitionName },
+          body,
+        }),
+        [201],
+      );
+      expect(retried.body.workflow.automations).toHaveLength(2);
+      expect(
+        retried.body.workflow.automations.every((automation) => {
+          return automation.enabled;
+        }),
+      ).toBeTruthy();
+      if (scenario === "installation retry") {
+        return;
+      }
+
+      if (scenario === "resume retry") {
+        const gmailAutomation = retried.body.workflow.automations.find(
+          (automation) => {
+            return automation.official?.blueprintKey === "gmail-trigger";
+          },
+        );
+        if (!gmailAutomation) {
+          throw new Error("Expected retried Official Gmail automation");
+        }
+        await accept(
+          automationClient().disable({
+            headers,
+            params: { id: gmailAutomation.id },
+          }),
+          [200],
+        );
+        server.use(
+          http.post(
+            "https://gmail.googleapis.com/gmail/v1/users/me/watch",
+            () => {
+              return HttpResponse.json(
+                { error: "resume watch failed" },
+                { status: 500 },
+              );
+            },
+          ),
+        );
+        await accept(
+          automationClient().enable({
+            headers,
+            params: { id: gmailAutomation.id },
+          }),
+          [400],
+        );
+        const afterFailedResume = await accept(
+          installationClient().get({
+            headers,
+            params: { workflowId: retried.body.workflow.id },
+          }),
+          [200],
+        );
+        expect(
+          afterFailedResume.body.workflow.automations.find((automation) => {
+            return automation.id === gmailAutomation.id;
+          }),
+        ).toMatchObject({
+          enabled: false,
+          official: {
+            intendedEnabled: false,
+            reconciliationStatus: "current",
+          },
         });
-      }),
-    );
-    await accept(
-      automationClient().enable({
-        headers,
-        params: { id: gmailAutomation.id },
-      }),
-      [200],
-    );
-    const stopCallsBeforeAgentDeletion = stopCalls;
-    await bdd.deleteAgent(actor, agentId);
-    agentDeleted = true;
-    await accept(
-      installationClient().get({
-        headers,
-        params: { workflowId: retried.body.workflow.id },
-      }),
-      [404],
-    );
-    expect(stopCalls).toBeGreaterThan(stopCallsBeforeAgentDeletion);
-  });
+        server.use(
+          http.post(
+            "https://gmail.googleapis.com/gmail/v1/users/me/watch",
+            () => {
+              return HttpResponse.json({
+                historyId: "101",
+                expiration: "4102444800000",
+              });
+            },
+          ),
+        );
+        await accept(
+          automationClient().enable({
+            headers,
+            params: { id: gmailAutomation.id },
+          }),
+          [200],
+        );
+        return;
+      }
+
+      const stopCallsBeforeAgentDeletion = stopCalls;
+      await bdd.deleteAgent(actor, agentId);
+      agentDeleted = true;
+      await accept(
+        installationClient().get({
+          headers,
+          params: { workflowId: retried.body.workflow.id },
+        }),
+        [404],
+      );
+      expect(stopCalls).toBeGreaterThan(stopCallsBeforeAgentDeletion);
+    },
+  );
 
   it("preserves the Google Forms account projection across same-target reconfiguration", async () => {
     installCatalogStorageFixture();

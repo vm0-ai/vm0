@@ -402,6 +402,7 @@ function waitForSharedWork<T>(
   signal: AbortSignal,
 ): Promise<T> {
   signal.throwIfAborted();
+  // eslint-disable-next-line ccstate/no-create-child-abort-controller -- migrate this lifetime to the ccstate signal hierarchy
   const waitController = createChildAbortController(signal);
   const aborted = createDeferredPromise<never>(waitController.signal);
   return withCleanup(Promise.race([work, aborted.promise]), () => {
@@ -462,6 +463,7 @@ const resolveColdThreadMeta$ = command(
     canonicalSync: Promise<void>,
     signal: AbortSignal,
   ): Promise<ColdThreadMetaResolution> => {
+    // eslint-disable-next-line ccstate/no-create-child-abort-controller -- migrate this lifetime to the ccstate signal hierarchy
     const controller = createChildAbortController(signal);
     const metadata = set(attemptRemoteThreadMeta$, threadId, controller.signal);
     const eventStream = set(

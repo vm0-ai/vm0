@@ -767,6 +767,7 @@ test.each([
 ])(
   "Restore a retryable recording at $path after $recovery (failed: $failed)",
   async ({ path, failed, recovery }) => {
+    // eslint-disable-next-line ccstate/no-create-child-abort-controller -- migrate this lifetime to the ccstate signal hierarchy
     const initialPage = createChildAbortController(context.signal);
     const firstRequest = context.mocks.deferred<void>();
     const firstResponse = context.mocks.deferred<void>();
@@ -887,6 +888,7 @@ test("Keep a saved voice recording isolated from another signed-in user", async 
 });
 
 test("Discard a failed recording without removing typed notes", async () => {
+  // eslint-disable-next-line ccstate/no-create-child-abort-controller -- migrate this lifetime to the ccstate signal hierarchy
   const initialPage = createChildAbortController(context.signal);
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installAvailableVoiceQuota();

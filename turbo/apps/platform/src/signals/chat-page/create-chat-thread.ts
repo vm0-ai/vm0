@@ -2534,18 +2534,20 @@ function createBrowserLifecycleOptimisticEvents(
   };
 }
 
+interface ChatThreadMessagePipelineOptions {
+  chatActionContext: ChatActionContext;
+  chatEvents: ChatEventSignals;
+  previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
+  connector: ComposerConnectorSignals;
+}
+
 function createChatThreadMessagePipeline(
   {
     chatActionContext,
     chatEvents,
     previewImageUrlsByUrl$,
     connector,
-  }: {
-    chatActionContext: ChatActionContext;
-    chatEvents: ChatEventSignals;
-    previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
-    connector: ComposerConnectorSignals;
-  },
+  }: ChatThreadMessagePipelineOptions,
   ownerSignal: AbortSignal,
 ) {
   const { threadId } = chatActionContext;
