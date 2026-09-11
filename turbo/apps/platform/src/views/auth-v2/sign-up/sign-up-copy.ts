@@ -8,7 +8,6 @@ import {
   clerkLocalizationForLocale,
   clerkLocalizations$,
 } from "../../../i18n/clerk-localization.ts";
-import { clerkPasswordErrorMessage } from "../../../i18n/clerk-password-errors.ts";
 import { locale$ } from "../../../signals/locale.ts";
 import type {
   AuthV2SignUpError,
@@ -17,14 +16,13 @@ import type {
 import type { AuthBrandContext } from "../../../signals/auth.ts";
 
 export interface AuthV2SignUpCopy {
-  readonly passwordError: (error: AuthV2SignUpError) => string | undefined;
+  readonly clerkError: (error: AuthV2SignUpError) => string | undefined;
   readonly accessNotAllowed: string;
   readonly alreadyHaveAccount: string;
   readonly appleMethod: string;
   readonly appleProvider: string;
   readonly back: string;
   readonly captchaError: string;
-  readonly captchaExpired: string;
   readonly captchaLoading: string;
   readonly captchaSubtitle: string;
   readonly captchaTitle: string;
@@ -224,9 +222,6 @@ function signUpTerminalCopy(
     captchaError: t(($) => {
       return $.auth.v2.signUp.captchaError;
     }),
-    captchaExpired: t(($) => {
-      return $.auth.v2.signUp.captchaExpired;
-    }),
     captchaLoading: t(($) => {
       return $.auth.v2.signUp.captchaLoading;
     }),
@@ -278,17 +273,15 @@ export function useAuthV2SignUpCopy(
     useGet(locale$),
   );
   return {
-    passwordError: (error) => {
-      if (error.passwordError) {
-        return clerkPasswordErrorMessage(localization, error.passwordError);
-      }
-      return error.clerkCode?.startsWith("form_password_") ||
-        error.clerkCode === "form_new_password_matches_current"
-        ? clerkAuthErrorMessage(localization, {
-            code: error.clerkCode,
-            signingInWithPassword: false,
-          })
-        : undefined;
+    clerkError: (error) => {
+      const code =
+        error.code === "rate-limited" ? "too_many_requests" : error.clerkCode;
+      return clerkAuthErrorMessage(localization, {
+        code,
+        paramName: error.clerkParamName,
+        passwordError: error.passwordError,
+        signingInWithPassword: false,
+      });
     },
     ...signUpDetailsCopy(t, brandName),
     ...signUpVerificationCopy(t, brandName),
@@ -304,13 +297,9 @@ export function signUpErrorMessage(
     return copy.legalRequired;
   }
   if (error.code === "password-invalid") {
-    return copy.passwordError(error) ?? copy.passwordInvalid;
+    return copy.clerkError(error) ?? copy.passwordInvalid;
   }
-  if (
-    error.field === "code" &&
-    (error.clerkCode?.toLowerCase().includes("expired") === true ||
-      error.clerkCode?.toLowerCase().includes("timeout") === true)
-  ) {
+  if (error.field === "code" && error.clerkCode === "verification_expired") {
     return copy.codeExpired;
   }
   if (error.clerkCode === "not_allowed_access") {
@@ -319,7 +308,7 @@ export function signUpErrorMessage(
   if (error.clerkCode === "user_banned") {
     return copy.userBanned;
   }
-  return copy.passwordError(error) ?? copy.unknownError;
+  return copy.clerkError(error) ?? copy.unknownError;
 }
 
 export function signUpCardDescription(

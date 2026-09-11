@@ -173,6 +173,9 @@ function signUpErrorCategory(
   error: AuthV2SignUpError,
 ): AuthV2DiagnosticErrorCategory {
   switch (error.code) {
+    case "rate-limited": {
+      return "provider-error";
+    }
     case "legal-required":
     case "password-invalid": {
       return "invalid-input";

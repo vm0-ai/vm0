@@ -1164,7 +1164,6 @@
         "appleMethod": "Lanjutkan dengan Apple",
         "back": "Kembali",
         "captchaError": "Pendaftaran gagal karena validasi bot gagal. Silakan muat ulang halaman untuk mencoba lagi atau hubungi dukungan untuk bantuan lebih lanjut.",
-        "captchaExpired": "Verifikasi bot telah kedaluwarsa. Coba lagi.",
         "captchaLoading": "Memuat…",
         "captchaSubtitle": "Harap tunggu sementara kami memverifikasi permintaan Anda.",
         "captchaTitle": "Memverifikasi permintaan Anda",

@@ -1164,7 +1164,6 @@
         "appleMethod": "Apple로 계속하기",
         "back": "돌아가기",
         "captchaError": "봇 검증에 실패해 회원가입을 완료할 수 없어요. 페이지를 새로고침한 뒤 다시 시도하거나 지원팀에 문의해 주세요.",
-        "captchaExpired": "봇 인증이 만료되었습니다. 다시 시도하세요.",
         "captchaLoading": "불러오는 중…",
         "captchaSubtitle": "요청을 확인하는 동안 잠시만 기다려 주세요.",
         "captchaTitle": "요청 확인 중",

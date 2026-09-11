@@ -1184,7 +1184,6 @@
         "appleMethod": "Continuar con Apple",
         "back": "Atrás",
         "captchaError": "Registro fallido debido a una validación de bot fallida. Por favor, actualice la página para intentarlo de nuevo o comuníquese con el soporte para más asistencia.",
-        "captchaExpired": "La verificación de bots ha caducado. Inténtalo de nuevo.",
         "captchaLoading": "Cargando…",
         "captchaSubtitle": "Espera mientras verificamos tu solicitud.",
         "captchaTitle": "Verificando tu solicitud",

@@ -1,4 +1,5 @@
 import { act, screen, waitFor } from "@testing-library/react";
+import { ClerkAPIResponseError, ClerkOfflineError } from "@clerk/shared/error";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 
@@ -205,6 +206,66 @@ test("Organization activation failure shows a sanitized recovery path", async ()
   expect(document.body).not.toHaveTextContent("token=secret");
   expect(document.body).not.toHaveTextContent("membership_private");
   expect(document.body).not.toHaveTextContent("sensitive.example");
+});
+
+test.each([
+  {
+    name: "an offline connection",
+    error: new ClerkOfflineError("Private detail"),
+    message: "You appear to be offline. Reconnect and try again.",
+  },
+  {
+    name: "an invalid session",
+    error: new ClerkAPIResponseError("Private detail", {
+      status: 401,
+      data: [{ code: "authentication_invalid", message: "Private detail" }],
+    }),
+    message: "Your sign-in session is no longer valid. Please sign in again.",
+  },
+  {
+    name: "a session that could not be renewed",
+    error: new ClerkAPIResponseError("Private detail", {
+      status: 422,
+      data: [{ code: "missing_expired_token", message: "Private detail" }],
+    }),
+    message: "Your sign-in session could not be renewed. Please sign in again.",
+  },
+])("Organization activation explains $name", async ({ error, message }) => {
+  mockedClerk.setActive.mockRejectedValueOnce(error);
+  await setupTaskPage({
+    memberships: [membership("org_one", "Our team")],
+    taskKey: "choose-organization",
+  });
+  click(await waitForButton("Continue with Our team"));
+  await expect(
+    screen.findByRole("region", { name: "Sign-in couldn't be completed" }),
+  ).resolves.toHaveAccessibleDescription(message);
+  expect(buttonNamed("Start over")).toBeVisible();
+  expect(document.body).not.toHaveTextContent("Private detail");
+});
+
+test("Organization creation explains a Clerk name validation error", async () => {
+  mockedClerk.createOrganization.mockRejectedValueOnce(
+    new ClerkAPIResponseError("Private detail", {
+      status: 422,
+      data: [
+        {
+          code: "form_param_max_length_exceeded",
+          message: "Private detail",
+          meta: { param_name: "name" },
+        },
+      ],
+    }),
+  );
+  await setupTaskPage({ canCreate: true, taskKey: "choose-organization" });
+  await fill(await screen.findByLabelText("Organization name"), "My new team");
+  click(await waitForButton("Create organization"));
+  await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+    "This name is too long. Please shorten it and try again.",
+  );
+  expect(screen.getByLabelText("Organization name")).toBeEnabled();
+  expect(mockedClerk.setActive).not.toHaveBeenCalled();
+  expect(document.body).not.toHaveTextContent("Private detail");
 });
 
 test("A pending session with no memberships cannot create an organization from sign-in", async () => {

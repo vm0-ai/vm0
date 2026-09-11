@@ -33,6 +33,7 @@ import {
   startAuthV2OAuth,
 } from "./sign-in-external-strategies.ts";
 import type { AuthV2ContinuationFlowHandoff } from "./continuation.ts";
+import { normalizeClerkAuthError } from "./clerk-errors.ts";
 import type { AuthV2Navigation } from "./navigation.ts";
 import {
   isAuthV2OAuthStrategy,
@@ -447,18 +448,25 @@ function preparedFactorForSnapshot(
 }
 
 function clerkErrorField(
-  error: Record<string, unknown>,
+  parameter: string | undefined,
   fallbackField: AuthV2SignInErrorField,
 ): AuthV2SignInErrorField {
-  const meta = error.meta;
-  const parameter = isRecord(meta) ? stringProperty(meta, "paramName") : null;
-  if (parameter === "identifier") {
+  if (
+    parameter === "identifier" ||
+    parameter === "email_address" ||
+    parameter === "emailAddress" ||
+    parameter === "username"
+  ) {
     return "identifier";
   }
   if (parameter === "code") {
     return "code";
   }
-  if (parameter === "password") {
+  if (
+    parameter === "password" ||
+    parameter === "new_password" ||
+    parameter === "newPassword"
+  ) {
     return fallbackField === "new-password" ? "new-password" : "password";
   }
   return fallbackField;
@@ -509,21 +517,18 @@ function normalizeClerkError(
   error: unknown,
   fallbackField: AuthV2SignInErrorField,
 ): AuthV2SignInError {
+  const normalized = normalizeClerkAuthError(error);
   if (!isRecord(error)) {
-    return { code: "unknown", field: fallbackField };
+    return { ...normalized, field: fallbackField };
   }
-  // Clerk's is429Error checks the response status, independently of API codes.
-  if (error.status === 429) {
-    return { code: "rate-limited", field: fallbackField };
+  if (normalized.code === "rate-limited") {
+    return { ...normalized, field: fallbackField };
   }
   const apiError = Array.isArray(error.errors)
     ? error.errors.find(isRecord)
     : null;
   const normalizedError = apiError ?? error;
-  const clerkCode = stringProperty(normalizedError, "code");
-  const clerkParamName = isRecord(normalizedError.meta)
-    ? stringProperty(normalizedError.meta, "paramName")
-    : undefined;
+  const { clerkCode, clerkParamName } = normalized;
   const errorName = stringProperty(normalizedError, "name");
   const errorMessage = stringProperty(normalizedError, "message");
   const normalizedPasskeyCode = passkeyErrorCode(
@@ -531,7 +536,7 @@ function normalizeClerkError(
     errorName,
     errorMessage,
   );
-  if (!apiError && !clerkCode && !normalizedPasskeyCode) {
+  if (normalized.code === "unknown" && !normalizedPasskeyCode) {
     return { code: "unknown", field: fallbackField };
   }
   const code =
@@ -546,10 +551,9 @@ function normalizeClerkError(
               ? "user-banned"
               : "clerk"));
   return {
-    ...(clerkCode ? { clerkCode } : {}),
-    ...(clerkParamName ? { clerkParamName } : {}),
+    ...normalized,
     code,
-    field: clerkErrorField(normalizedError, fallbackField),
+    field: clerkErrorField(clerkParamName, fallbackField),
   };
 }
 

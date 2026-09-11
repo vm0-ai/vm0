@@ -1165,7 +1165,6 @@
         "appleMethod": "Continue with Apple",
         "back": "Back",
         "captchaError": "Sign up unsuccessful due to failed bot validation. Please refresh the page to try again or reach out to support for more assistance.",
-        "captchaExpired": "Bot verification expired. Try again.",
         "captchaLoading": "Loading…",
         "captchaSubtitle": "Please wait while we verify your request.",
         "captchaTitle": "Verifying your request",

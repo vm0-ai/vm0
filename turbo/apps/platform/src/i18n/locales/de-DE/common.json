@@ -1165,7 +1165,6 @@
         "appleMethod": "Weiter mit Apple",
         "back": "Zurück",
         "captchaError": "Die Anmeldung ist aufgrund einer fehlgeschlagenen Bot-Validierung fehlgeschlagen. Bitte aktualisieren Sie die Seite, um es erneut zu versuchen, oder wenden Sie sich an den Support, um weitere Unterstützung zu erhalten.",
-        "captchaExpired": "Die Bot-Verifizierung ist abgelaufen. Versuche es erneut.",
         "captchaLoading": "Wird geladen…",
         "captchaSubtitle": "Bitte warten Sie, während wir Ihre Anfrage überprüfen.",
         "captchaTitle": "Ihre Anfrage wird überprüft",

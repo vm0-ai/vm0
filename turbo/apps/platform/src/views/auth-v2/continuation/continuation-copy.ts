@@ -1,9 +1,22 @@
+import { useGet } from "ccstate-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
+import { clerkAuthErrorMessage } from "../../../i18n/clerk-auth-errors.ts";
+import {
+  clerkLocalizationForLocale,
+  clerkLocalizations$,
+} from "../../../i18n/clerk-localization.ts";
+import type { AuthV2ClerkError } from "../../../signals/auth-v2/clerk-errors.ts";
+import type { AuthV2PasswordError } from "../../../signals/auth-v2/password-errors.ts";
+import { locale$ } from "../../../signals/locale.ts";
 import type { AuthBrandContext } from "../../../signals/auth.ts";
 
 export interface AuthV2ContinuationCopy {
+  readonly clerkError: (
+    error: AuthV2ClerkError,
+    passwordError?: AuthV2PasswordError,
+  ) => string | undefined;
   readonly securityTitle: string;
   readonly securityDescription: string;
   readonly setupKeyDescription: string;
@@ -107,7 +120,21 @@ export function useAuthV2ContinuationCopy(
   brandName: AuthBrandContext["brandName"],
 ): AuthV2ContinuationCopy {
   const { t } = useTranslation();
+  const localization = clerkLocalizationForLocale(
+    useGet(clerkLocalizations$),
+    useGet(locale$),
+  );
   return {
+    clerkError: (error, passwordError) => {
+      const code =
+        error.code === "rate-limited" ? "too_many_requests" : error.clerkCode;
+      return clerkAuthErrorMessage(localization, {
+        code,
+        paramName: error.clerkParamName,
+        passwordError,
+        signingInWithPassword: false,
+      });
+    },
     ...securityTaskCopy(t),
     activationErrorDescription: t(($) => {
       return $.auth.v2.continuation.activationErrorDescription;

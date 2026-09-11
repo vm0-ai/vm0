@@ -6,6 +6,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { ClerkAPIResponseError, ClerkRuntimeError } from "@clerk/shared/error";
 import { expect, test, vi } from "vitest";
 
 import {
@@ -1272,7 +1273,7 @@ test("A passkey verification failure keeps recovery methods available", async ()
   click(passkey);
 
   await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
-    "This action couldn't be completed. Please try again later or contact support if this persists.",
+    "Passkey verification failed. Please try again or choose another sign-in method.",
   );
   expect(screen.queryByText(privateMessage)).not.toBeInTheDocument();
   expect(mockedClerk.signInAuthenticateWithPasskey).toHaveBeenCalledTimes(1);
@@ -1887,6 +1888,25 @@ test.each([
     error: { errors: [{ code: "user_locked", message: "Private detail" }] },
     message:
       "Your account is temporarily locked after too many failed attempts. Please try again later.",
+  },
+  {
+    name: "a failed network request",
+    error: new ClerkRuntimeError("Private detail", { code: "network_error" }),
+    message: "Unable to connect. Check your internet connection and try again.",
+  },
+  {
+    name: "missing SSO account details",
+    error: new ClerkAPIResponseError("Private detail", {
+      status: 422,
+      data: [
+        {
+          code: "enterprise_sso_user_attribute_missing",
+          message: "Private detail",
+        },
+      ],
+    }),
+    message:
+      "Your identity provider did not provide the required account details. Please contact your organization administrator.",
   },
   {
     name: "a rate-limited response regardless of its error code",

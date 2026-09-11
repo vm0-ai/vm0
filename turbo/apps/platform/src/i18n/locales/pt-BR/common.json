@@ -1184,7 +1184,6 @@
         "appleMethod": "Continuar com Apple",
         "back": "Voltar",
         "captchaError": "Não foi possível se inscrever devido à indisponibilidade do captcha. Por favor atualize a página para tentar novamente ou entre em contato com o suporte para obter mais ajuda.",
-        "captchaExpired": "A verificação contra bots expirou. Tente novamente.",
         "captchaLoading": "Carregando…",
         "captchaSubtitle": "Aguarde enquanto verificamos sua solicitação.",
         "captchaTitle": "Verificando sua solicitação",

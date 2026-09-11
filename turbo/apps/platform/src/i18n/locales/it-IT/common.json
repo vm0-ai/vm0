@@ -1184,7 +1184,6 @@
         "appleMethod": "Continua con Apple",
         "back": "Indietro",
         "captchaError": "Registrazione non riuscita a causa della convalida del bot non riuscita. Per favore, ricarica la pagina e riprova o contatta il supporto per ulteriore assistenza.",
-        "captchaExpired": "La verifica anti-bot è scaduta. Riprova.",
         "captchaLoading": "Caricamento…",
         "captchaSubtitle": "Attendi mentre verifichiamo la tua richiesta.",
         "captchaTitle": "Stiamo verificando la tua richiesta",

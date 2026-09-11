@@ -1184,7 +1184,6 @@
         "appleMethod": "Continuer avec Apple",
         "back": "Retour",
         "captchaError": "Inscription échouée en raison d'une validation de captcha non réussie. Veuillez actualiser la page pour réessayer ou contacter le support pour obtenir de l'aide.",
-        "captchaExpired": "La vérification anti-robot a expiré. Réessayez.",
         "captchaLoading": "Chargement…",
         "captchaSubtitle": "Veuillez patienter pendant que nous vérifions votre demande.",
         "captchaTitle": "Vérification de votre demande",

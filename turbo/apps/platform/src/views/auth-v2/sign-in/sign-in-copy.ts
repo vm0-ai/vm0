@@ -8,7 +8,6 @@ import {
   clerkLocalizations$,
 } from "../../../i18n/clerk-localization.ts";
 import { clerkAuthErrorMessage } from "../../../i18n/clerk-auth-errors.ts";
-import { clerkPasswordErrorMessage } from "../../../i18n/clerk-password-errors.ts";
 import { locale$ } from "../../../signals/locale.ts";
 import type {
   AuthV2SignInError,
@@ -437,18 +436,14 @@ export function useAuthV2SignInCopy(
   );
   return {
     clerkError: (error) => {
-      if (error.passwordError) {
-        return clerkPasswordErrorMessage(localization, error.passwordError);
-      }
       const code =
         error.code === "rate-limited" ? "too_many_requests" : error.clerkCode;
-      return code
-        ? clerkAuthErrorMessage(localization, {
-            code,
-            paramName: error.clerkParamName,
-            signingInWithPassword: error.field === "password",
-          })
-        : undefined;
+      return clerkAuthErrorMessage(localization, {
+        code,
+        paramName: error.clerkParamName,
+        passwordError: error.passwordError,
+        signingInWithPassword: error.field === "password",
+      });
     },
     ...signInEntryCopy(t, authBrand.brandName),
     ...signInCodeCopy(t, authBrand.brandName),
