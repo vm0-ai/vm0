@@ -263,6 +263,28 @@ describe("marketing privacy delivery", () => {
       reason: "subject_mismatch",
     });
   });
+  it("persists GPC observed at attribution capture and invalidates older receipts", async () => {
+    const userId = actor();
+    const state = await choose();
+    const receipt = await capture(state);
+    clock(2000);
+    const response = await accept(
+      signup().recordSignup({
+        headers: SESSION,
+        extraHeaders: { "Sec-GPC": "1" },
+        body: { attribution: { gclid: "next-click" } },
+      }),
+      [200],
+    );
+    expect(response.body.recorded).toBeTruthy();
+    await expect(decision(userId, receipt!)).resolves.toMatchObject({
+      allowed: false,
+    });
+    const current = await accept(choices().get({ headers: SESSION }), [200]);
+    expect(current.body.source).toBe("gpc");
+    expect(current.body.advertisingAllowed).toBeFalsy();
+    expect(current.body.marketingAnalyticsAllowed).toBeFalsy();
+  });
   it("does not certify an event collected before its server capture", async () => {
     const userId = actor();
     const receipt = await capture(await choose());

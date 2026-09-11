@@ -148,7 +148,9 @@ choice reads are serialized on the subject row. The API stores its own capture
 time, the revision, policy, and the permitted purposes in
 `marketing_privacy_receipts`. The returned `privacyReceipt` is an opaque reference,
 not a bearer credential or an assertion that any arbitrary event was permitted.
-A context with no allowed purpose receives no receipt.
+A context with no allowed purpose receives no receipt. `Sec-GPC: 1` on the
+attribution request persists a personal withdrawal before examining any capture
+context, including when an older client omits that context.
 
 Only a new first-touch record can persist `marketing_privacy_receipt` alongside
 Clerk's `signup_attribution`. Existing first touches are never recertified or

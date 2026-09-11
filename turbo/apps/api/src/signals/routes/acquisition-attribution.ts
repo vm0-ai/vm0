@@ -24,6 +24,8 @@ import {
 } from "@okouai/api-contracts/contracts/impact-attribution";
 
 import { authContext$ } from "../auth/auth-context";
+import { request$ } from "../context/hono";
+import { userPrivacyChoice$ } from "../services/privacy-choices.service";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { clerk$ } from "../external/clerk";
@@ -173,6 +175,11 @@ const recordSignupInner$ = command(
     signal.throwIfAborted();
     if (!bodyResult.ok) {
       return bodyResult.response;
+    }
+
+    if (get(request$).header("Sec-GPC") === "1") {
+      await set(userPrivacyChoice$, { userId: auth.userId, gpc: true }, signal);
+      signal.throwIfAborted();
     }
 
     const clerk = get(clerk$);
