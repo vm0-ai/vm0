@@ -3896,9 +3896,8 @@ describe.sequential("Official Workflow installations", () => {
     failedCopyAgentDeleted = true;
   });
 
-  it("uninstalls, reinstalls, retires, and copies through lifecycle boundaries", async () => {
+  it("uninstalls and reinstalls Official Workflows, including zero-Blueprint installations", async () => {
     const {
-      actor,
       agentId,
       definitionName,
       headers,
@@ -3931,13 +3930,6 @@ describe.sequential("Official Workflow installations", () => {
       [201],
     );
     expect(reinstalled.body.workflow.id).not.toBe(firstWorkflowId);
-    const reinstalledDailyAutomation =
-      reinstalled.body.workflow.automations.find((automation) => {
-        return automation.official?.blueprintKey === "daily";
-      });
-    if (!reinstalledDailyAutomation) {
-      throw new Error("Expected reinstalled daily automation");
-    }
 
     const zeroInstalled = await accept(
       officialClient().install({
@@ -3955,7 +3947,24 @@ describe.sequential("Official Workflow installations", () => {
       }),
       [204],
     );
+  });
 
+  async function retireInstalledLifecycleScenario() {
+    const {
+      actor,
+      definitionName,
+      headers,
+      installBody,
+      installed: reinstalled,
+      zeroBlueprintName,
+    } = await installOfficialWorkflowLifecycleScenario();
+    const reinstalledDailyAutomation =
+      reinstalled.body.workflow.automations.find((automation) => {
+        return automation.official?.blueprintKey === "daily";
+      });
+    if (!reinstalledDailyAutomation) {
+      throw new Error("Expected installed daily automation");
+    }
     await syncCatalog(
       catalog([
         retiredDefinition(definitionName),
@@ -4038,7 +4047,12 @@ describe.sequential("Official Workflow installations", () => {
         }),
       ]),
     });
+    return { actor, headers, reinstalled, reinstalledDailyAutomation };
+  }
 
+  it("retains and copies a retired Official installation while discovery is disabled", async () => {
+    const { actor, headers, reinstalled } =
+      await retireInstalledLifecycleScenario();
     const { agentId: retiredCopyAgentId } =
       await workflowBdd.createAgent(actor);
     let retiredCopyAgentDeleted = false;
@@ -4076,7 +4090,11 @@ describe.sequential("Official Workflow installations", () => {
     ).toBeTruthy();
     await bdd.deleteAgent(actor, retiredCopyAgentId);
     retiredCopyAgentDeleted = true;
+  });
 
+  it("rejects copying a stale retired installation and allows reconfiguration and uninstall", async () => {
+    const { actor, headers, reinstalled, reinstalledDailyAutomation } =
+      await retireInstalledLifecycleScenario();
     const { agentId: staleCopyAgentId } = await workflowBdd.createAgent(actor);
     let staleCopyAgentDeleted = false;
     onTestFinished(async () => {
@@ -7987,255 +8005,268 @@ describe.sequential("Official Workflow Run admission", () => {
     expect(ordinaryWorkflowId).not.toBe(firstInstallation.body.workflow.id);
   });
 
-  it("routes enabled result email through explicit, scheduled, once, and webhook Official admission", async () => {
-    installCatalogStorageFixture();
-    mockEnv("OKOU_WEB_URL", "https://api.okou.ai");
-    const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
-    const definitionName = `api-test-producers-${suffix}`;
-    await syncCatalog(
-      catalog([
-        activeDefinition(definitionName, [
-          loopBlueprint(true),
-          onceBlueprint(true),
-          webhookBlueprint(true),
-        ]),
-      ]),
-    );
-    const setup = await workflowBdd.setupWorkflowOrg({
-      timezone: "Asia/Shanghai",
-      tier: "team",
-    });
-    const { actor } = setup;
-    if (!actor.orgId) {
-      throw new Error("Expected organization-scoped actor");
-    }
-    await selectBuiltInDefaultModel(actor);
-    const { agentId } = await workflowBdd.createAgent(actor);
-    const headers = authHeaders(actor);
-    configureResultEmailRecipient(actor);
-    await setOfficialWorkflowsEnabled(actor, true);
-    const atTime = new Date(now() + 60_000).toISOString();
-    const installed = await accept(
-      officialClient().install({
-        headers,
-        params: { definitionName },
-        body: {
-          agentId,
-          blueprints: [
-            {
-              blueprintKey: "pulse",
-              bindings: [{ key: "interval-seconds", value: 60 }],
-            },
-            {
-              blueprintKey: "one-shot",
-              bindings: [
-                { key: "at-time", value: atTime },
-                {
-                  key: "callback-url",
-                  value: "https://example.test/official-callback",
-                },
-                { key: "correlation-id", value: randomUUID() },
-              ],
-            },
-            { blueprintKey: "webhook-trigger", bindings: [] },
-          ],
-        },
-      }),
-      [201],
-    );
-    onTestFinished(async () => {
+  it.each(["explicit and scheduled", "once", "webhook"])(
+    "routes enabled result email through %s Official admission",
+    async (producerKind) => {
       installCatalogStorageFixture();
-      await bdd.deleteAgent(actor, agentId);
-      await cleanupCatalog();
-    });
-    const runnerGroup = runs.configureRunnerGroup();
-    runs.acceptStorageDownloads();
-    runs.acceptTelemetryIngest();
-
-    const automations = new Map(
-      installed.body.workflow.automations.flatMap((automation) => {
-        return automation.official
-          ? [[automation.official.blueprintKey, automation] as const]
-          : [];
-      }),
-    );
-    const loopAutomation = automations.get("pulse");
-    const onceAutomation = automations.get("one-shot");
-    const webhookAutomation = automations.get("webhook-trigger");
-    if (!loopAutomation || !onceAutomation || !webhookAutomation) {
-      throw new Error("Expected all Official Workflow producer automations");
-    }
-
-    const explicit = await accept(
-      automationClient().run({
-        headers,
-        extraHeaders: { origin: "https://app.okou.ai" },
-        params: { id: loopAutomation.id },
-      }),
-      [201],
-    );
-    if (!explicit.body.runId) {
-      throw new Error("Expected explicit Official Automation Run");
-    }
-    const producerRuns: {
-      readonly runId: string;
-      readonly automationId: string;
-    }[] = [
-      {
-        runId: explicit.body.runId,
-        automationId: loopAutomation.id,
-      },
-    ];
-    await completeSuccessfulRun(
-      runnerGroup,
-      explicit.body.runId,
-      "Explicit Official result",
-    );
-
-    const scheduled = await withMockNowForTest(now() + 120_000, async () => {
-      return await accept(
-        automationExecutionClient().execute({
-          body: { automation_id: loopAutomation.id },
-        }),
-        [200],
-      );
-    });
-    expect(scheduled.body.executed).toBe(1);
-    const scheduledRun = await readLatestWorkflowAutomationRunFixture(
-      context,
-      loopAutomation.id,
-    );
-    if (!scheduledRun || scheduledRun.runId === explicit.body.runId) {
-      throw new Error("Expected a distinct scheduled Official Automation Run");
-    }
-    producerRuns.push({
-      runId: scheduledRun.runId,
-      automationId: loopAutomation.id,
-    });
-    await completeSuccessfulRun(
-      runnerGroup,
-      scheduledRun.runId,
-      "Scheduled Official result",
-    );
-
-    const once = await withMockNowForTest(now() + 120_000, async () => {
-      return await accept(
-        automationExecutionClient().execute({
-          body: { automation_id: onceAutomation.id },
-        }),
-        [200],
-      );
-    });
-    expect(once.body.executed).toBe(1);
-    const onceRun = await readLatestWorkflowAutomationRunFixture(
-      context,
-      onceAutomation.id,
-    );
-    if (!onceRun) {
-      throw new Error("Expected once Official Automation Run");
-    }
-    producerRuns.push({
-      runId: onceRun.runId,
-      automationId: onceAutomation.id,
-    });
-    await completeSuccessfulRun(
-      runnerGroup,
-      onceRun.runId,
-      "Once Official result",
-    );
-
-    if (
-      webhookAutomation.kind !== "event" ||
-      webhookAutomation.eventType !== "webhook-received"
-    ) {
-      throw new Error("Expected Official webhook automation");
-    }
-    const webhookCredentials = await accept(
-      automationClient().revealWebhookSecret({
-        headers,
-        params: { id: webhookAutomation.id },
-        body: undefined,
-      }),
-      [200],
-    );
-    const webhook = await postOfficialWorkflowWebhook({
-      webhookUrl: webhookCredentials.body.webhookUrl,
-      secret: webhookCredentials.body.webhookSecret,
-      body: JSON.stringify({ event: "official-p2-regression" }),
-    });
-    expect(webhook).toMatchObject({
-      status: 200,
-      body: { success: true, duplicate: false },
-    });
-    await expect
-      .poll(async () => {
-        return (
-          await readLatestWorkflowAutomationRunFixture(
-            context,
-            webhookAutomation.id,
-          )
-        )?.runId;
-      })
-      .toEqual(expect.any(String));
-    const webhookRun = await readLatestWorkflowAutomationRunFixture(
-      context,
-      webhookAutomation.id,
-    );
-    if (!webhookRun) {
-      throw new Error("Expected Official webhook Automation Run");
-    }
-    producerRuns.push({
-      runId: webhookRun.runId,
-      automationId: webhookAutomation.id,
-    });
-    await completeSuccessfulRun(
-      runnerGroup,
-      webhookRun.runId,
-      "Event Official result",
-    );
-
-    const accepted = await readAcceptedDefinitionFixture(definitionName);
-    for (const producer of producerRuns) {
-      const state = await readOfficialWorkflowRunStateFixture(
-        context,
-        producer.runId,
-      );
-      expect(state.model_provider).toBe("built-in");
-      expect(state.provenance?.definitions).toStrictEqual([
-        expect.objectContaining({
-          name: definitionName,
-          revision: accepted.definition.revision,
-        }),
-      ]);
-      expect(state.storage_mounts).toStrictEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            org_id: SYSTEM_ORG_ID,
-            user_id: VOLUME_ORG_USER_ID,
-            storage_id: accepted.definition.artifact.storageId,
-            version: accepted.definition.artifact.storageVersion,
-          }),
+      mockEnv("OKOU_WEB_URL", "https://api.okou.ai");
+      const suffix = randomUUID().replaceAll("-", "").slice(0, 10);
+      const definitionName = `api-test-producers-${suffix}`;
+      await syncCatalog(
+        catalog([
+          activeDefinition(definitionName, [
+            loopBlueprint(true),
+            onceBlueprint(true),
+            webhookBlueprint(true),
+          ]),
         ]),
       );
-      const source = await outbox.findSourceState({
-        sourceRunId: producer.runId,
-        sourceWorkflowAutomationId: producer.automationId,
+      const setup = await workflowBdd.setupWorkflowOrg({
+        timezone: "Asia/Shanghai",
+        tier: "team",
       });
-      expect(source.claim).not.toBeNull();
-      expect(source.items).toStrictEqual([
-        expect.objectContaining({
-          public_brand: "okou",
-          subject: `Display ${definitionName}`,
-          source_run_id: producer.runId,
-          source_workflow_automation_id: producer.automationId,
-          status: "pending",
-          template: expect.objectContaining({
-            template: "official-automation-result",
-          }),
+      const { actor } = setup;
+      if (!actor.orgId) {
+        throw new Error("Expected organization-scoped actor");
+      }
+      await selectBuiltInDefaultModel(actor);
+      const { agentId } = await workflowBdd.createAgent(actor);
+      const headers = authHeaders(actor);
+      configureResultEmailRecipient(actor);
+      await setOfficialWorkflowsEnabled(actor, true);
+      const atTime = new Date(now() + 60_000).toISOString();
+      const installed = await accept(
+        officialClient().install({
+          headers,
+          params: { definitionName },
+          body: {
+            agentId,
+            blueprints: [
+              {
+                blueprintKey: "pulse",
+                bindings: [{ key: "interval-seconds", value: 60 }],
+              },
+              {
+                blueprintKey: "one-shot",
+                bindings: [
+                  { key: "at-time", value: atTime },
+                  {
+                    key: "callback-url",
+                    value: "https://example.test/official-callback",
+                  },
+                  { key: "correlation-id", value: randomUUID() },
+                ],
+              },
+              { blueprintKey: "webhook-trigger", bindings: [] },
+            ],
+          },
         }),
-      ]);
-    }
-  });
+        [201],
+      );
+      onTestFinished(async () => {
+        installCatalogStorageFixture();
+        await bdd.deleteAgent(actor, agentId);
+        await cleanupCatalog();
+      });
+      const runnerGroup = runs.configureRunnerGroup();
+      runs.acceptStorageDownloads();
+      runs.acceptTelemetryIngest();
+
+      const automations = new Map(
+        installed.body.workflow.automations.flatMap((automation) => {
+          return automation.official
+            ? [[automation.official.blueprintKey, automation] as const]
+            : [];
+        }),
+      );
+      const loopAutomation = automations.get("pulse");
+      const onceAutomation = automations.get("one-shot");
+      const webhookAutomation = automations.get("webhook-trigger");
+      if (!loopAutomation || !onceAutomation || !webhookAutomation) {
+        throw new Error("Expected all Official Workflow producer automations");
+      }
+
+      const producerRuns: {
+        readonly runId: string;
+        readonly automationId: string;
+      }[] = [];
+      if (producerKind === "explicit and scheduled") {
+        const explicit = await accept(
+          automationClient().run({
+            headers,
+            extraHeaders: { origin: "https://app.okou.ai" },
+            params: { id: loopAutomation.id },
+          }),
+          [201],
+        );
+        if (!explicit.body.runId) {
+          throw new Error("Expected explicit Official Automation Run");
+        }
+        producerRuns.push({
+          runId: explicit.body.runId,
+          automationId: loopAutomation.id,
+        });
+        await completeSuccessfulRun(
+          runnerGroup,
+          explicit.body.runId,
+          "Explicit Official result",
+        );
+
+        const scheduled = await withMockNowForTest(
+          now() + 120_000,
+          async () => {
+            return await accept(
+              automationExecutionClient().execute({
+                body: { automation_id: loopAutomation.id },
+              }),
+              [200],
+            );
+          },
+        );
+        expect(scheduled.body.executed).toBe(1);
+        const scheduledRun = await readLatestWorkflowAutomationRunFixture(
+          context,
+          loopAutomation.id,
+        );
+        if (!scheduledRun || scheduledRun.runId === explicit.body.runId) {
+          throw new Error(
+            "Expected a distinct scheduled Official Automation Run",
+          );
+        }
+        producerRuns.push({
+          runId: scheduledRun.runId,
+          automationId: loopAutomation.id,
+        });
+        await completeSuccessfulRun(
+          runnerGroup,
+          scheduledRun.runId,
+          "Scheduled Official result",
+        );
+      }
+
+      if (producerKind === "once") {
+        const once = await withMockNowForTest(now() + 120_000, async () => {
+          return await accept(
+            automationExecutionClient().execute({
+              body: { automation_id: onceAutomation.id },
+            }),
+            [200],
+          );
+        });
+        expect(once.body.executed).toBe(1);
+        const onceRun = await readLatestWorkflowAutomationRunFixture(
+          context,
+          onceAutomation.id,
+        );
+        if (!onceRun) {
+          throw new Error("Expected once Official Automation Run");
+        }
+        producerRuns.push({
+          runId: onceRun.runId,
+          automationId: onceAutomation.id,
+        });
+        await completeSuccessfulRun(
+          runnerGroup,
+          onceRun.runId,
+          "Once Official result",
+        );
+      }
+
+      if (producerKind === "webhook") {
+        if (
+          webhookAutomation.kind !== "event" ||
+          webhookAutomation.eventType !== "webhook-received"
+        ) {
+          throw new Error("Expected Official webhook automation");
+        }
+        const webhookCredentials = await accept(
+          automationClient().revealWebhookSecret({
+            headers,
+            params: { id: webhookAutomation.id },
+            body: undefined,
+          }),
+          [200],
+        );
+        const webhook = await postOfficialWorkflowWebhook({
+          webhookUrl: webhookCredentials.body.webhookUrl,
+          secret: webhookCredentials.body.webhookSecret,
+          body: JSON.stringify({ event: "official-p2-regression" }),
+        });
+        expect(webhook).toMatchObject({
+          status: 200,
+          body: { success: true, duplicate: false },
+        });
+        await expect
+          .poll(async () => {
+            return (
+              await readLatestWorkflowAutomationRunFixture(
+                context,
+                webhookAutomation.id,
+              )
+            )?.runId;
+          })
+          .toEqual(expect.any(String));
+        const webhookRun = await readLatestWorkflowAutomationRunFixture(
+          context,
+          webhookAutomation.id,
+        );
+        if (!webhookRun) {
+          throw new Error("Expected Official webhook Automation Run");
+        }
+        producerRuns.push({
+          runId: webhookRun.runId,
+          automationId: webhookAutomation.id,
+        });
+        await completeSuccessfulRun(
+          runnerGroup,
+          webhookRun.runId,
+          "Event Official result",
+        );
+      }
+
+      const accepted = await readAcceptedDefinitionFixture(definitionName);
+      for (const producer of producerRuns) {
+        const state = await readOfficialWorkflowRunStateFixture(
+          context,
+          producer.runId,
+        );
+        expect(state.model_provider).toBe("built-in");
+        expect(state.provenance?.definitions).toStrictEqual([
+          expect.objectContaining({
+            name: definitionName,
+            revision: accepted.definition.revision,
+          }),
+        ]);
+        expect(state.storage_mounts).toStrictEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              org_id: SYSTEM_ORG_ID,
+              user_id: VOLUME_ORG_USER_ID,
+              storage_id: accepted.definition.artifact.storageId,
+              version: accepted.definition.artifact.storageVersion,
+            }),
+          ]),
+        );
+        const source = await outbox.findSourceState({
+          sourceRunId: producer.runId,
+          sourceWorkflowAutomationId: producer.automationId,
+        });
+        expect(source.claim).not.toBeNull();
+        expect(source.items).toStrictEqual([
+          expect.objectContaining({
+            public_brand: "okou",
+            subject: `Display ${definitionName}`,
+            source_run_id: producer.runId,
+            source_workflow_automation_id: producer.automationId,
+            status: "pending",
+            template: expect.objectContaining({
+              template: "official-automation-result",
+            }),
+          }),
+        ]);
+      }
+    },
+  );
 
   it("uses Okou email brand for session and agent-token launches across Official result callback retry", async () => {
     const scenario = await installResultEmailLoopScenario(
