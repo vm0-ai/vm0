@@ -480,6 +480,48 @@
       ],
       "status": "implemented",
       "evidence": []
+    },
+    {
+      "id": "color-theme-swatch",
+      "family": "local-controls",
+      "tokens": ["okou-color-theme-swatch"],
+      "consumers": [
+        "apps/platform/src/views/okou-page/components/settings/color-theme-settings.tsx"
+      ],
+      "cases": [
+        "swatch-light",
+        "swatch-dark",
+        "swatch-mobile",
+        "swatch-disabled"
+      ],
+      "status": "verified",
+      "evidence": [
+        {
+          "kind": "before-and-unchanged-replay",
+          "url": "https://a.okou.io/tfbcvgmfih.zip",
+          "sha256": "e5356716c129260faa07990eccf8b8e494e66ac88363112b210d42fce124181d",
+          "commit": "440d64b6dfffeba66d643e35fee9685ad90df335"
+        },
+        {
+          "kind": "after-raw-diffs-and-live-persistence",
+          "url": "https://a.okou.io/ibwjj8txei.zip",
+          "sha256": "0229f92b5025f457dba9bdbb548d3d24d617a67426c2780be10dcfc92850491c",
+          "commit": "094ffe1c195a4b4680a696273ebb08f4047ca2a8"
+        },
+        {
+          "kind": "before-after-comparison-image",
+          "url": "https://a.okou.io/767nwsbdl5.png",
+          "sha256": "193bc43ac7ac0c988999431980fef5ae050742962314555615f48b74def08483",
+          "commit": "094ffe1c195a4b4680a696273ebb08f4047ca2a8"
+        },
+        {
+          "kind": "superseded-calibration-and-retained-failures",
+          "url": "https://a.okou.io/w9gttm8nol.zip",
+          "sha256": "5d0ac66ea71a0c195a57605b90f4819a5a21237ccafa40397dc338df9fb9b94d",
+          "commit": "440d64b6dfffeba66d643e35fee9685ad90df335"
+        }
+      ],
+      "pullRequest": "https://github.com/vm0-ai/vm0/pull/33063"
     }
   ],
   "caseFiles": [
@@ -490,6 +532,7 @@
     "../e2e/playwright/style-migration/settings-select-cases.json",
     "../e2e/playwright/style-migration/badge-cases.json",
     "../e2e/playwright/style-migration/chat-emoji-cases.json",
-    "../e2e/playwright/style-migration/running-indicator-cases.json"
+    "../e2e/playwright/style-migration/running-indicator-cases.json",
+    "../e2e/playwright/style-migration/swatch-cases.json"
   ]
 }
