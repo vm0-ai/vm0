@@ -969,6 +969,122 @@ const FLIGHT_LINE_ARROW_LEAD_SECONDS = 0.56;
 const FLIGHT_LINE_ARROW_HEAD = "M0 0L-3.2 1.7L-3.2-1.7Z";
 const FLIGHT_LINE_RIPPLES = [0, 1, 2] as const;
 
+function FlightLineMotion() {
+  return (
+    <g className="motion-reduce:hidden">
+      {FLIGHT_LINE_PATHS.map((d, index) => {
+        const begin =
+          (-index * FLIGHT_LINE_CYCLE_SECONDS) / FLIGHT_LINE_PATHS.length;
+        return (
+          <g key={d}>
+            <path
+              d={d}
+              fill="none"
+              pathLength="100"
+              strokeDasharray="14 86"
+              className="stroke-chart-orange"
+              strokeOpacity="0.55"
+              strokeWidth="1.2"
+              strokeLinecap="round"
+            >
+              <animate
+                attributeName="stroke-dashoffset"
+                values="100;0"
+                dur={`${FLIGHT_LINE_CYCLE_SECONDS}s`}
+                begin={`${begin}s`}
+                repeatCount="indefinite"
+              />
+            </path>
+            <path d={FLIGHT_LINE_ARROW_HEAD} className="fill-chart-orange">
+              <animateMotion
+                path={d}
+                rotate="auto"
+                dur={`${FLIGHT_LINE_CYCLE_SECONDS}s`}
+                begin={`${begin - FLIGHT_LINE_ARROW_LEAD_SECONDS}s`}
+                repeatCount="indefinite"
+              />
+            </path>
+          </g>
+        );
+      })}
+      {FLIGHT_LINE_RIPPLES.map((index) => {
+        const begin =
+          (-index * FLIGHT_LINE_CYCLE_SECONDS) / FLIGHT_LINE_RIPPLES.length;
+        return (
+          <circle
+            key={index}
+            cx={FLIGHT_LINE_HUB.x}
+            cy={FLIGHT_LINE_HUB.y}
+            r="2.2"
+            fill="none"
+            className="stroke-chart-orange"
+            strokeWidth="0.7"
+          >
+            <animate
+              attributeName="r"
+              values="2.2;7.5"
+              dur={`${FLIGHT_LINE_CYCLE_SECONDS}s`}
+              begin={`${begin}s`}
+              repeatCount="indefinite"
+            />
+            <animate
+              attributeName="stroke-opacity"
+              values="0.5;0"
+              dur={`${FLIGHT_LINE_CYCLE_SECONDS}s`}
+              begin={`${begin}s`}
+              repeatCount="indefinite"
+            />
+          </circle>
+        );
+      })}
+    </g>
+  );
+}
+
+function FlightLineStill() {
+  return (
+    <g className="hidden motion-reduce:block">
+      {FLIGHT_LINE_ARROWS.map(({ angle, trail, x, y }) => {
+        return (
+          <g key={trail}>
+            <path
+              d={trail}
+              fill="none"
+              className="stroke-chart-orange"
+              strokeOpacity="0.55"
+              strokeWidth="1.2"
+              strokeLinecap="round"
+            />
+            <path
+              d={FLIGHT_LINE_ARROW_HEAD}
+              className="fill-chart-orange"
+              transform={`translate(${x} ${y}) rotate(${angle})`}
+            />
+          </g>
+        );
+      })}
+      <circle
+        cx={FLIGHT_LINE_HUB.x}
+        cy={FLIGHT_LINE_HUB.y}
+        r="7"
+        fill="none"
+        className="stroke-chart-orange"
+        strokeOpacity="0.22"
+        strokeWidth="0.6"
+      />
+      <circle
+        cx={FLIGHT_LINE_HUB.x}
+        cy={FLIGHT_LINE_HUB.y}
+        r="4.6"
+        fill="none"
+        className="stroke-chart-orange"
+        strokeOpacity="0.45"
+        strokeWidth="0.7"
+      />
+    </g>
+  );
+}
+
 function RouteMapChartArtwork() {
   return (
     // The route preview carries no legend, so the map sits lower than in the
@@ -998,112 +1114,8 @@ function RouteMapChartArtwork() {
           />
         );
       })}
-      <g className="motion-reduce:hidden">
-        {FLIGHT_LINE_PATHS.map((d, index) => {
-          const begin =
-            (-index * FLIGHT_LINE_CYCLE_SECONDS) / FLIGHT_LINE_PATHS.length;
-          return (
-            <g key={d}>
-              <path
-                d={d}
-                fill="none"
-                pathLength="100"
-                strokeDasharray="14 86"
-                className="stroke-chart-orange"
-                strokeOpacity="0.55"
-                strokeWidth="1.2"
-                strokeLinecap="round"
-              >
-                <animate
-                  attributeName="stroke-dashoffset"
-                  values="100;0"
-                  dur={`${FLIGHT_LINE_CYCLE_SECONDS}s`}
-                  begin={`${begin}s`}
-                  repeatCount="indefinite"
-                />
-              </path>
-              <path d={FLIGHT_LINE_ARROW_HEAD} className="fill-chart-orange">
-                <animateMotion
-                  path={d}
-                  rotate="auto"
-                  dur={`${FLIGHT_LINE_CYCLE_SECONDS}s`}
-                  begin={`${begin - FLIGHT_LINE_ARROW_LEAD_SECONDS}s`}
-                  repeatCount="indefinite"
-                />
-              </path>
-            </g>
-          );
-        })}
-        {FLIGHT_LINE_RIPPLES.map((index) => {
-          const begin =
-            (-index * FLIGHT_LINE_CYCLE_SECONDS) / FLIGHT_LINE_RIPPLES.length;
-          return (
-            <circle
-              key={index}
-              cx={FLIGHT_LINE_HUB.x}
-              cy={FLIGHT_LINE_HUB.y}
-              r="2.2"
-              fill="none"
-              className="stroke-chart-orange"
-              strokeWidth="0.7"
-            >
-              <animate
-                attributeName="r"
-                values="2.2;7.5"
-                dur={`${FLIGHT_LINE_CYCLE_SECONDS}s`}
-                begin={`${begin}s`}
-                repeatCount="indefinite"
-              />
-              <animate
-                attributeName="stroke-opacity"
-                values="0.5;0"
-                dur={`${FLIGHT_LINE_CYCLE_SECONDS}s`}
-                begin={`${begin}s`}
-                repeatCount="indefinite"
-              />
-            </circle>
-          );
-        })}
-      </g>
-      <g className="hidden motion-reduce:block">
-        {FLIGHT_LINE_ARROWS.map(({ angle, trail, x, y }) => {
-          return (
-            <g key={trail}>
-              <path
-                d={trail}
-                fill="none"
-                className="stroke-chart-orange"
-                strokeOpacity="0.55"
-                strokeWidth="1.2"
-                strokeLinecap="round"
-              />
-              <path
-                d={FLIGHT_LINE_ARROW_HEAD}
-                className="fill-chart-orange"
-                transform={`translate(${x} ${y}) rotate(${angle})`}
-              />
-            </g>
-          );
-        })}
-        <circle
-          cx={FLIGHT_LINE_HUB.x}
-          cy={FLIGHT_LINE_HUB.y}
-          r="7"
-          fill="none"
-          className="stroke-chart-orange"
-          strokeOpacity="0.22"
-          strokeWidth="0.6"
-        />
-        <circle
-          cx={FLIGHT_LINE_HUB.x}
-          cy={FLIGHT_LINE_HUB.y}
-          r="4.6"
-          fill="none"
-          className="stroke-chart-orange"
-          strokeOpacity="0.45"
-          strokeWidth="0.7"
-        />
-      </g>
+      <FlightLineMotion />
+      <FlightLineStill />
       <circle
         cx={FLIGHT_LINE_HUB.x}
         cy={FLIGHT_LINE_HUB.y}
