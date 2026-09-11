@@ -229,10 +229,13 @@ const desktopIdentity = ipcRenderer.sendSync(
 ) as DesktopIdentityInfo;
 
 contextBridge.exposeInMainWorld("vm0DesktopAuth", desktopAuthApi);
-contextBridge.exposeInMainWorld("vm0DesktopComputerUse", desktopComputerUseApi);
 contextBridge.exposeInMainWorld(
-  "vm0DesktopDeveloperTools",
+  "okouDesktopComputerUse",
+  desktopComputerUseApi,
+);
+contextBridge.exposeInMainWorld(
+  "okouDesktopDeveloperTools",
   desktopDeveloperToolsApi,
 );
-contextBridge.exposeInMainWorld("vm0DesktopIdentity", desktopIdentity);
-contextBridge.exposeInMainWorld("vm0DesktopRecorder", desktopRecorderApi);
+contextBridge.exposeInMainWorld("okouDesktopIdentity", desktopIdentity);
+contextBridge.exposeInMainWorld("okouDesktopRecorder", desktopRecorderApi);
