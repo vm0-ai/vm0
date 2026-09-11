@@ -1,7 +1,6 @@
 import type {
   ComputerUseAutomationPermissionTarget,
   DesktopComputerUseState,
-  ComputerUseDriverId,
 } from "./computer-use-types";
 import type { DesktopIdentity } from "./config";
 import type {
@@ -53,12 +52,6 @@ export interface DesktopAuthApi {
 }
 
 export interface DesktopComputerUseApi {
-  readonly setExperimentalCuaEnabled: (
-    enabled: boolean,
-  ) => Promise<DesktopComputerUseState>;
-  readonly selectDriver: (
-    driver: ComputerUseDriverId,
-  ) => Promise<DesktopComputerUseState>;
   readonly getState: () => Promise<DesktopComputerUseState>;
   readonly refreshPermissions: () => Promise<DesktopComputerUseState>;
   readonly start: (options?: {
