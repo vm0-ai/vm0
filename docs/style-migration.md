@@ -578,3 +578,54 @@ with the text beside it.
 A batch that changes geometry on purpose cannot be accepted by an unchanged-code
 replay. It needs the per-page runners, or an explicit reviewed delta list, or
 both.
+
+## Mic motion batch
+
+`mic-motion-cases.json` and `run-mic-motion.ts` cover the composer microphone
+button on the real deployed `/chats/:threadId` page in Light/Dark at device
+scale factor 1 and 2. Run `pnpm style:migration:mic-motion` from `e2e`,
+supplying App/API origins, their full build SHAs, the source SHA, private Clerk
+TEST storage state, an output directory and an optional frozen `--baseline`
+directory. When an immutable App or API deployment needs its original PR alias
+for Clerk or CORS, pass that alias as `--app-url` / `--api-url` and pin the
+immutable deployments with `--app-artifact-url` / `--api-artifact-url`; both
+identities are retained in the manifest.
+
+The fixture controls only external API/bootstrap and browser-media boundaries.
+It keeps the deployed Router, production voice commands, component branches and
+CSS intact; it performs no Agent run, purchase or real transcription. Each case
+checks starting and transcribing spinners at 0/175/350/525 ms, the recording
+meter at the four production levels (0/33/67/100%), and unpaused animation
+progress for both spinner states. Full-page captures have no masks and reuse the
+existing `channel-rounding-v1` pixel bounds. The archive excludes private
+storage state and records browser, fixture, runner, source and deployment
+identities.
+
+Capture and upload an unmigrated-target BEFORE/A-A pair before accepting the
+consumer migration, then replay the frozen pair against the final PR
+deployment. Record the archive URL and SHA-256 in the PR and migration
+manifest. A pinned phase proves appearance at that phase; only the separate
+unpaused observation proves the normal-motion contract.
+
+### Mic motion acceptance record (#33345)
+
+The [frozen BEFORE and unchanged A/A archive](https://a.okou.io/tu82fjalef.zip)
+has SHA-256
+`cb2d57ff2c022af59fa893e08f72e4c538f4d4459ac35d9665950894ea0959c2`.
+Its immutable merge build `f3ae0b78c34b93d6a528c64851a8ac726ff8697f`
+starts from the same base as #33345 and leaves the target App stylesheet and
+composer source unchanged. The [AFTER and raw-diff archive](https://a.okou.io/s75ljvx543.zip)
+has SHA-256
+`23a02bd90b48702a8dea2f292eede718627685f08dc671de4e205478892ed716`
+and records target source `2e77c692de3b7e311c2547a03a30d89153ac5096`
+in merge build `99b0374201651de592a1ded743ef8ebe74145e88`.
+
+All 48 unchanged-build captures and all 48 migrated captures have zero content
+or rounding pixels changed. Starting and transcribing normal-motion checks
+progressed with the expected 700 ms infinite animation in all four cases. Raw
+computed styles differ only because the legacy `9999px` radius and Tailwind's
+`rounded-full` serialize to different, fully rounded values; the semantic
+observations match in every capture. Both archives were anonymously downloaded
+and SHA-256 verified. This is bounded Chromium acceptance with controlled
+bootstrap, API and browser-media boundaries; no Agent run, purchase, connector,
+real microphone recording or real transcription occurred.

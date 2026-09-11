@@ -4,7 +4,7 @@
   "cases": [
     {
       "id": "mic-light",
-      "path": "/agents",
+      "path": "/chats/:threadId",
       "theme": "light",
       "viewport": {
         "width": 1440,
@@ -14,7 +14,7 @@
     },
     {
       "id": "mic-dark",
-      "path": "/agents",
+      "path": "/chats/:threadId",
       "theme": "dark",
       "viewport": {
         "width": 1440,
@@ -24,7 +24,7 @@
     },
     {
       "id": "mic-light-retina",
-      "path": "/agents",
+      "path": "/chats/:threadId",
       "theme": "light",
       "viewport": {
         "width": 1440,
@@ -34,7 +34,7 @@
     },
     {
       "id": "mic-dark-retina",
-      "path": "/agents",
+      "path": "/chats/:threadId",
       "theme": "dark",
       "viewport": {
         "width": 1440,
