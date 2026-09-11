@@ -1,6 +1,10 @@
 import { createClerkClient } from "@clerk/backend";
 import { derivePlatformServiceOrigin } from "@okouai/core/platform-service-origin";
 
+import posthogClientMetadata from "../assets/posthog-metadata.json" with { type: "json" };
+
+const POSTHOG_CLIENT_METADATA_PATH = "/connectors/posthog/metadata.json";
+const POSTHOG_CLIENT_METADATA_BODY = JSON.stringify(posthogClientMetadata);
 const SHARED_THREAD_PATH =
   /^\/share\/threads\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/iu;
 const PREVIEW_API_ORIGIN_PATTERN =
@@ -44,6 +48,7 @@ const EMBEDDED_SHELL_CONTENT_TYPES = new Map([
   ["/icons/icon-192.png", "image/png"],
   ["/icons/icon-512.png", "image/png"],
   ["/icons/icon-512-maskable.png", "image/png"],
+  [POSTHOG_CLIENT_METADATA_PATH, "application/json; charset=UTF-8"],
 ]);
 
 const OKOU_APP_METADATA = {
@@ -641,6 +646,8 @@ function embeddedShellAsset(pathname, embeddedShell) {
       return embeddedShell.icon512;
     case "/icons/icon-512-maskable.png":
       return embeddedShell.icon512Maskable;
+    case POSTHOG_CLIENT_METADATA_PATH:
+      return POSTHOG_CLIENT_METADATA_BODY;
     default:
       return embeddedShell.indexHtml;
   }
@@ -769,7 +776,9 @@ function withAppHeaders(response, requestUrl) {
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
     headers.set(name, value);
   }
-  if (requestUrl.pathname === "/sw.js") {
+  if (requestUrl.pathname === POSTHOG_CLIENT_METADATA_PATH && response.ok) {
+    headers.set("Cache-Control", "public, max-age=300");
+  } else if (requestUrl.pathname === "/sw.js") {
     headers.set("Cache-Control", "public, max-age=0, must-revalidate");
     headers.set("Service-Worker-Allowed", "/");
   } else if (requestUrl.pathname === "/robots.txt") {
