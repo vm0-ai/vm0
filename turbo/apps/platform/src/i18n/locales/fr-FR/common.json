@@ -1703,6 +1703,51 @@
       "title": "Action indisponible"
     },
     "agentPage": {
+      "getStarted": {
+        "checkin": {
+          "description": "Une fois par jour, chaque jour",
+          "name": "Se connecter chaque jour",
+          "unit": "par jour"
+        },
+        "connector": {
+          "description": "Gmail, Notion et plus de 100 autres",
+          "name": "Connecter un connecteur",
+          "unit": "par connecteur"
+        },
+        "inReview": "En cours d'examen",
+        "inReviewDescription": "Envoyé, en attente d'examen",
+        "invite": {
+          "description": "Chaque personne ajoutée compte",
+          "name": "Invitez votre équipe",
+          "unit": "par membre"
+        },
+        "personalBalanceNote": "Les crédits vont sur votre solde personnel.",
+        "progressLabel": "Progression du démarrage",
+        "reward": "+{{amount}}",
+        "share": {
+          "description": "Publiez, puis collez le lien",
+          "name": "Partager {{assistantName}} sur X"
+        },
+        "shareDialog": {
+          "description": "Publiez ce que vous avez créé, puis collez le lien. Vous avez un seul envoi.",
+          "helper": "La publication doit être publique et mentionner {{assistantName}}.",
+          "inputLabel": "Lien de la publication",
+          "placeholder": "https://x.com/...",
+          "submit": "Envoyer",
+          "title": "Partager {{assistantName}} sur X"
+        },
+        "slack": {
+          "description": "Là où votre équipe travaille déjà",
+          "name": "Ajouter {{assistantName}} à Slack"
+        },
+        "stepCount": "{{completed}}/{{total}}",
+        "subtitle": "Terminez une étape, les crédits sont à vous.",
+        "title": "Démarrer",
+        "workflow": {
+          "description": "Transformez une tâche répétitive en automatisation",
+          "name": "Créer un workflow"
+        }
+      },
       "growth": {
         "addInSlack": "Ajouter {{assistantName}} dans Slack",
         "connect": "Connecter",

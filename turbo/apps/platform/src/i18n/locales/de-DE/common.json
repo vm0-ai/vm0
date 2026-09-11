@@ -1679,6 +1679,51 @@
       "title": "Aktion nicht verfügbar"
     },
     "agentPage": {
+      "getStarted": {
+        "checkin": {
+          "description": "Einmal am Tag, jeden Tag",
+          "name": "Täglich einchecken",
+          "unit": "pro Tag"
+        },
+        "connector": {
+          "description": "Gmail, Notion und 100+ weitere",
+          "name": "Connector verbinden",
+          "unit": "pro Connector"
+        },
+        "inReview": "In Prüfung",
+        "inReviewDescription": "Eingereicht, wartet auf Prüfung",
+        "invite": {
+          "description": "Jede Person, die du hinzufügst, zählt",
+          "name": "Team einladen",
+          "unit": "pro Mitglied"
+        },
+        "personalBalanceNote": "Credits gehen auf dein persönliches Guthaben.",
+        "progressLabel": "Fortschritt beim Einstieg",
+        "reward": "+{{amount}}",
+        "share": {
+          "description": "Poste es und füge den Link hier ein",
+          "name": "{{assistantName}} auf X teilen"
+        },
+        "shareDialog": {
+          "description": "Poste etwas, das du gebaut hast, und füge den Link ein. Du hast eine Einreichung.",
+          "helper": "Der Post muss öffentlich sein und {{assistantName}} erwähnen.",
+          "inputLabel": "Post-Link",
+          "placeholder": "https://x.com/...",
+          "submit": "Einreichen",
+          "title": "{{assistantName}} auf X teilen"
+        },
+        "slack": {
+          "description": "Da, wo dein Team schon arbeitet",
+          "name": "{{assistantName}} zu Slack hinzufügen"
+        },
+        "stepCount": "{{completed}}/{{total}}",
+        "subtitle": "Schließe einen Schritt ab, die Credits bleiben dir.",
+        "title": "Einstieg",
+        "workflow": {
+          "description": "Mach aus einer wiederkehrenden Aufgabe eine Automatisierung",
+          "name": "Workflow bauen"
+        }
+      },
       "growth": {
         "addInSlack": "{{assistantName}} in Slack hinzufügen",
         "connect": "Verbinden",

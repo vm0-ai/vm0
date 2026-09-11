@@ -1678,6 +1678,51 @@
       "title": "アクションを利用できません"
     },
     "agentPage": {
+      "getStarted": {
+        "checkin": {
+          "description": "1日1回、毎日",
+          "name": "毎日チェックイン",
+          "unit": "1日あたり"
+        },
+        "connector": {
+          "description": "Gmail、Notion など100以上",
+          "name": "コネクタを接続",
+          "unit": "コネクタごと"
+        },
+        "inReview": "確認中",
+        "inReviewDescription": "送信済み、確認待ち",
+        "invite": {
+          "description": "追加した人数だけ加算されます",
+          "name": "チームを招待",
+          "unit": "メンバーごと"
+        },
+        "personalBalanceNote": "クレジットはあなた個人の残高に入ります。",
+        "progressLabel": "セットアップの進捗",
+        "reward": "+{{amount}}",
+        "share": {
+          "description": "投稿して、リンクを貼り付け",
+          "name": "{{assistantName}} を X でシェア"
+        },
+        "shareDialog": {
+          "description": "作ったものについて投稿し、リンクを貼り付けてください。提出は1回だけです。",
+          "helper": "投稿は公開で、{{assistantName}} に触れている必要があります。",
+          "inputLabel": "投稿のリンク",
+          "placeholder": "https://x.com/...",
+          "submit": "送信",
+          "title": "{{assistantName}} を X でシェア"
+        },
+        "slack": {
+          "description": "チームがすでに使っている場所へ",
+          "name": "{{assistantName}} を Slack に追加"
+        },
+        "stepCount": "{{completed}}/{{total}}",
+        "subtitle": "ステップを終えると、クレジットがもらえます。",
+        "title": "はじめる",
+        "workflow": {
+          "description": "繰り返しの作業を自動化に変える",
+          "name": "ワークフローを作る"
+        }
+      },
       "growth": {
         "addInSlack": "Slack に {{assistantName}} を追加",
         "connect": "接続",

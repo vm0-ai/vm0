@@ -1678,6 +1678,51 @@
       "title": "작업을 사용할 수 없음"
     },
     "agentPage": {
+      "getStarted": {
+        "checkin": {
+          "description": "하루에 한 번, 매일",
+          "name": "매일 출석하기",
+          "unit": "하루당"
+        },
+        "connector": {
+          "description": "Gmail, Notion 등 100개 이상",
+          "name": "커넥터 연결하기",
+          "unit": "커넥터당"
+        },
+        "inReview": "검토 중",
+        "inReviewDescription": "제출됨, 검토 대기 중",
+        "invite": {
+          "description": "추가하는 사람마다 적립됩니다",
+          "name": "팀 초대하기",
+          "unit": "멤버당"
+        },
+        "personalBalanceNote": "크레딧은 개인 잔액으로 들어갑니다.",
+        "progressLabel": "시작하기 진행 상황",
+        "reward": "+{{amount}}",
+        "share": {
+          "description": "게시한 뒤 링크를 붙여넣기",
+          "name": "X에 {{assistantName}} 공유하기"
+        },
+        "shareDialog": {
+          "description": "만든 것을 게시하고 링크를 붙여넣으세요. 제출은 한 번만 가능합니다.",
+          "helper": "게시물은 공개 상태여야 하고 {{assistantName}}을(를) 언급해야 합니다.",
+          "inputLabel": "게시물 링크",
+          "placeholder": "https://x.com/...",
+          "submit": "제출",
+          "title": "X에 {{assistantName}} 공유하기"
+        },
+        "slack": {
+          "description": "팀이 이미 일하고 있는 곳으로",
+          "name": "Slack에 {{assistantName}} 추가하기"
+        },
+        "stepCount": "{{completed}}/{{total}}",
+        "subtitle": "한 단계를 끝내면 크레딧은 그대로 내 것.",
+        "title": "시작하기",
+        "workflow": {
+          "description": "반복 작업을 자동화로 바꾸기",
+          "name": "워크플로 만들기"
+        }
+      },
       "growth": {
         "addInSlack": "Slack에 {{assistantName}} 추가",
         "connect": "연결",

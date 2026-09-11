@@ -1678,6 +1678,51 @@
       "title": "Tindakan tidak tersedia"
     },
     "agentPage": {
+      "getStarted": {
+        "checkin": {
+          "description": "Sekali sehari, setiap hari",
+          "name": "Check in setiap hari",
+          "unit": "per hari"
+        },
+        "connector": {
+          "description": "Gmail, Notion, dan 100+ lainnya",
+          "name": "Hubungkan konektor",
+          "unit": "per konektor"
+        },
+        "inReview": "Sedang ditinjau",
+        "inReviewDescription": "Terkirim, menunggu ditinjau",
+        "invite": {
+          "description": "Setiap orang yang kamu tambahkan dihitung",
+          "name": "Undang tim kamu",
+          "unit": "per anggota"
+        },
+        "personalBalanceNote": "Kredit masuk ke saldo pribadi kamu.",
+        "progressLabel": "Progres memulai",
+        "reward": "+{{amount}}",
+        "share": {
+          "description": "Posting, lalu tempel tautannya",
+          "name": "Bagikan {{assistantName}} di X"
+        },
+        "shareDialog": {
+          "description": "Posting sesuatu yang kamu buat, lalu tempel tautannya. Kamu dapat satu kali kirim.",
+          "helper": "Postingan harus publik dan menyebut {{assistantName}}.",
+          "inputLabel": "Tautan postingan",
+          "placeholder": "https://x.com/...",
+          "submit": "Kirim",
+          "title": "Bagikan {{assistantName}} di X"
+        },
+        "slack": {
+          "description": "Tempat tim kamu sudah bekerja",
+          "name": "Tambahkan {{assistantName}} ke Slack"
+        },
+        "stepCount": "{{completed}}/{{total}}",
+        "subtitle": "Selesaikan satu langkah, kreditnya jadi milikmu.",
+        "title": "Mulai",
+        "workflow": {
+          "description": "Ubah tugas berulang jadi otomatisasi",
+          "name": "Buat workflow"
+        }
+      },
       "growth": {
         "addInSlack": "Tambahkan {{assistantName}} di Slack",
         "connect": "Hubungkan",

@@ -1703,6 +1703,51 @@
       "title": "Acción no disponible"
     },
     "agentPage": {
+      "getStarted": {
+        "checkin": {
+          "description": "Una vez al día, todos los días",
+          "name": "Entrar cada día",
+          "unit": "al día"
+        },
+        "connector": {
+          "description": "Gmail, Notion y más de 100",
+          "name": "Conectar un conector",
+          "unit": "por conector"
+        },
+        "inReview": "En revisión",
+        "inReviewDescription": "Enviado, pendiente de revisión",
+        "invite": {
+          "description": "Cada persona que añadas cuenta",
+          "name": "Invita a tu equipo",
+          "unit": "por miembro"
+        },
+        "personalBalanceNote": "Los créditos van a tu saldo personal.",
+        "progressLabel": "Progreso de los primeros pasos",
+        "reward": "+{{amount}}",
+        "share": {
+          "description": "Publícalo y pega el enlace",
+          "name": "Comparte {{assistantName}} en X"
+        },
+        "shareDialog": {
+          "description": "Publica algo que hayas creado y pega el enlace. Tienes un solo envío.",
+          "helper": "La publicación tiene que ser pública y mencionar a {{assistantName}}.",
+          "inputLabel": "Enlace de la publicación",
+          "placeholder": "https://x.com/...",
+          "submit": "Enviar",
+          "title": "Comparte {{assistantName}} en X"
+        },
+        "slack": {
+          "description": "Donde tu equipo ya trabaja",
+          "name": "Añadir {{assistantName}} a Slack"
+        },
+        "stepCount": "{{completed}}/{{total}}",
+        "subtitle": "Completa un paso y quédate con los créditos.",
+        "title": "Primeros pasos",
+        "workflow": {
+          "description": "Convierte una tarea repetida en una automatización",
+          "name": "Crea un workflow"
+        }
+      },
       "growth": {
         "addInSlack": "Añadir {{assistantName}} en Slack",
         "connect": "Conectar",

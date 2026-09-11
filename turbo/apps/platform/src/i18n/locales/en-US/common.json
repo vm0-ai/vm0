@@ -1679,6 +1679,51 @@
       "title": "Action unavailable"
     },
     "agentPage": {
+      "getStarted": {
+        "checkin": {
+          "description": "Once a day, every day",
+          "name": "Check in daily",
+          "unit": "a day"
+        },
+        "connector": {
+          "description": "Gmail, Notion, and 100+ more",
+          "name": "Connect a connector",
+          "unit": "per connector"
+        },
+        "inReview": "In review",
+        "inReviewDescription": "Submitted, waiting on review",
+        "invite": {
+          "description": "Everyone you add counts",
+          "name": "Invite your team",
+          "unit": "per member"
+        },
+        "personalBalanceNote": "Credits go to your personal balance.",
+        "progressLabel": "Get started progress",
+        "reward": "+{{amount}}",
+        "share": {
+          "description": "Post it, then paste the link",
+          "name": "Share {{assistantName}} on X"
+        },
+        "shareDialog": {
+          "description": "Post about something you built, then paste the link. You get one submission.",
+          "helper": "The post has to be public and mention {{assistantName}}.",
+          "inputLabel": "Post link",
+          "placeholder": "https://x.com/...",
+          "submit": "Submit",
+          "title": "Share {{assistantName}} on X"
+        },
+        "slack": {
+          "description": "Where your team already works",
+          "name": "Add {{assistantName}} to Slack"
+        },
+        "stepCount": "{{completed}}/{{total}}",
+        "subtitle": "Finish a step, keep the credits.",
+        "title": "Get started",
+        "workflow": {
+          "description": "Turn a repeat task into an automation",
+          "name": "Build a workflow"
+        }
+      },
       "growth": {
         "addInSlack": "Add {{assistantName}} in Slack",
         "connect": "Connect",
