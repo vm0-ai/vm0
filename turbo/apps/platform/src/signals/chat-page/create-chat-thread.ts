@@ -237,7 +237,10 @@ import type {
   SendChatEventResult,
   SendInputChatEvent,
 } from "./chat-event-signals.ts";
-import { registerChatEventChangeHandler$ } from "./chat-event-change-registry.ts";
+import {
+  registerChatEventChangeHandler$,
+  type ChatEventChangeHandler,
+} from "./chat-event-change-registry.ts";
 import {
   canonicalUserMessageFileUrl,
   userMessageFileAttachments,
@@ -2332,7 +2335,6 @@ function createEventChangeEffects(
     projections,
     scroll,
     syncVisibleEventTrees$,
-    reconcileThreadSummaryDemand$,
   }: {
     readonly threadId: string;
     readonly chatEvents: ChatEventSignals;
@@ -2345,7 +2347,6 @@ function createEventChangeEffects(
       Promise<void>,
       [boolean, AbortSignal]
     >;
-    readonly reconcileThreadSummaryDemand$: Command<void, [AbortSignal]>;
   },
   ownerSignal: AbortSignal,
 ) {
@@ -2396,7 +2397,12 @@ function createEventChangeEffects(
     },
   );
   const afterEventsChange$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    async (
+      { get, set },
+      _handler: ChatEventChangeHandler,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      signal.throwIfAborted();
       const hasOptimisticUserMessage = get(
         chatEvents.hasOptimisticUserMessage$,
       );
@@ -2418,7 +2424,6 @@ function createEventChangeEffects(
           get(chatEvents.chatEvents$).slice(-10),
         ),
       });
-      set(reconcileThreadSummaryDemand$, ownerSignal);
       await Promise.all([
         set(updateEventPresentation$, scrollPosition, signal),
         set(markThreadReadIfNeeded$, signal),
@@ -2426,18 +2431,21 @@ function createEventChangeEffects(
       signal.throwIfAborted();
     },
   );
-  return { sidebar, afterEventsChange$ };
+  const eventChangeHandler: ChatEventChangeHandler = Object.freeze({
+    command$: afterEventsChange$,
+  });
+  return { sidebar, eventChangeHandler };
 }
 
 function createChatEventPresentationLifecycle({
   chatEvents,
-  afterEventsChange$,
+  eventChangeHandler,
   syncVisibleEventTrees$,
   enableSidebarEntryAnimations$,
   initialEventsReady$,
 }: {
   readonly chatEvents: ChatEventSignals;
-  readonly afterEventsChange$: Command<Promise<void>, [AbortSignal]>;
+  readonly eventChangeHandler: ChatEventChangeHandler;
   readonly syncVisibleEventTrees$: Command<
     Promise<void>,
     [boolean, AbortSignal]
@@ -2457,7 +2465,7 @@ function createChatEventPresentationLifecycle({
       set(
         registerChatEventChangeHandler$,
         chatEvents.chatEvents$,
-        afterEventsChange$,
+        eventChangeHandler,
         signal,
       );
       await set(syncVisibleEventTrees$, false, signal);
@@ -2531,7 +2539,6 @@ interface ChatThreadMessagePipelineOptions {
   chatEvents: ChatEventSignals;
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
   connector: ComposerConnectorSignals;
-  reconcileThreadSummaryDemand$: Command<void, [AbortSignal]>;
 }
 
 function createChatThreadMessagePipeline(
@@ -2540,7 +2547,6 @@ function createChatThreadMessagePipeline(
     chatEvents,
     previewImageUrlsByUrl$,
     connector,
-    reconcileThreadSummaryDemand$,
   }: ChatThreadMessagePipelineOptions,
   ownerSignal: AbortSignal,
 ) {
@@ -2612,13 +2618,12 @@ function createChatThreadMessagePipeline(
       projections,
       scroll,
       syncVisibleEventTrees$,
-      reconcileThreadSummaryDemand$,
     },
     ownerSignal,
   );
   const lifecycle = createChatEventPresentationLifecycle({
     chatEvents,
-    afterEventsChange$: effects.afterEventsChange$,
+    eventChangeHandler: effects.eventChangeHandler,
     syncVisibleEventTrees$,
     enableSidebarEntryAnimations$: effects.sidebar.enableEntryAnimations$,
     initialEventsReady$,
@@ -2694,6 +2699,10 @@ function createEventRunIndicatorState(chatEvents$: Computed<ChatEvent[]>) {
 // Factory: createRunTracking
 // ---------------------------------------------------------------------------
 
+type ThreadActivitySummarySignals = ReturnType<
+  typeof createThreadActivitySummarySignals
+>;
+
 interface RunTrackingDeps {
   threadId: string;
   setupChatEvents$: Command<Promise<void>, [AbortSignal]>;
@@ -2701,7 +2710,8 @@ interface RunTrackingDeps {
   syncHydratedEventTrees$: Command<Promise<void>, [AbortSignal]>;
   reloadArtifacts$: Command<void, []>;
   subscribeBrowserSessions$: Command<Promise<void>, [AbortSignal]>;
-  subscribeThinkingSummaries$: Command<Promise<void>, [AbortSignal]>;
+  subscribeThinkingSummaries$: ThreadActivitySummarySignals["subscribe$"];
+  thinkingSummarySubscription: ThreadActivitySummarySignals["subscription"];
   automationSignals: Pick<ChatPanelSignals, "headerAutomations">;
   cancellationRecovery: ReturnType<typeof createCancellationRecoverySignals>;
   reloadConnectorAccounts$: Command<void, []>;
@@ -3064,6 +3074,7 @@ function createRunTracking({
   reloadArtifacts$,
   subscribeBrowserSessions$,
   subscribeThinkingSummaries$,
+  thinkingSummarySubscription,
   automationSignals,
   cancellationRecovery,
   reloadConnectorAccounts$,
@@ -3106,7 +3117,7 @@ function createRunTracking({
     await Promise.all([
       set(syncHydratedEventTrees$, signal),
       set(subscribeBrowserSessions$, signal),
-      set(subscribeThinkingSummaries$, signal),
+      set(subscribeThinkingSummaries$, thinkingSummarySubscription, signal),
       set(
         subscribeChatThreadRealtime$,
         {
@@ -4027,7 +4038,6 @@ function createChatPanelSignalsWithDraft(
         artifact.artifacts$,
       ),
       connector: composer.connector,
-      reconcileThreadSummaryDemand$: activity.reconcileThreadSummaryDemand$,
     },
     signal,
   );
@@ -4056,6 +4066,7 @@ function createChatPanelSignalsWithDraft(
     reloadArtifacts$: messages.reloadArtifacts$,
     subscribeBrowserSessions$: messages.subscribeBrowserSessions$,
     subscribeThinkingSummaries$: activity.subscribe$,
+    thinkingSummarySubscription: activity.subscription,
     automationSignals: threadOwned,
     cancellationRecovery,
     reloadConnectorAccounts$: composer.connector.accounts.reload$,
