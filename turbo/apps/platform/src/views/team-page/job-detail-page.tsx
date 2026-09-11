@@ -44,6 +44,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  neutralControlClassName,
 } from "@okouai/ui";
 import { InstructionsTab } from "../okou-page/instructions-tab.tsx";
 import { SettingsTab } from "../okou-page/settings-tab.tsx";
@@ -224,7 +225,10 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
             </div>
             <Link
               pathname="/agents"
-              className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium no-underline text-inherit"
+              className={cn(
+                neutralControlClassName,
+                "inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium no-underline text-inherit",
+              )}
             >
               {t(($) => {
                 return $.detail.notFound.back;
@@ -247,7 +251,10 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
               <Link
                 pathname="/agents/:agentId"
                 options={{ pathParams: { agentId: agentId } }}
-                className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium no-underline text-inherit"
+                className={cn(
+                  neutralControlClassName,
+                  "inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium no-underline text-inherit",
+                )}
               >
                 {t(($) => {
                   return $.actions.retry;
@@ -958,9 +965,9 @@ function AgentHeader({
           </div>
         </div>
         <Button
-          variant="outline"
+          variant="neutral"
           size="sm"
-          className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay max-w-[220px] shrink-0 gap-1.5"
+          className="max-w-[220px] shrink-0 gap-1.5"
           onClick={() => {
             nav("/agents/:agentId/chat", {
               pathParams: { agentId: agentId },

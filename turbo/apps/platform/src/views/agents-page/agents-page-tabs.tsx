@@ -221,9 +221,9 @@ function AgentTabsView({
           </SegmentControlItem>
         </SegmentControl>
         <Button
-          variant="outline"
+          variant="neutral"
           size="sm"
-          className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay h-9 gap-2 shrink-0 rounded-lg"
+          className="h-9 gap-2 shrink-0 rounded-lg"
           disabled={createDisabled}
           onClick={() => {
             return onCreate(activeTab);

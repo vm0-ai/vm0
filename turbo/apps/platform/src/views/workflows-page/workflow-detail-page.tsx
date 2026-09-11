@@ -96,6 +96,7 @@ import {
   BrandGithub,
   BrandNotion,
   BrandStripe,
+  neutralControlClassName,
 } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
@@ -1287,11 +1288,11 @@ function WorkflowChatButton({
 
   return (
     <Button
-      variant="outline"
+      variant="neutral"
       size="sm"
       type="button"
       aria-label={chatLabel}
-      className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay max-w-[220px] shrink-0 gap-1.5"
+      className="max-w-[220px] shrink-0 gap-1.5"
       disabled={opening}
       onClick={() => {
         detach(
@@ -1417,9 +1418,9 @@ function WorkflowInfoTab({
           >
             <Button
               type="button"
-              variant="outline"
+              variant="neutral"
               size="sm"
-              className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay h-9 gap-2 rounded-lg"
+              className="h-9 gap-2 rounded-lg"
               onClick={() => {
                 setActionDialog("copy");
               }}
@@ -1563,9 +1564,9 @@ function OfficialWorkflowReconfigureCard({
         >
           <Button
             type="button"
-            variant="outline"
+            variant="neutral"
             size="sm"
-            className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay h-9 rounded-lg"
+            className="h-9 rounded-lg"
             disabled={!definition || loading}
             onClick={() => {
               if (!definition) {
@@ -4540,7 +4541,10 @@ function AutomationCreateMenu({
       <DialogTrigger asChild>
         <button
           type="button"
-          className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium"
+          className={cn(
+            neutralControlClassName,
+            "inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-medium",
+          )}
         >
           <Plus size={14} />
           <span>

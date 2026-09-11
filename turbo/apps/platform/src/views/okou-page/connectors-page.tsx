@@ -390,12 +390,12 @@ function ConnectorFilterDropdown({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
-          variant="outline"
+          variant="neutral"
           size="sm"
           aria-label={t(($) => {
             return $.connectors.catalog.filters.aria;
           })}
-          className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay hidden h-9 shrink-0 gap-1.5 rounded-lg sm:inline-flex"
+          className="hidden h-9 shrink-0 gap-1.5 rounded-lg sm:inline-flex"
         >
           <Filter size={14} className="" />
           {activeAgent && (
@@ -744,9 +744,9 @@ function ConnectorsToolbarActions({
       )}
       {activeTab === "custom" && isAdmin && (
         <Button
-          variant="outline"
+          variant="neutral"
           size="sm"
-          className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay h-9 gap-2 shrink-0 rounded-lg"
+          className="h-9 gap-2 shrink-0 rounded-lg"
           onClick={onCreateCustom}
         >
           <Plus size={14} />

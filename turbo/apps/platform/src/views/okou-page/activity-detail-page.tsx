@@ -19,6 +19,8 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
+  cn,
+  neutralControlClassName,
 } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import {
@@ -270,7 +272,10 @@ function ActivityNotFound() {
         </p>
         <Link
           pathname="/"
-          className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay mt-2 inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium no-underline text-inherit"
+          className={cn(
+            neutralControlClassName,
+            "mt-2 inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium no-underline text-inherit",
+          )}
         >
           {t(($) => {
             return $.activity.detail.notFound.back;

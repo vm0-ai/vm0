@@ -2125,9 +2125,9 @@ function HeaderWorkflowAutomationCard({
             ) : null}
             <Button
               type="button"
-              variant="outline"
+              variant="neutral"
               size="sm"
-              className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay h-8 shrink-0 gap-1.5 rounded-lg px-3 text-xs font-medium"
+              className="h-8 shrink-0 gap-1.5 rounded-lg px-3 text-xs font-medium"
               disabled={running}
               onClick={() => {
                 detach(
@@ -5054,8 +5054,7 @@ function AssistantRecoveryActions({
         <Button
           type="button"
           size="sm"
-          variant="outline"
-          className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay"
+          variant="neutral"
           disabled={retrying || resetting}
           onClick={() => {
             detach(resetAndRetry(pageSignal), Reason.DomCallback);
@@ -5085,14 +5084,9 @@ function AssistantRecoveryActions({
         <Button
           type="button"
           size="sm"
-          variant="outline"
           // Filled neutral leads; the plain outline reads as the secondary
           // action when reset is also offered.
-          className={
-            hasResetAction
-              ? undefined
-              : "border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay"
-          }
+          variant={hasResetAction ? "outline" : "neutral"}
           disabled={retrying || resetting}
           onClick={() => {
             detach(retry(pageSignal), Reason.DomCallback);

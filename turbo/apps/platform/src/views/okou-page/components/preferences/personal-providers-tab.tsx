@@ -255,9 +255,9 @@ function OAuthAccountGroup({
         </div>
         <Button
           type="button"
-          variant="outline"
+          variant="neutral"
           size="sm"
-          className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay h-9 shrink-0 gap-1.5 rounded-lg"
+          className="h-9 shrink-0 gap-1.5 rounded-lg"
           disabled={actionPending || accounts.length >= 10}
           onClick={onAdd}
         >
@@ -1365,9 +1365,9 @@ function OAuthCredentialRow({
         {status === "missing" ? (
           <Button
             type="button"
-            variant="outline"
+            variant="neutral"
             size="sm"
-            className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay h-9 shrink-0 rounded-lg"
+            className="h-9 shrink-0 rounded-lg"
             aria-label={t(
               ($) => {
                 return $.settings.models.personal.actionForProvider;

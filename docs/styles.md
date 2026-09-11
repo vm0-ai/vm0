@@ -179,11 +179,24 @@ since keyframes are not class selectors.
 
 ### Neutral control surface
 
-Standalone neutral controls compose `border border-control-border
-bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay`. That is
-the treatment the merged settings-select batch established, extended with the
-bare `border` and `text-foreground` the retired `okou-btn-morandi` selector
-also owned.
+Use `Button variant="neutral"` for neutral actions and
+`SelectTrigger variant="neutral"` for neutral select controls. Their shared
+`neutralControlClassName` from `@okouai/ui` owns the border, opaque control fill,
+foreground, and hover overlay. Links and native triggers compose this same
+definition through `cn()` on their existing element, retaining their navigation,
+keyboard, and composition semantics without adding a wrapper.
+
+The shared definition composes `border border-control-border bg-control-surface
+text-foreground [&:hover]:bg-state-hover-overlay`. This is the treatment the
+settings-select batch established, extended with the border and foreground the
+retired `okou-btn-morandi` selector owned. Language, timezone, and voice-input
+settings all use the select variant. Dimensions, padding, and radius remain
+with the existing control and caller; the appearance does not impose button
+layout on links or select triggers.
+
+The neutral button owns its opaque fill independently of `outline` and
+`default`, including while pressed. It layers hover over that fill instead of
+inheriting another variant's translucent or brand-colored interaction fill.
 
 The retired rule hard-coded a `0.7px` border while the rest of the product had
 already moved to `--default-border-width`. The replacement takes the shared

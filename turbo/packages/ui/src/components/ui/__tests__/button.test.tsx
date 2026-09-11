@@ -80,7 +80,7 @@ describe("Button", () => {
     render(
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button showTooltip aria-label="More actions">
+          <Button variant="neutral" showTooltip aria-label="More actions">
             More icon
           </Button>
         </DropdownMenuTrigger>
@@ -117,7 +117,7 @@ describe("Button", () => {
 
   it("composes an anchor without adding a nested button", () => {
     render(
-      <Button asChild>
+      <Button variant="neutral" asChild>
         <a href="/settings">Settings</a>
       </Button>,
     );

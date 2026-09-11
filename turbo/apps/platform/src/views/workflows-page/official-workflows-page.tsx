@@ -111,9 +111,9 @@ function CatalogError({ onRetry }: { readonly onRetry: () => void }) {
       </p>
       <Button
         type="button"
-        variant="outline"
+        variant="neutral"
         size="sm"
-        className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay mt-4"
+        className="mt-4"
         onClick={onRetry}
       >
         {i18n.t(($) => {
@@ -468,8 +468,8 @@ function OfficialWorkflowDefinitionPage() {
             </div>
             {definition.lifecycle === "active" ? (
               <Button
-                type="button"
-                className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay h-9 shrink-0 gap-2 rounded-lg"
+                variant="neutral"
+                className="h-9 shrink-0 gap-2 rounded-lg"
                 onClick={() => {
                   setForm(
                     createOfficialWorkflowConfigurationForm({

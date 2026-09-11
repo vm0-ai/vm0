@@ -102,7 +102,7 @@ export function VoiceInputModelSettings() {
           onValueChange={handleChange}
         >
           <SelectTrigger
-            className="border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay"
+            variant="neutral"
             aria-label={t(($) => {
               return $.settings.preferences.debug.voiceInput.title;
             })}
