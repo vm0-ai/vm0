@@ -4,6 +4,7 @@ mod framing;
 mod harness;
 mod lifecycle;
 mod observations;
+mod passwords;
 mod proof;
 mod telemetry;
 
