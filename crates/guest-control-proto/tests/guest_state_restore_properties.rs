@@ -25,6 +25,7 @@ const TIMEZONE_LENGTH_OFFSET: usize = 17;
 const TIMEZONE_NAME_OFFSET: usize = 19;
 
 const TIMEZONE_NONE: u8 = 0;
+const TIMEZONE_BEST_EFFORT: u8 = 1;
 const TIMEZONE_REQUIRED: u8 = 2;
 
 #[derive(Clone, Debug)]
@@ -592,6 +593,59 @@ proptest! {
             decode_guest_state_restore_result(&discarded_stderr_payload.unwrap()).is_err(),
             "accepted guest-state result with discarded stderr",
         );
+    }
+}
+
+#[test]
+fn payload_encoder_rejects_empty_named_timezones() {
+    let entropy = [0; GUEST_STATE_RESTORE_ENTROPY_BYTES];
+    for timezone in [
+        GuestStateRestoreTimezone::BestEffort(""),
+        GuestStateRestoreTimezone::Required(""),
+    ] {
+        assert!(matches!(
+            encode_guest_state_restore_request(1, 1, 0, &entropy, timezone),
+            Err(ProtocolError::InvalidPayload(
+                "guest_state_restore timezone must not be empty"
+            ))
+        ));
+    }
+}
+
+#[test]
+fn frame_encoder_rejects_empty_named_timezones_without_changing_buffer() {
+    let entropy = [0; GUEST_STATE_RESTORE_ENTROPY_BYTES];
+    for timezone in [
+        GuestStateRestoreTimezone::BestEffort(""),
+        GuestStateRestoreTimezone::Required(""),
+    ] {
+        let mut frame = vec![0xA5, 0x5A];
+        assert!(matches!(
+            encode_guest_state_restore_request_frame_into(
+                &mut frame, 42, 1, 1, 0, &entropy, timezone,
+            ),
+            Err(ProtocolError::InvalidPayload(
+                "guest_state_restore timezone must not be empty"
+            ))
+        ));
+        assert_eq!(frame, [0xA5, 0x5A]);
+    }
+}
+
+#[test]
+fn decoder_rejects_empty_named_timezones() {
+    let entropy = [0; GUEST_STATE_RESTORE_ENTROPY_BYTES];
+    let mut payload =
+        encode_guest_state_restore_request(1, 1, 0, &entropy, GuestStateRestoreTimezone::None)
+            .unwrap();
+    for mode in [TIMEZONE_BEST_EFFORT, TIMEZONE_REQUIRED] {
+        payload[TIMEZONE_MODE_OFFSET] = mode;
+        assert!(matches!(
+            decode_guest_state_restore_request(&payload),
+            Err(ProtocolError::InvalidPayload(
+                "guest_state_restore timezone must not be empty"
+            ))
+        ));
     }
 }
 
