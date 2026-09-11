@@ -1638,66 +1638,72 @@ describe("CHAT-02: completed chat callback", () => {
     },
   );
 
-  it("reports a genuine recommended follow-up failure exactly once at error level", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
-    const privateProviderDetail = "private-openrouter-credential-detail";
-    chatCallbacks.mockOpenRouterCompletions((body) => {
-      const system = body.messages[0]?.content ?? "";
-      if (
-        system.includes(
-          "You generate recommended follow-up messages for a chat.",
-        )
-      ) {
-        return new HttpResponse(privateProviderDetail, { status: 401 });
-      }
-      return "Generated summary";
-    });
+  it.each([
+    { name: "rejected credentials", status: 401, reason: "auth" },
+    { name: "a rejected request", status: 400, reason: "invalid_request" },
+  ])(
+    "reports $name for recommended follow-ups exactly once at error level",
+    async ({ status, reason }) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+      const privateProviderDetail = "private-openrouter-credential-detail";
+      chatCallbacks.mockOpenRouterCompletions((body) => {
+        const system = body.messages[0]?.content ?? "";
+        if (
+          system.includes(
+            "You generate recommended follow-up messages for a chat.",
+          )
+        ) {
+          return new HttpResponse(privateProviderDetail, { status });
+        }
+        return "Generated summary";
+      });
 
-    const run = await startChatRun(actor, {
-      agentId,
-      prompt: "Keep the main answer",
-    });
-    await flushWaitUntilForTest();
-    await chatCallbacks.registerPushSubscription(actor);
-    chatCallbacks.enableVapid();
-    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
-    chatCallbacks.mockChatOutputEvents([
-      assistantEvent(0, "The main answer survives"),
-    ]);
-    await completeChatRunOk(run.runId, sandboxHeaders, {
-      lastEventSequence: 0,
-    });
-    await flushWaitUntilForTest();
+      const run = await startChatRun(actor, {
+        agentId,
+        prompt: "Keep the main answer",
+      });
+      await flushWaitUntilForTest();
+      await chatCallbacks.registerPushSubscription(actor);
+      chatCallbacks.enableVapid();
+      const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+      chatCallbacks.mockChatOutputEvents([
+        assistantEvent(0, "The main answer survives"),
+      ]);
+      await completeChatRunOk(run.runId, sandboxHeaders, {
+        lastEventSequence: 0,
+      });
+      await flushWaitUntilForTest();
 
-    const events = await chat.listThreadEvents(actor, run.threadId);
-    expect(events.events).toContainEqual(
-      expect.objectContaining({ content: "The main answer survives" }),
-    );
-    expect(
-      events.events.some((event) => {
-        return event.eventType === "output.followups";
-      }),
-    ).toBeFalsy();
-    expect(auxiliaryResults(context, "recommended_followups")).toStrictEqual([
-      expect.objectContaining({ outcome: "error", reason: "auth" }),
-    ]);
-    expect(
-      auxiliaryDiagnostics(context, "recommended_followups"),
-    ).toStrictEqual([
-      expect.objectContaining({
-        level: "error",
-        reason: "auth",
-        errorKind: "openrouter_request",
-        status: 401,
-      }),
-    ]);
-    // A real failure must not also reappear on the shared warning channel.
-    expect(auxiliaryWarnings(context)).toStrictEqual([]);
-    expect(JSON.stringify(auxiliaryDiagnostics(context))).not.toContain(
-      privateProviderDetail,
-    );
-  });
+      const events = await chat.listThreadEvents(actor, run.threadId);
+      expect(events.events).toContainEqual(
+        expect.objectContaining({ content: "The main answer survives" }),
+      );
+      expect(
+        events.events.some((event) => {
+          return event.eventType === "output.followups";
+        }),
+      ).toBeFalsy();
+      expect(auxiliaryResults(context, "recommended_followups")).toStrictEqual([
+        expect.objectContaining({ outcome: "error", reason }),
+      ]);
+      expect(
+        auxiliaryDiagnostics(context, "recommended_followups"),
+      ).toStrictEqual([
+        expect.objectContaining({
+          level: "error",
+          reason,
+          errorKind: "openrouter_request",
+          status,
+        }),
+      ]);
+      // A real failure must not also reappear on the shared warning channel.
+      expect(auxiliaryWarnings(context)).toStrictEqual([]);
+      expect(JSON.stringify(auxiliaryDiagnostics(context))).not.toContain(
+        privateProviderDetail,
+      );
+    },
+  );
 
   it.each([
     {
@@ -2154,9 +2160,11 @@ describe("CHAT-02: completed chat callback", () => {
         reason: "output_truncated",
       }),
     );
-    // Truncation keeps classifying ahead of this caller's expected-empty
-    // policy, and this caller can now report at error, so silence has to be
-    // proved across every level rather than on the warning channel alone.
+    // This caller rejects a truncated array, so the outcome comes from the
+    // recorded truncation reason rather than from the returned value. Either
+    // way it stays a counted degradation, and since this caller can now report
+    // at error, silence has to be proved across every level rather than on the
+    // warning channel alone.
     expect(auxiliaryDiagnostics(context)).toStrictEqual([]);
   });
 
