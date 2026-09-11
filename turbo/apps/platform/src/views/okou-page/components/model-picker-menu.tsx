@@ -770,7 +770,11 @@ export function ModelPickerFlyoutContent({
           "flex max-h-[284px] flex-col gap-0.5 overflow-y-auto overscroll-contain",
           types.length > 1
             ? cn(
-                "absolute bottom-0 w-[252px]",
+                // The two cards share a bottom edge. This box is anchored to
+                // the rail's content edge, which sits the popover's `p-1`
+                // (4px) plus the shared 0.5px hairline above the card's own
+                // bottom, so cancel both.
+                "absolute bottom-[-4.5px] w-[252px]",
                 FLYOUT_PANEL_CLASS,
                 side === "right"
                   ? "left-[calc(100%+6px)]"
