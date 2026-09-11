@@ -122,9 +122,9 @@ The `okou-badge`, `okou-pill`, and `okou-border-r` selectors and their consumers
 
 ### Animated layers
 
-`RunningIndicator` exports `runningIndicatorClassName`,
-`runningIndicatorCenterClassName`, and `runningIndicatorRippleClassName`. Both
-animated layers set their resting offset through an arbitrary
+`RunningIndicator` owns its Tailwind utilities directly in JSX. Reuse the
+component through its props; its internal class strings are not an exported
+styling API. Both animated layers set their resting offset through an arbitrary
 `[transform:translate(-50%,-50%)_scale(...)]` rather than Tailwind's
 `translate-*` and `scale-*` utilities.
 

@@ -4,11 +4,7 @@ import { render, screen } from "@testing-library/react";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  RunningIndicator,
-  runningIndicatorCenterClassName,
-  runningIndicatorRippleClassName,
-} from "../running-indicator";
+import { RunningIndicator } from "../running-indicator";
 
 const packageStylesPath = resolve(process.cwd(), "src/styles/globals.css");
 const globalsCss = readFileSync(
@@ -67,19 +63,17 @@ describe("RunningIndicator", () => {
   });
 
   it("keeps the center and ripple layers concentric", () => {
-    const { container } = render(<RunningIndicator />);
+    render(<RunningIndicator />);
 
     const indicator = screen.getByLabelText("Running");
-    expect(container.querySelectorAll("[aria-hidden]")).toHaveLength(2);
     expect(indicator.children).toHaveLength(2);
 
-    for (const layer of [
-      runningIndicatorCenterClassName,
-      runningIndicatorRippleClassName,
-    ]) {
-      expect(layer).toContain("top-1/2");
-      expect(layer).toContain("left-1/2");
-      expect(layer).toContain("[transform:translate(-50%,-50%)");
+    for (const layer of indicator.children) {
+      expect(layer).toHaveAttribute("aria-hidden", "true");
+      expect(layer).toHaveClass("top-1/2", "left-1/2");
+      expect(layer.getAttribute("class")).toContain(
+        "[transform:translate(-50%,-50%)",
+      );
     }
 
     const centerKeyframes = getCssBlock("@keyframes running-indicator-center");
@@ -89,30 +83,32 @@ describe("RunningIndicator", () => {
   });
 
   it("sets the resting offset through transform, not translate or scale", () => {
+    render(<RunningIndicator />);
+
     // The keyframes animate `transform`. Tailwind's `translate-*` and `scale-*`
     // utilities set the individual CSS properties, which compose on top of the
     // animation instead of being replaced by it and double the centring offset
     // for the whole cycle.
-    for (const layer of [
-      runningIndicatorCenterClassName,
-      runningIndicatorRippleClassName,
-    ]) {
-      expect(layer).not.toMatch(/(^|\s)-?translate-[xy]-/);
-      expect(layer).not.toMatch(/(^|\s)scale-/);
+    for (const layer of screen.getByLabelText("Running").children) {
+      expect(layer.getAttribute("class")).not.toMatch(
+        /(^|\s)-?translate-[xy]-/,
+      );
+      expect(layer.getAttribute("class")).not.toMatch(/(^|\s)scale-/);
     }
   });
 
   it("keeps a distinct resting state before animations start", () => {
     render(<RunningIndicator />);
 
-    expect(runningIndicatorCenterClassName).toContain(
+    const [center, ripple] = screen.getByLabelText("Running").children;
+    expect(center).toHaveClass(
       "[transform:translate(-50%,-50%)_scale(0.64)]",
+      "opacity-[0.34]",
     );
-    expect(runningIndicatorCenterClassName).toContain("opacity-[0.34]");
-    expect(runningIndicatorRippleClassName).toContain(
+    expect(ripple).toHaveClass(
       "[transform:translate(-50%,-50%)_scale(0.8)]",
+      "opacity-0",
     );
-    expect(runningIndicatorRippleClassName).toContain("opacity-0");
   });
 
   it("keeps indicators mounted at different times on one pulse phase", () => {
