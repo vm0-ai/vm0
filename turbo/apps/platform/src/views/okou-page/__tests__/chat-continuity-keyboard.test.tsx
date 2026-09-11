@@ -15,6 +15,7 @@ import {
   setupPage,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { search } from "../../../signals/location.ts";
 import {
   continuitySidebarLink,
   continuityThread,
@@ -519,4 +520,32 @@ test("Respect composition, held keys, dialogs, and navigation for pin shortcuts"
   click(agentsLink);
   await screen.findByRole("heading", { name: "Agents" });
   expect(dispatchPinShortcut(document.body).defaultPrevented).toBeFalsy();
+});
+
+test("Close the split view by selecting its chat again in the sidebar", async () => {
+  const main = continuityThread(78, 1, "Split view main chat");
+  const side = continuityThread(78, 2, "Split view side chat");
+  const workspace = installContinuityWorkspace(context, {
+    caseId: 78,
+    threads: [main, side],
+  });
+  await setupPage({
+    context,
+    path: `/chats/${main.id}?sidebar=${side.id}`,
+    ...workspace.pageOptions,
+  });
+  await waitFor(() => {
+    expect(threadContainer(side.id)).toBeVisible();
+  });
+
+  // Alt-selecting the chat already shown beside the main one closes that pane.
+  fireEvent.click(continuitySidebarLink(side.id), { altKey: true });
+
+  await waitFor(() => {
+    expect(
+      document.querySelector(`[data-chat-thread-container-id="${side.id}"]`),
+    ).toBeNull();
+  });
+  expect(threadContainer(main.id)).toBeVisible();
+  expect(new URLSearchParams(search()).has("sidebar")).toBeFalsy();
 });

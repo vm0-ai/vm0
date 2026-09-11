@@ -222,6 +222,7 @@ import {
   textToMessageDocument,
 } from "../okou-page/user-message-document-codec.ts";
 import { locale$ } from "../locale.ts";
+import { pageSignal$ } from "../page-signal.ts";
 import {
   createComposerSignals,
   type ComposerSignals,
@@ -231,11 +232,12 @@ import { createChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
 import { createChatThreadSharingSignals } from "./chat-thread-sharing.ts";
 import { createChatThreadPinSignals } from "./chat-thread-pin.ts";
 import { createChatConversationLocatorSignals } from "./chat-conversation-locator.ts";
-import type {
-  ChatEventSignals,
-  SendChatEventInput,
-  SendChatEventResult,
-  SendInputChatEvent,
+import {
+  createChatEventSignals,
+  type ChatEventSignals,
+  type SendChatEventInput,
+  type SendChatEventResult,
+  type SendInputChatEvent,
 } from "./chat-event-signals.ts";
 import { registerChatEventChangeHandler$ } from "./chat-event-change-registry.ts";
 import {
@@ -249,6 +251,7 @@ import {
 } from "../okou-page/connectors.ts";
 
 const L = logger("ChatThread");
+
 const noOpComposerDraftAction$ = command(
   (_context, signal: AbortSignal): Promise<void> => {
     signal.throwIfAborted();
@@ -2147,7 +2150,7 @@ function createPagedEventResources(
     readonly browserLifecycleOptimisticEvents: BrowserLifecycleOptimisticEvents;
     readonly connector: ComposerConnectorSignals;
   },
-  ownerSignal: AbortSignal,
+  owner: Computed<AbortSignal>,
 ) {
   const { threadId } = chatActionContext;
   const mailDraftCardSignals = createMailDraftCardSignalsRegistry(threadId);
@@ -2167,7 +2170,7 @@ function createPagedEventResources(
   const computerUseAuthorizationCardSignals =
     createComputerUseAuthorizationCardSignalsRegistry();
   const planUpgradeCardSignals = createPlanUpgradeCardSignalsRegistry();
-  const mermaidDiagrams = createMermaidDiagramRegistry(ownerSignal);
+  const mermaidDiagrams = createMermaidDiagramRegistry(owner);
   const imageLoads = createImageLoadRegistry();
 
   const registerChatEvent$ = command(
@@ -2345,9 +2348,9 @@ function createEventChangeEffects(
       [boolean, AbortSignal]
     >;
   },
-  ownerSignal: AbortSignal,
+  owner: Computed<AbortSignal>,
 ) {
-  const sidebar = createThreadSidebarSignals(threadId, ownerSignal);
+  const sidebar = createThreadSidebarSignals(threadId, owner);
   const locallyMarkedReadAt$ = state<string | undefined>(undefined);
   const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
     threadId,
@@ -2535,7 +2538,7 @@ function createChatThreadMessagePipeline(
     previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
     connector: ComposerConnectorSignals;
   },
-  ownerSignal: AbortSignal,
+  owner: Computed<AbortSignal>,
 ) {
   const { threadId } = chatActionContext;
   const browserLifecycleOptimisticEvents =
@@ -2550,7 +2553,7 @@ function createChatThreadMessagePipeline(
       browserLifecycleOptimisticEvents,
       connector,
     },
-    ownerSignal,
+    owner,
   );
   const projections = createPagedEventProjections({
     chatEvents$: chatEvents.chatEvents$,
@@ -2606,7 +2609,7 @@ function createChatThreadMessagePipeline(
       scroll,
       syncVisibleEventTrees$,
     },
-    ownerSignal,
+    owner,
   );
   const lifecycle = createChatEventPresentationLifecycle({
     chatEvents,
@@ -2660,17 +2663,17 @@ function createChatThreadMessagePipeline(
 const draftCache$ = state(new Map<string, DraftSignals>());
 
 export const ensureDraft$ = command(
-  ({ get, set }, threadId: string): { draft: DraftSignals; isNew: boolean } => {
+  ({ get, set }, threadId: string): DraftSignals => {
     const cache = get(draftCache$);
     const existing = cache.get(threadId);
     if (existing) {
-      return { draft: existing, isNew: false };
+      return existing;
     }
     const draft = createDraftSignals();
     const next = new Map(cache);
     next.set(threadId, draft);
     set(draftCache$, next);
-    return { draft, isNew: true };
+    return draft;
   },
 );
 
@@ -2683,10 +2686,10 @@ function createEventRunIndicatorState(chatEvents$: Computed<ChatEvent[]>) {
 }
 
 // ---------------------------------------------------------------------------
-// Factory: createRunTracking
+// Factory: createChatThreadSubscriptions
 // ---------------------------------------------------------------------------
 
-interface RunTrackingDeps {
+interface ChatThreadSubscriptionDeps {
   threadId: string;
   setupChatEvents$: Command<Promise<void>, [AbortSignal]>;
   catchUpChatEvents$: Command<Promise<void>, [AbortSignal]>;
@@ -2694,7 +2697,7 @@ interface RunTrackingDeps {
   reloadArtifacts$: Command<void, []>;
   subscribeBrowserSessions$: Command<Promise<void>, [AbortSignal]>;
   subscribeThinkingSummaries$: Command<Promise<void>, [AbortSignal]>;
-  automationSignals: Pick<ChatPanelSignals, "headerAutomations">;
+  reloadAutomations$: Command<void, []>;
   cancellationRecovery: ReturnType<typeof createCancellationRecoverySignals>;
   reloadConnectorAccounts$: Command<void, []>;
   reloadConnectorAccountPreference$: Command<void, []>;
@@ -3019,7 +3022,7 @@ function createOnSubscribedCommand({
   cancellationRecovery,
   reloadConnectorAccounts$,
 }: Pick<
-  RunTrackingDeps,
+  ChatThreadSubscriptionDeps,
   | "threadId"
   | "catchUpChatEvents$"
   | "reloadArtifacts$"
@@ -3048,7 +3051,7 @@ const onWorkflowsChanged$ = command(
   },
 );
 
-function createRunTracking({
+function createChatThreadSubscriptions({
   threadId,
   setupChatEvents$,
   catchUpChatEvents$,
@@ -3056,11 +3059,11 @@ function createRunTracking({
   reloadArtifacts$,
   subscribeBrowserSessions$,
   subscribeThinkingSummaries$,
-  automationSignals,
+  reloadAutomations$,
   cancellationRecovery,
   reloadConnectorAccounts$,
   reloadConnectorAccountPreference$,
-}: RunTrackingDeps) {
+}: ChatThreadSubscriptionDeps) {
   const onSubscribed$ = createOnSubscribedCommand({
     threadId,
     catchUpChatEvents$,
@@ -3069,31 +3072,28 @@ function createRunTracking({
     reloadConnectorAccounts$,
   });
 
+  const onThreadDetailChanged$ = command(({ set }) => {
+    L.debug("onThreadDetailChanged$ fired", { threadId });
+    set(cancellationRecovery.reload$);
+    set(reloadConnectorAccountPreference$);
+    return false;
+  });
+
+  const onAutomationsChanged$ = command(({ set }) => {
+    set(reloadAutomations$);
+    return false;
+  });
+
+  const onArtifactsChanged$ = command(({ set }) => {
+    L.debug("onArtifactsChanged$ fired", { threadId });
+    set(reloadArtifacts$);
+    return false;
+  });
+
   const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ start", { threadId });
     await set(setupChatEvents$, signal);
     signal.throwIfAborted();
-
-    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
-    const onThreadDetailChanged$ = command(({ set }) => {
-      L.debug("onThreadDetailChanged$ fired", { threadId });
-      set(cancellationRecovery.reload$);
-      set(reloadConnectorAccountPreference$);
-      return false;
-    });
-
-    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
-    const onAutomationsChanged$ = command(({ set }) => {
-      set(automationSignals.headerAutomations.reload$);
-      return false;
-    });
-
-    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
-    const onArtifactsChanged$ = command(({ set }) => {
-      L.debug("onArtifactsChanged$ fired", { threadId });
-      set(reloadArtifacts$);
-      return false;
-    });
 
     await Promise.all([
       set(syncHydratedEventTrees$, signal),
@@ -3981,13 +3981,16 @@ export function createThreadComposerSignals(
   );
 }
 
-function createChatPanelSignalsWithDraft(
-  chatEvents: ChatEventSignals,
+/**
+ * Creates the complete signal graph of one chat panel. The graph carries no
+ * AbortSignal, so a pane can derive it from the thread it shows.
+ */
+export function createChatPanelSignals(
+  threadId: string,
   agentId: string,
   draft: DraftSignals,
-  signal: AbortSignal,
 ): ChatPanelSignals {
-  const threadId = chatEvents.threadId;
+  const chatEvents = createChatEventSignals(threadId);
   const artifact = createArtifacts(threadId);
   const threadDraft$ = createRemoteChatThreadDraft(threadId);
   const threadMeta$ = createThreadMeta(threadId);
@@ -4020,7 +4023,8 @@ function createChatPanelSignalsWithDraft(
       ),
       connector: composer.connector,
     },
-    signal,
+    // Panel resources live as long as the page setup that published the panel.
+    pageSignal$,
   );
   const messages: MessageListSignals = {
     ...messagePipeline,
@@ -4039,7 +4043,7 @@ function createChatPanelSignalsWithDraft(
     allChatGroups$: messagePipeline.allChatGroups$,
     threadScrollPosition$: messages.scroll.threadScrollPosition$,
   });
-  const runTracking = createRunTracking({
+  const subscriptions = createChatThreadSubscriptions({
     threadId,
     setupChatEvents$: messages.setup$,
     catchUpChatEvents$: messages.catchUp$,
@@ -4047,7 +4051,7 @@ function createChatPanelSignalsWithDraft(
     reloadArtifacts$: messages.reloadArtifacts$,
     subscribeBrowserSessions$: messages.subscribeBrowserSessions$,
     subscribeThinkingSummaries$: activity.subscribe$,
-    automationSignals: threadOwned,
+    reloadAutomations$: threadOwned.headerAutomations.reloadAutomations$,
     cancellationRecovery,
     reloadConnectorAccounts$: composer.connector.accounts.reload$,
     reloadConnectorAccountPreference$:
@@ -4056,7 +4060,6 @@ function createChatPanelSignalsWithDraft(
   return {
     threadId,
     agentId,
-    signal,
     threadDraft$,
     threadMeta$,
     ...threadTitle,
@@ -4084,29 +4087,9 @@ function createChatPanelSignalsWithDraft(
     ...threadOwned,
     sidebar: messages.sidebar,
     ...publicChatThreadEventSignals(messages),
-    subscribeChatThread$: runTracking.subscribeChatThread$,
+    subscribeChatThread$: subscriptions.subscribeChatThread$,
     ...createThinkingIndicatorSignals(activity, messages),
     artifacts$: messages.artifacts$,
     reloadArtifacts$: messages.reloadArtifacts$,
   };
 }
-
-export const createCachedChatPanelSignals$ = command(
-  (
-    { set },
-    chatEvents: ChatEventSignals,
-    agentId: string,
-    signal: AbortSignal,
-  ) => {
-    const { draft, isNew } = set(ensureDraft$, chatEvents.threadId);
-    return {
-      thread: createChatPanelSignalsWithDraft(
-        chatEvents,
-        agentId,
-        draft,
-        signal,
-      ),
-      isNew,
-    };
-  },
-);

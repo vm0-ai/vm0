@@ -570,7 +570,7 @@ export function AutomationMenuButton({
   ariaLabel?: string;
 }) {
   const { t } = useTranslation();
-  const reloadAutomations = useSet(thread.headerAutomations.reload$);
+  const reloadAutomations = useSet(thread.headerAutomations.reloadAutomations$);
   const openAutomationSidebar = useSet(openThreadAutomations$);
   const sidebarTarget = useGet(thread.sidebar.target$);
   const workflowAutomations$ = thread.headerAutomations.automations$;

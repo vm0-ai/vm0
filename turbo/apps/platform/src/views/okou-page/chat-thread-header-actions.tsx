@@ -74,7 +74,7 @@ export function MobileChatThreadMoreMenu({
   const setPinned = useSet(thread.pin.setPinned$);
   const openRename = useSet(openRenameChatThreadDialogForThreadId$);
   const automations = useLastResolved(thread.headerAutomations.automations$);
-  const reloadAutomations = useSet(thread.headerAutomations.reload$);
+  const reloadAutomations = useSet(thread.headerAutomations.reloadAutomations$);
   const openAutomations = useSet(openThreadAutomations$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const openArtifacts = useOpenThreadArtifacts(thread);

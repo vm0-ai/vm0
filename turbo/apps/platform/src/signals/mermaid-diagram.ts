@@ -259,11 +259,12 @@ export interface MermaidDiagramRegistry {
 /**
  * A per-surface registry keyed by diagram source. The map is a `state` written
  * only by `register$` and never leaves the registry: the command that parses a
- * tree embeds each entry on its marker node. `ownerSignal` owns every entry's
- * blob URLs, so tearing the surface down releases its diagrams.
+ * tree embeds each entry on its marker node. `owner` owns every entry's blob
+ * URLs, so tearing the surface down releases its diagrams. It is read at
+ * registration because a diagram outlives the parse that produced it.
  */
 export function createMermaidDiagramRegistry(
-  ownerSignal: AbortSignal,
+  owner: Computed<AbortSignal>,
 ): MermaidDiagramRegistry {
   const internalByCode$ = state<ReadonlyMap<string, MermaidDiagramSignals>>(
     new Map(),
@@ -275,7 +276,7 @@ export function createMermaidDiagramRegistry(
       if (existing !== undefined) {
         return existing;
       }
-      const signals = createMermaidDiagramSignals(code, ownerSignal);
+      const signals = createMermaidDiagramSignals(code, get(owner));
       const next = new Map(current);
       next.set(code, signals);
       set(internalByCode$, next);

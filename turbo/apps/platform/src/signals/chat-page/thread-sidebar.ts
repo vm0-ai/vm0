@@ -199,7 +199,7 @@ function createCatalogArtifactPreviewSignals(
 
 export function createThreadSidebarSignals(
   threadId: string,
-  ownerSignal: AbortSignal,
+  owner: Computed<AbortSignal>,
 ): ThreadSidebarSignals {
   const internalTarget$ = state<ThreadSidebarTarget | null>(null);
   const internalEntryAnimationsEnabled$ = state(false);
@@ -209,7 +209,9 @@ export function createThreadSidebarSignals(
   const internalClaimedAutoOpenCandidateKey$ = state<string | null>(null);
   const resetArtifactPreviewSignal$ = resetSignal();
   const internalArtifactPreviewVersion$ = state(0);
-  const internalArtifactPreviewSignal$ = state(ownerSignal);
+  // No preview session exists until `open$` starts one under the panel owner,
+  // and there is nothing to release before then.
+  const internalArtifactPreviewSignal$ = state(AbortSignal.any([]));
   const imageCanvas = createZoomableImageCanvasSignals();
   const artifactCatalog = createArtifactCatalogSignals({
     chatThreadId: threadId,
@@ -233,7 +235,7 @@ export function createThreadSidebarSignals(
     set(imageCanvas.reset$);
     set(
       internalArtifactPreviewSignal$,
-      set(resetArtifactPreviewSignal$, ownerSignal),
+      set(resetArtifactPreviewSignal$, get(owner)),
     );
     set(internalArtifactPreviewVersion$, (version) => {
       return version + 1;
@@ -250,7 +252,7 @@ export function createThreadSidebarSignals(
   const close$ = command(({ get, set }) => {
     set(
       internalArtifactPreviewSignal$,
-      set(resetArtifactPreviewSignal$, ownerSignal),
+      set(resetArtifactPreviewSignal$, get(owner)),
     );
     set(internalArtifactPreviewVersion$, (version) => {
       return version + 1;

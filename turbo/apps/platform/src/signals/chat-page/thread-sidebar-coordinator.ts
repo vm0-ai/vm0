@@ -23,6 +23,7 @@ import type {
 } from "./thread-sidebar.ts";
 import { createObjectUrlResource } from "../object-url-resource.ts";
 import { resetSignal } from "../utils.ts";
+import { pageSignal$ } from "../page-signal.ts";
 
 // ---------------------------------------------------------------------------
 // Page-level coordinator for the thread-owned utility sidebar. Sidebar state
@@ -218,14 +219,7 @@ const materializeArtifactRef$ = command(
  */
 export const openThreadArtifactSplitView$ = command(
   ({ get, set }, input: ArtifactRefInput) => {
-    const leftThread = get(currentLeftThread$);
-    const rightThread = get(currentRightThread$);
-    const thread =
-      leftThread && !leftThread.signal.aborted
-        ? leftThread
-        : rightThread && !rightThread.signal.aborted
-          ? rightThread
-          : null;
+    const thread = get(currentLeftThread$) ?? get(currentRightThread$);
     if (!thread) {
       return;
     }
@@ -233,7 +227,7 @@ export const openThreadArtifactSplitView$ = command(
       type: "artifact",
       source: {
         kind: "attachment",
-        ref: set(materializeArtifactRef$, input, thread.signal),
+        ref: set(materializeArtifactRef$, input, get(pageSignal$)),
       },
     });
   },
@@ -253,16 +247,13 @@ export const openArtifactInOpenSidebar$ = command(
     ) {
       return false;
     }
-    if (active.thread.signal.aborted) {
-      return false;
-    }
     // The owning thread already holds the page's only utility sidebar, so this
     // swaps its content without closing and reopening the pane.
     set(active.thread.sidebar.open$, {
       type: "artifact",
       source: {
         kind: "attachment",
-        ref: set(materializeArtifactRef$, input, active.thread.signal),
+        ref: set(materializeArtifactRef$, input, get(pageSignal$)),
       },
     });
     return true;
