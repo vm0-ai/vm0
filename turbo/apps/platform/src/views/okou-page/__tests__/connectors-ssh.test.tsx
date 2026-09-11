@@ -228,7 +228,7 @@ test.each([0, 2])(
     await screen.findByRole("heading", { name: "Remote access" });
     expect(queryConnectorAction("link", "Manage SSH hosts")).not.toBeNull();
     expect(screen.queryByTestId("connector-category-grid")).toBeNull();
-    click(getConnectorAction("button", "Connectors"));
+    click(getConnectorAction("button", "Discover"));
     await screen.findByTestId("connector-shelf-communication-collaboration");
     expect(getConnectorAction("link", "Manage SSH hosts")).toBeInTheDocument();
   },

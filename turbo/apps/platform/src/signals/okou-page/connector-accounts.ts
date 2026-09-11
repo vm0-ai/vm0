@@ -43,6 +43,30 @@ export const connectorAccountSummaryByTarget$ = computed(
   },
 );
 
+/**
+ * What the "Your connectors" control says about a list it is hiding: how many
+ * are connected, and whether any of them stopped working. The count comes from
+ * the account summaries rather than from the catalog response, because that
+ * response narrows to whatever is being searched for and this number must not
+ * move while someone browses the other scope.
+ */
+export const connectedConnectorsBadge$ = computed(
+  async (
+    get,
+  ): Promise<{ readonly count: number; readonly needsAttention: boolean }> => {
+    const summaries = await get(connectorAccountSummaries$);
+    const connected = summaries.filter((summary) => {
+      return summary.target.kind === "builtin" && summary.accountCount > 0;
+    });
+    return {
+      count: connected.length,
+      needsAttention: connected.some((summary) => {
+        return summary.attentionCount > 0;
+      }),
+    };
+  },
+);
+
 export const reloadConnectorAccountSummaries$ = command(({ set }) => {
   set(internalSummariesReload$, (version) => {
     return version + 1;

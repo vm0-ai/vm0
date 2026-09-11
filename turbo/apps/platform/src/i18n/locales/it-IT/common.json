@@ -1942,6 +1942,19 @@
       "selectedModelUnavailable": "Il modello selezionato non è disponibile. Configuralo prima dell'invio.",
       "selectedModelUnavailableToast": "Il modello selezionato non è disponibile",
       "selectModel": "Seleziona modello",
+      "slashPanel": {
+        "browseAll": "Sfoglia tutti i modelli",
+        "illustrationDescription": "Una singola immagine, nello stile che scegli",
+        "make": "Crea",
+        "slidesDescription": "Una presentazione HTML pronta da mostrare",
+        "templateCount_one": "{{count}} modello",
+        "templateCount_many": "{{count}} modelli",
+        "templateCount_other": "{{count}} modelli",
+        "useTemplate": "Usa il modello {{title}}",
+        "videoDescription": "Da testo a video, con i parametri del modello scelto",
+        "websiteDescription": "Un sito statico che puoi pubblicare",
+        "workflowDescription": "Un flusso di lavoro salvato che puoi eseguire dal compositore"
+      },
       "temporarilySwitchTo": "Passa temporaneamente a",
       "threadSuggestions": "Thread di chat",
       "useForFutureChats": "Usa questo modello per le chat future",
@@ -2043,6 +2056,7 @@
     },
     "documentTitle": "Chat",
     "errors": {
+      "genericTitle": "Non è stato possibile completare questa esecuzione",
       "loadMessages": "Impossibile caricare i messaggi",
       "noModelProviderAction": "Configurane uno nelle impostazioni dell'area di lavoro",
       "noModelProviderPrefix": "Nessun provider di modelli configurato.",
@@ -3191,16 +3205,19 @@
         "connected": "Nessun connettore collegato",
         "matching": "{{message}} corrispondente a \"{{search}}\"",
         "notConnected": "Nessun connettore rimasto da collegare",
-        "search": "Nessun connettore corrispondente a \"{{search}}\""
+        "search": "Nessun connettore corrispondente a \"{{search}}\"",
+        "unshared": "Ogni connettore è condiviso con un agente"
       },
       "filterCategory": "Categoria",
       "filters": {
         "agents": "Agenti",
         "all": "Tutto",
+        "allAgents": "Tutti gli agenti",
         "aria": "Connettori filtro",
         "connected": "Connesso",
         "notConnected": "Non connesso",
-        "status": "Stato"
+        "status": "Stato",
+        "unshared": "Non condiviso con nessun agente"
       },
       "filterWith": "Filtro: {{category}}",
       "iconUnavailable": "Icona del connettore non disponibile",
@@ -3208,6 +3225,13 @@
       "noConnectorsAlt": "Nessun connettore",
       "otherCategory": "Altro",
       "remoteAccess": "Accesso remoto",
+      "scope": {
+        "aria": "Ambito dei connettori",
+        "attention": "Richiede attenzione",
+        "discover": "Esplora",
+        "mine": "I tuoi connettori",
+        "searchMine": "Trova i tuoi connettori"
+      },
       "search": "Trova connettori",
       "shelf": {
         "moreCategories": "Altre categorie",
@@ -3215,8 +3239,7 @@
         "seeMore_one": "Vedi {{names}} e altro {{count}}",
         "seeMore_many": "Vedi {{names}} e altri {{count}}",
         "seeMore_other": "Vedi {{names}} e altri {{count}}",
-        "top": "Connettori principali",
-        "yours": "I tuoi connettori"
+        "top": "Connettori principali"
       },
       "tabs": {
         "builtin": "Integrato",

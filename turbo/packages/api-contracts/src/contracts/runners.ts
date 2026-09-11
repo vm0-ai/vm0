@@ -780,7 +780,16 @@ export const secretConnectorMetadataMapSchema = z.record(
 export const PI_MEMORY_ROOT = `${PI_AGENT_DIR}/memory`;
 export const PI_MEMORY_SUMMARY_PATH = `${PI_MEMORY_ROOT}/memory_summary.md`;
 export const PI_MEMORY_SUMMARY_MAX_BYTES = 64 * 1024;
+/** Budget for the summary excerpt injected into the prompt, marker included. */
 export const PI_MEMORY_SUMMARY_MAX_TOKENS = 2500;
+/** Every o200k token decodes to at least one UTF-8 byte. */
+const PI_MEMORY_SUMMARY_MIN_TOKEN_BYTES = 1;
+/**
+ * Finite bound for the exact o200k token count of the full stored summary,
+ * derived from the source byte ceiling rather than the injection budget.
+ */
+export const PI_MEMORY_SUMMARY_SOURCE_MAX_TOKENS =
+  PI_MEMORY_SUMMARY_MAX_BYTES / PI_MEMORY_SUMMARY_MIN_TOKEN_BYTES;
 export const PI_SKILLS_ROOT = `${PI_AGENT_DIR}/skills`;
 export const PI_API_FIRST_TURN_SESSION_MAX_BYTES = 16 * 1024 * 1024;
 
@@ -843,7 +852,12 @@ export const piMemoryRecallSelectionSchema = z.discriminatedUnion("status", [
       content: z.string().min(1).max(PI_MEMORY_SUMMARY_MAX_BYTES),
       sourceHash: z.string().regex(/^[a-f0-9]{64}$/),
       sourceSize: z.number().int().positive().max(PI_MEMORY_SUMMARY_MAX_BYTES),
-      tokenCount: z.number().int().positive().max(PI_MEMORY_SUMMARY_MAX_TOKENS),
+      // Exact o200k token count of the full source, not of the injected excerpt.
+      tokenCount: z
+        .number()
+        .int()
+        .positive()
+        .max(PI_MEMORY_SUMMARY_SOURCE_MAX_TOKENS),
     })
     .strict()
     .readonly(),

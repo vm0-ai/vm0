@@ -87,19 +87,19 @@ describe("Desktop preload bridge", () => {
       }),
     ).toStrictEqual([
       "vm0DesktopAuth",
-      "vm0DesktopComputerUse",
-      "vm0DesktopDeveloperTools",
-      "vm0DesktopIdentity",
-      "vm0DesktopRecorder",
+      "okouDesktopComputerUse",
+      "okouDesktopDeveloperTools",
+      "okouDesktopIdentity",
+      "okouDesktopRecorder",
     ]);
     expect(exposedApi<DesktopAuthApi>("vm0DesktopAuth")).toBeTruthy();
     expect(
-      exposedApi<DesktopComputerUseApi>("vm0DesktopComputerUse"),
+      exposedApi<DesktopComputerUseApi>("okouDesktopComputerUse"),
     ).toBeTruthy();
     expect(
-      exposedApi<DesktopDeveloperToolsApi>("vm0DesktopDeveloperTools"),
+      exposedApi<DesktopDeveloperToolsApi>("okouDesktopDeveloperTools"),
     ).toBeTruthy();
-    expect(exposedApi("vm0DesktopIdentity")).toStrictEqual({
+    expect(exposedApi("okouDesktopIdentity")).toStrictEqual({
       product: "okou",
       brandName: "Okou",
       displayName: "Okou",
@@ -131,7 +131,7 @@ describe("Desktop preload bridge", () => {
   it("routes computer use API calls through IPC channels", async () => {
     await loadPreload();
     const computerUse = exposedApi<DesktopComputerUseApi>(
-      "vm0DesktopComputerUse",
+      "okouDesktopComputerUse",
     );
 
     await computerUse.getState();
@@ -183,7 +183,7 @@ describe("Desktop preload bridge", () => {
   it("routes developer tools API calls through IPC channels", async () => {
     await loadPreload();
     const developerTools = exposedApi<DesktopDeveloperToolsApi>(
-      "vm0DesktopDeveloperTools",
+      "okouDesktopDeveloperTools",
     );
 
     await developerTools.getState();
@@ -199,10 +199,10 @@ describe("Desktop preload bridge", () => {
     await loadPreload();
     const auth = exposedApi<DesktopAuthApi>("vm0DesktopAuth");
     const computerUse = exposedApi<DesktopComputerUseApi>(
-      "vm0DesktopComputerUse",
+      "okouDesktopComputerUse",
     );
     const developerTools = exposedApi<DesktopDeveloperToolsApi>(
-      "vm0DesktopDeveloperTools",
+      "okouDesktopDeveloperTools",
     );
     const authChanged = vi.fn<() => void>();
     const computerUseChanged = vi.fn<() => void>();

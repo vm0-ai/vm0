@@ -1910,6 +1910,17 @@
       "selectedModelUnavailable": "Model yang dipilih tidak tersedia. Konfigurasikan sebelum mengirim.",
       "selectedModelUnavailableToast": "Model yang dipilih tidak tersedia",
       "selectModel": "Pilih model",
+      "slashPanel": {
+        "browseAll": "Jelajahi semua templat",
+        "illustrationDescription": "Satu gambar, dengan gaya yang Anda pilih",
+        "make": "Buat",
+        "slidesDescription": "Salindia HTML yang siap dipresentasikan",
+        "templateCount_other": "{{count}} templat",
+        "useTemplate": "Gunakan templat {{title}}",
+        "videoDescription": "Teks menjadi video, dengan parameter dari model yang dipilih",
+        "websiteDescription": "Situs statis yang bisa Anda terbitkan",
+        "workflowDescription": "Alur kerja tersimpan yang bisa dijalankan dari komposer"
+      },
       "temporarilySwitchTo": "Beralih sementara ke",
       "threadSuggestions": "Thread chat",
       "useForFutureChats": "Gunakan ini untuk chat berikutnya",
@@ -2002,6 +2013,7 @@
     },
     "documentTitle": "Chat",
     "errors": {
+      "genericTitle": "Proses ini tidak dapat diselesaikan",
       "loadMessages": "Gagal memuat pesan",
       "noModelProviderAction": "Siapkan di Pengaturan Workspace",
       "noModelProviderPrefix": "Belum ada provider model yang dikonfigurasi.",
@@ -3130,16 +3142,19 @@
         "connected": "Tidak ada konektor yang terhubung",
         "matching": "{{message}} yang cocok dengan \"{{search}}\"",
         "notConnected": "Tidak ada konektor lagi untuk dihubungkan",
-        "search": "Tidak ada konektor yang cocok dengan \"{{search}}\""
+        "search": "Tidak ada konektor yang cocok dengan \"{{search}}\"",
+        "unshared": "Setiap konektor sudah dibagikan ke sebuah agen"
       },
       "filterCategory": "Kategori",
       "filters": {
         "agents": "Agen",
         "all": "Semua",
+        "allAgents": "Semua agen",
         "aria": "Filter konektor",
         "connected": "Terhubung",
         "notConnected": "Tidak terhubung",
-        "status": "Status"
+        "status": "Status",
+        "unshared": "Tidak dibagikan ke agen mana pun"
       },
       "filterWith": "Filter: {{category}}",
       "iconUnavailable": "Ikon konektor tidak tersedia",
@@ -3147,14 +3162,20 @@
       "noConnectorsAlt": "Tidak ada konektor",
       "otherCategory": "Lainnya",
       "remoteAccess": "Akses jarak jauh",
+      "scope": {
+        "aria": "Cakupan konektor",
+        "attention": "Perlu perhatian",
+        "discover": "Jelajahi",
+        "mine": "Konektor Anda",
+        "searchMine": "Cari konektor Anda"
+      },
       "search": "Cari konektor",
       "shelf": {
         "moreCategories": "Kategori lainnya",
         "popular": "Populer",
         "seeMore_one": "Lihat {{names}} dan {{count}} lainnya",
         "seeMore_other": "Lihat {{names}} dan {{count}} lainnya",
-        "top": "Konektor teratas",
-        "yours": "Konektor Anda"
+        "top": "Konektor teratas"
       },
       "tabs": {
         "builtin": "Bawaan",

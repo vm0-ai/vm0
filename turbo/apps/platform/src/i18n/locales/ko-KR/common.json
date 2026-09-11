@@ -1910,6 +1910,17 @@
       "selectedModelUnavailable": "선택한 모델을 사용할 수 없습니다. 전송 전에 구성하세요.",
       "selectedModelUnavailableToast": "선택한 모델을 사용할 수 없습니다",
       "selectModel": "모델 선택",
+      "slashPanel": {
+        "browseAll": "모든 템플릿 보기",
+        "illustrationDescription": "선택한 스타일로 이미지 한 장을 만듭니다",
+        "make": "만들기",
+        "slidesDescription": "바로 발표할 수 있는 HTML 슬라이드",
+        "templateCount_other": "템플릿 {{count}}개",
+        "useTemplate": "템플릿 {{title}} 사용",
+        "videoDescription": "텍스트로 영상을 만들며 매개변수는 선택한 모델을 따릅니다",
+        "websiteDescription": "게시할 수 있는 정적 사이트",
+        "workflowDescription": "작성 창에서 실행할 수 있는 저장된 워크플로"
+      },
       "temporarilySwitchTo": "임시로 전환할 모델",
       "threadSuggestions": "채팅 스레드",
       "useForFutureChats": "향후 채팅에도 사용",
@@ -2002,6 +2013,7 @@
     },
     "documentTitle": "채팅",
     "errors": {
+      "genericTitle": "이 실행을 완료하지 못했습니다",
       "loadMessages": "메시지 로드 실패",
       "noModelProviderAction": "워크스페이스 설정에서 구성하세요",
       "noModelProviderPrefix": "모델 공급자가 아직 구성되지 않았습니다.",
@@ -3130,16 +3142,19 @@
         "connected": "연결된 커넥터가 없습니다",
         "matching": "\"{{search}}\"와(과) 일치하는 {{message}}",
         "notConnected": "연결할 커넥터가 남아 있지 않습니다",
-        "search": "\"{{search}}\"와(과) 일치하는 커넥터가 없습니다"
+        "search": "\"{{search}}\"와(과) 일치하는 커넥터가 없습니다",
+        "unshared": "모든 커넥터가 에이전트와 공유되어 있습니다"
       },
       "filterCategory": "카테고리",
       "filters": {
         "agents": "에이전트",
         "all": "전체",
+        "allAgents": "모든 에이전트",
         "aria": "커넥터 필터",
         "connected": "연결됨",
         "notConnected": "연결 안 됨",
-        "status": "상태"
+        "status": "상태",
+        "unshared": "어떤 에이전트와도 공유되지 않음"
       },
       "filterWith": "필터: {{category}}",
       "iconUnavailable": "커넥터 아이콘을 사용할 수 없습니다",
@@ -3147,14 +3162,20 @@
       "noConnectorsAlt": "커넥터 없음",
       "otherCategory": "기타",
       "remoteAccess": "원격 액세스",
+      "scope": {
+        "aria": "커넥터 범위",
+        "attention": "확인이 필요함",
+        "discover": "둘러보기",
+        "mine": "내 커넥터",
+        "searchMine": "내 커넥터 찾기"
+      },
       "search": "커넥터 찾기",
       "shelf": {
         "moreCategories": "다른 카테고리",
         "popular": "인기",
         "seeMore_one": "{{names}} 외 {{count}}개 보기",
         "seeMore_other": "{{names}} 외 {{count}}개 보기",
-        "top": "인기 커넥터",
-        "yours": "내 커넥터"
+        "top": "인기 커넥터"
       },
       "tabs": {
         "builtin": "내장",

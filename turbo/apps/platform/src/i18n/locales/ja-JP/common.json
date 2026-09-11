@@ -1910,6 +1910,17 @@
       "selectedModelUnavailable": "選択されたモデルは使用できません。送信する前に設定してください。",
       "selectedModelUnavailableToast": "選択したモデルは利用できません",
       "selectModel": "モデルを選択してください",
+      "slashPanel": {
+        "browseAll": "すべてのテンプレートを見る",
+        "illustrationDescription": "選んだスタイルで 1 枚の画像を生成します",
+        "make": "作成",
+        "slidesDescription": "そのまま発表できる HTML スライド",
+        "templateCount_other": "{{count}} 件のテンプレート",
+        "useTemplate": "テンプレート {{title}} を使う",
+        "videoDescription": "テキストから動画を生成し、パラメーターは選択したモデルに従います",
+        "websiteDescription": "公開できる静的サイト",
+        "workflowDescription": "コンポーザーから実行できる保存済みワークフロー"
+      },
       "temporarilySwitchTo": "一時的な切り替え先",
       "threadSuggestions": "チャットスレッド",
       "useForFutureChats": "今後のチャットでも使用",
@@ -2002,6 +2013,7 @@
     },
     "documentTitle": "チャット",
     "errors": {
+      "genericTitle": "この実行を完了できませんでした",
       "loadMessages": "メッセージの読み込みに失敗しました",
       "noModelProviderAction": "ワークスペース設定で設定します",
       "noModelProviderPrefix": "モデルプロバイダーがまだ構成されていません。",
@@ -3130,16 +3142,19 @@
         "connected": "コネクタが接続されていません",
         "matching": "{{message}} が「{{search}}」に一致",
         "notConnected": "接続するコネクタが残っていない",
-        "search": "「{{search}}」に一致するコネクタはありません"
+        "search": "「{{search}}」に一致するコネクタはありません",
+        "unshared": "すべてのコネクタがいずれかのエージェントと共有されています"
       },
       "filterCategory": "カテゴリ",
       "filters": {
         "agents": "エージェント",
         "all": "すべて",
+        "allAgents": "すべてのエージェント",
         "aria": "フィルターコネクター",
         "connected": "接続済み",
         "notConnected": "接続されていません",
-        "status": "ステータス"
+        "status": "ステータス",
+        "unshared": "どのエージェントとも共有されていません"
       },
       "filterWith": "フィルタ: {{category}}",
       "iconUnavailable": "コネクタアイコンが使用不可",
@@ -3147,14 +3162,20 @@
       "noConnectorsAlt": "コネクターなし",
       "otherCategory": "その他",
       "remoteAccess": "リモートアクセス",
+      "scope": {
+        "aria": "コネクタの表示範囲",
+        "attention": "対応が必要",
+        "discover": "探す",
+        "mine": "あなたのコネクタ",
+        "searchMine": "あなたのコネクタを検索"
+      },
       "search": "コネクターを検索",
       "shelf": {
         "moreCategories": "その他のカテゴリ",
         "popular": "人気",
         "seeMore_one": "{{names}} ほか {{count}} 件を見る",
         "seeMore_other": "{{names}} ほか {{count}} 件を見る",
-        "top": "人気のコネクタ",
-        "yours": "あなたのコネクタ"
+        "top": "人気のコネクタ"
       },
       "tabs": {
         "builtin": "内蔵",
