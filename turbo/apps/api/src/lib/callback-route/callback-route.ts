@@ -67,8 +67,8 @@ function isCommand<T>(
  * Reads the raw request body (single-shot stream consumption), parses the
  * JSON envelope, looks up the `agent_run_callbacks` row by `callbackId` (PK,
  * preferred) or `runId` (fallback), decrypts the per-callback secret, verifies
- * `X-Okou-Signature` / `X-Okou-Timestamp` (or their legacy `X-VM0-*` names),
- * and exposes the verified envelope via `callbackPayload$`.
+ * `X-Okou-Signature` / `X-Okou-Timestamp`, and exposes the verified envelope
+ * via `callbackPayload$`.
  */
 export function callbackRoute<T>(
   handler$: SignalRouteHandler<T>,
