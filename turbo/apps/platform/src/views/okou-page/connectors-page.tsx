@@ -580,7 +580,9 @@ function ConnectorsScopeSegment({
           return $.connectors.catalog.scope.mine;
         })}
         {badge.count > 0 && (
-          <span className="text-[11px] tabular-nums text-muted-foreground/70">
+          // The count pairs its own line height: an arbitrary font size carries
+          // none, and the segment must not take its box from an ancestor.
+          <span className="text-[11px]/4 tabular-nums text-muted-foreground/70">
             {formatLocalizedNumber(badge.count)}
           </span>
         )}
