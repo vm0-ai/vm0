@@ -82,6 +82,20 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Lab, {})).toBe(false);
   });
 
+  it("should enable the Welcome Thread switch for the staff org only", () => {
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.WelcomeThread, {
+        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      }),
+    ).toBe(true);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.WelcomeThread, {
+        orgId: "org_nonexistent",
+      }),
+    ).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.WelcomeThread, {})).toBe(false);
+  });
+
   it("should apply user overrides to the staff-default Official Workflows switch", () => {
     const staffOrgId = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
     expect(
@@ -339,6 +353,7 @@ describe("getFeatureSwitchMetadata", () => {
     );
     expect(metadata[FeatureSwitchKey.Banking].rolloutStage).toBe("beta");
     expect(metadata[FeatureSwitchKey.IntroVideo].rolloutStage).toBe("beta");
+    expect(metadata[FeatureSwitchKey.WelcomeThread].rolloutStage).toBe("beta");
     expect(metadata[FeatureSwitchKey.AhrefsConnector].rolloutStage).toBe(
       "alpha",
     );
