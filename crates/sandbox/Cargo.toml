@@ -13,6 +13,7 @@ uuid = { workspace = true, features = ["serde", "std", "v4"] }
 
 [dev-dependencies]
 serde_json = { workspace = true, features = ["std"] }
+tokio = { workspace = true, features = ["macros", "rt"] }
 trybuild = { workspace = true }
 
 [lints]
