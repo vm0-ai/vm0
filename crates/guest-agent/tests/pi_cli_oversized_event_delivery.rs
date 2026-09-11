@@ -1,8 +1,7 @@
 //! Real RPC stdout -> projection -> canonical sequencing/masking -> private
 //! citation -> bounded sender/HTTP. The fixture's official session is immutable.
 mod common;
-#[path = "common/delivery_image.rs"]
-mod delivery_image;
+use common::delivery_image;
 
 use base64::Engine as _;
 use guest_agent::env::{GuestConfig, GuestConfigRaw};

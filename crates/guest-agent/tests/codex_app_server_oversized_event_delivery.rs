@@ -2,8 +2,7 @@
 //! representation without changing the complete local normalized event.
 
 mod common;
-#[path = "common/delivery_image.rs"]
-mod delivery_image;
+use common::delivery_image;
 
 use base64::Engine as _;
 use guest_agent::masker::SecretMasker;
