@@ -87,7 +87,7 @@ async function expectRetainedResult(): Promise<HTMLElement> {
 }
 
 test.each(["run.failed", "output.error"] as const)(
-  "Show a scheduled workflow %s only in the status tail when no output was produced",
+  "Show a scheduled workflow %s in a status card with its assistant avatar when no output was produced",
   async (eventType) => {
     installRunChat({
       chatEvents: [
@@ -119,7 +119,11 @@ test.each(["run.failed", "output.error"] as const)(
     expect(screen.getAllByText(GENERIC_ERROR)).toHaveLength(1);
     expect(error.closest("[data-chat-run-status-tail]")).toBeVisible();
     expect(error.closest("[data-chat-selection-source]")).toBeNull();
-    expect(document.querySelector('[data-role="assistant"]')).toBeNull();
+    expect(error.closest('[role="status"]')).toBeVisible();
+    expect(screen.getByText("This run couldn't finish")).toBeVisible();
+    expect(error.closest('[data-role="assistant"]')).toContainElement(
+      screen.getByLabelText("View agent profile"),
+    );
     expect(screen.queryByTestId("chat-event-actions")).toBeNull();
     expect(
       screen.getByText("This workflow started on schedule."),

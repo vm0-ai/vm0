@@ -2002,6 +2002,7 @@
     },
     "documentTitle": "チャット",
     "errors": {
+      "genericTitle": "この実行を完了できませんでした",
       "loadMessages": "メッセージの読み込みに失敗しました",
       "noModelProviderAction": "ワークスペース設定で設定します",
       "noModelProviderPrefix": "モデルプロバイダーがまだ構成されていません。",

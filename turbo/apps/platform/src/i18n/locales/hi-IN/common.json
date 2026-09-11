@@ -2009,6 +2009,7 @@
     },
     "documentTitle": "चैट",
     "errors": {
+      "genericTitle": "यह रन पूरा नहीं हो सका",
       "loadMessages": "संदेश लोड करने में विफल",
       "noModelProviderAction": "वर्कस्पेस सेटिंग्स में एक सेट अप करें",
       "noModelProviderPrefix": "अभी तक कोई मॉडल प्रोवाइडर कॉन्फ़िगर नहीं किया गया है।",

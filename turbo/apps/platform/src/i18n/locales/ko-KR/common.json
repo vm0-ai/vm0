@@ -2002,6 +2002,7 @@
     },
     "documentTitle": "채팅",
     "errors": {
+      "genericTitle": "이 실행을 완료하지 못했습니다",
       "loadMessages": "메시지 로드 실패",
       "noModelProviderAction": "워크스페이스 설정에서 구성하세요",
       "noModelProviderPrefix": "모델 공급자가 아직 구성되지 않았습니다.",

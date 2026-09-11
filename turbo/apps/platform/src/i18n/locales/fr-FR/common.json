@@ -2043,6 +2043,7 @@
     },
     "documentTitle": "Discussion",
     "errors": {
+      "genericTitle": "Cette exécution n’a pas pu se terminer",
       "loadMessages": "Échec du chargement des messages",
       "noModelProviderAction": "Configurer un dans les paramètres de l'espace de travail",
       "noModelProviderPrefix": "Aucun fournisseur de modèle configuré pour le moment.",

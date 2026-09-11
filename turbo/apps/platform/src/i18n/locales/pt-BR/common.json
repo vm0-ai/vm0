@@ -2043,6 +2043,7 @@
     },
     "documentTitle": "Conversa",
     "errors": {
+      "genericTitle": "Não foi possível concluir esta execução",
       "loadMessages": "Falha ao carregar mensagens",
       "noModelProviderAction": "Configure um nas Configurações do Workspace",
       "noModelProviderPrefix": "Nenhum provedor de modelo foi configurado ainda.",

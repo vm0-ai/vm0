@@ -2009,6 +2009,7 @@
     },
     "documentTitle": "Chat",
     "errors": {
+      "genericTitle": "Dieser Lauf konnte nicht abgeschlossen werden",
       "loadMessages": "Nachrichten konnten nicht geladen werden",
       "noModelProviderAction": "Richten Sie einen Anbieter in den Arbeitsbereichseinstellungen ein",
       "noModelProviderPrefix": "Noch kein Modellanbieter konfiguriert.",

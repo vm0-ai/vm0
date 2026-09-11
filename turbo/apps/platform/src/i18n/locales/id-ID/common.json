@@ -2002,6 +2002,7 @@
     },
     "documentTitle": "Chat",
     "errors": {
+      "genericTitle": "Proses ini tidak dapat diselesaikan",
       "loadMessages": "Gagal memuat pesan",
       "noModelProviderAction": "Siapkan di Pengaturan Workspace",
       "noModelProviderPrefix": "Belum ada provider model yang dikonfigurasi.",
