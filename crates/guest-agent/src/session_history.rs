@@ -172,6 +172,28 @@ impl ResolvedSessionHistory {
     fn into_zstd_bytes(self, max_encoded_bytes: u64) -> Result<Vec<u8>, AgentError> {
         read_zstd_encoded_session_history(self.file, &self.path, max_encoded_bytes)
     }
+
+    pub(crate) fn prepare_sidecar(
+        self,
+        max_decoded_bytes: u64,
+        max_encoded_bytes: u64,
+    ) -> Result<PreparedSessionHistorySidecar, SessionHistoryDigestError> {
+        if self.is_zstd {
+            if self.encoded_len()? <= max_encoded_bytes {
+                let encoded = self.into_zstd_bytes(max_encoded_bytes)?;
+                let digest = digest_zstd_session_history_bytes(&encoded, max_decoded_bytes)?;
+                return Ok(PreparedSessionHistorySidecar {
+                    digest,
+                    source: SessionHistoryCheckpointSource::CodexZstd { encoded },
+                });
+            }
+            return self
+                .into_decoded_reader()?
+                .prepare_sidecar(max_decoded_bytes);
+        }
+        self.into_decoded_reader()?
+            .prepare_sidecar(max_decoded_bytes)
+    }
 }
 
 impl PreparedSessionHistorySidecar {
@@ -258,30 +280,6 @@ pub(crate) fn digest_session_history_from_source_bounded(
     resolve_session_history_from_source(source)?
         .into_decoded_reader()?
         .digest(max_bytes)
-}
-
-pub(crate) fn prepare_session_history_sidecar_from_source_bounded(
-    source: &SessionHistorySourceRef,
-    max_decoded_bytes: u64,
-    max_encoded_bytes: u64,
-) -> Result<PreparedSessionHistorySidecar, SessionHistoryDigestError> {
-    let resolved = resolve_session_history_from_source(source)?;
-    if resolved.is_zstd {
-        if resolved.encoded_len()? <= max_encoded_bytes {
-            let encoded = resolved.into_zstd_bytes(max_encoded_bytes)?;
-            let digest = digest_zstd_session_history_bytes(&encoded, max_decoded_bytes)?;
-            return Ok(PreparedSessionHistorySidecar {
-                digest,
-                source: SessionHistoryCheckpointSource::CodexZstd { encoded },
-            });
-        }
-        return resolved
-            .into_decoded_reader()?
-            .prepare_sidecar(max_decoded_bytes);
-    }
-    resolved
-        .into_decoded_reader()?
-        .prepare_sidecar(max_decoded_bytes)
 }
 
 fn validated_absolute_source_path(value: &str) -> Result<PathBuf, AgentError> {
@@ -1388,12 +1386,10 @@ mod tests {
         std::fs::write(path, &compressed).unwrap();
         let source = codex_source(&sessions_dir, thread_id);
 
-        let prepared = prepare_session_history_sidecar_from_source_bounded(
-            &source,
-            history.len() as u64,
-            compressed.len() as u64,
-        )
-        .unwrap();
+        let prepared = resolve_session_history_from_source(&source)
+            .unwrap()
+            .prepare_sidecar(history.len() as u64, compressed.len() as u64)
+            .unwrap();
         match prepared.into_source() {
             SessionHistoryCheckpointSource::CodexZstd { encoded } => {
                 assert_eq!(encoded, compressed)
@@ -1403,12 +1399,10 @@ mod tests {
             }
         }
 
-        let prepared = prepare_session_history_sidecar_from_source_bounded(
-            &source,
-            history.len() as u64,
-            history.len() as u64,
-        )
-        .unwrap();
+        let prepared = resolve_session_history_from_source(&source)
+            .unwrap()
+            .prepare_sidecar(history.len() as u64, history.len() as u64)
+            .unwrap();
 
         assert_eq!(prepared.digest.size_bytes, history.len() as u64);
         assert_eq!(
@@ -1438,11 +1432,9 @@ mod tests {
         std::fs::write(path, compressed).unwrap();
         let source = codex_source(&sessions_dir, thread_id);
 
-        let result = prepare_session_history_sidecar_from_source_bounded(
-            &source,
-            history.len() as u64,
-            encoded_limit,
-        );
+        let result = resolve_session_history_from_source(&source)
+            .unwrap()
+            .prepare_sidecar(history.len() as u64, encoded_limit);
 
         assert!(matches!(result, Err(SessionHistoryDigestError::Read(_))));
     }
