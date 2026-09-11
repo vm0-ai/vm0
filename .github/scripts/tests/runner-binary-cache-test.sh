@@ -78,16 +78,6 @@ fresh_out=$(FRESH_METADATA_PATH="$fresh" \
 assert_contains "$fresh_out" "runner-sha=${runner_sha}"
 assert_contains "$fresh_out" "runner-size-bytes=${runner_size}"
 
-record_out=$(EXPECTED_TARGET="$target" \
-  EXPECTED_BINARY_INPUT_DIGEST="$input_digest" \
-  "$CACHE" record-name)
-assert_contains "$record_out" \
-  "record-name=runner-binary-asset-${target}-${input_digest}"
-assert_fails "record name rejects an invalid input digest" \
-  env EXPECTED_TARGET="$target" \
-  EXPECTED_BINARY_INPUT_DIGEST=invalid \
-  "$CACHE" record-name
-
 jq '.unexpected = true' "$fresh" > "${TMPDIR}/fresh-extra.json"
 assert_fails "fresh metadata rejects unknown fields" \
   env FRESH_METADATA_PATH="${TMPDIR}/fresh-extra.json" \
@@ -443,10 +433,9 @@ prepare_candidates() {
 run_shadow() {
   local current_event=$1 scenario=$2 output_dir=$3
   prepare_candidates "$scenario"
-  local current_pr_number=123 current_pr_head_ref=feature
+  local current_pr_number=123
   if [ "$current_event" = "push" ]; then
     current_pr_number=""
-    current_pr_head_ref=""
   fi
   PATH="${TMPDIR}/bin:${PATH}" \
   GH_LOG="${TMPDIR}/gh.log" \
@@ -465,7 +454,6 @@ run_shadow() {
   CURRENT_RUN_ID=99 \
   CURRENT_EVENT="$current_event" \
   CURRENT_PR_NUMBER="$current_pr_number" \
-  CURRENT_PR_HEAD_REF="$current_pr_head_ref" \
   DEFAULT_BRANCH=main \
   AWS_LOG="${TMPDIR}/aws.log" \
   AWS_STORE="${TMPDIR}/store" \
@@ -549,10 +537,9 @@ grep -q 'equal runner binary input digest produced conflicting output identity' 
 run_active() {
   local current_event=$1 scenario=$2 output_dir=$3 aws_mode=${4:-success}
   prepare_candidates "$scenario"
-  local current_pr_number=123 current_pr_head_ref=feature
+  local current_pr_number=123
   if [ "$current_event" = "push" ]; then
     current_pr_number=""
-    current_pr_head_ref=""
   fi
   PATH="${TMPDIR}/bin:${PATH}" \
   GH_LOG="${TMPDIR}/gh.log" \
@@ -578,7 +565,6 @@ run_active() {
   CURRENT_RUN_ID=99 \
   CURRENT_EVENT="$current_event" \
   CURRENT_PR_NUMBER="$current_pr_number" \
-  CURRENT_PR_HEAD_REF="$current_pr_head_ref" \
   DEFAULT_BRANCH=main \
     "$CACHE" "${CACHE_RESOLVE_COMMAND:-active-resolve}"
 }

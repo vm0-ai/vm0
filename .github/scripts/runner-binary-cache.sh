@@ -199,17 +199,6 @@ reusable_record_name() {
   printf 'runner-binary-asset-%s-%s\n' "$target" "$digest"
 }
 
-record_name() {
-  require_env EXPECTED_TARGET
-  require_env EXPECTED_BINARY_INPUT_DIGEST
-  runner_image_validate_target "$EXPECTED_TARGET"
-  if [[ ! "$EXPECTED_BINARY_INPUT_DIGEST" =~ ^[0-9a-f]{64}$ ]]; then
-    echo "invalid runner binary input digest: ${EXPECTED_BINARY_INPUT_DIGEST}" >&2
-    exit 2
-  fi
-  emit "record-name" "$(reusable_record_name "$EXPECTED_TARGET" "$EXPECTED_BINARY_INPUT_DIGEST")"
-}
-
 publish_failure() {
   local reason=$1 message=$2
   echo "::error::Runner binary publication failed (${reason}): ${message}" >&2
@@ -903,13 +892,12 @@ download_current() {
 
 usage() {
   cat <<'USAGE'
-Usage: runner-binary-cache.sh <fresh-validate|record-name|manifest-validate|publish|shadow-resolve|active-resolve|reference-resolve|download|download-current>
+Usage: runner-binary-cache.sh <fresh-validate|manifest-validate|publish|shadow-resolve|active-resolve|reference-resolve|download|download-current>
 USAGE
 }
 
 case "${1:-}" in
   fresh-validate) fresh_validate ;;
-  record-name) record_name ;;
   manifest-validate) manifest_validate ;;
   publish) publish ;;
   shadow-resolve) shadow_resolve ;;

@@ -137,10 +137,9 @@ run_plan() {
     mixed) jq -n --argjson index "$index" --arg arm "$arm_record" '{Contents:[$index[] | select(.Key | contains($arm))]}' >"${TMPDIR}/store/index.json" ;;
     all-hit) jq -n --argjson index "$index" '{Contents:$index}' >"${TMPDIR}/store/index.json" ;;
   esac
-  local pr_number=123 pr_head_ref=feature
+  local pr_number=123
   if [ "$event" = "push" ]; then
     pr_number=""
-    pr_head_ref=""
   fi
   PATH="${TMPDIR}/bin:${PATH}" \
   GH_LOG="${TMPDIR}/gh.log" \
@@ -160,7 +159,6 @@ run_plan() {
   CURRENT_RUN_ID=99 \
   CURRENT_EVENT="$event" \
   CURRENT_PR_NUMBER="$pr_number" \
-  CURRENT_PR_HEAD_REF="$pr_head_ref" \
   DEFAULT_BRANCH=main \
   RUNNER_HOST_GROUPS_MATRIX="$matrix" \
   RESOLVE_OUTPUT_DIR="$output_dir" \
@@ -242,7 +240,6 @@ timed_out=$(PATH="${TMPDIR}/timeout-bin:${TMPDIR}/bin:${PATH}" \
   CURRENT_RUN_ID=99 \
   CURRENT_EVENT=pull_request \
   CURRENT_PR_NUMBER=123 \
-  CURRENT_PR_HEAD_REF=feature \
   DEFAULT_BRANCH=main \
   "$PLAN")
 assert_contains "$timed_out" 'hit-count=0'
@@ -258,7 +255,6 @@ killed=$(TIMEOUT_STATUS=137 \
   CURRENT_RUN_ID=99 \
   CURRENT_EVENT=pull_request \
   CURRENT_PR_NUMBER=123 \
-  CURRENT_PR_HEAD_REF=feature \
   DEFAULT_BRANCH=main \
   "$PLAN")
 assert_contains "$killed" 'hit-count=0'
