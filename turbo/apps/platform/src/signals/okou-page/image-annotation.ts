@@ -337,11 +337,35 @@ function offsetMark(
  * now hugs whatever was typed and only wraps once it reaches this ceiling, so
  * there is no width left to compute and nothing to leave empty.
  */
-function defaultNoteBox(mark: ImageAnnotationMark): {
-  x: number;
-  y: number;
-  maxWidth: number;
-} {
+export interface AnnotationTextBox {
+  readonly x: number;
+  readonly y: number;
+  readonly maxWidth: number;
+}
+
+/**
+ * The box a mark's words occupy, whether they have been typed yet or not.
+ *
+ * The editor writes in this box too, so it cannot come from `noteOnImage`: that
+ * one describes a note that already has text, and a field has to be placed
+ * before anything is in it. Both callers taking the same geometry is what makes
+ * typing continuous with what the flattened copy will show.
+ */
+export function annotationTextBox(
+  mark: ImageAnnotationMark,
+): AnnotationTextBox {
+  if (mark.shape === "text") {
+    // A label is anchored where it was placed. It is not held off the right
+    // edge the way a note is: moving it would move the mark itself.
+    return {
+      x: mark.at.x,
+      y: mark.at.y,
+      maxWidth: Math.max(
+        MIN_NOTE_WIDTH,
+        Math.min(MAX_NOTE_WIDTH, 1 - mark.at.x),
+      ),
+    };
+  }
   const bounds = markBounds(mark);
   // Held off the right edge by the narrowest note worth wrapping to: a mark in
   // the far corner would otherwise leave its note a two-character column.
@@ -362,7 +386,7 @@ const NOTE_ROOM = 0.06;
 export function noteOnImage(mark: ImageAnnotationMark): {
   text: string;
   ink: string;
-  box: { x: number; y: number; maxWidth: number };
+  box: AnnotationTextBox;
 } | null {
   if (
     mark.shape === "text" ||
@@ -375,7 +399,7 @@ export function noteOnImage(mark: ImageAnnotationMark): {
   if (!text) {
     return null;
   }
-  return { text, ink: mark.ink, box: defaultNoteBox(mark) };
+  return { text, ink: mark.ink, box: annotationTextBox(mark) };
 }
 
 const ZOOM_STEP = 0.25;

@@ -145,7 +145,7 @@ test("A user can click an annotation note, edit it, and close only the note", as
   await fill(note, "Align the total with the heading");
   await user.keyboard("{Escape}");
 
-  expect(screen.queryByTestId("annotation-note-popover")).toBeNull();
+  expect(screen.queryByTestId("annotation-inline-editor")).toBeNull();
   expect(screen.getByTestId("image-annotation-editor")).toBeVisible();
   const label = screen.getByTestId("annotation-note-label-editable-note");
   expect(label).toHaveTextContent("Align the total with the heading");
@@ -191,8 +191,11 @@ test("A tool shortcut works on open and text is typed onto the image", async () 
     expect(input).toHaveFocus();
   });
   // The label used to be typed into a popover below the picture while the words
-  // appeared on it, so one string was shown in two places.
-  expect(screen.queryByTestId("annotation-note-popover")).toBeNull();
+  // appeared on it, so one string was shown in two places. Both kinds of mark
+  // are written in the same field on the image now.
+  expect(screen.getByTestId("annotation-inline-editor")).toContainElement(
+    input,
+  );
 
   await user.keyboard("Raise this");
   await user.keyboard("{Enter}");
@@ -283,6 +286,93 @@ test("Clicking a second text mark moves the caret to it", async () => {
   await waitFor(() => {
     expect(second).toHaveFocus();
   });
+});
+
+/**
+ * A mark drag ends where the button is released, including over the field that
+ * has just opened underneath the pointer. That field used to swallow the
+ * release, so the drag never ended and the mark went on following an unpressed
+ * mouse — Tong: *"只是松开鼠标，text还是跟着鼠标走"*.
+ */
+test("Releasing a drag over the mark's own field ends the drag", async () => {
+  const image = draftAttachment("dragged-label.png", {
+    annotatedFileId: "draft-dragged-label-annotated",
+    annotations: {
+      marks: [
+        {
+          id: "dragged-label",
+          ordinal: 1,
+          shape: "text" as const,
+          at: { x: 0.2, y: 0.3 },
+          text: "Move me",
+          ink: "#5E6AD2" as const,
+        },
+      ],
+    },
+  });
+  mockAttachmentChat(context, { draft: draftForAttachment(image, "") });
+
+  await setupPage({
+    context,
+    path: `/chats/${ATTACHMENT_THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerImageAnnotation]: true },
+  });
+
+  const surface = await openAnnotationEditor("dragged-label.png");
+  // Grabbing the mark opens its field under the pointer, mid-gesture.
+  fireEvent.pointerDown(screen.getByTestId("annotation-mark-1"), {
+    clientX: 160,
+    clientY: 150,
+    pointerId: 9,
+  });
+  fireEvent.pointerMove(surface, { clientX: 300, clientY: 250, pointerId: 9 });
+
+  const field = await screen.findByTestId("annotation-inline-editor");
+  fireEvent.pointerUp(field, { clientX: 300, clientY: 250, pointerId: 9 });
+  const released = field.style.left;
+
+  // Nothing is held now, so the pointer moving on is not the mark moving on.
+  fireEvent.pointerMove(surface, { clientX: 600, clientY: 420, pointerId: 9 });
+
+  expect(field.style.left).toBe(released);
+});
+
+/**
+ * A note is written on the image in the field it will be printed in, so a long
+ * one wraps instead of scrolling out of a fixed-width box, and Shift+Enter
+ * breaks a line — neither of which the single-line popover input could do.
+ */
+test("A note can be written over more than one line", async () => {
+  const user = userEvent.setup();
+  const image = draftAttachment("long-note.png", {
+    annotatedFileId: "draft-long-note-annotated",
+    annotations: boxAnnotation([{ id: "wordy-mark", ordinal: 1 }]),
+  });
+  mockAttachmentChat(context, { draft: draftForAttachment(image, "") });
+
+  await setupPage({
+    context,
+    path: `/chats/${ATTACHMENT_THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerImageAnnotation]: true },
+  });
+
+  await openAnnotationEditor("long-note.png");
+  fireEvent.click(screen.getByTestId("annotation-mark-1"));
+
+  const field = await screen.findByPlaceholderText("What should change?");
+  await fill(field, "Align the total with the heading");
+  await user.keyboard("{Shift>}{Enter}{/Shift}");
+  await user.keyboard("and drop the divider");
+
+  expect(field).toHaveValue(
+    "Align the total with the heading\nand drop the divider",
+  );
+
+  await user.keyboard("{Enter}");
+
+  expect(
+    screen.getByTestId("annotation-note-label-wordy-mark").textContent,
+  ).toBe("Align the total with the heading\nand drop the divider");
 });
 
 test("A confirmed annotation blocks sending while its image uploads", async () => {
@@ -594,10 +684,10 @@ test("A freehand stroke can be selected and moved", async () => {
   const surface = await openAnnotationEditor("sketch.png");
   fireEvent.click(screen.getByTestId("annotation-mark-1"));
 
-  // A stroke draws no selection furniture of its own — its note popover opening
+  // A stroke draws no selection furniture of its own — its note field opening
   // is what says the click landed on it.
   await waitFor(() => {
-    expect(screen.getByTestId("annotation-note-popover")).toBeVisible();
+    expect(screen.getByTestId("annotation-inline-editor")).toBeVisible();
   });
   expect(firstPenPoint()).toStrictEqual([20, 25]);
 
@@ -641,7 +731,7 @@ test("Enter confirms a note and one drag is a single undo step", async () => {
   // Enter had no binding at all: the only way out of the field was Escape or
   // clicking off it.
   await user.keyboard("{Enter}");
-  expect(screen.queryByTestId("annotation-note-popover")).toBeNull();
+  expect(screen.queryByTestId("annotation-inline-editor")).toBeNull();
   expect(
     screen.getByTestId("annotation-note-label-keyboard-mark"),
   ).toHaveTextContent("Raise this panel");
