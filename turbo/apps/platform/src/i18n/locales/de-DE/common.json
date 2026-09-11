@@ -3142,16 +3142,19 @@
         "connected": "Keine verbundenen Integrationen",
         "matching": "{{message}} passend zu „{{search}}“",
         "notConnected": "Keine weiteren Integrationen verfügbar",
-        "search": "Keine Integrationen passend zu „{{search}}“"
+        "search": "Keine Integrationen passend zu „{{search}}“",
+        "unshared": "Jede Integration ist mit einem Agenten geteilt"
       },
       "filterCategory": "Kategorie",
       "filters": {
         "agents": "Agenten",
         "all": "Alle",
+        "allAgents": "Alle Agenten",
         "aria": "Integrationen filtern",
         "connected": "Verbunden",
         "notConnected": "Nicht verbunden",
-        "status": "Status"
+        "status": "Status",
+        "unshared": "Mit keinem Agenten geteilt"
       },
       "filterWith": "Filter: {{category}}",
       "iconUnavailable": "Integrationssymbol nicht verfügbar",
@@ -3159,14 +3162,20 @@
       "noConnectorsAlt": "Keine Integrationen",
       "otherCategory": "Andere",
       "remoteAccess": "Fernzugriff",
+      "scope": {
+        "aria": "Connector-Bereich",
+        "attention": "Benötigt Aufmerksamkeit",
+        "discover": "Entdecken",
+        "mine": "Deine Konnektoren",
+        "searchMine": "Ihre Integrationen finden"
+      },
       "search": "Finden Sie Integrationen",
       "shelf": {
         "moreCategories": "Weitere Kategorien",
         "popular": "Beliebt",
         "seeMore_one": "{{names}} und {{count}} weiteren ansehen",
         "seeMore_other": "{{names}} und {{count}} weitere ansehen",
-        "top": "Top-Konnektoren",
-        "yours": "Deine Konnektoren"
+        "top": "Top-Konnektoren"
       },
       "tabs": {
         "builtin": "Eingebaut",
@@ -6056,7 +6065,6 @@
     "errors": {
       "agentUnavailable": "Dieser Agent ist nicht mehr verfügbar. Wähle einen anderen Agent.",
       "configurationChanged": "Dieser Host wurde während der Bearbeitung geändert. Die Liste wurde aktualisiert. Öffne den Host erneut und überprüfe vor dem Speichern seine aktuellen Einstellungen.",
-      "duplicateEndpoint": "Ein SSH-Host mit dieser Adresse und diesem Port existiert bereits. Bearbeite den vorhandenen Host oder verwende eine andere Adresse oder einen anderen Port.",
       "failed": "Die SSH-Änderung konnte nicht gespeichert werden. Versuche es erneut.",
       "hostUnavailable": "Dieser SSH-Host ist nicht mehr verfügbar. Kehre zur Hostliste zurück und wähle einen vorhandenen Host.",
       "invalidHost": "Gib einen Hostnamen oder eine IP-Adresse ohne URL-Schema, Pfad oder Leerzeichen ein.",

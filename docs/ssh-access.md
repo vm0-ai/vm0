@@ -47,6 +47,13 @@ Use a least-privilege remote SSH user for the Agent's intended work.
 The form clears credentials on submission, close and navigation; unsuccessful
 submissions require entering them again.
 
+Each saved connection has its own ID. Multiple configurations may use the same
+host and port, with different usernames or different keys for the same username.
+Use display names to distinguish them. An authorized Run can use all of these
+configurations by their exact IDs. Credentials, learned host keys, configuration
+generations and connection observations remain independent for each configuration.
+Editing, resetting or deleting one does not modify another at the same endpoint.
+
 Saving a host is not a connectivity test. Configuration does not establish an
 SSH session. Use **Replace credentials** to rotate a key or passphrase; ordinary
 metadata edits leave credentials unchanged. Host/port changes clear the learned
@@ -88,10 +95,10 @@ Changing owner discards that retained display, and each composer selects only
 its own Agent's grant.
 
 Owner API business errors use stable `SSH_*` codes. Platform translates them,
-including recovery guidance for invalid input, duplicate endpoints, stale
-generations and unavailable hosts/Agents. A failed read shows a localized load
-error with **Retry**, distinct from feature unavailability. There is no persistent
-Refresh button and background failures do not show raw server-message toasts.
+including recovery guidance for invalid input, stale generations and unavailable
+hosts/Agents. A failed read shows a localized load error with **Retry**, distinct
+from feature unavailability. There is no persistent Refresh button and background
+failures do not show raw server-message toasts.
 
 Successful host and grant changes publish best-effort `ssh:changed` on the owner's
 user channel with only `{ orgId }`. Learning a new host key also refreshes the
@@ -192,3 +199,17 @@ See [Runner authority](runner-ssh-authority.md) for authorization and cache
 semantics, [SSH execution](runner-ssh-execution.md) for supported keys, network
 policy and resource limits, and [RPC transport](runner-rpc-transport.md) for
 packaged-helper framing, deadlines and deployment constraints.
+
+## Shared-endpoint rollout compatibility
+
+The migration removes only the owner/host/port unique index and runs before API
+promotion. Existing configuration rows, request/response shapes and ID-based
+Runner operations remain valid. Outgoing or rolled-back API versions still
+reject creates and edits at occupied endpoints, including edits to configurations
+that a newer API created at a shared endpoint. Listing, execution and deletion
+continue to select exact IDs.
+
+API rollback does not restore the database index. Reintroducing endpoint
+uniqueness would require explicit reconciliation of saved configurations;
+never delete or merge them as an automatic rollback step. Host-key trust remains
+per configuration, including separate first-use learning and explicit resets.

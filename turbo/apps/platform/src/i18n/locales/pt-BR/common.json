@@ -3191,16 +3191,19 @@
         "connected": "Nenhum conector conectado",
         "matching": "{{message}} correspondente a \"{{search}}\"",
         "notConnected": "Não há mais conectores para conectar",
-        "search": "Nenhum conector correspondente a \"{{search}}\""
+        "search": "Nenhum conector correspondente a \"{{search}}\"",
+        "unshared": "Todos os conectores estão compartilhados com um agente"
       },
       "filterCategory": "Categoria",
       "filters": {
         "agents": "Agentes",
         "all": "Todos",
+        "allAgents": "Todos os agentes",
         "aria": "Filtrar conectores",
         "connected": "Conectados",
         "notConnected": "Não conectados",
-        "status": "Status"
+        "status": "Status",
+        "unshared": "Não compartilhado com nenhum agente"
       },
       "filterWith": "Filtro: {{category}}",
       "iconUnavailable": "Ícone do conector indisponível",
@@ -3208,6 +3211,13 @@
       "noConnectorsAlt": "Nenhum conector",
       "otherCategory": "Outros",
       "remoteAccess": "Acesso remoto",
+      "scope": {
+        "aria": "Escopo dos conectores",
+        "attention": "Requer atenção",
+        "discover": "Descobrir",
+        "mine": "Seus conectores",
+        "searchMine": "Buscar seus conectores"
+      },
       "search": "Buscar conectores",
       "shelf": {
         "moreCategories": "Mais categorias",
@@ -3215,8 +3225,7 @@
         "seeMore_one": "Ver {{names}} e mais {{count}}",
         "seeMore_many": "Ver {{names}} e mais {{count}}",
         "seeMore_other": "Ver {{names}} e mais {{count}}",
-        "top": "Principais conectores",
-        "yours": "Seus conectores"
+        "top": "Principais conectores"
       },
       "tabs": {
         "builtin": "Integrados",
@@ -6117,7 +6126,6 @@
     "errors": {
       "agentUnavailable": "Este agente não está mais disponível. Escolha outro agente.",
       "configurationChanged": "Este host mudou durante a edição. A lista foi atualizada. Abra o host novamente e revise as configurações atuais antes de salvar.",
-      "duplicateEndpoint": "Já existe um host SSH com este endereço e esta porta. Edite o host existente ou use outro endereço ou outra porta.",
       "failed": "Não foi possível salvar a alteração SSH. Tente novamente.",
       "hostUnavailable": "Este host SSH não está mais disponível. Volte à lista e escolha um host existente.",
       "invalidHost": "Insira um nome de host ou endereço IP sem esquema de URL, caminho ou espaços.",

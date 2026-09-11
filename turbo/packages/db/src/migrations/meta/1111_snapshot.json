@@ -1,5 +1,5 @@
 {
-  "id": "8cdf78b8-6281-47f7-8307-d452afeab5d0",
+  "id": "cba54167-73e6-4d31-9127-321381f1b00a",
   "prevId": "dd9f4275-abe1-4798-aa56-ab7ca47e831f",
   "version": "7",
   "dialect": "postgresql",
@@ -16276,139 +16276,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.morning_brief_enrollments": {
-      "name": "morning_brief_enrollments",
-      "schema": "",
-      "columns": {
-        "org_id": {
-          "name": "org_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "membership_id": {
-          "name": "membership_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_created_at": {
-          "name": "source_created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "available_at": {
-          "name": "available_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "attempt_count": {
-          "name": "attempt_count",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "last_error": {
-          "name": "last_error",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "idx_morning_brief_enrollments_pending": {
-          "name": "idx_morning_brief_enrollments_pending",
-          "columns": [
-            {
-              "expression": "available_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"morning_brief_enrollments\".\"state\" IN ('checking', 'pending')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {
-        "morning_brief_enrollments_org_id_user_id_pk": {
-          "name": "morning_brief_enrollments_org_id_user_id_pk",
-          "columns": [
-            "org_id",
-            "user_id"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "chk_morning_brief_enrollment_state": {
-          "name": "chk_morning_brief_enrollment_state",
-          "value": "\"morning_brief_enrollments\".\"state\" IN ('checking', 'pending', 'completed', 'cancelled', 'ineligible', 'departed')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.morning_brief_rollout": {
-      "name": "morning_brief_rollout",
-      "schema": "",
-      "columns": {
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "activated_at": {
-          "name": "activated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "(now() AT TIME ZONE 'UTC')"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.notion_webhook_events": {
       "name": "notion_webhook_events",
       "schema": "",
@@ -24035,39 +23902,6 @@
         }
       },
       "indexes": {
-        "idx_ssh_connections_owner_host_port": {
-          "name": "idx_ssh_connections_owner_host_port",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "host",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "port",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "idx_ssh_connections_owner_created": {
           "name": "idx_ssh_connections_owner_created",
           "columns": [

@@ -63,6 +63,7 @@ import { i18n } from "../../../i18n/index.ts";
 import {
   connectorDirectoryEnabled$,
   connectorDirectoryCustomScope$,
+  connectorsScope$,
   openConnectorDirectoryScope$,
 } from "./connector-directory-route.ts";
 import type {
@@ -453,11 +454,15 @@ export type ConnectorsConnectionFilter =
   | { readonly kind: "all" }
   | { readonly kind: "connected" }
   | { readonly kind: "not-connected" }
+  | { readonly kind: "unshared" }
   | { readonly kind: "agent"; readonly agentId: string };
 
 export const connectorsConnectionFilter$ = computed(
   (get): ConnectorsConnectionFilter => {
-    if (get(connectorDirectoryEnabled$)) {
+    // The directory browses a catalog, and category is the only dimension that
+    // organises it. The scope you already own is organised by who uses those
+    // connectors instead, so that is the one place this control still applies.
+    if (get(connectorDirectoryEnabled$) && get(connectorsScope$) !== "mine") {
       return { kind: "all" };
     }
     const raw = get(searchParams$).get(CONNECTORS_CONNECTION_FILTER_PARAM);
@@ -466,6 +471,9 @@ export const connectorsConnectionFilter$ = computed(
     }
     if (raw === "not-connected") {
       return { kind: "not-connected" };
+    }
+    if (raw === "unshared") {
+      return { kind: "unshared" };
     }
     if (raw?.startsWith(CONNECTORS_AGENT_FILTER_PREFIX)) {
       const agentId = raw.slice(CONNECTORS_AGENT_FILTER_PREFIX.length);
@@ -536,6 +544,7 @@ export const filteredConnectorCatalogItems$ = computed(async (get) => {
   const keyword = get(connectorsSearch$);
   const effectiveFilter = get(connectorsConnectionFilter$);
   const category = get(connectorsCategoryFilter$);
+  const scope = get(connectorsScope$);
 
   const agentEnabledSlugs =
     effectiveFilter.kind === "agent"
@@ -543,6 +552,14 @@ export const filteredConnectorCatalogItems$ = computed(async (get) => {
           (await get(connectorAgentAuthorizations$)).find((row) => {
             return row.agent.agentId === effectiveFilter.agentId;
           })?.enabledConnectorSlugs ?? [],
+        )
+      : null;
+  const sharedSlugs =
+    effectiveFilter.kind === "unshared"
+      ? new Set(
+          (await get(connectorAgentAuthorizations$)).flatMap((row) => {
+            return [...row.enabledConnectorSlugs];
+          }),
         )
       : null;
 
@@ -554,11 +571,19 @@ export const filteredConnectorCatalogItems$ = computed(async (get) => {
     if (category !== null && connector.category !== category) {
       return false;
     }
+    // The "yours" scope is membership, not a filter: whatever else is chosen,
+    // it only ever shows what this workspace has already connected.
+    if (scope === "mine" && !connector.connected) {
+      return false;
+    }
     if (effectiveFilter.kind === "connected") {
       return connector.connected;
     }
     if (effectiveFilter.kind === "not-connected") {
       return !connector.connected;
+    }
+    if (effectiveFilter.kind === "unshared") {
+      return !sharedSlugs?.has(connector.slug);
     }
     if (effectiveFilter.kind === "agent") {
       return agentEnabledSlugs?.has(connector.slug) ?? false;

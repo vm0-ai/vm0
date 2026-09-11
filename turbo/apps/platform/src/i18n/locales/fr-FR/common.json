@@ -3191,16 +3191,19 @@
         "connected": "Aucun connecteur connecté",
         "matching": "{{message}} correspondant à \"{{search}}\"",
         "notConnected": "Aucun connecteur restant à connecter",
-        "search": "Aucun connecteur correspondant à \"{{search}}\""
+        "search": "Aucun connecteur correspondant à \"{{search}}\"",
+        "unshared": "Chaque connecteur est partagé avec un agent"
       },
       "filterCategory": "Catégorie",
       "filters": {
         "agents": "Agents",
         "all": "Tous",
+        "allAgents": "Tous les agents",
         "aria": "Filtrer les connecteurs",
         "connected": "Connecté",
         "notConnected": "Non connecté",
-        "status": "Statut"
+        "status": "Statut",
+        "unshared": "Partagé avec aucun agent"
       },
       "filterWith": "Filtre : {{category}}",
       "iconUnavailable": "Icône du connecteur indisponible",
@@ -3208,6 +3211,13 @@
       "noConnectorsAlt": "Aucun connecteur",
       "otherCategory": "Autre",
       "remoteAccess": "Accès à distance",
+      "scope": {
+        "aria": "Portée des connecteurs",
+        "attention": "Nécessite votre attention",
+        "discover": "Découvrir",
+        "mine": "Vos connecteurs",
+        "searchMine": "Trouver vos connecteurs"
+      },
       "search": "Trouver des connecteurs",
       "shelf": {
         "moreCategories": "Autres catégories",
@@ -3215,8 +3225,7 @@
         "seeMore_one": "Voir {{names}} et {{count}} autre",
         "seeMore_many": "Voir {{names}} et {{count}} autres",
         "seeMore_other": "Voir {{names}} et {{count}} autres",
-        "top": "Connecteurs principaux",
-        "yours": "Vos connecteurs"
+        "top": "Connecteurs principaux"
       },
       "tabs": {
         "builtin": "Intégré",
@@ -6117,7 +6126,6 @@
     "errors": {
       "agentUnavailable": "Cet agent n’est plus disponible. Choisissez un autre agent.",
       "configurationChanged": "Cet hôte a changé pendant votre modification. La liste a été actualisée. Rouvrez l’hôte et vérifiez ses paramètres actuels avant d’enregistrer.",
-      "duplicateEndpoint": "Un hôte SSH avec cette adresse et ce port existe déjà. Modifiez l’hôte existant ou utilisez une autre adresse ou un autre port.",
       "failed": "Impossible d’enregistrer la modification SSH. Réessayez.",
       "hostUnavailable": "Cet hôte SSH n’est plus disponible. Revenez à la liste et choisissez un hôte existant.",
       "invalidHost": "Saisissez un nom d’hôte ou une adresse IP sans protocole d’URL, chemin ni espaces.",

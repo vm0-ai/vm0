@@ -21,6 +21,9 @@ const TIMEZONE_BEST_EFFORT: u8 = 1;
 const TIMEZONE_REQUIRED: u8 = 2;
 
 /// Typed timezone behavior for the fixed guest-state restore operation.
+///
+/// Named modes require a non-empty name containing only ASCII letters, digits,
+/// `/`, `_`, `-`, and `+`, bounded by [`GUEST_STATE_RESTORE_MAX_TIMEZONE_BYTES`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum GuestStateRestoreTimezone<'a> {
     /// Do not change timezone state.
@@ -267,6 +270,11 @@ fn validate_request(
         ));
     }
     let timezone_name = timezone_name(timezone);
+    if timezone_name.is_empty() && !matches!(timezone, GuestStateRestoreTimezone::None) {
+        return Err(ProtocolError::InvalidPayload(
+            "guest_state_restore timezone must not be empty",
+        ));
+    }
     if timezone_name.len() > GUEST_STATE_RESTORE_MAX_TIMEZONE_BYTES {
         return Err(ProtocolError::PayloadTooLarge(
             "timezone",
@@ -326,9 +334,6 @@ fn timezone_name(timezone: GuestStateRestoreTimezone<'_>) -> &str {
 fn decode_timezone(mode: u8, name: &str) -> Result<GuestStateRestoreTimezone<'_>, ProtocolError> {
     match (mode, name) {
         (TIMEZONE_NONE, "") => Ok(GuestStateRestoreTimezone::None),
-        (TIMEZONE_BEST_EFFORT, "") | (TIMEZONE_REQUIRED, "") => Err(ProtocolError::InvalidPayload(
-            "guest_state_restore timezone must not be empty",
-        )),
         (TIMEZONE_BEST_EFFORT, name) => Ok(GuestStateRestoreTimezone::BestEffort(name)),
         (TIMEZONE_REQUIRED, name) => Ok(GuestStateRestoreTimezone::Required(name)),
         (TIMEZONE_NONE, _) => Err(ProtocolError::InvalidPayload(
