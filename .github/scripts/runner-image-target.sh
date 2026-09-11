@@ -47,7 +47,7 @@ runner_image_target_for_uname_m() {
   esac
 }
 
-runner_image_artifact_name() {
+runner_image_record_name() {
   local target="${1:-}"
   local head_sha="${2:-}"
   local job_ref="${3:-}"

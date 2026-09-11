@@ -47,14 +47,13 @@ jq -e '
 ' <<<"$workflow_json" >/dev/null || fail "merge-group consumers must stop before shared runner resources are rebuilt"
 
 jq -e '
-  [.jobs | to_entries[] | .value.steps[]? |
-    .with.name? // empty |
-    select(startswith("runner-binary-hits-") or startswith("runner-binary-compiled-"))
-  ] as $transport_names |
-  ($transport_names | length) == 5 and
-  all($transport_names[]; contains("${{ github.run_id }}")) and
-  all($transport_names[]; contains("${{ github.run_attempt }}") | not)
-' <<<"$workflow_json" >/dev/null || fail "runner binary transport identity must survive producer and consumer attempt mismatch"
+  all([.jobs.compile, .jobs.build][];
+    .env.R2_BUCKET_NAME == "${{ vars.R2_USER_STORAGES_BUCKET_NAME }}" and
+    .permissions.actions == "read" and
+    any(.steps[]; .name == "R2 record ${{ steps.publish.outputs.record-sha }}" and
+      .env.RECORD_SHA == "${{ steps.publish.outputs.record-sha }}" and
+      (. | has("continue-on-error") | not)))
+' <<<"$workflow_json" >/dev/null || fail "required R2 publication needs canonical hash receipts"
 
 jq -e '
   .jobs.prepare["runs-on"] == "ubuntu-latest" and
@@ -68,15 +67,9 @@ jq -e '
     .run == ".github/scripts/runner-binary-cache-plan.sh" and
     .env.RUNNER_BINARY_CACHE_FORCE_MISS == "${{ vars.RUNNER_BINARY_CACHE_FORCE_MISS }}"
   ) and
-  any(.jobs.prepare.steps[];
-    .uses == "actions/upload-artifact@v7" and
-    .with.name == "runner-binary-hits-${{ github.run_id }}" and
-    .with.overwrite == true and
-    .if == "steps.binary-plan.outputs.hit-count != '\''0'\''" and
-    .with["compression-level"] == 1 and
-    (. | has("continue-on-error") | not)
-  )
-' <<<"$workflow_json" >/dev/null || fail "prepare must own bounded pre-container hit planning and required transport upload"
+  .jobs.prepare.outputs["runner-binary-hit-manifests"] == "${{ steps.binary-plan.outputs.hit-manifests }}" and
+  any(.jobs.prepare.steps[]; .id == "binary-plan" and .env.RUNNER_BINARY_RESOLVE_MODE == "reference")
+' <<<"$workflow_json" >/dev/null || fail "prepare must own bounded pre-container hit planning and per-target reference transport"
 
 jq -e '
   .jobs.compile["runs-on"] == "ubuntu-latest-8-cores" and
@@ -95,12 +88,12 @@ jq -e '
   any(.jobs.compile.steps[]; .uses == "mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba") and
   any(.jobs.compile.steps[]; .uses == "Swatinem/rust-cache@v2") and
   any(.jobs.compile.steps[]; .run == ".github/scripts/runner-binary-build/build.sh build") and
-  any(.jobs.compile.steps[];
-    .uses == "actions/upload-artifact@v7" and
-    .with.name == "runner-binary-compiled-${{ github.run_id }}-${{ matrix.target }}" and
-    .with.overwrite == true and
-    (. | has("continue-on-error") | not)
-  )
+  .jobs.compile.defaults.run.shell == "bash" and
+  any(.jobs.compile.steps[]; .name == "Install Runner transport clients") and
+  any(.jobs.compile.steps[]; .id == "shadow" and (.run | contains("runner-binary-cache.sh shadow-resolve"))) and
+  any(.jobs.compile.steps[]; .id == "publish" and (.run | contains("runner-binary-cache.sh publish")) and
+    .env.PRODUCER_RUN_ATTEMPT == "${{ github.run_attempt }}" and
+    (. | has("continue-on-error") | not))
 ' <<<"$workflow_json" >/dev/null || fail "compile must be a required miss-only Rust/cache/build matrix"
 
 jq -e '
@@ -120,14 +113,13 @@ jq -e '
   (.jobs.build.if | contains("needs.compile.result == '\''skipped'\''")) and
   (.jobs.build.if | contains("needs.compile.result == '\''success'\''")) and
   any(.jobs.build.steps[];
-    .name == "Download validated runner binary hit" and
-    (.if | contains("runner-binary-hit-targets")) and
-    .with.name == "runner-binary-hits-${{ github.run_id }}"
+    .name == "Download runner binary from R2" and
+    .env.HIT_MANIFEST == "${{ toJSON(fromJSON(needs.prepare.outputs.runner-binary-hit-manifests)[matrix.target]) }}" and
+    .env.CURRENT_RUN_ID == "${{ github.run_id }}" and
+    (.run | contains("runner-binary-cache.sh download-current")) and
+    (.run | contains("runner-binary-cache.sh download"))
   ) and
-  any(.jobs.build.steps[];
-    .name == "Download compiled runner binary" and
-    .with.name == "runner-binary-compiled-${{ github.run_id }}-${{ matrix.target }}"
-  ) and
+  any(.jobs.build.steps[]; .id == "publish" and .run == ".github/scripts/runner-ci-record.sh publish") and
   any(.jobs.build.steps[];
     .run == ".github/scripts/prepare-runner-image.sh" and
     .env.RUNNER_PATH == "runner-binary-transport/${{ matrix.target }}/runner" and
@@ -135,37 +127,21 @@ jq -e '
   )
 ' <<<"$workflow_json" >/dev/null || fail "build must preserve the all-target host readiness contract for hits and misses"
 
-jq -e '
-  (.jobs.asset.needs | sort) == ["compile", "prepare"] and
-  (.jobs.asset.if | contains("runner-binary-miss-count != '\''0'\''")) and
-  .jobs.asset.strategy.matrix.include == "${{ fromJSON(needs.prepare.outputs.runner-binary-compile-matrix) }}" and
-  any(.jobs.asset.steps[];
-    .name == "Download compiled runner binary" and
-    .with.name == "runner-binary-compiled-${{ github.run_id }}-${{ matrix.target }}"
-  ) and
-  any(.jobs.asset.steps[];
-    .name == "Validate fresh runner binary" and
-    (. | has("if") | not) and
-    (. | has("continue-on-error") | not)
-  ) and
-  any(.jobs.asset.steps[];
-    .name == "Resolve reusable candidate in shadow mode" and
-    (. | has("if") | not)
-  ) and
-  any(.jobs.asset.steps[];
-    .name == "Publish runner binary cache object" and
-    (. | has("if") | not)
-  ) and
-  any(.jobs.asset.steps[];
-    .name == "Upload reusable runner binary manifest" and
-    .with.path == "runner-binary-asset/manifest.json" and
-    .with["retention-days"] == 7
-  )
-' <<<"$workflow_json" >/dev/null || fail "reusable publication must run only for compiled misses"
-
 prepare_consumers=$(jq -r '[.jobs | to_entries[] |
   select(any(.value.steps[]?; .run == ".github/scripts/prepare-runner-image.sh")) |
   .key] | join(",")' <<<"$workflow_json")
 [ "$prepare_consumers" = "build" ] || fail "host preparation must run only in the all-target build job"
 
 echo "runner-image-workflow-test: ok"
+
+for consumer in crates turbo; do
+  yq -o=json '.' "${REPO_ROOT}/.github/workflows/${consumer}.yml" | jq -e '
+    [.jobs[].steps[]? | select(.run? | strings | test("wait-runner-image(-groups)?\\.sh$"))] |
+    length > 0 and all(.[];
+      .env.AWS_ACCESS_KEY_ID == "${{ secrets.R2_ACCESS_KEY_ID }}" and
+      .env.AWS_SECRET_ACCESS_KEY == "${{ secrets.R2_SECRET_ACCESS_KEY }}" and
+      .env.R2_ACCOUNT_ID == "${{ vars.R2_ACCOUNT_ID }}" and
+      .env.R2_BUCKET_NAME == "${{ vars.R2_USER_STORAGES_BUCKET_NAME }}"
+    )
+  ' >/dev/null || fail "all ${consumer} readiness consumers need private R2 access"
+done

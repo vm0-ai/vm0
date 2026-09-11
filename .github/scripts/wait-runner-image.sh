@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "${SCRIPT_DIR}/runner-image-target.sh"
+. "${SCRIPT_DIR}/runner-ci-record.sh"
 
 emit() {
   local key=$1 value=$2
@@ -25,8 +26,8 @@ WORKFLOW="${WORKFLOW:-runner-image.yml}"
 TIMEOUT_SECONDS="${TIMEOUT_SECONDS:-1800}"
 POLL_SECONDS="${POLL_SECONDS:-30}"
 OUTPUT_DIR="${OUTPUT_DIR:-/tmp/runner-image-manifest}"
-DEFAULT_ARTIFACT_NAME=$(runner_image_artifact_name "$TARGET" "$HEAD_SHA" "$JOB_REF")
-ARTIFACT_NAME="${ARTIFACT_NAME:-$DEFAULT_ARTIFACT_NAME}"
+DEFAULT_RECORD_NAME=$(runner_image_record_name "$TARGET" "$HEAD_SHA" "$JOB_REF")
+RECORD_NAME="${RECORD_NAME:-$DEFAULT_RECORD_NAME}"
 LOOKUP_SHA="${LOOKUP_SHA:-$HEAD_SHA}"
 
 if [ -z "$REPO" ]; then
@@ -47,11 +48,13 @@ cleanup() {
 }
 trap cleanup EXIT
 
-deadline=$(( $(date +%s) + TIMEOUT_SECONDS ))
+runner_ci_config
+RUNNER_CI_DEADLINE=$(( $(date +%s) + TIMEOUT_SECONDS ))
+deadline=$RUNNER_CI_DEADLINE
 
 check_deadline() {
   if [ "$(date +%s)" -ge "$deadline" ]; then
-    echo "timed out waiting for runner image workflow ${WORKFLOW} at ${LOOKUP_SHA} with artifact ${ARTIFACT_NAME}" >&2
+    echo "timed out waiting for runner image workflow ${WORKFLOW} at ${LOOKUP_SHA} with record ${RECORD_NAME}" >&2
     exit 1
   fi
 }
@@ -60,7 +63,7 @@ wait_with_deadline() {
   local seconds=$1
   check_deadline
   if [ "$seconds" -ge "$((deadline - $(date +%s)))" ]; then
-    echo "cannot retry within runner image wait deadline: required delay=${seconds}s artifact=${ARTIFACT_NAME}" >&2
+    echo "cannot retry within runner image wait deadline: required delay=${seconds}s record=${RECORD_NAME}" >&2
     exit 1
   fi
   sleep "$seconds"
@@ -78,7 +81,7 @@ api_get() {
   local status retry_after remaining reset delay now
   while true; do
     check_deadline
-    if gh api "$endpoint" --include >"$GH_RESPONSE" 2>"$GH_ERR"; then
+    if timeout --kill-after=5s "$((deadline - $(date +%s)))s" gh api "$endpoint" --include >"$GH_RESPONSE" 2>"$GH_ERR"; then
       sed '1,/^\r\{0,1\}$/d' "$GH_RESPONSE"
       return
     fi
@@ -128,103 +131,59 @@ api_get() {
 selected_run=""
 selected_url=""
 selected_run_id=""
-selected_artifact=""
 next_run_check=0
 producer_failure_url=""
 
 while true; do
-  artifacts_json=$(api_get "repos/${REPO}/actions/artifacts?name=${ARTIFACT_NAME}&per_page=100")
-
-  selected_artifact=$(jq -c \
-    --arg name "$ARTIFACT_NAME" \
-    '.artifacts
-      | map(select(.name == $name and .expired == false))
-      | sort_by(.created_at)
-      | reverse
-      | .[0] // empty' <<<"$artifacts_json")
-
-  if [ -n "$selected_artifact" ]; then
-    selected_run_id=$(jq -r '.workflow_run.id' <<<"$selected_artifact")
-    echo "runner image artifact found: name=${ARTIFACT_NAME} run_id=${selected_run_id} head_sha=${HEAD_SHA}"
-    rm -rf "${OUTPUT_DIR:?}"/*
-    download_ok=false
-    download_attempts=0
-    download_backoff=60
-    while [ "$download_attempts" -lt 5 ]; do
-      check_deadline
-      if gh run download "$selected_run_id" -n "$ARTIFACT_NAME" -D "$OUTPUT_DIR" 2>"$GH_ERR"; then
-        download_ok=true
-        break
-      fi
-      cat "$GH_ERR" >&2
-      # gh run download does not expose response headers. Use GitHub's
-      # conservative headerless cooldown rather than five-second retries.
-      if grep -qi 'rate limit\|HTTP 429' "$GH_ERR"; then
-        echo "GitHub artifact download rate limited; retrying in ${download_backoff}s" >&2
-        wait_with_deadline "$download_backoff"
-        download_backoff=$((download_backoff * 2))
-        if [ "$download_backoff" -gt 300 ]; then download_backoff=300; fi
-        continue
-      fi
-      if grep -qE 'HTTP (401|403)' "$GH_ERR"; then exit 1; fi
-      download_attempts=$((download_attempts + 1))
-      echo "artifact ${ARTIFACT_NAME} is listed but not downloadable yet from run ${selected_run_id}; retrying"
-      wait_with_deadline 5
-    done
-    if [ "$download_ok" = "true" ]; then
-      break
-    fi
-    echo "artifact ${ARTIFACT_NAME} could not be downloaded from run ${selected_run_id}; continuing to wait"
-  fi
-
-  if [ -n "$producer_failure_url" ]; then
-    echo "runner image workflow completed with conclusion=${conclusion}: ${producer_failure_url}" >&2
-    exit 1
-  fi
-
-  # Artifact readiness is checked more often than producer failure. A direct
-  # workflow endpoint also avoids resolving the workflow on every gh run list.
+  check_deadline
   if [ "$(date +%s)" -ge "$next_run_check" ]; then
     runs_json=$(api_get "repos/${REPO}/actions/workflows/${WORKFLOW}/runs?head_sha=${LOOKUP_SHA}&per_page=20")
-    selected_run=$(jq -c '.workflow_runs | sort_by(.created_at) | reverse | .[0] // empty' <<<"$runs_json")
+    selected_run=$(jq -c --arg repo "$REPO" --arg workflow ".github/workflows/${WORKFLOW}" \
+      --arg head "$LOOKUP_SHA" '
+      [.workflow_runs[] | select(.repository.full_name == $repo and .path == $workflow and .head_sha == $head)] |
+      sort_by(.created_at, .id) | reverse | .[0] // empty
+    ' <<<"$runs_json")
     next_run_check=$(( $(date +%s) + 60 ))
   fi
 
   if [ -n "$selected_run" ]; then
+    selected_run_id=$(jq -r '.id' <<<"$selected_run")
+    selected_url=$(jq -r '.html_url' <<<"$selected_run")
+    # Resolve the latest execution of each job, not just the workflow's latest
+    # attempt: failed-only reruns need the successful, untouched producer jobs.
+    jobs='[]'
+    page=1
+    while true; do
+      response=$(api_get "repos/${REPO}/actions/runs/${selected_run_id}/jobs?filter=all&per_page=100&page=${page}")
+      jobs=$(jq -c --argjson response "$response" '. + [$response]' <<<"$jobs")
+      [ "$(jq '.jobs | length' <<<"$response")" -eq 100 ] || break
+      page=$((page + 1))
+    done
+    if runner_ci_record_fetch "$RECORD_NAME" "$selected_run_id" "$jobs" "${OUTPUT_DIR}/manifest.json"; then
+      echo "runner image record ready: name=${RECORD_NAME} run_id=${selected_run_id} head_sha=${HEAD_SHA}"
+      break
+    fi
+
     status=$(jq -r '.status' <<<"$selected_run")
     conclusion=$(jq -r '.conclusion // empty' <<<"$selected_run")
-    run_id=$(jq -r '.id' <<<"$selected_run")
-    selected_url=$(jq -r '.html_url' <<<"$selected_run")
-    selected_run_id="$run_id"
-    echo "waiting for runner image artifact: name=${ARTIFACT_NAME} lookup_sha=${LOOKUP_SHA} producer_run=${run_id} status=${status} conclusion=${conclusion} url=${selected_url}"
-
-    if [ "$status" = "completed" ]; then
-      if [ "$conclusion" != "success" ]; then
-        # The requested architecture may have uploaded its artifact during a
-        # status-request cooldown even if another producer job failed. Recheck
-        # artifact readiness once before reporting the producer failure.
-        producer_failure_url="$selected_url"
-        continue
-      fi
+    if [ -n "$producer_failure_url" ]; then
+      echo "runner image workflow completed with conclusion=${conclusion}: ${producer_failure_url}" >&2
+      exit 1
     fi
+    if [ "$status" = completed ] && [ "$conclusion" != success ]; then
+      # A sibling architecture can fail while this target's receipt becomes
+      # visible. Recheck its readiness once before reporting producer failure.
+      producer_failure_url=$selected_url
+      continue
+    fi
+    echo "waiting for runner image record: name=${RECORD_NAME} producer_run=${selected_run_id} status=${status} url=${selected_url}"
   else
-    echo "waiting for runner image artifact ${ARTIFACT_NAME}; no ${WORKFLOW} run found at ${LOOKUP_SHA} yet"
+    echo "waiting for runner image record ${RECORD_NAME}; no ${WORKFLOW} run found at ${LOOKUP_SHA} yet"
   fi
-
   wait_with_deadline "$POLL_SECONDS"
 done
 
 MANIFEST_PATH="${OUTPUT_DIR}/manifest.json"
-if [ ! -f "$MANIFEST_PATH" ]; then
-  mapfile -t candidates < <(find "$OUTPUT_DIR" -name manifest.json -type f | sort)
-  if [ "${#candidates[@]}" -eq 1 ]; then
-    MANIFEST_PATH="${candidates[0]}"
-  else
-    echo "expected one manifest.json in ${OUTPUT_DIR}, found ${#candidates[@]}" >&2
-    exit 1
-  fi
-fi
-
 MANIFEST_PATH="$MANIFEST_PATH" \
 HEAD_SHA="$HEAD_SHA" \
 JOB_REF="$JOB_REF" \

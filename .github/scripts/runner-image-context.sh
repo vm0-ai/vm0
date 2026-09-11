@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'USAGE'
-Usage: runner-image-context.sh <resolve|turbo-consumer|playwright-consumer|crates-consumer|image-inputs|needed|artifact-name>
+Usage: runner-image-context.sh <resolve|turbo-consumer|playwright-consumer|crates-consumer|image-inputs|needed|record-name>
 
 resolve:
   Computes release skip, canonical job ref, and head SHA from GitHub event env.
@@ -29,8 +29,8 @@ crates-consumer:
 image-inputs:
   Computes whether current commit inputs can change the produced runner image.
 
-artifact-name:
-  Computes the GitHub artifact name for a runner image manifest.
+record-name:
+  Computes the R2 record name for a runner image manifest.
 USAGE
 }
 
@@ -313,7 +313,7 @@ image_inputs() {
   emit "runner-image-inputs-changed" "$runner_image_inputs_changed"
 }
 
-artifact_name() {
+record_name() {
   require_env HEAD_SHA
   require_env JOB_REF
   require_env TARGET
@@ -321,9 +321,9 @@ artifact_name() {
   head_sha=$(env_value HEAD_SHA)
   job_ref=$(env_value JOB_REF)
   target=$(env_value TARGET)
-  local artifact_name
-  artifact_name=$(runner_image_artifact_name "$target" "$head_sha" "$job_ref")
-  emit "artifact-name" "$artifact_name"
+  local record_name
+  record_name=$(runner_image_record_name "$target" "$head_sha" "$job_ref")
+  emit "record-name" "$record_name"
 }
 
 cmd="${1:-}"
@@ -334,7 +334,7 @@ case "$cmd" in
   crates-consumer) crates_consumer ;;
   image-inputs) image_inputs ;;
   needed) needed ;;
-  artifact-name) artifact_name ;;
+  record-name) record_name ;;
   -h|--help|help) usage ;;
   *) usage >&2; exit 2 ;;
 esac

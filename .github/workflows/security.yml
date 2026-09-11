@@ -263,6 +263,9 @@ jobs:
             .github/scripts/verify-okou-app-assets.sh \
             .github/scripts/verify-okou-app-runtime.sh \
             .github/scripts/reconcile-and-start-runner-groups.sh \
+            .github/scripts/runner-ci-record.sh \
+            .github/scripts/tests/runner-ci-record-test.sh \
+            .github/scripts/tests/fixtures/runner-ci-aws.sh \
             .github/scripts/prune-runner-idle.sh \
             .github/scripts/reconcile-runner-binary-groups.sh \
             .github/actions/report-memory-peak/report.sh \

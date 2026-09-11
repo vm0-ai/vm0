@@ -34,77 +34,57 @@ chmod +x "$FAKE_BIN/ssh"
 cat >"$FAKE_BIN/gh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
-
-if [ "$1" = "api" ]; then
-  request="$2"
-  artifact_name="${request#*name=}"
-  artifact_name="${artifact_name%%&*}"
-  printf 'HTTP/2.0 200 OK\r\n\r\n'
-  cat <<JSON
-{
-  "artifacts": [
-    {
-      "name": "$artifact_name",
-      "expired": false,
-      "workflow_run": {
-        "id": 42,
-        "head_sha": "$HEAD_SHA"
-      }
-    }
-  ]
-}
-JSON
-  exit 0
-fi
-
-if [ "$1" = "run" ] && [ "$2" = "view" ]; then
-  echo "https://github.com/vm0-ai/vm0/actions/runs/42"
-  exit 0
-fi
-
-if [ "$1" = "run" ] && [ "$2" = "download" ]; then
-  artifact_name=""
-  output_dir=""
-  while [ "$#" -gt 0 ]; do
-    case "$1" in
-      -n)
-        artifact_name="$2"
-        shift 2
-        ;;
-      -D)
-        output_dir="$2"
-        shift 2
-        ;;
-      *)
-        shift
-        ;;
-    esac
+printf 'HTTP/2.0 200 OK\r\n\r\n'
+if [[ "$2" == *'/actions/workflows/'* ]]; then
+  jq -cn --arg head "$HEAD_SHA" '{
+    workflow_runs:[{id:42,head_sha:$head,path:".github/workflows/runner-image.yml",
+      repository:{full_name:"vm0-ai/vm0"},status:"in_progress",created_at:"2026-05-11T00:00:00Z",
+      html_url:"https://github.com/vm0-ai/vm0/actions/runs/42"}]}'
+else
+  steps='[]'
+  for arch in arm64 x86_64; do
+    file="$MANIFEST_DIR/${arch}.json"
+    if [ "$arch" = x86_64 ] && [ "${FAKE_X86_MISMATCH:-}" = 1 ]; then file="$MANIFEST_DIR/x86_64-mismatch.json"; fi
+    sha=$(sha256sum "$file" | awk '{print $1}')
+    steps=$(jq -c --arg sha "$sha" --arg now "$(date -u +%FT%TZ)" \
+      '. + [{name:("R2 record " + $sha),status:"completed",conclusion:"success",completed_at:$now}]' <<<"$steps")
   done
-
-  mkdir -p "$output_dir"
-  case "$artifact_name" in
-    *aarch64-unknown-linux-musl*)
-      cp "$MANIFEST_DIR/arm64.json" "$output_dir/manifest.json"
-      ;;
-    *x86_64-unknown-linux-musl*)
-      if [ "${FAKE_X86_MISMATCH:-}" = "1" ]; then
-        cp "$MANIFEST_DIR/x86_64-mismatch.json" "$output_dir/manifest.json"
-      else
-        cp "$MANIFEST_DIR/x86_64.json" "$output_dir/manifest.json"
-      fi
-      ;;
-    *)
-      echo "unexpected artifact: $artifact_name" >&2
-      exit 1
-      ;;
-  esac
-  exit 0
+  jq -cn --argjson steps "$steps" '{jobs:[{id:1,run_id:42,run_attempt:1,name:"Build",steps:$steps}]}'
 fi
-
-echo "unexpected gh command: $*" >&2
-exit 1
 SH
-chmod +x "$FAKE_BIN/gh"
+cat >"$FAKE_BIN/aws" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+operation=$2
+prefix="" key="" destination=""
+shift 2
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --prefix) prefix=$2; shift 2 ;;
+    --key) key=$2; shift 2 ;;
+    --*) shift 2 ;;
+    *) destination=$1; shift ;;
+  esac
+done
+if [[ "${prefix}${key}" == *aarch64* ]]; then
+  file="$MANIFEST_DIR/arm64.json"
+elif [ "${FAKE_X86_MISMATCH:-}" = 1 ]; then
+  file="$MANIFEST_DIR/x86_64-mismatch.json"
+else
+  file="$MANIFEST_DIR/x86_64.json"
+fi
+case "$operation" in
+  list-objects-v2)
+    sha=$(sha256sum "$file" | awk '{print $1}')
+    jq -cn --arg key "${prefix}1/${sha}.json" --arg now "$(date -u +%FT%TZ)" \
+      '{Contents:[{Key:$key,Size:1000,LastModified:$now}]}'
+    ;;
+  get-object) cp "$file" "$destination" ;;
+  *) exit 2 ;;
+esac
+SH
+chmod +x "$FAKE_BIN/gh" "$FAKE_BIN/aws"
+export AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test R2_ACCOUNT_ID=test R2_BUCKET_NAME=test
 
 make_manifest() {
   local file="$1"

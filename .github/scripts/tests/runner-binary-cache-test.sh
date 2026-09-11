@@ -78,15 +78,15 @@ fresh_out=$(FRESH_METADATA_PATH="$fresh" \
 assert_contains "$fresh_out" "runner-sha=${runner_sha}"
 assert_contains "$fresh_out" "runner-size-bytes=${runner_size}"
 
-artifact_out=$(EXPECTED_TARGET="$target" \
+record_out=$(EXPECTED_TARGET="$target" \
   EXPECTED_BINARY_INPUT_DIGEST="$input_digest" \
-  "$CACHE" artifact-name)
-assert_contains "$artifact_out" \
-  "artifact-name=runner-binary-asset-${target}-${input_digest}"
-assert_fails "artifact name rejects an invalid input digest" \
+  "$CACHE" record-name)
+assert_contains "$record_out" \
+  "record-name=runner-binary-asset-${target}-${input_digest}"
+assert_fails "record name rejects an invalid input digest" \
   env EXPECTED_TARGET="$target" \
   EXPECTED_BINARY_INPUT_DIGEST=invalid \
-  "$CACHE" artifact-name
+  "$CACHE" record-name
 
 jq '.unexpected = true' "$fresh" > "${TMPDIR}/fresh-extra.json"
 assert_fails "fresh metadata rejects unknown fields" \
@@ -105,59 +105,7 @@ assert_fails "fresh metadata verifies runner bytes" \
   "$CACHE" fresh-validate
 
 mkdir -p "${TMPDIR}/bin" "${TMPDIR}/store" "${TMPDIR}/runner-temp"
-cat > "${TMPDIR}/bin/aws" <<'BASH'
-#!/usr/bin/env bash
-set -euo pipefail
-printf '%s\n' "$*" >> "$AWS_LOG"
-[ "$1" = "s3api" ] || exit 2
-operation=$2
-shift 2
-body=""
-destination=""
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    --body) body=$2; shift 2 ;;
-    --endpoint-url|--bucket|--key|--content-type|--cache-control|--if-none-match|--output|--range|--cli-connect-timeout|--cli-read-timeout)
-      shift 2
-      ;;
-    --*) shift ;;
-    *) destination=$1; shift ;;
-  esac
-done
-object="${AWS_STORE}/object.zst"
-case "$operation" in
-  put-object)
-    if [ "${AWS_MODE:-success}" = "put-fail" ]; then
-      echo 'request failed X-Amz-Signature=supersecret' >&2
-      exit 9
-    fi
-    if [ -f "$object" ]; then
-      echo 'PreconditionFailed: 412' >&2
-      exit 1
-    fi
-    cp "$body" "$object"
-    printf '{}\n'
-    ;;
-  head-object)
-    [ -f "$object" ] || exit 1
-    case "${AWS_MODE:-success}" in
-      head-fail) exit 6 ;;
-      malformed-head) printf 'not-json\n' ;;
-      oversized-head) printf '{"ContentLength":67108865}\n' ;;
-      size-mismatch) printf '{"ContentLength":1}\n' ;;
-      *) printf '{"ContentLength":%s}\n' "$(stat -c '%s' "$object")" ;;
-    esac
-    ;;
-  get-object)
-    [ "${AWS_MODE:-success}" != "get-fail" ] || exit 7
-    [ -f "$object" ] || exit 1
-    cp "$object" "$destination"
-    printf '{}\n'
-    ;;
-  *) exit 2 ;;
-esac
-BASH
-chmod +x "${TMPDIR}/bin/aws"
+ln -s "${SCRIPT_DIR}/tests/fixtures/runner-ci-aws.sh" "${TMPDIR}/bin/aws"
 
 run_publish() {
   local output_dir=$1 mode=${2:-success}
@@ -191,9 +139,9 @@ publish_out=$(GITHUB_OUTPUT="$publish_output" run_publish "${TMPDIR}/published")
 assert_contains "$publish_out" "published=true"
 assert_contains "$publish_out" "publish-reason=uploaded"
 assert_output_keys "$publish_output" \
-  "manifest-path,object-key,object-size-bytes,publish-reason,published"
+  "manifest-path,object-key,object-size-bytes,publish-reason,published,record-sha"
 [ -f "${TMPDIR}/published/manifest.json" ] || fail "expected reusable manifest"
-zstd -q -d -c "${TMPDIR}/store/object.zst" > "${TMPDIR}/stored-runner"
+zstd -q -d -c "${TMPDIR}/store/runner-binaries/${target}/${runner_sha}.zst" > "${TMPDIR}/stored-runner"
 cmp -s "$runner" "${TMPDIR}/stored-runner" || fail "R2 object must contain the fresh runner"
 if ! grep -F 's3api head-object' "${TMPDIR}/aws.log" |
   grep -qF -- '--cli-connect-timeout 5 --cli-read-timeout 30'; then
@@ -302,39 +250,34 @@ existing_out=$(run_publish "${TMPDIR}/existing")
 assert_contains "$existing_out" "published=true"
 assert_contains "$existing_out" "publish-reason=existing-validated"
 
-printf 'not zstd\n' > "${TMPDIR}/store/object.zst"
-corrupt_out=$(run_publish "${TMPDIR}/corrupt")
-assert_contains "$corrupt_out" "published=false"
-assert_contains "$corrupt_out" "publish-reason=decompression-invalid"
+printf 'not zstd\n' > "${TMPDIR}/store/runner-binaries/${target}/${runner_sha}.zst"
+if corrupt_out=$(run_publish "${TMPDIR}/corrupt" 2>&1); then fail "required publication accepted decompression-invalid"; fi
+assert_contains "$corrupt_out" "(decompression-invalid)"
 [ ! -e "${TMPDIR}/corrupt/manifest.json" ] || fail "corrupt R2 bytes must not be advertised"
 
 printf 'different runner binary fixture\n' > "${TMPDIR}/different-runner"
-zstd -q -3 -f -o "${TMPDIR}/store/object.zst" "${TMPDIR}/different-runner"
-content_mismatch_out=$(run_publish "${TMPDIR}/publish-content-mismatch")
-assert_contains "$content_mismatch_out" "published=false"
-assert_contains "$content_mismatch_out" "publish-reason=retained-content-mismatch"
+zstd -q -3 -f -o "${TMPDIR}/store/runner-binaries/${target}/${runner_sha}.zst" "${TMPDIR}/different-runner"
+if content_mismatch_out=$(run_publish "${TMPDIR}/publish-content-mismatch" 2>&1); then fail "required publication accepted retained-content-mismatch"; fi
+assert_contains "$content_mismatch_out" "(retained-content-mismatch)"
 [ ! -e "${TMPDIR}/publish-content-mismatch/manifest.json" ] ||
   fail "mismatched R2 bytes must not be advertised"
 
-rm -f "${TMPDIR}/store/object.zst"
-put_failure=$(run_publish "${TMPDIR}/put-failure" put-fail 2>&1)
-assert_contains "$put_failure" "published=false"
-assert_contains "$put_failure" "publish-reason=put-failed"
+rm -f "${TMPDIR}/store/runner-binaries/${target}/${runner_sha}.zst"
+if put_failure=$(run_publish "${TMPDIR}/put-failure" put-fail 2>&1); then fail "required publication accepted put-failed"; fi
+assert_contains "$put_failure" "(put-failed)"
 if grep -q 'supersecret' <<<"$put_failure"; then
   fail "cache diagnostics leaked AWS error query material"
 fi
 [ ! -e "${TMPDIR}/put-failure/manifest.json" ] || fail "failed upload must not advertise a manifest"
 
-zstd -q -3 -f -o "${TMPDIR}/store/object.zst" "$runner"
-oversized_out=$(run_publish "${TMPDIR}/oversized" oversized-head)
-assert_contains "$oversized_out" "published=false"
-assert_contains "$oversized_out" "publish-reason=retained-size-invalid"
+zstd -q -3 -f -o "${TMPDIR}/store/runner-binaries/${target}/${runner_sha}.zst" "$runner"
+if oversized_out=$(run_publish "${TMPDIR}/oversized" oversized-head 2>&1); then fail "required publication accepted retained-size-invalid"; fi
+assert_contains "$oversized_out" "(retained-size-invalid)"
 
-malformed_head_out=$(run_publish "${TMPDIR}/malformed-head" malformed-head)
-assert_contains "$malformed_head_out" "published=false"
-assert_contains "$malformed_head_out" "publish-reason=head-malformed"
+if malformed_head_out=$(run_publish "${TMPDIR}/malformed-head" malformed-head 2>&1); then fail "required publication accepted head-malformed"; fi
+assert_contains "$malformed_head_out" "(head-malformed)"
 
-missing_config=$(FRESH_METADATA_PATH="$fresh" \
+if missing_config=$(FRESH_METADATA_PATH="$fresh" \
   RUNNER_PATH="$runner" \
   EXPECTED_TARGET="$target" \
   EXPECTED_BINARY_INPUT_DIGEST="$input_digest" \
@@ -345,9 +288,8 @@ missing_config=$(FRESH_METADATA_PATH="$fresh" \
   PRODUCER_EVENT=pull_request \
   PRODUCER_HEAD_SHA="$head_sha" \
   PRODUCER_PR_NUMBER=123 \
-    "$CACHE" publish)
-assert_contains "$missing_config" "published=false"
-assert_contains "$missing_config" "publish-reason=missing-r2-config"
+    "$CACHE" publish 2>&1); then fail "required publication accepted missing configuration"; fi
+assert_contains "$missing_config" "(missing-r2-config)"
 
 main_head=$(printf 'c%.0s' {1..40})
 pr_head=$(printf 'd%.0s' {1..40})
@@ -417,66 +359,8 @@ cat > "${TMPDIR}/bin/gh" <<'BASH'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$GH_LOG"
-if [ "$1" = "api" ]; then
-  endpoint="${*: -1}"
-  if [[ "$endpoint" == *'/actions/artifacts?'* ]]; then
-    [ "${GH_SCENARIO:-rank}" != "api-fail" ] || exit 8
-    case "${GH_SCENARIO:-rank}" in
-      failed)
-        printf '[{"artifacts":[{"id":122,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":22,"head_branch":"main","head_sha":"%s"}}]}]\n' "$EXPECTED_ARTIFACT_NAME" "$MAIN_HEAD"
-        ;;
-      failed-valid)
-        printf '[{"artifacts":[{"id":122,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":22,"head_branch":"main","head_sha":"%s"}}]}]\n' "$EXPECTED_ARTIFACT_NAME" "$MAIN_HEAD"
-        ;;
-      in-progress)
-        printf '[{"artifacts":[{"id":123,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":23,"head_branch":"main","head_sha":"%s"}}]}]\n' "$EXPECTED_ARTIFACT_NAME" "$MAIN_HEAD"
-        ;;
-      reachable|reachable-identical|compare-fail|compare-malformed|compare-mismatch|compare-behind|compare-diverged|pr-mismatch)
-        printf '[{"artifacts":[{"id":124,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":24,"head_branch":"gh-readonly-queue/main/pr-456-deadbeef","head_sha":"%s"}}]}]\n' "$EXPECTED_ARTIFACT_NAME" "$REACHABLE_HEAD"
-        ;;
-      ranking-reachable)
-        printf '[{"artifacts":[{"id":124,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T02:00:00Z","workflow_run":{"id":24,"head_branch":"gh-readonly-queue/main/pr-456-deadbeef","head_sha":"%s"}},{"id":121,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T01:00:00Z","workflow_run":{"id":21,"head_branch":"feature","head_sha":"%s"}}]}]\n' \
-          "$EXPECTED_ARTIFACT_NAME" "$REACHABLE_HEAD" \
-          "$EXPECTED_ARTIFACT_NAME" "$PR_HEAD"
-        ;;
-      invalid-head)
-        printf '[{"artifacts":[{"id":126,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":26,"head_branch":"other","head_sha":"not-a-sha"}}]}]\n' "$EXPECTED_ARTIFACT_NAME"
-        ;;
-      untrusted)
-        printf '[{"artifacts":[{"id":120,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":20,"head_branch":"main","head_sha":"%s"}}]}]\n' "$EXPECTED_ARTIFACT_NAME" "$MAIN_HEAD"
-        ;;
-      empty)
-        printf '[{"artifacts":[]}]\n'
-        ;;
-      expired)
-        printf '[{"artifacts":[{"id":120,"name":"%s","expired":true,"size_in_bytes":1000,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":20,"head_branch":"main","head_sha":"%s"}}]}]\n' "$EXPECTED_ARTIFACT_NAME" "$MAIN_HEAD"
-        ;;
-      oversized-artifact)
-        printf '[{"artifacts":[{"id":120,"name":"%s","expired":false,"size_in_bytes":1048577,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":20,"head_branch":"main","head_sha":"%s"}}]}]\n' "$EXPECTED_ARTIFACT_NAME" "$MAIN_HEAD"
-        ;;
-      content-mismatch)
-        printf '[{"artifacts":[{"id":120,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T00:00:00Z","workflow_run":{"id":20,"head_branch":"main","head_sha":"%s"}}]}]\n' "$EXPECTED_ARTIFACT_NAME" "$MAIN_HEAD"
-        ;;
-      many-invalid)
-        printf '[{"artifacts":['
-        separator=""
-        for run_id in $(seq 30 38); do
-          printf '%s{"id":%s,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T%02d:00:00Z","workflow_run":{"id":%s,"head_branch":"main","head_sha":"%s"}}' \
-            "$separator" "$((run_id + 100))" "$EXPECTED_ARTIFACT_NAME" "$((run_id - 30))" "$run_id" "$MAIN_HEAD"
-          separator=,
-        done
-        printf ']}]\n'
-        ;;
-      *)
-        printf '[{"artifacts":[{"id":199,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T03:00:00Z","workflow_run":{"id":99,"head_branch":"feature","head_sha":"%s"}},{"id":130,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T02:30:00Z","workflow_run":{"id":30,"head_branch":"other","head_sha":"%s"}},{"id":121,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T02:00:00Z","workflow_run":{"id":21,"head_branch":"feature","head_sha":"%s"}}]},{"artifacts":[{"id":120,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-21T01:00:00Z","workflow_run":{"id":20,"head_branch":"main","head_sha":"%s"}}]}]\n' \
-          "$EXPECTED_ARTIFACT_NAME" "$PR_HEAD" \
-          "$EXPECTED_ARTIFACT_NAME" "$UNREACHABLE_HEAD" \
-          "$EXPECTED_ARTIFACT_NAME" "$PR_HEAD" \
-          "$EXPECTED_ARTIFACT_NAME" "$MAIN_HEAD"
-        ;;
-    esac
-    exit 0
-  fi
+[ "$1" = api ] || exit 2
+endpoint="${*: -1}"
   if [[ "$endpoint" == *'/compare/'* ]]; then
     case "${GH_SCENARIO:-rank}" in
       compare-fail) exit 8 ;;
@@ -500,50 +384,65 @@ if [ "$1" = "api" ]; then
     esac
     exit 0
   fi
+
+if [[ "$endpoint" == *'/jobs?'* ]]; then
+  run_id=${endpoint%/jobs?*}
+  run_id=${run_id##*/}
+  jq -s '.' "${GH_FIXTURES}/jobs-${run_id}.json"
+else
   run_id=${endpoint##*/}
-  cp "${GH_FIXTURES}/run-${run_id}.json" /dev/stdout
-  exit 0
+  cat "${GH_FIXTURES}/run-${run_id}.json"
 fi
-if [ "$1" = "run" ] && [ "$2" = "download" ]; then
-  run_id=$3
-  output_dir=""
-  while [ "$#" -gt 0 ]; do
-    case "$1" in
-      -D) output_dir=$2; shift 2 ;;
-      *) shift ;;
-    esac
-  done
-  mkdir -p "$output_dir"
-  if [ "$run_id" = "20" ] && [ "${GH_SCENARIO:-rank}" = "untrusted" ]; then
-    cp "${GH_FIXTURES}/untrusted-manifest.json" "${output_dir}/manifest.json"
-  elif [ "$run_id" = "20" ] && [ "${GH_SCENARIO:-rank}" = "content-mismatch" ]; then
-    cp "${GH_FIXTURES}/content-mismatch-manifest.json" "${output_dir}/manifest.json"
-  elif [ "$run_id" = "20" ] && [ "${GH_SCENARIO:-rank}" = "conflict" ]; then
-    cp "${GH_FIXTURES}/conflict-manifest.json" "${output_dir}/manifest.json"
-  elif [ "$run_id" = "20" ] && [ "${GH_SCENARIO:-rank}" = "guest-conflict" ]; then
-    cp "${GH_FIXTURES}/guest-conflict-manifest.json" "${output_dir}/manifest.json"
-  elif [ "$run_id" = "20" ]; then
-    cp "${GH_FIXTURES}/main-manifest.json" "${output_dir}/manifest.json"
-  elif [ "$run_id" = "21" ]; then
-    cp "${GH_FIXTURES}/pr-manifest.json" "${output_dir}/manifest.json"
-  elif [ "$run_id" = "22" ] && [ "${GH_SCENARIO:-rank}" = "failed-valid" ]; then
-    cp "${GH_FIXTURES}/failed-main-manifest.json" "${output_dir}/manifest.json"
-  elif [ "$run_id" = "24" ] && [ "${GH_SCENARIO:-rank}" = "pr-mismatch" ]; then
-    cp "${GH_FIXTURES}/reachable-pr-mismatch-manifest.json" "${output_dir}/manifest.json"
-  elif [ "$run_id" = "24" ]; then
-    cp "${GH_FIXTURES}/reachable-manifest.json" "${output_dir}/manifest.json"
-  else
-    exit 1
-  fi
-  exit 0
-fi
-exit 2
 BASH
 chmod +x "${TMPDIR}/bin/gh"
 
-expected_artifact="runner-binary-asset-${target}-${input_digest}"
+expected_record="runner-binary-asset-${target}-${input_digest}"
+prepare_candidates() {
+  local scenario=$1 candidate run_id sha key modified index='[]' receipt manifest
+  local -a candidates=()
+  case "$scenario" in
+    failed) candidates=("22:main-manifest") ;;
+    failed-valid) candidates=("22:failed-main-manifest") ;;
+    in-progress) candidates=("23:main-manifest") ;;
+    reachable|reachable-identical|compare-*) candidates=("24:reachable-manifest") ;;
+    pr-mismatch) candidates=("24:reachable-pr-mismatch-manifest") ;;
+    ranking-reachable) candidates=("24:reachable-manifest" "21:pr-manifest") ;;
+    invalid-head) candidates=("26:main-manifest") ;;
+    untrusted) candidates=("20:untrusted-manifest") ;;
+    content-mismatch) candidates=("20:content-mismatch-manifest") ;;
+    conflict) candidates=("20:conflict-manifest" "21:pr-manifest") ;;
+    guest-conflict) candidates=("20:guest-conflict-manifest" "21:pr-manifest") ;;
+    empty|api-fail) ;;
+    expired|oversized-record) candidates=("20:main-manifest") ;;
+    many-invalid)
+      for run_id in {30..38}; do candidates+=("${run_id}:main-manifest"); done
+      ;;
+    *) candidates=("99:pr-manifest" "30:pr-manifest" "21:pr-manifest" "20:main-manifest") ;;
+  esac
+  modified=$(date -u +%FT%TZ)
+  receipt=$modified
+  if [ "$scenario" = expired ]; then modified=$(date -u -d '8 days ago' +%FT%TZ); fi
+  for candidate in "${candidates[@]}"; do
+    run_id=${candidate%%:*}
+    manifest="${TMPDIR}/${candidate#*:}.json"
+    sha=$(sha256sum "$manifest" | awk '{print $1}')
+    key="runner-ci/v1/vm0-ai/vm0/${expected_record}/${run_id}/1/${sha}.json"
+    mkdir -p "${TMPDIR}/store/$(dirname "$key")"
+    cp "$manifest" "${TMPDIR}/store/${key}"
+    index=$(jq -c --arg key "$key" --arg time "$modified" --argjson size "$(stat -c '%s' "$manifest")" \
+      '. + [{Key:$key,LastModified:$time,Size:$size}]' <<<"$index")
+    jq -n --argjson run "$run_id" --arg sha "$sha" --arg time "$receipt" '{
+      jobs:[{id:$run,run_id:$run,run_attempt:1,name:"Compile arm64",
+      steps:[{name:("R2 record " + $sha),status:"completed",conclusion:"success",completed_at:$time}]}]
+    }' >"${TMPDIR}/jobs-${run_id}.json"
+  done
+  if [ "$scenario" = oversized-record ]; then index=$(jq 'map(.Size=65537)' <<<"$index"); fi
+  jq -n --argjson contents "$index" '{Contents:$contents}' >"${TMPDIR}/store/index.json"
+}
+
 run_shadow() {
   local current_event=$1 scenario=$2 output_dir=$3
+  prepare_candidates "$scenario"
   local current_pr_number=123 current_pr_head_ref=feature
   if [ "$current_event" = "push" ]; then
     current_pr_number=""
@@ -553,7 +452,7 @@ run_shadow() {
   GH_LOG="${TMPDIR}/gh.log" \
   GH_SCENARIO="$scenario" \
   GH_FIXTURES="$TMPDIR" \
-  EXPECTED_ARTIFACT_NAME="$expected_artifact" \
+  EXPECTED_RECORD_NAME="$expected_record" \
   MAIN_HEAD="$main_head" \
   PR_HEAD="$pr_head" \
   REACHABLE_HEAD="$reachable_head" \
@@ -568,6 +467,13 @@ run_shadow() {
   CURRENT_PR_NUMBER="$current_pr_number" \
   CURRENT_PR_HEAD_REF="$current_pr_head_ref" \
   DEFAULT_BRANCH=main \
+  AWS_LOG="${TMPDIR}/aws.log" \
+  AWS_STORE="${TMPDIR}/store" \
+  AWS_MODE="$([ "$scenario" = api-fail ] && echo list-fail || echo success)" \
+  AWS_ACCESS_KEY_ID=test-access \
+  AWS_SECRET_ACCESS_KEY=test-secret \
+  R2_ACCOUNT_ID=test-account \
+  R2_BUCKET_NAME=test-bucket \
   SHADOW_OUTPUT_DIR="$output_dir" \
     "$CACHE" shadow-resolve
 }
@@ -609,7 +515,7 @@ assert_contains "$push_shadow" "shadow-source=protected-main"
 
 api_failure=$(run_shadow pull_request api-fail "${TMPDIR}/shadow-api-failure")
 assert_contains "$api_failure" "shadow-outcome=error"
-assert_contains "$api_failure" "shadow-reason=artifact-api-unavailable"
+assert_contains "$api_failure" "shadow-reason=record-index-unavailable"
 
 failed_candidate=$(run_shadow pull_request failed "${TMPDIR}/shadow-failed")
 assert_contains "$failed_candidate" "shadow-outcome=miss"
@@ -642,6 +548,7 @@ grep -q 'equal runner binary input digest produced conflicting output identity' 
 
 run_active() {
   local current_event=$1 scenario=$2 output_dir=$3 aws_mode=${4:-success}
+  prepare_candidates "$scenario"
   local current_pr_number=123 current_pr_head_ref=feature
   if [ "$current_event" = "push" ]; then
     current_pr_number=""
@@ -651,13 +558,13 @@ run_active() {
   GH_LOG="${TMPDIR}/gh.log" \
   GH_SCENARIO="$scenario" \
   GH_FIXTURES="$TMPDIR" \
-  EXPECTED_ARTIFACT_NAME="$expected_artifact" \
+  EXPECTED_RECORD_NAME="$expected_record" \
   MAIN_HEAD="$main_head" \
   PR_HEAD="$pr_head" \
   REACHABLE_HEAD="$reachable_head" \
   UNREACHABLE_HEAD="$unreachable_head" \
   AWS_LOG="${TMPDIR}/aws.log" \
-  AWS_MODE="$aws_mode" \
+  AWS_MODE="$([ "$scenario" = api-fail ] && echo list-fail || echo "$aws_mode")" \
   AWS_STORE="${TMPDIR}/store" \
   AWS_ACCESS_KEY_ID=test-access \
   AWS_SECRET_ACCESS_KEY=test-secret \
@@ -673,10 +580,11 @@ run_active() {
   CURRENT_PR_NUMBER="$current_pr_number" \
   CURRENT_PR_HEAD_REF="$current_pr_head_ref" \
   DEFAULT_BRANCH=main \
-    "$CACHE" active-resolve
+    "$CACHE" "${CACHE_RESOLVE_COMMAND:-active-resolve}"
 }
 
-zstd -q -3 -f -o "${TMPDIR}/store/object.zst" "$runner"
+zstd -q -3 -f -o "${TMPDIR}/store/runner-binaries/${target}/${runner_sha}.zst" "$runner"
+cp "${TMPDIR}/store/runner-binaries/${target}/${runner_sha}.zst" "${TMPDIR}/store/runner-binaries/${target}/${conflict_sha}.zst"
 : > "${TMPDIR}/gh.log"
 active_output="${TMPDIR}/active.output"
 active_hit=$(GITHUB_OUTPUT="$active_output" run_active pull_request rank "${TMPDIR}/active-hit")
@@ -740,13 +648,13 @@ grep -qF 'unsupported current event: unsupported' \
 
 api_miss=$(run_active pull_request api-fail "${TMPDIR}/active-api-fail")
 assert_contains "$api_miss" "resolve-outcome=miss"
-assert_contains "$api_miss" "resolve-reason=artifact-api-unavailable"
+assert_contains "$api_miss" "resolve-reason=record-index-unavailable"
 
 expired_miss=$(run_active pull_request expired "${TMPDIR}/active-expired")
 assert_contains "$expired_miss" "resolve-reason=no-trusted-candidate"
 
-oversized_artifact_miss=$(run_active pull_request oversized-artifact "${TMPDIR}/active-oversized-artifact")
-assert_contains "$oversized_artifact_miss" "resolve-reason=no-trusted-candidate"
+oversized_record_miss=$(run_active pull_request oversized-record "${TMPDIR}/active-oversized-record")
+assert_contains "$oversized_record_miss" "resolve-reason=no-trusted-candidate"
 
 conflict_miss=$(run_active pull_request conflict "${TMPDIR}/active-conflict")
 assert_contains "$conflict_miss" "resolve-outcome=miss"
@@ -770,12 +678,12 @@ assert_contains "$get_failure_miss" "resolve-reason=r2-get-failed"
 content_mismatch_miss=$(run_active pull_request content-mismatch "${TMPDIR}/active-content-mismatch")
 assert_contains "$content_mismatch_miss" "resolve-reason=r2-content-mismatch"
 
-compressed_size=$(stat -c '%s' "${TMPDIR}/store/object.zst")
-dd if=/dev/zero of="${TMPDIR}/store/object.zst" bs="$compressed_size" count=1 status=none
+compressed_size=$(stat -c '%s' "${TMPDIR}/store/runner-binaries/${target}/${runner_sha}.zst")
+dd if=/dev/zero of="${TMPDIR}/store/runner-binaries/${target}/${runner_sha}.zst" bs="$compressed_size" count=1 status=none
 corrupt_miss=$(run_active pull_request rank "${TMPDIR}/active-corrupt")
 assert_contains "$corrupt_miss" "resolve-outcome=miss"
 assert_contains "$corrupt_miss" "resolve-reason=r2-decompression-invalid"
-zstd -q -3 -f -o "${TMPDIR}/store/object.zst" "$runner"
+zstd -q -3 -f -o "${TMPDIR}/store/runner-binaries/${target}/${runner_sha}.zst" "$runner"
 
 : > "${TMPDIR}/gh.log"
 bounded_miss=$(run_active pull_request many-invalid "${TMPDIR}/active-bounded")
@@ -783,5 +691,42 @@ assert_contains "$bounded_miss" "resolve-outcome=miss"
 assert_contains "$bounded_miss" "resolve-reason=candidate-limit-exhausted"
 run_queries=$(grep -c 'actions/runs/' "${TMPDIR}/gh.log")
 [ "$run_queries" -eq 8 ] || fail "active resolution must inspect at most eight candidate runs"
+
+: >"${TMPDIR}/aws.log"
+reference=$(CACHE_RESOLVE_COMMAND=reference-resolve \
+  run_active pull_request rank "${TMPDIR}/reference")
+assert_contains "$reference" 'resolve-outcome=hit'
+assert_contains "$reference" 'resolve-reason=reference'
+if grep 'get-object' "${TMPDIR}/aws.log" | grep -q 'runner-binaries/'; then
+  fail "reference lookup downloaded binary bytes"
+fi
+
+download_binary() {
+  local command=$1 destination=$2
+  env PATH="${TMPDIR}/bin:$PATH" REPO=vm0-ai/vm0 \
+    AWS_STORE="${TMPDIR}/store" AWS_LOG="${TMPDIR}/aws.log" \
+    AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test R2_ACCOUNT_ID=test R2_BUCKET_NAME=test \
+    GH_LOG="${TMPDIR}/gh.log" GH_FIXTURES="$TMPDIR" RUNNER_TEMP="${TMPDIR}/runner-temp" \
+    CURRENT_RUN_ID=20 EXPECTED_PRODUCER_HEAD_SHA="$main_head" EXPECTED_REPOSITORY=vm0-ai/vm0 \
+    EXPECTED_TARGET="$target" EXPECTED_BINARY_INPUT_DIGEST="$input_digest" \
+    MANIFEST_PATH="${TMPDIR}/reference/manifest.json" RESOLVE_OUTPUT_DIR="$destination" \
+    "$CACHE" "$command"
+}
+
+download_binary download "${TMPDIR}/required-hit"
+cmp "$runner" "${TMPDIR}/required-hit/runner"
+jq '.run_attempt=2 | .status="in_progress"' "${TMPDIR}/run-20.json" >"${TMPDIR}/run-20.next"
+mv "${TMPDIR}/run-20.next" "${TMPDIR}/run-20.json"
+download_binary download-current "${TMPDIR}/required-current"
+cmp "$runner" "${TMPDIR}/required-current/runner"
+jq '.jobs += [{id:200,run_id:20,run_attempt:2,name:"Compile arm64",steps:[]}]' \
+  "${TMPDIR}/jobs-20.json" >"${TMPDIR}/jobs-20.next"
+mv "${TMPDIR}/jobs-20.next" "${TMPDIR}/jobs-20.json"
+assert_fails "new producer attempt invalidates required binary receipt" \
+  download_binary download-current "${TMPDIR}/required-stale"
+# A selected hit is no longer an optional cache probe: missing storage fails.
+if AWS_MODE=get-fail download_binary download "${TMPDIR}/required-missing"; then
+  fail "required hit download accepted unavailable bytes"
+fi
 
 echo "runner-binary-cache-test: ok"

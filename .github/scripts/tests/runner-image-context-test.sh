@@ -317,22 +317,22 @@ assert_contains "$out" "crates-runner-consumer-needed=true"
 assert_contains "$out" "runner-image-inputs-changed=true"
 assert_contains "$out" "current-runner-image-needed=true"
 
-assert_fails "artifact-name requires TARGET" \
+assert_fails "record-name requires TARGET" \
   HEAD_SHA=abc \
   JOB_REF=pr-123 \
-  "$CONTEXT" artifact-name
+  "$CONTEXT" record-name
 
-assert_fails "artifact-name rejects unsupported TARGET" \
+assert_fails "record-name rejects unsupported TARGET" \
   HEAD_SHA=abc \
   JOB_REF=pr-123 \
   TARGET=powerpc-unknown-linux-musl \
-  "$CONTEXT" artifact-name
+  "$CONTEXT" record-name
 
-out=$(run_clean HEAD_SHA=abc JOB_REF=pr-123 TARGET=aarch64-unknown-linux-musl "$CONTEXT" artifact-name)
-assert_contains "$out" "artifact-name=runner-image-manifest-aarch64-unknown-linux-musl-abc-pr-123"
+out=$(run_clean HEAD_SHA=abc JOB_REF=pr-123 TARGET=aarch64-unknown-linux-musl "$CONTEXT" record-name)
+assert_contains "$out" "record-name=runner-image-manifest-aarch64-unknown-linux-musl-abc-pr-123"
 
-out=$(run_clean HEAD_SHA=abc JOB_REF=pr-123 TARGET=x86_64-unknown-linux-musl "$CONTEXT" artifact-name)
-assert_contains "$out" "artifact-name=runner-image-manifest-x86_64-unknown-linux-musl-abc-pr-123"
+out=$(run_clean HEAD_SHA=abc JOB_REF=pr-123 TARGET=x86_64-unknown-linux-musl "$CONTEXT" record-name)
+assert_contains "$out" "record-name=runner-image-manifest-x86_64-unknown-linux-musl-abc-pr-123"
 
 grep -qF "SOURCE_HEAD_SHA: \${{ github.event.pull_request.head.sha || github.sha }}" \
   "${REPO_ROOT}/.github/workflows/runner-image.yml" \

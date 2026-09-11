@@ -51,6 +51,8 @@ surface; the index does not replace their detailed rules.
   verify host-local concurrency and I/O capacity overrides.
 - [Runner multi-architecture rollout](./runner-multi-architecture.md): build,
   deploy, and validate runner artifacts for supported host architectures.
+- [Runner CI transport](./runner-ci-transport.md): private binary delivery,
+  authenticated image readiness, reruns, and metadata retention.
 - [Testing catalog](./testing/anti-patterns.md): detailed testing anti-patterns.
 - [Addon runtime contracts](./mitm-addon-contracts.md): logging ownership,
   WebSocket framing and handshake limits, and path normalization boundaries.

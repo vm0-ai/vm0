@@ -15,6 +15,26 @@ env:
   DRY_RUN: ${{ inputs.dry-run || false }}
 
 jobs:
+  cleanup-runner-ci-records:
+    name: Clean expired Runner CI records
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - name: Clean private Runner transport metadata
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_DEFAULT_REGION: auto
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_BUCKET_NAME: ${{ vars.R2_USER_STORAGES_BUCKET_NAME }}
+          REPO: ${{ github.repository }}
+        run: .github/scripts/runner-ci-record.sh cleanup
+
   cleanup-neon-branches:
     runs-on: ubuntu-latest
     container:

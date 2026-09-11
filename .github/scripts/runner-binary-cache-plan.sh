@@ -33,6 +33,12 @@ output_value() {
 require_env RUNNER_HOST_GROUPS_MATRIX
 require_env RESOLVE_OUTPUT_DIR
 
+case "${RUNNER_BINARY_RESOLVE_MODE:=download}" in
+  download) resolve_command=active-resolve ;;
+  reference) resolve_command=reference-resolve ;;
+  *) echo "invalid Runner binary resolve mode: ${RUNNER_BINARY_RESOLVE_MODE}" >&2; exit 2 ;;
+esac
+
 case "${RUNNER_BINARY_CACHE_FORCE_MISS:-false}" in
   true|false|"") ;;
   *)
@@ -96,13 +102,14 @@ while IFS= read -r encoded_entry; do
       EXPECTED_TARGET="$target" \
       EXPECTED_BINARY_INPUT_DIGEST="$digest" \
       RESOLVE_OUTPUT_DIR="${RESOLVE_OUTPUT_DIR}/${target}" \
-      "$CACHE" active-resolve \
+      "$CACHE" "$resolve_command" \
       >"$result_file" 2>"$error_file" &
   pids+=("$!")
 done < <(jq -cr '.[] | @base64' <<<"$RUNNER_HOST_GROUPS_MATRIX")
 
 miss_matrix='[]'
 hit_targets='[]'
+hit_manifests='{}'
 resolution_json='[]'
 hit_count=0
 miss_count=0
@@ -151,7 +158,11 @@ for index in "${!targets[@]}"; do
   fi
 
   if [ "$outcome" = "hit" ]; then
-    if [ ! -f "${RESOLVE_OUTPUT_DIR}/${target}/runner" ] ||
+    if [ "$RUNNER_BINARY_RESOLVE_MODE" = reference ]; then
+      hit_manifests=$(jq -c --arg target "$target" \
+        --slurpfile manifest "${RESOLVE_OUTPUT_DIR}/${target}/manifest.json" \
+        '. + {($target): $manifest[0]}' <<<"$hit_manifests")
+    elif [ ! -f "${RESOLVE_OUTPUT_DIR}/${target}/runner" ] ||
       [ ! -f "${RESOLVE_OUTPUT_DIR}/${target}/metadata.json" ]; then
       echo "runner binary hit transport is incomplete for ${target}" >&2
       hard_failure=true
@@ -199,6 +210,7 @@ fi
 
 emit "compile-matrix" "$miss_matrix"
 emit "hit-targets" "$hit_targets"
+if [ "$RUNNER_BINARY_RESOLVE_MODE" = reference ]; then emit "hit-manifests" "$hit_manifests"; fi
 emit "hit-count" "$hit_count"
 emit "miss-count" "$miss_count"
 printf 'resolution-json=%s\n' "$resolution_json"

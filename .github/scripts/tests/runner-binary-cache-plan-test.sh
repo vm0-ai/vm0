@@ -23,8 +23,8 @@ arm_target=aarch64-unknown-linux-musl
 x86_target=x86_64-unknown-linux-musl
 arm_digest=$("${SCRIPT_DIR}/runner-binary-build/digest.sh" "$arm_target" | sed -n 's/^binary-input-digest=//p')
 x86_digest=$("${SCRIPT_DIR}/runner-binary-build/digest.sh" "$x86_target" | sed -n 's/^binary-input-digest=//p')
-arm_artifact="runner-binary-asset-${arm_target}-${arm_digest}"
-x86_artifact="runner-binary-asset-${x86_target}-${x86_digest}"
+arm_record="runner-binary-asset-${arm_target}-${arm_digest}"
+x86_record="runner-binary-asset-${x86_target}-${x86_digest}"
 matrix=$(jq -cn \
   --arg arm_target "$arm_target" \
   --arg x86_target "$x86_target" '[
@@ -91,81 +91,52 @@ create_fixture() {
     ' > "${TMPDIR}/fixtures/${name}.json"
 }
 
-create_fixture "$arm_target" "$arm_digest" "$arm_artifact"
-create_fixture "$x86_target" "$x86_digest" "$x86_artifact"
+create_fixture "$arm_target" "$arm_digest" "$arm_record"
+create_fixture "$x86_target" "$x86_digest" "$x86_record"
 
 cat > "${TMPDIR}/fixtures/run-20.json" <<JSON
 {"id":20,"run_attempt":1,"event":"push","status":"completed","conclusion":"success","head_branch":"main","head_sha":"${main_head}","path":".github/workflows/runner-image.yml","repository":{"full_name":"vm0-ai/vm0"},"pull_requests":[]}
 JSON
 
+mkdir -p "${TMPDIR}/store"
+index='[]'
+steps='[]'
+now=$(date -u +%FT%TZ)
+for name in "$arm_record" "$x86_record"; do
+  manifest="${TMPDIR}/fixtures/${name}.json"
+  sha=$(sha256sum "$manifest" | awk '{print $1}')
+  key="runner-ci/v1/vm0-ai/vm0/${name}/20/1/${sha}.json"
+  object=$(jq -r '.object.key' "$manifest")
+  target=$(jq -r '.target' "$manifest")
+  mkdir -p "${TMPDIR}/store/$(dirname "$key")" "${TMPDIR}/store/$(dirname "$object")"
+  cp "$manifest" "${TMPDIR}/store/${key}"
+  cp "${TMPDIR}/objects/${target}.zst" "${TMPDIR}/store/${object}"
+  index=$(jq -c --arg key "$key" --arg time "$now" '. + [{Key:$key,Size:2000,LastModified:$time}]' <<<"$index")
+  steps=$(jq -c --arg sha "$sha" --arg time "$now" \
+    '. + [{name:("R2 record " + $sha),status:"completed",conclusion:"success",completed_at:$time}]' <<<"$steps")
+done
+jq -n --argjson steps "$steps" '{jobs:[{id:20,run_id:20,run_attempt:1,name:"Compile",steps:$steps}]}' >"${TMPDIR}/fixtures/jobs-20.json"
 cat > "${TMPDIR}/bin/gh" <<'BASH'
 #!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n' "$*" >> "$GH_LOG"
-if [ "$1" = "api" ]; then
-  endpoint="${*: -1}"
-  if [[ "$endpoint" == *'/actions/artifacts?'* ]]; then
-    name=${endpoint#*name=}
-    name=${name%%&*}
-    if [ "${GH_SCENARIO:-all-hit}" = "all-miss" ] ||
-      { [ "${GH_SCENARIO:-all-hit}" = "mixed" ] && [ "$name" = "$X86_ARTIFACT" ]; }; then
-      printf '[{"artifacts":[]}]\n'
-    else
-      printf '[{"artifacts":[{"id":120,"name":"%s","expired":false,"size_in_bytes":1000,"created_at":"2026-07-22T00:00:00Z","workflow_run":{"id":20,"head_branch":"main","head_sha":"%s"}}]}]\n' \
-        "$name" "$MAIN_HEAD"
-    fi
-    exit 0
-  fi
-  cp "${FIXTURES}/run-20.json" /dev/stdout
-  exit 0
+printf '%s\n' "$*" >>"$GH_LOG"
+endpoint="${*: -1}"
+if [[ "$endpoint" == *'/jobs?'* ]]; then
+  jq -s '.' "${FIXTURES}/jobs-20.json"
+else
+  cat "${FIXTURES}/run-20.json"
 fi
-if [ "$1" = "run" ] && [ "$2" = "download" ]; then
-  artifact_name=""
-  output_dir=""
-  while [ "$#" -gt 0 ]; do
-    case "$1" in
-      -n) artifact_name=$2; shift 2 ;;
-      -D) output_dir=$2; shift 2 ;;
-      *) shift ;;
-    esac
-  done
-  mkdir -p "$output_dir"
-  cp "${FIXTURES}/${artifact_name}.json" "${output_dir}/manifest.json"
-  exit 0
-fi
-exit 2
 BASH
 chmod +x "${TMPDIR}/bin/gh"
-
-cat > "${TMPDIR}/bin/aws" <<'BASH'
-#!/usr/bin/env bash
-set -euo pipefail
-[ "$1" = "s3api" ] || exit 2
-operation=$2
-shift 2
-key=""
-destination=""
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    --key) key=$2; shift 2 ;;
-    --endpoint-url|--bucket|--output|--range|--cli-connect-timeout|--cli-read-timeout) shift 2 ;;
-    --*) shift ;;
-    *) destination=$1; shift ;;
-  esac
-done
-target=${key#runner-binaries/}
-target=${target%%/*}
-object="${OBJECTS}/${target}.zst"
-case "$operation" in
-  head-object) printf '{"ContentLength":%s}\n' "$(stat -c '%s' "$object")" ;;
-  get-object) cp "$object" "$destination"; printf '{}\n' ;;
-  *) exit 2 ;;
-esac
-BASH
-chmod +x "${TMPDIR}/bin/aws"
+ln -s "${SCRIPT_DIR}/tests/fixtures/runner-ci-aws.sh" "${TMPDIR}/bin/aws"
 
 run_plan() {
   local scenario=$1 output_dir=$2 event=${3:-pull_request}
+  case "$scenario" in
+    all-miss) printf '{"Contents":[]}\n' >"${TMPDIR}/store/index.json" ;;
+    mixed) jq -n --argjson index "$index" --arg arm "$arm_record" '{Contents:[$index[] | select(.Key | contains($arm))]}' >"${TMPDIR}/store/index.json" ;;
+    all-hit) jq -n --argjson index "$index" '{Contents:$index}' >"${TMPDIR}/store/index.json" ;;
+  esac
   local pr_number=123 pr_head_ref=feature
   if [ "$event" = "push" ]; then
     pr_number=""
@@ -175,9 +146,10 @@ run_plan() {
   GH_LOG="${TMPDIR}/gh.log" \
   GH_SCENARIO="$scenario" \
   FIXTURES="${TMPDIR}/fixtures" \
-  OBJECTS="${TMPDIR}/objects" \
-  ARM_ARTIFACT="$arm_artifact" \
-  X86_ARTIFACT="$x86_artifact" \
+  AWS_STORE="${TMPDIR}/store" \
+  AWS_LOG="${TMPDIR}/aws.log" \
+  ARM_RECORD="$arm_record" \
+  X86_RECORD="$x86_record" \
   MAIN_HEAD="$main_head" \
   AWS_ACCESS_KEY_ID=test-access \
   AWS_SECRET_ACCESS_KEY=test-secret \
@@ -293,4 +265,14 @@ assert_contains "$killed" 'hit-count=0'
 assert_contains "$killed" 'miss-count=2'
 assert_contains "$killed" '"reason":"resolve-timeout"'
 
+: >"${TMPDIR}/aws.log"
+references=$(RUNNER_BINARY_RESOLVE_MODE=reference run_plan all-hit "${TMPDIR}/references")
+assert_contains "$references" 'hit-count=2'
+assert_contains "$references" 'hit-manifests={'
+for target in "$arm_target" "$x86_target"; do
+  [ -f "${TMPDIR}/references/${target}/manifest.json" ] || fail "reference plan must carry a per-target manifest"
+done
+if grep 'get-object' "${TMPDIR}/aws.log" | grep -q 'runner-binaries/'; then
+  fail "reference-only planning must not download runner bytes"
+fi
 echo "runner-binary-cache-plan-test: ok"

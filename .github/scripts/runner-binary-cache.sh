@@ -5,11 +5,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 . "${SCRIPT_DIR}/runner-image-target.sh"
 . "${SCRIPT_DIR}/runner-guest-binaries.sh"
+. "${SCRIPT_DIR}/runner-ci-record.sh"
 . "${REPO_ROOT}/.github/scripts/runner-binary-build/contract.env"
 
 RUNNER_BINARY_MAX_SIZE_BYTES=$((128 * 1024 * 1024))
 RUNNER_BINARY_MAX_COMPRESSED_BYTES=$((64 * 1024 * 1024))
-RUNNER_BINARY_MAX_MANIFEST_ARTIFACT_BYTES=$((1024 * 1024))
 RUNNER_BINARY_MAX_CANDIDATE_INSPECTIONS=8
 RUNNER_BINARY_MAX_TRUSTED_IDENTITIES=2
 RUNNER_BINARY_WORKFLOW_PATH=".github/workflows/runner-image.yml"
@@ -194,12 +194,12 @@ manifest_validate() {
   emit "object-size-bytes" "$REUSABLE_OBJECT_SIZE"
 }
 
-reusable_artifact_name() {
+reusable_record_name() {
   local target=$1 digest=$2
   printf 'runner-binary-asset-%s-%s\n' "$target" "$digest"
 }
 
-artifact_name() {
+record_name() {
   require_env EXPECTED_TARGET
   require_env EXPECTED_BINARY_INPUT_DIGEST
   runner_image_validate_target "$EXPECTED_TARGET"
@@ -207,14 +207,13 @@ artifact_name() {
     echo "invalid runner binary input digest: ${EXPECTED_BINARY_INPUT_DIGEST}" >&2
     exit 2
   fi
-  emit "artifact-name" "$(reusable_artifact_name "$EXPECTED_TARGET" "$EXPECTED_BINARY_INPUT_DIGEST")"
+  emit "record-name" "$(reusable_record_name "$EXPECTED_TARGET" "$EXPECTED_BINARY_INPUT_DIGEST")"
 }
 
-publish_soft_failure() {
+publish_failure() {
   local reason=$1 message=$2
-  echo "::warning::Runner binary cache publication skipped (${reason}): ${message}"
-  emit "published" "false"
-  emit "publish-reason" "$reason"
+  echo "::error::Runner binary publication failed (${reason}): ${message}" >&2
+  return 1
 }
 
 fetch_verified_r2_runner() {
@@ -223,8 +222,8 @@ fetch_verified_r2_runner() {
   local expected_runner_size=$3
   local expected_runner_sha=$4
   local compressed_path=$5
-  local runner_path=$6
-  local endpoint head_json observed_object_size downloaded_size decompressed_size actual_sha
+  local verified_runner_path=$6
+  local head_json observed_object_size downloaded_size decompressed_size actual_sha
   local get_status=0 decompress_status=0
   local aws_error_log="${compressed_path}.aws.err"
   local zstd_error_log="${compressed_path}.zstd.err"
@@ -232,15 +231,9 @@ fetch_verified_r2_runner() {
   R2_VERIFICATION_REASON=""
   R2_VERIFICATION_MESSAGE=""
   R2_VERIFIED_OBJECT_SIZE=""
-  endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-
-  if ! head_json=$(aws s3api head-object \
-    --endpoint-url "$endpoint" \
-    --bucket "$R2_BUCKET_NAME" \
+  if ! head_json=$(runner_ci_aws head-object \
     --key "$object_key" \
-    --output json \
-    --cli-connect-timeout 5 \
-    --cli-read-timeout 30 2>"$aws_error_log"); then
+    --output json 2>"$aws_error_log"); then
     R2_VERIFICATION_REASON="head-failed"
     R2_VERIFICATION_MESSAGE="the R2 object could not be inspected"
     return 1
@@ -263,13 +256,9 @@ fetch_verified_r2_runner() {
     return 1
   fi
 
-  aws s3api get-object \
-    --endpoint-url "$endpoint" \
-    --bucket "$R2_BUCKET_NAME" \
+  runner_ci_aws get-object \
     --key "$object_key" \
     --range "bytes=0-${RUNNER_BINARY_MAX_COMPRESSED_BYTES}" \
-    --cli-connect-timeout 5 \
-    --cli-read-timeout 30 \
     "$compressed_path" \
     >/dev/null 2>"$aws_error_log" || get_status=$?
   if [ "$get_status" -ne 0 ]; then
@@ -287,15 +276,15 @@ fetch_verified_r2_runner() {
   zstd -q -d -c "$compressed_path" \
     2>"$zstd_error_log" \
     | head -c "$((RUNNER_BINARY_MAX_SIZE_BYTES + 1))" \
-      > "$runner_path" || decompress_status=$?
-  decompressed_size=$(stat -c '%s' "$runner_path")
+      > "$verified_runner_path" || decompress_status=$?
+  decompressed_size=$(stat -c '%s' "$verified_runner_path")
   if [ "$decompress_status" -ne 0 ] ||
     [ "$decompressed_size" -gt "$RUNNER_BINARY_MAX_SIZE_BYTES" ]; then
     R2_VERIFICATION_REASON="decompression-invalid"
     R2_VERIFICATION_MESSAGE="the R2 object is not a bounded zstd runner"
     return 1
   fi
-  actual_sha=$(sha256sum "$runner_path" | awk '{print $1}')
+  actual_sha=$(sha256sum "$verified_runner_path" | awk '{print $1}')
   if [ "$decompressed_size" != "$expected_runner_size" ] ||
     [ "$actual_sha" != "$expected_runner_sha" ]; then
     R2_VERIFICATION_REASON="content-mismatch"
@@ -350,19 +339,20 @@ publish() {
     exit 2
   fi
   mkdir -p "$OUTPUT_DIR"
+  REPO=$PRODUCER_REPOSITORY
 
   if [ -z "${R2_ACCOUNT_ID:-}" ] || [ -z "${R2_BUCKET_NAME:-}" ] ||
     [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
-    publish_soft_failure "missing-r2-config" "required R2 configuration is unavailable"
-    return 0
+    publish_failure "missing-r2-config" "required R2 configuration is unavailable"
+    return 1
   fi
   if ! command -v aws >/dev/null; then
-    publish_soft_failure "aws-unavailable" "AWS CLI is unavailable"
-    return 0
+    publish_failure "aws-unavailable" "AWS CLI is unavailable"
+    return 1
   fi
   if ! command -v zstd >/dev/null; then
-    publish_soft_failure "zstd-unavailable" "zstd is unavailable"
-    return 0
+    publish_failure "zstd-unavailable" "zstd is unavailable"
+    return 1
   fi
 
   local temp_root compressed retained decompressed error_log
@@ -375,23 +365,21 @@ publish() {
   trap 'rm -rf "$PUBLISH_TEMP_ROOT"' EXIT
 
   if ! zstd -q -3 -T0 -f -o "$compressed" "$RUNNER_PATH"; then
-    publish_soft_failure "compression-failed" "runner compression failed"
-    return 0
+    publish_failure "compression-failed" "runner compression failed"
+    return 1
   fi
   local compressed_size
   compressed_size=$(stat -c '%s' "$compressed")
   if [ "$compressed_size" -le 0 ] || [ "$compressed_size" -gt "$RUNNER_BINARY_MAX_COMPRESSED_BYTES" ]; then
-    publish_soft_failure "compressed-size-invalid" "compressed runner is outside the configured bound"
-    return 0
+    publish_failure "compressed-size-invalid" "compressed runner is outside the configured bound"
+    return 1
   fi
 
-  local object_key endpoint put_status
+  local object_key put_status
   object_key="runner-binaries/${FRESH_TARGET}/${FRESH_RUNNER_SHA}.zst"
-  endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+  runner_ci_config
   put_status=0
-  aws s3api put-object \
-    --endpoint-url "$endpoint" \
-    --bucket "$R2_BUCKET_NAME" \
+  runner_ci_aws put-object \
     --key "$object_key" \
     --body "$compressed" \
     --content-type application/zstd \
@@ -399,8 +387,8 @@ publish() {
     --if-none-match '*' \
     >/dev/null 2>"$error_log" || put_status=$?
   if [ "$put_status" -ne 0 ] && ! grep -Eq 'PreconditionFailed|precondition|412' "$error_log"; then
-    publish_soft_failure "put-failed" "R2 rejected the runner object upload"
-    return 0
+    publish_failure "put-failed" "R2 rejected the runner object upload"
+    return 1
   fi
 
   local retained_size publish_reason
@@ -413,8 +401,8 @@ publish() {
       content-mismatch) publish_reason="retained-content-mismatch" ;;
       *) publish_reason="$R2_VERIFICATION_REASON" ;;
     esac
-    publish_soft_failure "$publish_reason" "$R2_VERIFICATION_MESSAGE"
-    return 0
+    publish_failure "$publish_reason" "$R2_VERIFICATION_MESSAGE"
+    return 1
   fi
   retained_size="$R2_VERIFIED_OBJECT_SIZE"
 
@@ -473,6 +461,8 @@ publish() {
     EXPECTED_WORKFLOW_PATH="${PRODUCER_WORKFLOW_PATH:-$RUNNER_BINARY_WORKFLOW_PATH}" \
     "$0" manifest-validate >/dev/null
 
+  runner_ci_record_publish "$(reusable_record_name "$FRESH_TARGET" "$FRESH_BINARY_INPUT_DIGEST")" \
+    "${OUTPUT_DIR}/manifest.json" "$PRODUCER_RUN_ID" "$PRODUCER_RUN_ATTEMPT"
   emit "published" "true"
   emit "publish-reason" "$([ "$put_status" -eq 0 ] && echo uploaded || echo existing-validated)"
   emit "manifest-path" "${OUTPUT_DIR}/manifest.json"
@@ -518,13 +508,13 @@ validate_resolution_context() {
 }
 
 producer_is_main_reachable() {
-  local producer_head_sha=$1 comparison_json
-  if ! comparison_json=$(gh api \
-    "repos/${REPO}/compare/${producer_head_sha}...${DEFAULT_BRANCH}" 2>/dev/null); then
+  local ancestor_sha=$1 comparison_json
+  if ! comparison_json=$(timeout --kill-after=5s 60s gh api \
+    "repos/${REPO}/compare/${ancestor_sha}...${DEFAULT_BRANCH}" 2>/dev/null); then
     return 1
   fi
   jq -e \
-    --arg producer_head_sha "$producer_head_sha" '
+    --arg producer_head_sha "$ancestor_sha" '
       (.base_commit | type == "object") and
       .base_commit.sha == $producer_head_sha and
       (.merge_base_commit | type == "object") and
@@ -549,274 +539,125 @@ producer_is_main_reachable() {
 collect_trusted_candidates() {
   local expected_target=$1 expected_digest=$2 output_dir=$3
   mkdir -p "$output_dir"
-
-  local artifact_name_value artifacts_json
-  artifact_name_value=$(reusable_artifact_name "$expected_target" "$expected_digest")
-  if ! artifacts_json=$(gh api --paginate --slurp \
-    "repos/${REPO}/actions/artifacts?name=${artifact_name_value}&per_page=100" 2>/dev/null); then
-    CANDIDATE_DISCOVERY_REASON="artifact-api-unavailable"
-    return 1
-  fi
-  if ! jq -e 'type == "array" and all(.[]; type == "object" and (.artifacts | type == "array"))' \
-    <<<"$artifacts_json" >/dev/null; then
-    CANDIDATE_DISCOVERY_REASON="artifact-api-malformed"
+  runner_ci_config
+  local name records
+  name=$(reusable_record_name "$expected_target" "$expected_digest")
+  if ! records=$(runner_ci_records "$name" 2>/dev/null); then
+    CANDIDATE_DISCOVERY_REASON="record-index-unavailable"
     return 1
   fi
 
-  local potential_file sorted_potential trusted_unsorted trusted_file identities_file
-  potential_file="${output_dir}/potential-candidates.tsv"
-  sorted_potential="${output_dir}/potential-candidates-sorted.tsv"
-  trusted_unsorted="${output_dir}/trusted-candidates-unsorted.tsv"
-  trusted_file="${output_dir}/trusted-candidates.tsv"
-  identities_file="${output_dir}/trusted-identities.tsv"
-  : > "$potential_file"
-  : > "$trusted_unsorted"
+  local trusted_file="${output_dir}/trusted-candidates.tsv"
+  local unsorted="${output_dir}/trusted-unsorted.tsv"
+  local identities="${output_dir}/identities"
   : > "$trusted_file"
-  : > "$identities_file"
-  while IFS= read -r artifact_encoded; do
-    [ -n "$artifact_encoded" ] || continue
-    local artifact_json artifact_run_id artifact_id artifact_size artifact_created artifact_branch artifact_head_sha
-    artifact_json=$(base64 -d <<<"$artifact_encoded")
-    artifact_run_id=$(jq -r '.workflow_run.id // empty' <<<"$artifact_json")
-    artifact_id=$(jq -r '.id // empty' <<<"$artifact_json")
-    artifact_size=$(jq -r '.size_in_bytes // empty' <<<"$artifact_json")
-    artifact_created=$(jq -r '.created_at // empty' <<<"$artifact_json")
-    artifact_branch=$(jq -r '.workflow_run.head_branch // empty' <<<"$artifact_json")
-    artifact_head_sha=$(jq -r '.workflow_run.head_sha // empty' <<<"$artifact_json")
-    if [[ ! "$artifact_run_id" =~ ^[1-9][0-9]*$ ]] ||
-      [[ ! "$artifact_id" =~ ^[1-9][0-9]*$ ]] ||
-      [[ ! "$artifact_size" =~ ^[1-9][0-9]*$ ]] ||
-      [ "$artifact_size" -gt "$RUNNER_BINARY_MAX_MANIFEST_ARTIFACT_BYTES" ] ||
-      [[ ! "$artifact_head_sha" =~ ^[0-9a-f]{40}$ ]] ||
-      [ "$artifact_run_id" = "$CURRENT_RUN_ID" ]; then
-      continue
-    fi
+  : > "$unsorted"
+  : > "$identities"
+  local inspected=0 trusted_count=0 identity_count=0
+  local record key suffix run_id attempt sha modified manifest_path run_json jobs_json
+  local source event branch head producer_prs source_rank identity_key
 
-    local discovery_rank="" discovery_source_rank=""
-    if [ "$artifact_branch" = "$DEFAULT_BRANCH" ]; then
-      discovery_rank=0
-      case "$CURRENT_EVENT" in
-        pull_request|push) discovery_source_rank=0 ;;
-        merge_group) discovery_source_rank=1 ;;
-      esac
-    elif [ -n "${CURRENT_PR_HEAD_REF:-}" ] && [ "$artifact_branch" = "$CURRENT_PR_HEAD_REF" ]; then
-      discovery_rank=0
-      case "$CURRENT_EVENT" in
-        pull_request) discovery_source_rank=2 ;;
-        merge_group) discovery_source_rank=0 ;;
-        push) continue ;;
-      esac
-    elif [ -n "${CURRENT_PR_NUMBER:-}" ] && [[ "$artifact_branch" =~ (^|/)pr-${CURRENT_PR_NUMBER}- ]]; then
-      discovery_rank=0
-      case "$CURRENT_EVENT" in
-        pull_request) discovery_source_rank=2 ;;
-        merge_group) discovery_source_rank=0 ;;
-        push) continue ;;
-      esac
-    else
-      discovery_rank=1
-      case "$CURRENT_EVENT" in
-        pull_request) discovery_source_rank=1 ;;
-        merge_group) discovery_source_rank=2 ;;
-        push) discovery_source_rank=1 ;;
-      esac
-    fi
-
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "$discovery_rank" "$discovery_source_rank" "$artifact_created" \
-      "$artifact_id" "$artifact_run_id" "$artifact_head_sha" >> "$potential_file"
-  done < <(jq -r \
-    --arg name "$artifact_name_value" '
-      .[] | .artifacts[]? |
-      select(.name == $name and .expired == false) |
-      @base64
-    ' <<<"$artifacts_json")
-
-  # Inspect direct source hints before candidates that need an ancestry query.
-  sort -t $'\t' -k1,1n -k2,2n -k3,3r "$potential_file" > "$sorted_potential"
-
-  local inspected=0 trusted_count=0 identity_count=0 limit_reached=false
-  local potential_count
-  potential_count=$(wc -l < "$sorted_potential" | tr -d ' ')
-  while IFS=$'\t' read -r _ _ artifact_created artifact_id artifact_run_id artifact_head_sha; do
-    [ -n "$artifact_run_id" ] || continue
-    if [ "$inspected" -ge "$RUNNER_BINARY_MAX_CANDIDATE_INSPECTIONS" ]; then
-      break
-    fi
+  while IFS= read -r record; do
+    [ "$inspected" -lt "$RUNNER_BINARY_MAX_CANDIDATE_INSPECTIONS" ] || break
+    key=$(jq -r '.Key' <<<"$record")
+    modified=$(jq -r '.LastModified' <<<"$record")
+    runner_ci_record_key_valid "$key" || continue
+    runner_ci_record_fresh "$modified" || continue
+    suffix=${key#"${RUNNER_CI_RECORD_PREFIX}${name}/"}
+    run_id=${suffix%%/*}
+    suffix=${suffix#*/}
+    attempt=${suffix%%/*}
+    sha=${suffix##*/}
+    sha=${sha%.json}
+    [ "$run_id" != "$CURRENT_RUN_ID" ] || continue
     inspected=$((inspected + 1))
 
-    local run_json
-    if ! run_json=$(gh api "repos/${REPO}/actions/runs/${artifact_run_id}" 2>/dev/null); then
+    run_json=$(timeout --kill-after=5s 60s gh api "repos/${REPO}/actions/runs/${run_id}" 2>/dev/null) || continue
+    if ! jq -e --arg repo "$REPO" --arg workflow "$RUNNER_BINARY_WORKFLOW_PATH" \
+      --argjson run "$run_id" --argjson attempt "$attempt" '
+      .id == $run and .repository.full_name == $repo and .path == $workflow and
+      .status == "completed" and .run_attempt >= $attempt and
+      (.head_sha | type == "string" and test("^[0-9a-f]{40}$"))
+    ' <<<"$run_json" >/dev/null; then
       continue
     fi
-    if ! jq -e \
-      --arg repo "$REPO" \
-      --arg workflow "$RUNNER_BINARY_WORKFLOW_PATH" \
-      --argjson run_id "$artifact_run_id" \
-      --arg artifact_head_sha "$artifact_head_sha" '
-        .id == $run_id and
-        .repository.full_name == $repo and
-        .path == $workflow and
-        .status == "completed" and
-        .head_sha == $artifact_head_sha and
-        (.run_attempt | type == "number" and . > 0)
-      ' <<<"$run_json" >/dev/null; then
-      continue
-    fi
-
-    local actual_source="" run_event run_branch producer_pr_numbers
-    run_event=$(jq -r '.event' <<<"$run_json")
-    run_branch=$(jq -r '.head_branch' <<<"$run_json")
-    case "$run_event" in
-      push)
-        producer_pr_numbers='[]'
-        if [ "$run_branch" = "$DEFAULT_BRANCH" ]; then
-          actual_source="protected-main"
-        fi
-        ;;
+    event=$(jq -r '.event' <<<"$run_json")
+    branch=$(jq -r '.head_branch' <<<"$run_json")
+    head=$(jq -r '.head_sha' <<<"$run_json")
+    source=""
+    producer_prs='[]'
+    case "$event" in
+      push) [ "$branch" != "$DEFAULT_BRANCH" ] || source=protected-main ;;
       pull_request)
-        if ! producer_pr_numbers=$(jq -ce '
-          [.pull_requests[]?.number] |
-          select(
-            length > 0 and
-            all(.[]; type == "number" and floor == . and . > 0)
-          )
-        ' <<<"$run_json"); then
-          continue
-        fi
+        producer_prs=$(jq -ce '[.pull_requests[]?.number] |
+          select(length > 0 and all(.[]; type == "number" and floor == . and . > 0))' <<<"$run_json") || continue
         if [ -n "${CURRENT_PR_NUMBER:-}" ] &&
-          jq -e --argjson pr "$CURRENT_PR_NUMBER" 'index($pr) != null' \
-            <<<"$producer_pr_numbers" >/dev/null; then
-          actual_source="same-pr"
+          jq -e --argjson pr "$CURRENT_PR_NUMBER" 'index($pr) != null' <<<"$producer_prs" >/dev/null; then
+          source=same-pr
         fi
         ;;
       merge_group)
-        if [[ ! "$run_branch" =~ (^|/)pr-([1-9][0-9]*)- ]]; then
-          continue
-        fi
-        producer_pr_numbers="[${BASH_REMATCH[2]}]"
-        if [ -n "${CURRENT_PR_NUMBER:-}" ] &&
-          [ "${BASH_REMATCH[2]}" = "$CURRENT_PR_NUMBER" ]; then
-          actual_source="same-pr"
-        fi
+        [[ "$branch" =~ (^|/)pr-([1-9][0-9]*)- ]] || continue
+        producer_prs="[${BASH_REMATCH[2]}]"
+        [ "${BASH_REMATCH[2]}" != "${CURRENT_PR_NUMBER:-}" ] || source=same-pr
         ;;
       *) continue ;;
     esac
-    if [ -z "$actual_source" ]; then
-      if producer_is_main_reachable "$artifact_head_sha"; then
-        actual_source="main-reachable"
-      else
-        continue
-      fi
+    if [ -z "$source" ]; then
+      producer_is_main_reachable "$head" || continue
+      source=main-reachable
     fi
-    local source_rank
-    case "${CURRENT_EVENT}:${actual_source}" in
-      pull_request:protected-main) source_rank=0 ;;
-      pull_request:main-reachable) source_rank=1 ;;
-      pull_request:same-pr) source_rank=2 ;;
-      merge_group:same-pr) source_rank=0 ;;
-      merge_group:protected-main) source_rank=1 ;;
-      merge_group:main-reachable) source_rank=2 ;;
-      push:protected-main) source_rank=0 ;;
-      push:main-reachable) source_rank=1 ;;
+    case "${CURRENT_EVENT}:${source}" in
+      pull_request:protected-main|merge_group:same-pr|push:protected-main) source_rank=0 ;;
+      pull_request:main-reachable|merge_group:protected-main|push:main-reachable) source_rank=1 ;;
+      pull_request:same-pr|merge_group:main-reachable) source_rank=2 ;;
       *) continue ;;
     esac
 
-    local candidate_dir manifest_path
-    candidate_dir="${output_dir}/candidate-${artifact_id}"
-    rm -rf "$candidate_dir"
-    mkdir -p "$candidate_dir"
-    if ! gh run download "$artifact_run_id" -n "$artifact_name_value" -D "$candidate_dir" \
-      >/dev/null 2>&1; then
+    jobs_json=$(runner_ci_jobs "$run_id" 2>/dev/null) || continue
+    runner_ci_receipt_valid "$jobs_json" "$run_id" "$attempt" "$sha" || continue
+    manifest_path="${output_dir}/${sha}.json"
+    runner_ci_record_get "$key" "$manifest_path" >/dev/null 2>&1 || continue
+    if ! env GITHUB_OUTPUT= MANIFEST_PATH="$manifest_path" EXPECTED_TARGET="$expected_target" \
+      EXPECTED_BINARY_INPUT_DIGEST="$expected_digest" EXPECTED_REPOSITORY="$REPO" \
+      EXPECTED_WORKFLOW_PATH="$RUNNER_BINARY_WORKFLOW_PATH" "$0" manifest-validate >/dev/null 2>&1; then
       continue
     fi
-    mapfile -t manifest_candidates < <(find "$candidate_dir" -type f -name manifest.json | sort)
-    if [ "${#manifest_candidates[@]}" -ne 1 ]; then
+    if ! jq -e --argjson run "$run_id" --argjson attempt "$attempt" --arg event "$event" \
+      --arg head "$head" --argjson prs "$producer_prs" --arg source "$source" \
+      --argjson current_pr "${CURRENT_PR_NUMBER:-null}" '
+      .producer.runId == $run and .producer.runAttempt == $attempt and
+      .producer.event == $event and .producer.headSha == $head and
+      (if $event == "push" then .producer.prNumber == null
+       else .producer.prNumber as $pr | ($prs | index($pr)) != null end) and
+      ($source != "same-pr" or .producer.prNumber == $current_pr)
+    ' "$manifest_path" >/dev/null; then
       continue
     fi
-    manifest_path="${manifest_candidates[0]}"
-    if ! env GITHUB_OUTPUT= \
-      MANIFEST_PATH="$manifest_path" \
-      EXPECTED_TARGET="$expected_target" \
-      EXPECTED_BINARY_INPUT_DIGEST="$expected_digest" \
-      EXPECTED_REPOSITORY="$REPO" \
-      EXPECTED_WORKFLOW_PATH="$RUNNER_BINARY_WORKFLOW_PATH" \
-        "$0" manifest-validate >/dev/null 2>&1; then
-      continue
-    fi
-
-    local run_attempt current_pr_json
-    run_attempt=$(jq -r '.run_attempt' <<<"$run_json")
-    current_pr_json="${CURRENT_PR_NUMBER:-null}"
-    if ! jq -e \
-      --argjson run_id "$artifact_run_id" \
-      --argjson run_attempt "$run_attempt" \
-      --arg event "$run_event" \
-      --arg head_sha "$artifact_head_sha" \
-      --arg source "$actual_source" \
-      --argjson producer_pr_numbers "$producer_pr_numbers" \
-      --argjson current_pr_number "$current_pr_json" '
-        .producer.runId == $run_id and
-        .producer.runAttempt == $run_attempt and
-        .producer.event == $event and
-        .producer.headSha == $head_sha and
-        (
-          if $event == "push" then
-            .producer.prNumber == null
-          else
-            .producer.prNumber as $producer_pr_number |
-            ($producer_pr_numbers | index($producer_pr_number)) != null
-          end
-        ) and
-        (
-          if $source == "same-pr" then
-            .producer.prNumber == $current_pr_number
-          else
-            true
-          end
-        )
-      ' "$manifest_path" >/dev/null; then
-      continue
-    fi
-
-    local identity identity_key
-    identity=$(jq -cS '{runner, guests}' "$manifest_path")
-    identity_key=$(sha256sum <<<"$identity" | awk '{print $1}')
-    if ! grep -qxF "$identity_key" "$identities_file"; then
-      printf '%s\n' "$identity_key" >> "$identities_file"
+    identity_key=$(jq -cS '{runner, guests}' "$manifest_path" | sha256sum | awk '{print $1}')
+    if ! grep -qxF "$identity_key" "$identities"; then
+      printf '%s\n' "$identity_key" >> "$identities"
       identity_count=$((identity_count + 1))
     fi
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "$source_rank" "$artifact_created" "$artifact_id" "$artifact_run_id" \
-      "$actual_source" "$manifest_path" >> "$trusted_unsorted"
+      "$source_rank" "$modified" "$sha" "$run_id" "$source" "$manifest_path" >> "$unsorted"
     trusted_count=$((trusted_count + 1))
-    if [ "$identity_count" -ge "$RUNNER_BINARY_MAX_TRUSTED_IDENTITIES" ]; then
-      break
-    fi
-  done < "$sorted_potential"
+    [ "$identity_count" -lt "$RUNNER_BINARY_MAX_TRUSTED_IDENTITIES" ] || break
+  done < <(jq -c '.[]' <<<"$records")
 
-  # Select by the source proven from canonical run metadata, not the hint.
-  sort -t $'\t' -k1,1n -k2,2r "$trusted_unsorted" > "$trusted_file"
-
-  if [ "$inspected" -ge "$RUNNER_BINARY_MAX_CANDIDATE_INSPECTIONS" ] &&
-    [ "$potential_count" -gt "$inspected" ]; then
-    limit_reached=true
-  fi
-
+  sort -t $'\t' -k1,1n -k2,2r "$unsorted" > "$trusted_file"
   TRUSTED_CANDIDATES_FILE="$trusted_file"
-  TRUSTED_CANDIDATE_COUNT="$trusted_count"
-  TRUSTED_IDENTITY_COUNT="$identity_count"
-  TRUSTED_INSPECTION_COUNT="$inspected"
+  TRUSTED_CANDIDATE_COUNT=$trusted_count
+  TRUSTED_IDENTITY_COUNT=$identity_count
+  TRUSTED_INSPECTION_COUNT=$inspected
+  CANDIDATE_DISCOVERY_REASON=trusted-candidate
   if [ "$trusted_count" -eq 0 ]; then
-    if [ "$limit_reached" = "true" ]; then
-      CANDIDATE_DISCOVERY_REASON="candidate-limit-exhausted"
-    else
-      CANDIDATE_DISCOVERY_REASON="no-trusted-candidate"
+    CANDIDATE_DISCOVERY_REASON=no-trusted-candidate
+    if [ "$inspected" -ge "$RUNNER_BINARY_MAX_CANDIDATE_INSPECTIONS" ]; then
+      CANDIDATE_DISCOVERY_REASON=candidate-limit-exhausted
     fi
   elif [ "$identity_count" -gt 1 ]; then
-    CANDIDATE_DISCOVERY_REASON="trusted-output-conflict"
-  else
-    CANDIDATE_DISCOVERY_REASON="trusted-candidate"
+    CANDIDATE_DISCOVERY_REASON=trusted-output-conflict
   fi
 }
 
@@ -879,6 +720,7 @@ resolve_result() {
 }
 
 active_resolve() {
+  local mode=${1:-download}
   require_env EXPECTED_TARGET
   require_env EXPECTED_BINARY_INPUT_DIGEST
   require_env RESOLVE_OUTPUT_DIR
@@ -943,6 +785,21 @@ active_resolve() {
   fi
   first_trusted_candidate
 
+  if [ "$mode" = reference ]; then
+    local head
+    if ! head=$(runner_ci_aws head-object --key "$(jq -r '.object.key' "$TRUSTED_MANIFEST_PATH")" --output json 2>/dev/null) ||
+      ! jq -e --argjson size "$(jq '.object.sizeBytes' "$TRUSTED_MANIFEST_PATH")" '.ContentLength == $size' <<<"$head" >/dev/null; then
+      resolve_result miss "$TRUSTED_SOURCE" r2-head-failed "$TRUSTED_RUN_ID"
+      return 0
+    fi
+    mkdir -p "$RESOLVE_OUTPUT_DIR"
+    cp "$TRUSTED_MANIFEST_PATH" "${RESOLVE_OUTPUT_DIR}/manifest.json"
+    emit "runner-size-bytes" "$(jq '.runner.sizeBytes' "$TRUSTED_MANIFEST_PATH")"
+    emit "object-size-bytes" "$(jq '.object.sizeBytes' "$TRUSTED_MANIFEST_PATH")"
+    resolve_result hit "$TRUSTED_SOURCE" reference "$TRUSTED_RUN_ID"
+    return 0
+  fi
+
   local object_key object_size runner_sha runner_size
   object_key=$(jq -r '.object.key' "$TRUSTED_MANIFEST_PATH")
   object_size=$(jq -r '.object.sizeBytes' "$TRUSTED_MANIFEST_PATH")
@@ -985,19 +842,81 @@ active_resolve() {
   resolve_result "hit" "$TRUSTED_SOURCE" "validated" "$TRUSTED_RUN_ID"
 }
 
+download_manifest() {
+  require_env MANIFEST_PATH
+  require_env RESOLVE_OUTPUT_DIR
+  validate_reusable_manifest
+  runner_ci_config
+  [ ! -e "$RESOLVE_OUTPUT_DIR" ] && [ ! -L "$RESOLVE_OUTPUT_DIR" ] || return 2
+  local work_dir status=0
+  mkdir -p "$(dirname "$RESOLVE_OUTPUT_DIR")"
+  work_dir=$(mktemp -d "${RESOLVE_OUTPUT_DIR}.XXXXXX")
+  if ! fetch_verified_r2_runner "$REUSABLE_OBJECT_KEY" "$REUSABLE_OBJECT_SIZE" \
+    "$REUSABLE_RUNNER_SIZE" "$REUSABLE_RUNNER_SHA" "${work_dir}/runner.zst" "${work_dir}/runner"; then
+    echo "::error::Required Runner binary retrieval failed: ${R2_VERIFICATION_REASON}" >&2
+    rm -rf "$work_dir"
+    return 1
+  fi
+  chmod 755 "${work_dir}/runner"
+  jq '{schemaVersion, binaryInputDigest, target, toolchainImage,
+    runnerSha256: .runner.sha256, runnerSizeBytes: .runner.sizeBytes, guestSha256: .guests
+  }' "$MANIFEST_PATH" > "${work_dir}/metadata.json"
+  env GITHUB_OUTPUT= FRESH_METADATA_PATH="${work_dir}/metadata.json" RUNNER_PATH="${work_dir}/runner" \
+    "$0" fresh-validate >/dev/null || status=$?
+  if [ "$status" -ne 0 ]; then rm -rf "$work_dir"; return "$status"; fi
+  rm -f "${work_dir}/runner.zst" "${work_dir}/runner.zst.aws.err" "${work_dir}/runner.zst.zstd.err"
+  mv "$work_dir" "$RESOLVE_OUTPUT_DIR"
+}
+
+download_current() {
+  require_env CURRENT_RUN_ID
+  require_env EXPECTED_TARGET
+  require_env EXPECTED_BINARY_INPUT_DIGEST
+  require_env EXPECTED_PRODUCER_HEAD_SHA
+  runner_ci_config
+  local run jobs name manifest status=0
+  run=$(timeout --kill-after=5s 60s gh api "repos/${REPO}/actions/runs/${CURRENT_RUN_ID}")
+  jq -e --arg repo "$REPO" --arg head "$EXPECTED_PRODUCER_HEAD_SHA" \
+    --arg workflow "$RUNNER_BINARY_WORKFLOW_PATH" --argjson run "$CURRENT_RUN_ID" '
+    .id == $run and .repository.full_name == $repo and .path == $workflow and .head_sha == $head
+  ' <<<"$run" >/dev/null
+  jobs=$(runner_ci_jobs "$CURRENT_RUN_ID")
+  name=$(reusable_record_name "$EXPECTED_TARGET" "$EXPECTED_BINARY_INPUT_DIGEST")
+  manifest=$(mktemp "${RUNNER_TEMP:-$(dirname "$RESOLVE_OUTPUT_DIR")}/runner-manifest.XXXXXX")
+  if ! runner_ci_record_fetch "$name" "$CURRENT_RUN_ID" "$jobs" "$manifest"; then
+    rm -f "$manifest"
+    echo "::error::Current Runner binary has no authenticated R2 record" >&2
+    return 1
+  fi
+  if ! jq -e --argjson run "$CURRENT_RUN_ID" --argjson attempt "$RUNNER_CI_RECORD_ATTEMPT" \
+    --arg head "$EXPECTED_PRODUCER_HEAD_SHA" '
+    .producer.runId == $run and .producer.runAttempt == $attempt and .producer.headSha == $head
+  ' "$manifest" >/dev/null; then
+    rm -f "$manifest"
+    echo "::error::Current Runner binary record has inconsistent producer identity" >&2
+    return 1
+  fi
+  MANIFEST_PATH="$manifest" EXPECTED_REPOSITORY="$REPO" download_manifest || status=$?
+  rm -f "$manifest"
+  return "$status"
+}
+
 usage() {
   cat <<'USAGE'
-Usage: runner-binary-cache.sh <fresh-validate|artifact-name|manifest-validate|publish|shadow-resolve|active-resolve>
+Usage: runner-binary-cache.sh <fresh-validate|record-name|manifest-validate|publish|shadow-resolve|active-resolve|reference-resolve|download|download-current>
 USAGE
 }
 
 case "${1:-}" in
   fresh-validate) fresh_validate ;;
-  artifact-name) artifact_name ;;
+  record-name) record_name ;;
   manifest-validate) manifest_validate ;;
   publish) publish ;;
   shadow-resolve) shadow_resolve ;;
   active-resolve) active_resolve ;;
+  reference-resolve) active_resolve reference ;;
+  download) download_manifest ;;
+  download-current) download_current ;;
   -h|--help|help) usage ;;
   *) usage >&2; exit 2 ;;
 esac

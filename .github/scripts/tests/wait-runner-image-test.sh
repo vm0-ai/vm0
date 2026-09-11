@@ -62,7 +62,7 @@ respond_error() {
 
 if [ "$1" = "api" ]; then
   [[ "$*" == *' --include' ]] || exit 1
-  case "${FAKE_MODE:-artifact}" in
+  case "${FAKE_MODE:-record}" in
     primary)
       if [ "$now" -lt 1007 ]; then
         respond_error 403 'X-RateLimit-Remaining: 0\r\nX-RateLimit-Reset: 1006\r\n' 'API rate limit exceeded for installation'
@@ -100,69 +100,32 @@ if [ "$1" = "api" ]; then
   esac
 
   if [[ "$2" == *'/actions/workflows/'* ]]; then
-    if [[ "${FAKE_MODE:-artifact}" == workflow-rate* ]] && [ "$now" -lt 1007 ]; then
+    if [[ "${FAKE_MODE:-record}" == workflow-rate* ]] && [ "$now" -lt 1007 ]; then
       respond_error 403 'Retry-After: 7\r\n' 'secondary rate limit'
     fi
     printf 'HTTP/2.0 200 OK\r\n\r\n'
-    if [ "${FAKE_MODE:-artifact}" = "no-producer" ]; then
+    if [ "${FAKE_MODE:-record}" = "no-producer" ]; then
       printf '{"workflow_runs":[]}\n'
     else
       status=in_progress
       conclusion=null
-      if [ "${FAKE_MODE:-artifact}" = "failed-run" ] ||
-        [ "${FAKE_MODE:-artifact}" = "workflow-rate-failure" ] || {
-        [ "${FAKE_MODE:-artifact}" = "later-failure" ] && [ "$now" -ge 1060 ]
+      if [ "${FAKE_MODE:-record}" = "failed-run" ] ||
+        [ "${FAKE_MODE:-record}" = "workflow-rate-failure" ] || {
+        [ "${FAKE_MODE:-record}" = "later-failure" ] && [ "$now" -ge 1060 ]
       }; then
         status=completed
         conclusion='"failure"'
       fi
-      printf '{"workflow_runs":[{"id":42,"status":"%s","conclusion":%s,"created_at":"2026-05-11T00:00:00Z","html_url":"https://example.test/run/42","head_sha":"head-sha"}]}\n' "$status" "$conclusion"
+      printf '{"workflow_runs":[{"id":42,"status":"%s","conclusion":%s,"created_at":"2026-05-11T00:00:00Z","html_url":"https://example.test/run/42","head_sha":"head-sha","path":".github/workflows/runner-image.yml","repository":{"full_name":"vm0-ai/vm0"}}]}\n' "$status" "$conclusion"
     fi
     exit 0
   fi
 
-  [[ "$2" == *'/actions/artifacts?name='* ]] || exit 1
+  [[ "$2" == *'/jobs?filter=all&per_page=100&page='* ]] || exit 1
   printf 'HTTP/2.0 200 OK\r\n\r\n'
-  if [ "${FAKE_MODE:-artifact}" = "failed-run" ] ||
-    [ "${FAKE_MODE:-artifact}" = "later-failure" ] ||
-    [ "${FAKE_MODE:-artifact}" = "no-producer" ] ||
-    [ "$now" -lt "${AVAILABLE_AT:-0}" ]; then
-    printf '{"artifacts":[]}\n'
-    exit 0
-  fi
-  printf '{"artifacts":[{"id":123,"name":"%s","expired":false,"created_at":"2026-05-11T00:00:00Z","workflow_run":{"id":42,"head_sha":"head-sha"}}]}\n' "${EXPECTED_ARTIFACT_NAME}"
-  exit 0
-fi
-
-if [ "$1" = "run" ] && [ "$2" = "download" ]; then
-  if [ "${FAKE_MODE:-artifact}" = "download-rate" ] && [ "$now" -lt 1060 ]; then
-    echo 'gh: API rate limit exceeded for installation (HTTP 403)' >&2
-    exit 1
-  fi
-  if [ "${FAKE_MODE:-artifact}" = "download-unavailable" ]; then
-    echo 'artifact is not downloadable yet' >&2
-    exit 1
-  fi
-  artifact=""
-  output_dir=""
-  while [ "$#" -gt 0 ]; do
-    case "$1" in
-      -n)
-        artifact=$2
-        shift 2
-        ;;
-      -D)
-        output_dir=$2
-        shift 2
-        ;;
-      *)
-        shift
-        ;;
-    esac
-  done
-  [ "$artifact" = "${EXPECTED_ARTIFACT_NAME}" ] || exit 1
-  mkdir -p "$output_dir"
-  cp "${FAKE_MANIFEST}" "${output_dir}/manifest.json"
+  sha=$(sha256sum "$FAKE_MANIFEST" | awk '{print $1}')
+  jq -cn --arg sha "$sha" '{jobs:[{id:1,run_id:42,run_attempt:1,name:"Build image",
+    steps:[{name:("R2 record " + $sha),status:"completed",conclusion:"success",completed_at:"1970-01-01T00:16:40Z"}]}]}'
   exit 0
 fi
 
@@ -170,14 +133,51 @@ echo "unexpected gh call: $*" >&2
 exit 1
 BASH
 chmod +x "${TMPDIR}/bin/gh"
+cat >"${TMPDIR}/bin/aws" <<'BASH'
+#!/usr/bin/env bash
+set -euo pipefail
+now=$(date +%s)
+printf '%s %s\n' "$now" "$*" >>"$AWS_ARGS_LOG"
+key="" prefix="" destination=""
+operation=$2
+shift 2
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --key) key=$2; shift 2 ;;
+    --prefix) prefix=$2; shift 2 ;;
+    --*) shift 2 ;;
+    *) destination=$1; shift ;;
+  esac
+done
+case "$operation" in
+  list-objects-v2)
+    if [ "${FAKE_MODE:-}" = failed-run ] || [ "${FAKE_MODE:-}" = later-failure ] ||
+      [ "$now" -lt "${AVAILABLE_AT:-0}" ]; then
+      printf '{"Contents":[]}\n'
+    else
+      sha=$(sha256sum "$FAKE_MANIFEST" | awk '{print $1}')
+      jq -cn --arg key "${prefix}1/${sha}.json" \
+        '{Contents:[{Key:$key,Size:1000,LastModified:"1970-01-01T00:16:40Z"}]}'
+    fi
+    ;;
+  get-object)
+    if [ "${FAKE_MODE:-}" = download-unavailable ]; then exit 1; fi
+    if [ "${FAKE_MODE:-}" = download-transient ] && [ "$now" -lt 1060 ]; then exit 1; fi
+    cp "$FAKE_MANIFEST" "$destination"
+    ;;
+  *) exit 2 ;;
+esac
+BASH
+chmod +x "${TMPDIR}/bin/aws"
+export AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test R2_ACCOUNT_ID=test R2_BUCKET_NAME=test
+export AWS_ARGS_LOG="${TMPDIR}/aws-args.log"
 
 # Control the external clock and sleep commands so real cooldowns can be tested
 # without waiting minutes or replacing any production script functions.
 cat > "${TMPDIR}/bin/date" <<'BASH'
 #!/usr/bin/env bash
 set -euo pipefail
-[ "$*" = '+%s' ]
-cat "$CLOCK_FILE"
+if [ "$*" = '+%s' ]; then cat "$CLOCK_FILE"; else /usr/bin/date "$@"; fi
 BASH
 cat > "${TMPDIR}/bin/sleep" <<'BASH'
 #!/usr/bin/env bash
@@ -193,7 +193,7 @@ echo 1000 >"$CLOCK_FILE"
 out=$(PATH="${TMPDIR}/bin:${PATH}" \
   GH_ARGS_LOG="${TMPDIR}/gh-args.log" \
   FAKE_MANIFEST="${TMPDIR}/manifest.json" \
-  EXPECTED_ARTIFACT_NAME=runner-image-manifest-aarch64-unknown-linux-musl-build-sha-pr-123 \
+  EXPECTED_RECORD_NAME=runner-image-manifest-aarch64-unknown-linux-musl-build-sha-pr-123 \
   REPO=vm0-ai/vm0 \
   HEAD_SHA=build-sha \
   LOOKUP_SHA=head-sha \
@@ -205,11 +205,9 @@ out=$(PATH="${TMPDIR}/bin:${PATH}" \
   POLL_SECONDS=0 \
   "$WAIT")
 
-grep -q -- 'api repos/vm0-ai/vm0/actions/artifacts?name=runner-image-manifest-aarch64-unknown-linux-musl-build-sha-pr-123&per_page=100 --include' "${TMPDIR}/gh-args.log" || fail "expected artifact lookup by exact name"
-if grep -q -- '/actions/workflows/' "${TMPDIR}/gh-args.log"; then
-  fail "expected artifact-first path to skip producer lookup after artifact is found"
-fi
-grep -q -- 'run download 42 -n runner-image-manifest-aarch64-unknown-linux-musl-build-sha-pr-123' "${TMPDIR}/gh-args.log" || fail "expected artifact name to include target and HEAD_SHA"
+grep -q -- '/actions/workflows/runner-image.yml/runs?head_sha=head-sha' "${TMPDIR}/gh-args.log" || fail "must verify the canonical producer"
+grep -q -- '/jobs?filter=all' "${TMPDIR}/gh-args.log" || fail "must authenticate the record hash against all job attempts"
+grep -q -- 'runner-image-manifest-aarch64-unknown-linux-musl-build-sha-pr-123/42/' "$AWS_ARGS_LOG" || fail "must read the exact target and run prefix"
 grep -qxF 'producer-run-id=42' <<<"$out" || fail "expected producer-run-id output"
 grep -qxF 'bin-dir=/var/lib/vm0-runner/bin/pr-123' <<<"$out" || fail "expected manifest outputs"
 
@@ -217,7 +215,7 @@ grep -qxF 'bin-dir=/var/lib/vm0-runner/bin/pr-123' <<<"$out" || fail "expected m
 out=$(PATH="${TMPDIR}/bin:${PATH}" \
   GH_ARGS_LOG="${TMPDIR}/gh-args.log" \
   FAKE_MANIFEST="${TMPDIR}/manifest-x86.json" \
-  EXPECTED_ARTIFACT_NAME=runner-image-manifest-x86_64-unknown-linux-musl-build-sha-pr-123 \
+  EXPECTED_RECORD_NAME=runner-image-manifest-x86_64-unknown-linux-musl-build-sha-pr-123 \
   REPO=vm0-ai/vm0 \
   HEAD_SHA=build-sha \
   LOOKUP_SHA=head-sha \
@@ -228,8 +226,7 @@ out=$(PATH="${TMPDIR}/bin:${PATH}" \
   OUTPUT_DIR="${TMPDIR}/out-x86" \
   POLL_SECONDS=0 \
   "$WAIT")
-grep -q -- 'api repos/vm0-ai/vm0/actions/artifacts?name=runner-image-manifest-x86_64-unknown-linux-musl-build-sha-pr-123&per_page=100 --include' "${TMPDIR}/gh-args.log" || fail "expected x86 artifact lookup by exact name"
-grep -q -- 'run download 42 -n runner-image-manifest-x86_64-unknown-linux-musl-build-sha-pr-123' "${TMPDIR}/gh-args.log" || fail "expected x86 artifact download by exact name"
+grep -q -- "runner-image-manifest-x86_64-unknown-linux-musl-build-sha-pr-123/42/" "$AWS_ARGS_LOG" || fail "expected x86 record lookup"
 grep -qxF 'producer-run-id=42' <<<"$out" || fail "expected x86 producer-run-id output"
 
 : > "${TMPDIR}/gh-args.log"
@@ -255,7 +252,8 @@ grep -q -- 'unsupported runner image target: powerpc-unknown-linux-musl' "${TMPD
 if PATH="${TMPDIR}/bin:${PATH}" \
   GH_ARGS_LOG="${TMPDIR}/gh-args.log" \
   FAKE_MODE=failed-run \
-  EXPECTED_ARTIFACT_NAME=runner-image-manifest-aarch64-unknown-linux-musl-build-sha-pr-123 \
+  FAKE_MANIFEST="${TMPDIR}/manifest.json" \
+  EXPECTED_RECORD_NAME=runner-image-manifest-aarch64-unknown-linux-musl-build-sha-pr-123 \
   REPO=vm0-ai/vm0 \
   HEAD_SHA=build-sha \
   LOOKUP_SHA=head-sha \
@@ -266,7 +264,7 @@ if PATH="${TMPDIR}/bin:${PATH}" \
   OUTPUT_DIR="${TMPDIR}/failed-out" \
   POLL_SECONDS=0 \
   "$WAIT" >"${TMPDIR}/failed.out" 2>"${TMPDIR}/failed.err"; then
-  fail "expected failed producer run without artifact to fail"
+  fail "expected failed producer run without record to fail"
 fi
 grep -q -- '/actions/workflows/runner-image.yml/runs?head_sha=head-sha&per_page=20' "${TMPDIR}/gh-args.log" || fail "expected failed path to query producer run by LOOKUP_SHA"
 grep -q -- 'runner image workflow completed with conclusion=failure' "${TMPDIR}/failed.err" || fail "expected producer failure message"
@@ -275,10 +273,11 @@ run_wait() {
   echo 1000 >"$CLOCK_FILE"
   : >"$SLEEP_LOG"
   : >"${TMPDIR}/gh-args.log"
+  : >"$AWS_ARGS_LOG"
   env PATH="${TMPDIR}/bin:${PATH}" \
     GH_ARGS_LOG="${TMPDIR}/gh-args.log" \
     FAKE_MANIFEST="${TMPDIR}/manifest.json" \
-    EXPECTED_ARTIFACT_NAME=runner-image-manifest-aarch64-unknown-linux-musl-build-sha-pr-123 \
+    EXPECTED_RECORD_NAME=runner-image-manifest-aarch64-unknown-linux-musl-build-sha-pr-123 \
     REPO=vm0-ai/vm0 HEAD_SHA=build-sha LOOKUP_SHA=head-sha JOB_REF=pr-123 \
     METAL_HOSTS=dev-1 TARGET=aarch64-unknown-linux-musl PROFILE=vm0/default \
     OUTPUT_DIR="${TMPDIR}/out" "$@" "$WAIT" >"${TMPDIR}/case.out" 2>"${TMPDIR}/case.err"
@@ -299,7 +298,7 @@ expect_failure() {
 
 expect_success FAKE_MODE=primary
 [ "$(cat "$SLEEP_LOG")" = 7 ] || fail "expected primary quota reset plus boundary second"
-grep -q '^1007 run download ' "${TMPDIR}/gh-args.log" || fail "expected download after primary reset"
+grep -q '^1007 s3api get-object ' "$AWS_ARGS_LOG" || fail "expected download after primary reset"
 
 expect_success FAKE_MODE=retry-after
 [ "$(cat "$SLEEP_LOG")" = 12 ] || fail "expected later of Retry-After and quota reset"
@@ -314,10 +313,10 @@ expect_success FAKE_MODE=workflow-rate AVAILABLE_AT=1007
 grep -q '^1007 api .*workflows/' "${TMPDIR}/gh-args.log" || fail "expected producer request after Retry-After"
 
 expect_success FAKE_MODE=workflow-rate-failure AVAILABLE_AT=1007
-grep -q '^1007 run download ' "${TMPDIR}/gh-args.log" || fail "expected artifact uploaded during status cooldown to take priority"
+grep -q '^1007 s3api get-object ' "$AWS_ARGS_LOG" || fail "expected record uploaded during status cooldown to take priority"
 
-expect_success FAKE_MODE=download-rate
-[ "$(cat "$SLEEP_LOG")" = 60 ] || fail "expected conservative download cooldown"
+expect_success FAKE_MODE=download-transient
+[ "$(paste -sd, "$SLEEP_LOG")" = "30,30" ] || fail "expected bounded R2 delivery recovery"
 
 expect_success FAKE_MODE=transient
 [ "$(paste -sd, "$SLEEP_LOG")" = '30,30' ] || fail "expected transient metadata recovery"
@@ -341,18 +340,18 @@ grep -q 'cannot retry within runner image wait deadline' "${TMPDIR}/case.err" ||
 expect_failure TIMEOUT_SECONDS=0
 [ ! -s "${TMPDIR}/gh-args.log" ] || fail "must not start requests after deadline"
 
-expect_failure FAKE_MODE=download-unavailable TIMEOUT_SECONDS=10
+expect_failure FAKE_MODE=download-unavailable TIMEOUT_SECONDS=10 POLL_SECONDS=5
 [ "$(cat "$SLEEP_LOG")" = 5 ] || fail "expected download retry budget bounded by deadline"
 
 expect_success AVAILABLE_AT=1090
 [ "$(grep -c '/actions/workflows/' "${TMPDIR}/gh-args.log")" -eq 2 ] || fail "expected fewer producer status requests"
 grep -q '^1060 api .*workflows/' "${TMPDIR}/gh-args.log" || fail "expected producer refresh after 60 seconds"
-grep -q '^1090 run download ' "${TMPDIR}/gh-args.log" || fail "expected artifact readiness between producer checks"
+grep -q '^1090 s3api get-object ' "$AWS_ARGS_LOG" || fail "expected record readiness between producer checks"
 
 expect_failure FAKE_MODE=later-failure
 grep -q 'workflow completed with conclusion=failure' "${TMPDIR}/case.err" || fail "expected refreshed producer failure"
 
-expect_failure HEAD_SHA=wrong-sha EXPECTED_ARTIFACT_NAME=runner-image-manifest-aarch64-unknown-linux-musl-wrong-sha-pr-123
+expect_failure HEAD_SHA=wrong-sha EXPECTED_RECORD_NAME=runner-image-manifest-aarch64-unknown-linux-musl-wrong-sha-pr-123
 grep -q 'headSha mismatch' "${TMPDIR}/case.err" || fail "expected exact manifest identity validation"
 
 echo "wait-runner-image-test: ok"
