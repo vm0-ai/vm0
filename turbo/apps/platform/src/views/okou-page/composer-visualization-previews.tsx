@@ -956,7 +956,12 @@ function NestedDonutChartArtwork() {
 
 function MapGraticule() {
   return (
-    <g className="stroke-border" strokeOpacity="0.48" strokeWidth="0.6">
+    <g
+      fill="none"
+      className="stroke-border"
+      strokeOpacity="0.48"
+      strokeWidth="0.6"
+    >
       <path d="M10 27H151M7 45H154M10 63H151" />
       <path d="M42 8C30 30 30 60 42 80M80 6C73 30 73 61 80 83M118 8C130 30 130 60 118 80" />
     </g>
@@ -1153,95 +1158,100 @@ function WordCloudChartArtwork() {
         {charts.bar}
       </text>
       <text
-        x="78"
-        y="25"
+        x="80"
+        y="23"
         textAnchor="middle"
         className="fill-chart-blue-400"
-        fontSize="10"
+        fontSize="8.5"
         fontWeight="600"
       >
         {charts.line}
       </text>
       <text
-        x="130"
-        y="39"
+        x="125"
+        y="31"
         textAnchor="middle"
         className="fill-chart-blue-500"
-        fontSize="8"
+        fontSize="6.5"
         fontWeight="600"
+        transform="rotate(8 125 31)"
       >
         {charts.pie}
       </text>
       <text
-        x="27"
-        y="61"
+        x="38"
+        y="59"
         textAnchor="middle"
         className="fill-muted-foreground"
         fillOpacity="0.8"
-        fontSize="7.5"
+        fontSize="6.5"
         fontWeight="600"
-        transform="rotate(-90 27 61)"
+        transform="rotate(8 38 59)"
       >
         {charts.area}
       </text>
       <text
-        x="118"
-        y="65"
+        x="121"
+        y="61"
         textAnchor="middle"
         className="fill-chart-blue-300"
-        fontSize="8.5"
+        fontSize="6.5"
         fontWeight="600"
+        transform="rotate(-8 121 61)"
       >
         {charts.radar}
       </text>
       <text
-        x="72"
-        y="73"
+        x="80"
+        y="71"
         textAnchor="middle"
         className="fill-chart-orange"
-        fontSize="7"
+        fontSize="6.5"
         fontWeight="600"
       >
         {charts.heatmap}
       </text>
       <text
         x="35"
-        y="22"
+        y="30"
         textAnchor="middle"
         className="fill-chart-blue-500"
         fillOpacity="0.72"
-        fontSize="6.5"
+        fontSize="5.5"
+        transform="rotate(-8 35 30)"
       >
         {charts.bubble}
       </text>
       <text
-        x="129"
-        y="18"
+        x="126"
+        y="77"
         textAnchor="middle"
         className="fill-muted-foreground"
         fillOpacity="0.72"
         fontSize="5.5"
+        transform="rotate(7 126 77)"
       >
         {charts.scatter}
       </text>
       <text
-        x="145"
+        x="35"
         y="76"
         textAnchor="middle"
         className="fill-chart-green"
         fontSize="5.5"
         fontWeight="600"
-        transform="rotate(-90 145 76)"
+        transform="rotate(-6 35 76)"
       >
         {charts.gantt}
       </text>
       <text
-        x="42"
-        y="82"
+        x="128"
+        y="48"
         textAnchor="middle"
         className="fill-muted-foreground"
         fillOpacity="0.65"
-        fontSize="5.5"
+        fontSize="5"
+        transform="rotate(-7 128 48)"
       >
         {charts.funnel}
       </text>
