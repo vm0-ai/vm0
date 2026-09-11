@@ -1,6 +1,6 @@
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { Card, ToggleButton } from "@okouai/ui";
+import { Card, ToggleButton, cn } from "@okouai/ui";
 import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
 import {
   VISUALIZATION_OUTPUTS,
@@ -48,21 +48,25 @@ function VisualizationOutputButton({
   const selectedOutput = useGet(signals.taskChips.visualization.output$);
   const setOutput = useSet(signals.taskChips.visualization.setOutput$);
   const label = copy.outputs[output];
+  const selected = selectedOutput === output;
   return (
     <ToggleButton
-      selected={selectedOutput === output}
+      selected={selected}
       layout="tile"
       aria-label={label}
-      className="group min-h-[108px] overflow-hidden rounded-xl p-0 text-foreground last:col-span-2 sm:last:col-span-1"
+      className={cn(
+        "group h-[68px] overflow-hidden rounded-xl p-0 text-foreground last:col-span-2 sm:last:col-span-1",
+        !selected && "bg-transparent",
+      )}
       onClick={() => {
         setOutput(output);
       }}
     >
-      <span className="block px-2 pb-1 pt-2.5 text-center text-xs font-medium">
-        {label}
-      </span>
-      <span className="mt-auto block bg-gray-50 px-1 pt-1 transition-colors group-hover:bg-transparent">
+      <span className="flex h-full min-w-0 items-center gap-2 px-2.5 py-2 text-left">
         <VisualizationOutputPreview output={output} />
+        <span className="min-w-0 text-xs font-medium leading-tight">
+          {label}
+        </span>
       </span>
     </ToggleButton>
   );
@@ -119,17 +123,21 @@ function VisualizationChartButton({
   const charts = useGet(signals.taskChips.visualization.charts$);
   const toggleChart = useSet(signals.taskChips.visualization.toggleChart$);
   const label = copy.charts[chart];
+  const selected = charts.includes(chart);
   return (
     <ToggleButton
-      selected={charts.includes(chart)}
+      selected={selected}
       layout="tile"
       aria-label={label}
-      className="group min-h-[112px] overflow-hidden rounded-xl p-1.5 text-foreground"
+      className={cn(
+        "group min-h-[98px] overflow-hidden rounded-xl p-1.5 text-foreground",
+        !selected && "bg-transparent",
+      )}
       onClick={() => {
         toggleChart(chart);
       }}
     >
-      <span className="block h-[76px] rounded-lg bg-gray-50 transition-colors group-hover:bg-transparent">
+      <span className="block h-[64px]">
         <VisualizationChartPreview chart={chart} />
       </span>
       <span className="mt-1.5 block truncate px-1 text-center text-xs font-medium">

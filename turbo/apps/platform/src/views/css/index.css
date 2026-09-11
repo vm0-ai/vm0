@@ -43,6 +43,21 @@
   --color-usage-kind-connector: #779aad;
   --color-usage-kind-other: #c8b800;
 
+  /* Data-viz palette shared with the Okou chart gallery. Keep categorical
+     order stable and use the blue scale for ordered magnitude. */
+  --color-chart-blue-100: #cde2fb;
+  --color-chart-blue-200: #9ec5f4;
+  --color-chart-blue-300: #6da7ec;
+  --color-chart-blue-400: #3987e5;
+  --color-chart-blue-500: #2a78d6;
+  --color-chart-blue-600: #1c5cab;
+  --color-chart-orange: #eb6834;
+  --color-chart-green: #1baf7a;
+  --color-chart-gold: #eda100;
+  --color-chart-pink: #e87ba4;
+  --color-chart-purple: #4a3aa7;
+  --color-chart-red: #e34948;
+
   /* Artifact-type icon foregrounds, shared by type choices, selected labels,
      and their menus. These glyph colors retain contrast on light and dark
      surfaces; they are not body-text colors. */

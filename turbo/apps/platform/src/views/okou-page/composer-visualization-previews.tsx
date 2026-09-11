@@ -17,7 +17,7 @@ function ChartGrid() {
             x2="110"
             y1={y}
             y2={y}
-            className="stroke-gray-200"
+            className="stroke-border"
             strokeWidth="1"
           />
         );
@@ -27,7 +27,7 @@ function ChartGrid() {
         x2="110"
         y1="78"
         y2="78"
-        className="stroke-gray-300"
+        className="stroke-muted-foreground/40"
         strokeWidth="1"
       />
     </>
@@ -37,16 +37,24 @@ function ChartGrid() {
 function SingleChartOutputArtwork() {
   return (
     <>
-      <rect x="20" y="7" width="100" height="62" rx="5" fill="white" />
+      <rect
+        x="20"
+        y="7"
+        width="100"
+        height="62"
+        rx="7"
+        className="fill-background stroke-border"
+      />
       <path
         d="M31 54 43 45 55 49 67 35 79 40 91 22 108 29"
         fill="none"
-        className="stroke-gray-400"
+        className="stroke-chart-blue-500"
         strokeWidth="2.5"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <line x1="30" x2="110" y1="59" y2="59" className="stroke-gray-200" />
+      <circle cx="91" cy="22" r="3" className="fill-chart-orange" />
+      <line x1="30" x2="110" y1="59" y2="59" className="stroke-border" />
     </>
   );
 }
@@ -54,7 +62,14 @@ function SingleChartOutputArtwork() {
 function PresentationOutputArtwork() {
   return (
     <>
-      <rect x="13" y="7" width="114" height="62" rx="5" fill="white" />
+      <rect
+        x="13"
+        y="7"
+        width="114"
+        height="62"
+        rx="7"
+        className="fill-background stroke-border"
+      />
       {[15, 33, 51].map((y) => {
         return (
           <rect
@@ -64,25 +79,18 @@ function PresentationOutputArtwork() {
             width="19"
             height={y === 51 ? 10 : 13}
             rx="2"
-            className="fill-gray-100"
+            className="fill-chart-blue-100"
           />
         );
       })}
-      <rect
-        x="49"
-        y="15"
-        width="68"
-        height="7"
-        rx="2"
-        className="fill-gray-200"
-      />
+      <rect x="49" y="15" width="68" height="7" rx="2" className="fill-muted" />
       <rect
         x="49"
         y="28"
         width="11"
         height="28"
         rx="2"
-        className="fill-gray-300"
+        className="fill-chart-blue-300"
       />
       <rect
         x="65"
@@ -90,7 +98,7 @@ function PresentationOutputArtwork() {
         width="11"
         height="19"
         rx="2"
-        className="fill-gray-300"
+        className="fill-chart-green"
       />
       <rect
         x="81"
@@ -98,7 +106,7 @@ function PresentationOutputArtwork() {
         width="11"
         height="33"
         rx="2"
-        className="fill-gray-400"
+        className="fill-chart-blue-500"
       />
       <rect
         x="97"
@@ -106,7 +114,7 @@ function PresentationOutputArtwork() {
         width="11"
         height="24"
         rx="2"
-        className="fill-gray-300"
+        className="fill-chart-orange"
       />
     </>
   );
@@ -115,27 +123,33 @@ function PresentationOutputArtwork() {
 function WebsiteOutputArtwork() {
   return (
     <>
-      <rect x="13" y="7" width="114" height="62" rx="5" fill="white" />
+      <rect
+        x="13"
+        y="7"
+        width="114"
+        height="62"
+        rx="7"
+        className="fill-background stroke-border"
+      />
       {[22, 29, 36].map((cx) => {
         return (
-          <circle key={cx} cx={cx} cy="15" r="2" className="fill-gray-300" />
+          <circle
+            key={cx}
+            cx={cx}
+            cy="15"
+            r="2"
+            className="fill-chart-orange"
+          />
         );
       })}
-      <rect
-        x="22"
-        y="26"
-        width="47"
-        height="5"
-        rx="2"
-        className="fill-gray-200"
-      />
+      <rect x="22" y="26" width="47" height="5" rx="2" className="fill-muted" />
       <rect
         x="22"
         y="36"
         width="58"
         height="4"
         rx="2"
-        className="fill-gray-100"
+        className="fill-border"
       />
       <rect
         x="22"
@@ -143,7 +157,7 @@ function WebsiteOutputArtwork() {
         width="28"
         height="14"
         rx="2"
-        className="fill-gray-300"
+        className="fill-chart-blue-200"
       />
       <rect
         x="84"
@@ -151,7 +165,7 @@ function WebsiteOutputArtwork() {
         width="7"
         height="11"
         rx="1"
-        className="fill-gray-300"
+        className="fill-chart-green"
       />
       <rect
         x="95"
@@ -159,7 +173,7 @@ function WebsiteOutputArtwork() {
         width="7"
         height="21"
         rx="1"
-        className="fill-gray-400"
+        className="fill-chart-blue-500"
       />
       <rect
         x="106"
@@ -167,7 +181,7 @@ function WebsiteOutputArtwork() {
         width="7"
         height="29"
         rx="1"
-        className="fill-gray-300"
+        className="fill-chart-gold"
       />
     </>
   );
@@ -176,7 +190,14 @@ function WebsiteOutputArtwork() {
 function SpreadsheetOutputArtwork() {
   return (
     <>
-      <rect x="13" y="7" width="114" height="62" rx="5" fill="white" />
+      <rect
+        x="13"
+        y="7"
+        width="114"
+        height="62"
+        rx="7"
+        className="fill-background stroke-border"
+      />
       {[22, 32, 42, 52].map((y) => {
         return (
           <line
@@ -185,7 +206,7 @@ function SpreadsheetOutputArtwork() {
             x2="120"
             y1={y}
             y2={y}
-            className="stroke-gray-200"
+            className="stroke-border"
           />
         );
       })}
@@ -197,7 +218,7 @@ function SpreadsheetOutputArtwork() {
             x2={x}
             y1="14"
             y2="60"
-            className="stroke-gray-200"
+            className="stroke-border"
           />
         );
       })}
@@ -207,7 +228,7 @@ function SpreadsheetOutputArtwork() {
         width="17"
         height="6"
         rx="1"
-        className="fill-gray-300"
+        className="fill-chart-green"
       />
       <rect
         x="91"
@@ -215,7 +236,7 @@ function SpreadsheetOutputArtwork() {
         width="26"
         height="6"
         rx="1"
-        className="fill-gray-400"
+        className="fill-chart-blue-500"
       />
     </>
   );
@@ -229,25 +250,25 @@ function ReportOutputArtwork() {
         y="5"
         width="69"
         height="60"
-        rx="5"
-        className="fill-gray-100"
+        rx="7"
+        className="fill-chart-blue-100"
       />
-      <rect x="27" y="12" width="72" height="56" rx="5" fill="white" />
       <rect
-        x="37"
-        y="22"
-        width="39"
-        height="5"
-        rx="2"
-        className="fill-gray-200"
+        x="27"
+        y="12"
+        width="72"
+        height="56"
+        rx="7"
+        className="fill-background stroke-border"
       />
+      <rect x="37" y="22" width="39" height="5" rx="2" className="fill-muted" />
       <rect
         x="37"
         y="32"
         width="52"
         height="4"
         rx="2"
-        className="fill-gray-100"
+        className="fill-border"
       />
       <rect
         x="37"
@@ -255,7 +276,7 @@ function ReportOutputArtwork() {
         width="8"
         height="17"
         rx="1"
-        className="fill-gray-300"
+        className="fill-chart-blue-300"
       />
       <rect
         x="50"
@@ -263,7 +284,7 @@ function ReportOutputArtwork() {
         width="8"
         height="10"
         rx="1"
-        className="fill-gray-300"
+        className="fill-chart-green"
       />
       <rect
         x="63"
@@ -271,14 +292,14 @@ function ReportOutputArtwork() {
         width="8"
         height="21"
         rx="1"
-        className="fill-gray-400"
+        className="fill-chart-blue-500"
       />
       <circle
         cx="82"
         cy="50"
         r="9"
         fill="none"
-        className="stroke-gray-300"
+        className="stroke-chart-orange"
         strokeWidth="5"
       />
     </>
@@ -302,7 +323,7 @@ export function VisualizationOutputPreview({
   return (
     <svg
       viewBox="0 0 140 72"
-      className="h-[68px] w-full"
+      className="h-11 w-16 shrink-0"
       aria-hidden
       focusable="false"
     >
@@ -323,7 +344,7 @@ function BarChartArtwork() {
             width="8"
             height={height}
             rx="1.5"
-            className={index === 4 ? "fill-gray-500" : "fill-gray-300"}
+            className="fill-chart-blue-500"
           />
         );
       })}
@@ -336,7 +357,7 @@ function LineChartArtwork() {
     <path
       d="M12 29 27 35 42 62 57 43 72 39 87 52 108 48"
       fill="none"
-      className="stroke-gray-500"
+      className="stroke-chart-blue-500"
       strokeWidth="3"
       strokeLinecap="round"
       strokeLinejoin="round"
@@ -347,9 +368,10 @@ function LineChartArtwork() {
 function PieChartArtwork() {
   return (
     <>
-      <circle cx="60" cy="47" r="27" className="fill-gray-100" />
-      <path d="M60 47V20A27 27 0 0 1 84 60Z" className="fill-gray-400" />
-      <path d="M60 47 84 60A27 27 0 0 1 43 68Z" className="fill-gray-300" />
+      <circle cx="60" cy="47" r="27" className="fill-chart-blue-500" />
+      <path d="M60 47V20A27 27 0 0 1 84 60Z" className="fill-chart-orange" />
+      <path d="M60 47 84 60A27 27 0 0 1 43 68Z" className="fill-chart-green" />
+      <path d="M60 47 43 68A27 27 0 0 1 60 20Z" className="fill-chart-gold" />
     </>
   );
 }
@@ -376,7 +398,10 @@ function ScatterChartArtwork() {
             cx={cx}
             cy={cy}
             r={index % 3 === 0 ? 4 : 3}
-            className={index % 4 === 0 ? "fill-gray-500" : "fill-gray-300"}
+            className={
+              index % 3 === 0 ? "fill-chart-orange" : "fill-chart-blue-500"
+            }
+            fillOpacity={index % 3 === 0 ? 0.9 : 0.72}
           />
         );
       })}
@@ -389,12 +414,13 @@ function AreaChartArtwork() {
     <>
       <path
         d="M10 69 25 61 40 65 55 46 70 51 85 30 100 38 110 27V78H10Z"
-        className="fill-gray-200"
+        className="fill-chart-blue-500"
+        fillOpacity="0.18"
       />
       <path
         d="M10 69 25 61 40 65 55 46 70 51 85 30 100 38 110 27"
         fill="none"
-        className="stroke-gray-500"
+        className="stroke-chart-blue-500"
         strokeWidth="2.5"
         strokeLinejoin="round"
       />
@@ -418,7 +444,8 @@ function StackedBarChartArtwork() {
               width="10"
               height={first}
               rx="1"
-              className="fill-gray-300"
+              className="fill-chart-blue-500 stroke-background"
+              strokeWidth="1"
             />
             <rect
               x={x}
@@ -426,7 +453,8 @@ function StackedBarChartArtwork() {
               width="10"
               height={second}
               rx="1"
-              className="fill-gray-400"
+              className="fill-chart-orange stroke-background"
+              strokeWidth="1"
             />
             <rect
               x={x}
@@ -434,7 +462,8 @@ function StackedBarChartArtwork() {
               width="10"
               height={third}
               rx="1"
-              className="fill-gray-200"
+              className="fill-chart-green stroke-background"
+              strokeWidth="1"
             />
           </g>
         );
@@ -445,11 +474,11 @@ function StackedBarChartArtwork() {
 
 function HeatmapChartArtwork() {
   const colors = [
-    "fill-gray-100",
-    "fill-gray-200",
-    "fill-gray-300",
-    "fill-gray-400",
-    "fill-gray-500",
+    "fill-chart-blue-100",
+    "fill-chart-blue-200",
+    "fill-chart-blue-300",
+    "fill-chart-blue-400",
+    "fill-chart-blue-600",
   ];
   return (
     <>
@@ -491,8 +520,15 @@ function BubbleChartArtwork() {
             cx={cx}
             cy={cy}
             r={radius}
-            className={index % 3 === 0 ? "fill-gray-500" : "fill-gray-300"}
-            fillOpacity={index % 3 === 0 ? 0.9 : 0.65}
+            className={
+              [
+                "fill-chart-blue-500",
+                "fill-chart-orange",
+                "fill-chart-green",
+                "fill-chart-gold",
+              ][index % 4]
+            }
+            fillOpacity={index % 3 === 0 ? 0.86 : 0.68}
           />
         );
       })}
@@ -506,17 +542,23 @@ function RadarChartArtwork() {
       <polygon
         points="60,14 91,33 84,68 60,80 34,66 29,32"
         fill="none"
-        className="stroke-gray-200"
+        className="stroke-border"
       />
       <polygon
         points="60,25 80,37 76,61 60,69 43,60 38,37"
         fill="none"
-        className="stroke-gray-200"
+        className="stroke-border"
       />
       <polygon
         points="60,20 85,39 73,66 55,60 38,57 44,35"
-        className="fill-gray-200 stroke-gray-500"
-        fillOpacity="0.7"
+        className="fill-chart-blue-500 stroke-chart-blue-500"
+        fillOpacity="0.18"
+        strokeWidth="2"
+      />
+      <polygon
+        points="60,29 75,38 82,63 60,72 45,58 35,34"
+        className="fill-chart-green stroke-chart-green"
+        fillOpacity="0.14"
         strokeWidth="2"
       />
     </>
@@ -532,7 +574,7 @@ function SankeyChartArtwork() {
         width="8"
         height="48"
         rx="2"
-        className="fill-gray-400"
+        className="fill-chart-blue-500"
       />
       <rect
         x="55"
@@ -540,7 +582,7 @@ function SankeyChartArtwork() {
         width="8"
         height="39"
         rx="2"
-        className="fill-gray-500"
+        className="fill-chart-green"
       />
       <rect
         x="99"
@@ -548,7 +590,7 @@ function SankeyChartArtwork() {
         width="8"
         height="23"
         rx="2"
-        className="fill-gray-300"
+        className="fill-chart-orange"
       />
       <rect
         x="99"
@@ -556,33 +598,33 @@ function SankeyChartArtwork() {
         width="8"
         height="21"
         rx="2"
-        className="fill-gray-400"
+        className="fill-chart-gold"
       />
       <path
         d="M21 29C36 29 40 37 55 37"
         fill="none"
-        className="stroke-gray-300"
+        className="stroke-chart-blue-500"
         strokeWidth="10"
         strokeOpacity="0.65"
       />
       <path
         d="M21 56C36 56 40 59 55 59"
         fill="none"
-        className="stroke-gray-400"
+        className="stroke-chart-blue-300"
         strokeWidth="13"
         strokeOpacity="0.65"
       />
       <path
         d="M63 38C78 38 84 27 99 27"
         fill="none"
-        className="stroke-gray-300"
+        className="stroke-chart-green"
         strokeWidth="11"
         strokeOpacity="0.6"
       />
       <path
         d="M63 58C78 58 84 62 99 62"
         fill="none"
-        className="stroke-gray-400"
+        className="stroke-chart-green"
         strokeWidth="11"
         strokeOpacity="0.6"
       />
@@ -599,7 +641,7 @@ function GanttChartArtwork() {
         width="34"
         height="7"
         rx="2"
-        className="fill-gray-300"
+        className="fill-chart-blue-500"
       />
       <rect
         x="44"
@@ -607,7 +649,7 @@ function GanttChartArtwork() {
         width="43"
         height="7"
         rx="2"
-        className="fill-gray-400"
+        className="fill-chart-orange"
       />
       <rect
         x="32"
@@ -615,7 +657,7 @@ function GanttChartArtwork() {
         width="29"
         height="7"
         rx="2"
-        className="fill-gray-300"
+        className="fill-chart-green"
       />
       <rect
         x="72"
@@ -623,7 +665,7 @@ function GanttChartArtwork() {
         width="31"
         height="7"
         rx="2"
-        className="fill-gray-500"
+        className="fill-chart-purple"
       />
     </>
   );
@@ -638,7 +680,7 @@ function BarRaceChartArtwork() {
         width="71"
         height="8"
         rx="2"
-        className="fill-gray-500"
+        className="fill-chart-blue-500"
       />
       <rect
         x="18"
@@ -646,7 +688,7 @@ function BarRaceChartArtwork() {
         width="48"
         height="8"
         rx="2"
-        className="fill-gray-400"
+        className="fill-chart-orange"
       />
       <rect
         x="18"
@@ -654,7 +696,7 @@ function BarRaceChartArtwork() {
         width="84"
         height="8"
         rx="2"
-        className="fill-gray-300"
+        className="fill-chart-green"
       />
       <rect
         x="18"
@@ -662,9 +704,9 @@ function BarRaceChartArtwork() {
         width="58"
         height="8"
         rx="2"
-        className="fill-gray-200"
+        className="fill-chart-gold"
       />
-      <path d="m101 67 9 5-9 5Z" className="fill-gray-500" />
+      <path d="m101 67 9 5-9 5Z" className="fill-chart-red" />
     </>
   );
 }
@@ -687,7 +729,9 @@ function CandlestickChartArtwork() {
               x2={x}
               y1={wickTop}
               y2={bottom + 7}
-              className="stroke-gray-500"
+              className={
+                index % 2 === 0 ? "stroke-chart-green" : "stroke-chart-red"
+              }
               strokeWidth="1.5"
             />
             <rect
@@ -698,8 +742,8 @@ function CandlestickChartArtwork() {
               rx="1"
               className={
                 index % 2 === 0
-                  ? "fill-gray-500"
-                  : "fill-gray-200 stroke-gray-400"
+                  ? "fill-chart-green"
+                  : "fill-background stroke-chart-red"
               }
             />
           </g>
@@ -712,9 +756,9 @@ function CandlestickChartArtwork() {
 function FunnelChartArtwork() {
   return (
     <>
-      <path d="M16 18H104L93 32H27Z" className="fill-gray-500" />
-      <path d="M29 37H91L82 50H38Z" className="fill-gray-400" />
-      <path d="M40 55H80L72 68H48Z" className="fill-gray-300" />
+      <path d="M16 18H104L93 32H27Z" className="fill-chart-blue-600" />
+      <path d="M29 37H91L82 50H38Z" className="fill-chart-blue-400" />
+      <path d="M40 55H80L72 68H48Z" className="fill-chart-blue-200" />
     </>
   );
 }
@@ -727,7 +771,7 @@ function NestedDonutChartArtwork() {
         cy="47"
         r="31"
         fill="none"
-        className="stroke-gray-100"
+        className="stroke-chart-blue-100"
         strokeWidth="8"
       />
       <circle
@@ -735,7 +779,7 @@ function NestedDonutChartArtwork() {
         cy="47"
         r="31"
         fill="none"
-        className="stroke-gray-400"
+        className="stroke-chart-blue-500"
         strokeWidth="8"
         strokeDasharray="115 80"
         transform="rotate(-90 60 47)"
@@ -745,7 +789,8 @@ function NestedDonutChartArtwork() {
         cy="47"
         r="20"
         fill="none"
-        className="stroke-gray-200"
+        className="stroke-chart-orange"
+        strokeOpacity="0.25"
         strokeWidth="7"
       />
       <circle
@@ -753,7 +798,7 @@ function NestedDonutChartArtwork() {
         cy="47"
         r="20"
         fill="none"
-        className="stroke-gray-500"
+        className="stroke-chart-orange"
         strokeWidth="7"
         strokeDasharray="48 78"
         transform="rotate(25 60 47)"
@@ -767,18 +812,19 @@ function RouteMapChartArtwork() {
     <>
       <path
         d="M18 59 28 27 47 19 58 35 76 23 102 29 107 59 88 70 65 61 43 72Z"
-        className="fill-gray-100 stroke-gray-300"
+        className="fill-chart-blue-100 stroke-chart-blue-200"
         strokeWidth="1.5"
       />
       <path
         d="M28 58C45 27 69 69 96 32"
         fill="none"
-        className="stroke-gray-500"
+        className="stroke-chart-blue-500"
         strokeWidth="2"
         strokeDasharray="4 3"
       />
-      <circle cx="28" cy="58" r="4" className="fill-gray-500" />
-      <circle cx="96" cy="32" r="4" className="fill-gray-500" />
+      <circle cx="28" cy="58" r="4" className="fill-chart-orange" />
+      <circle cx="96" cy="32" r="4" className="fill-chart-orange" />
+      <path d="m67 48 8-1-4 7Z" className="fill-chart-blue-500" />
     </>
   );
 }
@@ -788,20 +834,21 @@ function ChoroplethMapChartArtwork() {
     <>
       <path
         d="M15 49 23 24 42 18 53 29 68 21 81 29 104 26 109 48 97 67 76 65 61 76 42 66 25 69Z"
-        className="fill-gray-100 stroke-gray-300"
+        className="fill-chart-blue-100 stroke-chart-blue-200"
         strokeWidth="1.5"
       />
       <path
         d="m23 24 19 18 11-13 8 47M42 42l34 23m-8-44 8 44m5-36 16 38M15 49l27-7 19 34m43-50L76 65"
         fill="none"
-        className="stroke-gray-300"
+        className="stroke-background"
+        strokeWidth="1.5"
       />
       <path
         d="m42 42 11-13 15-8 8 44Z"
-        className="fill-gray-400"
-        fillOpacity="0.8"
+        className="fill-chart-blue-600"
+        fillOpacity="0.86"
       />
-      <path d="m76 65 21 2 12-19-5-22Z" className="fill-gray-300" />
+      <path d="m76 65 21 2 12-19-5-22Z" className="fill-chart-blue-400" />
     </>
   );
 }
@@ -815,7 +862,7 @@ function WordCloudChartArtwork() {
         width="52"
         height="10"
         rx="5"
-        className="fill-gray-500"
+        className="fill-chart-blue-500"
       />
       <rect
         x="17"
@@ -823,7 +870,7 @@ function WordCloudChartArtwork() {
         width="31"
         height="6"
         rx="3"
-        className="fill-gray-300"
+        className="fill-chart-orange"
       />
       <rect
         x="62"
@@ -831,7 +878,7 @@ function WordCloudChartArtwork() {
         width="41"
         height="7"
         rx="3.5"
-        className="fill-gray-400"
+        className="fill-chart-green"
       />
       <rect
         x="22"
@@ -839,7 +886,7 @@ function WordCloudChartArtwork() {
         width="19"
         height="7"
         rx="3.5"
-        className="fill-gray-400"
+        className="fill-chart-pink"
       />
       <rect
         x="50"
@@ -847,7 +894,7 @@ function WordCloudChartArtwork() {
         width="53"
         height="6"
         rx="3"
-        className="fill-gray-300"
+        className="fill-chart-purple"
       />
       <rect
         x="40"
@@ -855,7 +902,7 @@ function WordCloudChartArtwork() {
         width="37"
         height="5"
         rx="2.5"
-        className="fill-gray-300"
+        className="fill-chart-gold"
       />
     </>
   );
