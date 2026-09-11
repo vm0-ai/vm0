@@ -1,7 +1,15 @@
 import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
+import { useGet } from "ccstate-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
+import { clerkAuthErrorMessage } from "../../../i18n/clerk-auth-errors.ts";
+import {
+  clerkLocalizationForLocale,
+  clerkLocalizations$,
+} from "../../../i18n/clerk-localization.ts";
+import { clerkPasswordErrorMessage } from "../../../i18n/clerk-password-errors.ts";
+import { locale$ } from "../../../signals/locale.ts";
 import type {
   AuthV2SignUpError,
   AuthV2SignUpState,
@@ -9,6 +17,7 @@ import type {
 import type { AuthBrandContext } from "../../../signals/auth.ts";
 
 export interface AuthV2SignUpCopy {
+  readonly passwordError: (error: AuthV2SignUpError) => string | undefined;
   readonly accessNotAllowed: string;
   readonly alreadyHaveAccount: string;
   readonly appleMethod: string;
@@ -264,7 +273,23 @@ export function useAuthV2SignUpCopy(
   brandName: AuthBrandContext["brandName"],
 ): AuthV2SignUpCopy {
   const { t } = useTranslation();
+  const localization = clerkLocalizationForLocale(
+    useGet(clerkLocalizations$),
+    useGet(locale$),
+  );
   return {
+    passwordError: (error) => {
+      if (error.passwordError) {
+        return clerkPasswordErrorMessage(localization, error.passwordError);
+      }
+      return error.clerkCode?.startsWith("form_password_") ||
+        error.clerkCode === "form_new_password_matches_current"
+        ? clerkAuthErrorMessage(localization, {
+            code: error.clerkCode,
+            signingInWithPassword: false,
+          })
+        : undefined;
+    },
     ...signUpDetailsCopy(t, brandName),
     ...signUpVerificationCopy(t, brandName),
     ...signUpTerminalCopy(t, brandName),
@@ -279,7 +304,7 @@ export function signUpErrorMessage(
     return copy.legalRequired;
   }
   if (error.code === "password-invalid") {
-    return copy.passwordInvalid;
+    return copy.passwordError(error) ?? copy.passwordInvalid;
   }
   if (
     error.field === "code" &&
@@ -294,7 +319,7 @@ export function signUpErrorMessage(
   if (error.clerkCode === "user_banned") {
     return copy.userBanned;
   }
-  return copy.unknownError;
+  return copy.passwordError(error) ?? copy.unknownError;
 }
 
 export function signUpCardDescription(

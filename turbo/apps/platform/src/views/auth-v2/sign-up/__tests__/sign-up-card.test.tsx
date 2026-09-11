@@ -772,6 +772,184 @@ test("Email verification enforces resend cooldown and preserves onboarding attri
   expect(redirectUrl.searchParams.get("utm_campaign")).toBe("summer");
 });
 
+test.each([
+  {
+    name: "the configured minimum before other requirements",
+    complexity: { min_length: true, require_uppercase: true },
+    message: "Your password must contain 12 or more characters.",
+  },
+  {
+    name: "the configured maximum",
+    complexity: { max_length: true },
+    message: "Your password must contain less than 16 characters.",
+  },
+  {
+    name: "an uppercase letter",
+    complexity: { require_uppercase: true },
+    message: "Your password must contain an uppercase letter.",
+  },
+  {
+    name: "a lowercase letter",
+    complexity: { require_lowercase: true },
+    message: "Your password must contain a lowercase letter.",
+  },
+  {
+    name: "a number",
+    complexity: { require_numbers: true },
+    message: "Your password must contain a number.",
+  },
+  {
+    name: "a special character",
+    complexity: { require_special_char: true },
+    message: "Your password must contain a special character.",
+  },
+  {
+    name: "multiple missing requirements",
+    complexity: { require_numbers: true, require_uppercase: true },
+    message: "Your password must contain a number and an uppercase letter.",
+  },
+])(
+  "Sign-up password validation explains $name",
+  async ({ complexity, message }) => {
+    mockSignUpConfiguration({
+      passwordSettings: { min_length: 12, max_length: 16 },
+    });
+    mockedClerk.signUpValidatePassword.mockImplementationOnce(
+      (_password, callbacks) => {
+        callbacks?.onValidation?.({ complexity });
+      },
+    );
+    await setupSignUpPage({ status: null });
+    const { passwordInput } = await fillRequiredDetails();
+
+    fireEvent.submit(containingForm(passwordInput));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(message);
+    expect(alert).toHaveFocus();
+    expect(passwordInput).toHaveAttribute("aria-invalid", "true");
+    expect(
+      passwordInput.getAttribute("aria-describedby")?.split(" "),
+    ).toContain(alert.id);
+    expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
+  },
+);
+
+test("Correcting a password clears its requirements and allows account creation", async () => {
+  mockedClerk.signUpValidatePassword.mockImplementationOnce(
+    (_password, callbacks) => {
+      callbacks?.onValidation?.({ complexity: { require_numbers: true } });
+    },
+  );
+  await setupSignUpPage({ status: null });
+  const { passwordInput } = await fillRequiredDetails();
+  fireEvent.submit(containingForm(passwordInput));
+  await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+    "Your password must contain a number.",
+  );
+
+  await fill(passwordInput, "valid-password-2");
+  await waitFor(() => {
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+  fireEvent.submit(containingForm(passwordInput));
+
+  await waitFor(() => {
+    expect(mockedClerk.clientSignUpCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ password: "valid-password-2" }),
+    );
+  });
+});
+
+test("Sign-up password requirements use Clerk's selected language and configured length", async () => {
+  context.mocks.browser.languages(["ja-JP"]);
+  mockSignUpConfiguration({ passwordSettings: { min_length: 12 } });
+  mockedClerk.signUpValidatePassword.mockImplementationOnce(
+    (_password, callbacks) => {
+      callbacks?.onValidation?.({ complexity: { min_length: true } });
+    },
+  );
+  await setupSignUpPage({ status: null });
+  const email = await screen.findByLabelText("メールアドレス");
+  const password = screen.getByLabelText("パスワード");
+  await fill(email, "person@example.com");
+  await fill(password, "short");
+  fireEvent.submit(containingForm(password));
+
+  await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+    "パスワードは次の条件を満たす必要があります： 12文字以上.",
+  );
+  expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
+});
+
+test.each([
+  {
+    name: "a breached password",
+    errors: [{ code: "form_password_pwned" }],
+    message:
+      "This password has been found as part of a breach and can not be used, please try another password instead.",
+  },
+  {
+    name: "a password exceeding the byte limit",
+    errors: [{ code: "form_password_size_in_bytes_exceeded" }],
+    message: "Your password is too long. Please use a shorter password.",
+  },
+  {
+    name: "insufficient strength before complexity with a suggestion",
+    errors: [
+      {
+        code: "form_password_not_strong_enough",
+        meta: {
+          zxcvbn: {
+            suggestions: [
+              { code: "anotherWord" },
+              { code: "unknown_suggestion" },
+            ],
+          },
+        },
+      },
+      { code: "form_password_no_special_char" },
+    ],
+    message:
+      "Your password is not strong enough. Add more words that are less common.",
+  },
+  {
+    name: "multiple password requirements returned by Clerk",
+    errors: [
+      { code: "form_password_no_uppercase" },
+      { code: "form_password_no_number" },
+    ],
+    message: "Your password must contain a number and an uppercase letter.",
+  },
+])(
+  "Sign-up explains $name after server validation",
+  async ({ errors, message }) => {
+    mockedClerk.clientSignUpCreate.mockRejectedValue({
+      errors: errors.map((error) => {
+        return {
+          ...error,
+          longMessage: "Private provider detail",
+          meta: {
+            ...("meta" in error ? error.meta : {}),
+            paramName: "password",
+          },
+        };
+      }),
+    });
+    await setupSignUpPage({ status: null });
+    const { passwordInput } = await fillRequiredDetails();
+    fireEvent.submit(containingForm(passwordInput));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(message);
+    expect(passwordInput).toHaveAttribute("aria-invalid", "true");
+    expect(
+      screen.queryByText("Private provider detail"),
+    ).not.toBeInTheDocument();
+    expect(alert).not.toHaveTextContent("unknown_suggestion");
+  },
+);
+
 test("Account creation waits for delayed password validation", async () => {
   let finishValidation: ((validation: PasswordValidation) => void) | undefined;
   mockedClerk.signUpValidatePassword.mockImplementation(
@@ -796,7 +974,10 @@ test("Account creation waits for delayed password validation", async () => {
     finishValidation?.({
       complexity: {},
       strength: {
-        keys: ["min_zxcvbn_strength"],
+        keys: [
+          "unstable__errors.zxcvbn.notEnough",
+          "unstable__errors.zxcvbn.suggestions.anotherWord",
+        ],
         result: {
           calcTime: 0,
           feedback: { suggestions: [], warning: null },
@@ -811,7 +992,7 @@ test("Account creation waits for delayed password validation", async () => {
   });
 
   await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
-    "Your password is not strong enough.",
+    "Your password is not strong enough. Add more words that are less common.",
   );
   expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
 });

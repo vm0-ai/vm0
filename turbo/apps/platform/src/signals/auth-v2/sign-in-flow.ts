@@ -39,6 +39,11 @@ import {
   type AuthV2OAuthStrategy,
 } from "./oauth-strategies.ts";
 import {
+  clerkPasswordError,
+  clerkPasswordSettings$,
+  type AuthV2PasswordError,
+} from "./password-errors.ts";
+import {
   AUTH_V2_SIGN_IN_RESEND_COOLDOWN_STORAGE_KEY,
   createAuthV2ResendCooldownStorage,
   createResendCooldownLifecycleRef,
@@ -136,6 +141,7 @@ export type AuthV2SignInErrorField =
 export interface AuthV2SignInError {
   readonly clerkCode?: string;
   readonly clerkParamName?: string;
+  readonly passwordError?: AuthV2PasswordError;
   readonly code:
     | "access-not-allowed"
     | "clerk"
@@ -1216,10 +1222,20 @@ function createSubmitOperation$(
 
     const result = await settle(preparation.request, signal);
     if (!result.ok) {
-      set(
-        atoms.error$,
-        normalizeClerkError(result.error, preparation.fallbackField),
+      const error = normalizeClerkError(
+        result.error,
+        preparation.fallbackField,
       );
+      if (flowState.step === "new-password") {
+        const settings = await get(clerkPasswordSettings$);
+        signal.throwIfAborted();
+        set(atoms.error$, {
+          ...error,
+          passwordError: clerkPasswordError(result.error, settings),
+        });
+      } else {
+        set(atoms.error$, error);
+      }
       return;
     }
     if (flowState.step === "identifier") {

@@ -2,7 +2,7 @@ import type {
   Attribute,
   AttributeData,
   Attributes,
-  PasswordValidation,
+  PasswordSettingsData,
   SignUpCreateParams,
   SignUpField,
   SignUpResource,
@@ -33,6 +33,12 @@ import {
 import type { AuthV2ContinuationFlowHandoff } from "./continuation.ts";
 import type { AuthV2Navigation } from "./navigation.ts";
 import type { AuthV2OAuthStrategy } from "./oauth-strategies.ts";
+import {
+  clerkPasswordError,
+  clerkPasswordSettings$,
+  passwordValidationError,
+  type AuthV2PasswordError,
+} from "./password-errors.ts";
 import {
   AUTH_V2_SIGN_UP_RESEND_COOLDOWN_STORAGE_KEY,
   createAuthV2ResendCooldownStorage,
@@ -142,6 +148,7 @@ export type AuthV2SignUpErrorField =
 
 export interface AuthV2SignUpError {
   readonly clerkCode?: string;
+  readonly passwordError?: AuthV2PasswordError;
   readonly code: "clerk" | "legal-required" | "password-invalid" | "unknown";
   readonly field: AuthV2SignUpErrorField;
   readonly message?: string;
@@ -611,23 +618,17 @@ function captchaFailureState(
     : "error";
 }
 
-function passwordValidationFailed(validation: PasswordValidation): boolean {
-  return (
-    Object.values(validation.complexity ?? {}).some(Boolean) ||
-    validation.strength?.state === "fail"
-  );
-}
-
 function validatePassword(
   resource: SignUpResource,
   password: string,
+  settings: PasswordSettingsData,
   signal: AbortSignal,
-): Promise<boolean> {
-  const validation = createDeferredPromise<boolean>(signal);
+): Promise<AuthV2PasswordError | null> {
+  const validation = createDeferredPromise<AuthV2PasswordError | null>(signal);
   resource.validatePassword(password, {
     onValidation: (result) => {
       if (!validation.settled()) {
-        validation.resolve(passwordValidationFailed(result));
+        validation.resolve(passwordValidationError(result, settings));
       }
     },
   });
@@ -1283,11 +1284,14 @@ function createSubmitOperation(
       set(atoms.error$, { code: "legal-required", field: "legal" });
       return;
     }
+    const passwordSettings = await get(clerkPasswordSettings$);
+    signal.throwIfAborted();
     const password = get(atoms.password$);
     if (snapshot.fields.password !== "hidden" && password) {
       const invalidPassword = await validatePassword(
         resource,
         password,
+        passwordSettings,
         signal,
       );
       signal.throwIfAborted();
@@ -1295,6 +1299,7 @@ function createSubmitOperation(
         set(atoms.error$, {
           code: "password-invalid",
           field: "password",
+          passwordError: invalidPassword,
         });
         return;
       }
@@ -1324,7 +1329,10 @@ function createSubmitOperation(
     const submitted = await settle(request, signal);
     set(atoms.captchaPending$, false);
     if (!submitted.ok) {
-      const error = normalizeClerkError(submitted.error, "general");
+      const error = {
+        ...normalizeClerkError(submitted.error, "general"),
+        passwordError: clerkPasswordError(submitted.error, passwordSettings),
+      };
       const captchaState = captchaFailureState(error);
       if (captchaState) {
         set(atoms.captchaState$, captchaState);

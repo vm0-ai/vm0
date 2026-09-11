@@ -20,6 +20,7 @@ import {
   mockedClerk,
   mockGoogleOneTapCredential,
   mockSignInResource,
+  mockSignUpConfiguration,
   type MockedClientSession,
   type MockedSignInFactor,
   type MockedSignInResourceState,
@@ -2041,6 +2042,58 @@ test.each([
     expectFieldErrorAssociation(input, alert);
   },
 );
+
+test.each([
+  {
+    name: "the configured minimum before other requirements",
+    codes: ["form_password_no_number", "form_password_length_too_short"],
+    message: "Your password must contain 12 or more characters.",
+  },
+  {
+    name: "the configured maximum",
+    codes: ["form_password_length_too_long"],
+    message: "Your password must contain less than 16 characters.",
+  },
+  {
+    name: "multiple missing requirements",
+    codes: [
+      "form_password_no_lowercase",
+      "form_password_no_uppercase",
+      "form_password_no_special_char",
+    ],
+    message:
+      "Your password must contain a lowercase letter, an uppercase letter, and a special character.",
+  },
+  {
+    name: "reusing the current password",
+    codes: ["form_new_password_matches_current"],
+    message: "New password cannot be the same as the current password.",
+  },
+])("Password reset explains $name", async ({ codes, message }) => {
+  mockSignUpConfiguration({
+    passwordSettings: { min_length: 12, max_length: 16 },
+  });
+  mockedClerk.signInResetPassword.mockRejectedValue({
+    errors: codes.map((code) => {
+      return {
+        code,
+        meta: { paramName: "password" },
+        longMessage: "Private provider detail",
+      };
+    }),
+  });
+  await setupSignInPage({ status: "needs_new_password" });
+  const input = await screen.findByLabelText("New password");
+  await fill(input, "invalid-password");
+  await fill(screen.getByLabelText("Confirm password"), "invalid-password");
+  fireEvent.submit(containingForm(input));
+
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(message);
+  expect(alert).toHaveFocus();
+  expectFieldErrorAssociation(input, alert);
+  expect(screen.queryByText("Private provider detail")).not.toBeInTheDocument();
+});
 
 test.each([
   {

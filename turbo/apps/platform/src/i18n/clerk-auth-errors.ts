@@ -2,7 +2,7 @@ import { enUS } from "@clerk/localizations/en-US";
 
 // Clerk's English resource leaves many API errors undefined and displays the
 // provider's longMessage instead. Keep reviewed copy for those codes so custom
-// sign-in never needs to render arbitrary provider details.
+// authentication never needs to render arbitrary provider details.
 const englishApiErrors: Readonly<Record<string, string>> = {
   captcha_invalid: "Security verification failed. Please try again.",
   captcha_missing_token:
@@ -61,7 +61,7 @@ function errorMessage(
     : undefined;
 }
 
-export function clerkSignInErrorMessage(
+export function clerkAuthErrorMessage(
   localization: typeof enUS,
   {
     code,
