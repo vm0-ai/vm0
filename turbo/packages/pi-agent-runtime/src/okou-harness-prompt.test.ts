@@ -49,7 +49,9 @@ describe("Okou Harness base system prompt", () => {
     ]);
 
     expect(prompt).not.toContain("Use bash for file operations");
-    expect(prompt).toContain("- Show file paths clearly when working with files");
+    expect(prompt).toContain(
+      "- Show file paths clearly when working with files",
+    );
   });
 
   it("keeps the shell file-operation guideline out when no shell is active", () => {

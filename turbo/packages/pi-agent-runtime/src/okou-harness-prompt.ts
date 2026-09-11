@@ -36,8 +36,7 @@ const CUSTOM_TOOL_NOTE =
 const SHELL_FILE_OPERATION_GUIDELINE =
   "Use bash for file operations like ls, rg, find";
 
-const FILE_PATH_GUIDELINE =
-  "Show file paths clearly when working with files";
+const FILE_PATH_GUIDELINE = "Show file paths clearly when working with files";
 
 /** Tools whose presence would make the shell file-operation guideline wrong. */
 const FILE_SEARCH_TOOL_NAMES = ["grep", "find", "ls"];

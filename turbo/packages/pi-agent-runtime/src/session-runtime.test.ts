@@ -1609,10 +1609,11 @@ describe("Okou Harness base system prompt", () => {
     });
 
     try {
-      // The shell tool only advertises the session environment when it
-      // actually exports it, so an absent guideline proves the child shell
-      // inherits no PI_SESSION_ID, PI_SESSION_FILE, PI_PROVIDER, PI_MODEL,
-      // or PI_REASONING_LEVEL.
+      // The shell tool gates its session-environment guideline and its
+      // PI_SESSION_ID, PI_SESSION_FILE, PI_PROVIDER, PI_MODEL, and
+      // PI_REASONING_LEVEL exports on the same option, so an absent guideline
+      // observes that the option is off. Asserting the child environment
+      // directly would need the sandbox shell, which CI does not provide.
       expect(created.session.systemPrompt).not.toContain("PI_");
     } finally {
       created.session.dispose();
