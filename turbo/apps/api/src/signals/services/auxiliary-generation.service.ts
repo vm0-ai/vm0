@@ -39,21 +39,28 @@ type Reason =
 type AuxiliaryFailureLevel = "warn" | "error";
 
 /**
- * Reasons that name a defect somebody can act on: the request was rejected on
- * its credentials or its shape, or nothing classified the failure at all.
+ * Reasons that name a defect somebody can act on: the provider rejected the
+ * request on its credentials or on its shape. Both are ours to fix.
  *
- * `invalid_output` is deliberately absent. It currently folds a genuine
- * envelope contract violation together with a completion that returned no
- * content or was stopped by a content filter, and those two are omissions of
- * the same kind as an empty interpreted result rather than defects. Raising
- * them would reintroduce, at a higher severity, exactly the unactionable
- * report this boundary is removing. Separating that reason belongs to the
- * provider classification, not to a caller's severity choice.
+ * Two absences are deliberate, because each is a bucket rather than a cause:
+ *
+ * - `invalid_output` folds a genuine envelope contract violation together with
+ *   a completion that returned no content and one stopped by a content filter.
+ *   The last two are omissions of the same kind as an empty interpreted
+ *   result.
+ * - `unknown` is what the classifier returns for everything its status and
+ *   envelope tables miss, which is dominated by provider-side unavailability
+ *   such as a plain HTTP 500 or an unrecognized timeout. Its enumerated
+ *   siblings are already treated as degraded and reported to nobody.
+ *
+ * Raising either would reintroduce, at a higher severity, exactly the
+ * unactionable report this boundary removes. Both stay visible as a counted
+ * `auxiliary_generation_result` reason, which is where a classifier gap shows
+ * up without an error log. Narrowing those buckets belongs to the provider
+ * classification, not to a caller's severity choice.
  */
 function isActionableFailure(reason: Reason): boolean {
-  return (
-    reason === "auth" || reason === "invalid_request" || reason === "unknown"
-  );
+  return reason === "auth" || reason === "invalid_request";
 }
 
 /**
@@ -272,7 +279,10 @@ export async function generateAuxiliary<T>(
             "unusable_output",
             undefined,
             args.diagnosticContext,
-            levelFor("unusable_output"),
+            // Reached only by a caller that has not declared this outcome
+            // expected, and an output the feature cannot interpret names no
+            // defect, so it stays at the shared level for every caller.
+            "warn",
           );
         }
         recordResult({

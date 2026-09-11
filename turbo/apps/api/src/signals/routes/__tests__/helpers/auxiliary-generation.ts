@@ -122,14 +122,20 @@ export function auxiliaryDiagnostics(
       .filter(([message]) => {
         return message === "Auxiliary generation failed";
       })
+      .filter(([, fields]) => {
+        return (
+          feature === undefined ||
+          (typeof fields === "object" &&
+            fields !== null &&
+            "feature" in fields &&
+            fields.feature === feature)
+        );
+      })
       .map(([, fields]) => {
         // `fields` is kept verbatim beside the parsed projection: the schema
         // strips unknown keys, which are exactly the provider-derived ones a
         // leak assertion has to be able to see.
         return { level, ...diagnosticSchema.parse(fields), fields };
-      })
-      .filter((diagnostic) => {
-        return feature === undefined || diagnostic.feature === feature;
       });
   });
 }

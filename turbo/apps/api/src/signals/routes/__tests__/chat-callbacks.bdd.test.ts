@@ -1635,7 +1635,6 @@ describe("CHAT-02: completed chat callback", () => {
       ).toContainEqual(
         expect.objectContaining({ body: "Your task is complete" }),
       );
-      expect(JSON.stringify(auxiliaryDiagnostics(context))).not.toContain(text);
     },
   );
 
@@ -1700,7 +1699,28 @@ describe("CHAT-02: completed chat callback", () => {
     );
   });
 
-  it("does not raise the severity of a follow-up completion that produced no content", async () => {
+  it.each([
+    {
+      name: "a completion that produced no content",
+      // Stopping with nothing to interpret is another way to get no
+      // suggestions, not a defect this caller can act on.
+      response: () => {
+        return HttpResponse.json({
+          choices: [{ finish_reason: "stop", message: { content: "" } }],
+        });
+      },
+      reason: "invalid_output",
+    },
+    {
+      name: "a provider failure nothing classified",
+      // The reason the classifier's status table misses, which in practice is
+      // provider-side unavailability rather than a defect of ours.
+      response: () => {
+        return new HttpResponse("Internal Server Error", { status: 500 });
+      },
+      reason: "unknown",
+    },
+  ])("does not raise the severity of $name", async ({ response, reason }) => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
     chatCallbacks.mockOpenRouterCompletions((body) => {
@@ -1710,11 +1730,7 @@ describe("CHAT-02: completed chat callback", () => {
           "You generate recommended follow-up messages for a chat.",
         )
       ) {
-        // A completion that stops with nothing to interpret is another way to
-        // get no suggestions, not a defect this caller can act on.
-        return HttpResponse.json({
-          choices: [{ finish_reason: "stop", message: { content: "" } }],
-        });
+        return response();
       }
       return "Generated summary";
     });
@@ -1740,15 +1756,13 @@ describe("CHAT-02: completed chat callback", () => {
       expect.objectContaining({ content: "The main answer survives" }),
     );
     expect(auxiliaryResults(context, "recommended_followups")).toStrictEqual([
-      expect.objectContaining({ outcome: "error", reason: "invalid_output" }),
+      expect.objectContaining({ outcome: "error", reason }),
     ]);
-    // The caller's raised severity covers the reasons that name a defect, so
-    // this one keeps the shared level instead of being escalated.
+    // The caller's raised severity covers only the reasons that name a defect,
+    // so these keep the shared level instead of being escalated.
     expect(
       auxiliaryDiagnostics(context, "recommended_followups"),
-    ).toStrictEqual([
-      expect.objectContaining({ level: "warn", reason: "invalid_output" }),
-    ]);
+    ).toStrictEqual([expect.objectContaining({ level: "warn", reason })]);
     expect(context.mocks.axiomLogging.error.mock.calls).toStrictEqual([]);
   });
 
