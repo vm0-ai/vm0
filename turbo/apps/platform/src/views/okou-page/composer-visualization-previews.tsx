@@ -1,350 +1,140 @@
 import type { ComponentType } from "react";
-import type {
-  VisualizationChart,
-  VisualizationOutput,
-} from "../../signals/okou-page/composer-visualization.ts";
+import { useTranslation } from "react-i18next";
+import type { VisualizationChart } from "../../signals/okou-page/composer-visualization.ts";
 
-const GRID_LINES = [18, 34, 50, 66] as const;
+const PLOT = { left: 25, right: 153, top: 9, bottom: 69 } as const;
+const X_LABELS = ["01", "02", "03", "04", "05", "06"] as const;
+const Y_TICKS = [
+  { label: "80", y: 9 },
+  { label: "60", y: 24 },
+  { label: "40", y: 39 },
+  { label: "20", y: 54 },
+  { label: "0", y: 69 },
+] as const;
 
-function ChartGrid() {
-  return (
-    <>
-      {GRID_LINES.map((y) => {
-        return (
-          <line
-            key={y}
-            x1="10"
-            x2="110"
-            y1={y}
-            y2={y}
-            className="stroke-border"
-            strokeWidth="1"
-          />
-        );
-      })}
-      <line
-        x1="10"
-        x2="110"
-        y1="78"
-        y2="78"
-        className="stroke-muted-foreground/40"
-        strokeWidth="1"
-      />
-    </>
-  );
-}
-
-function SingleChartOutputArtwork() {
-  return (
-    <>
-      <rect
-        x="20"
-        y="7"
-        width="100"
-        height="62"
-        rx="7"
-        className="fill-background stroke-border"
-      />
-      <path
-        d="M31 54 43 45 55 49 67 35 79 40 91 22 108 29"
-        fill="none"
-        className="stroke-chart-blue-500"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <circle cx="91" cy="22" r="3" className="fill-chart-orange" />
-      <line x1="30" x2="110" y1="59" y2="59" className="stroke-border" />
-    </>
-  );
-}
-
-function PresentationOutputArtwork() {
-  return (
-    <>
-      <rect
-        x="13"
-        y="7"
-        width="114"
-        height="62"
-        rx="7"
-        className="fill-background stroke-border"
-      />
-      {[15, 33, 51].map((y) => {
-        return (
-          <rect
-            key={y}
-            x="21"
-            y={y}
-            width="19"
-            height={y === 51 ? 10 : 13}
-            rx="2"
-            className="fill-chart-blue-100"
-          />
-        );
-      })}
-      <rect x="49" y="15" width="68" height="7" rx="2" className="fill-muted" />
-      <rect
-        x="49"
-        y="28"
-        width="11"
-        height="28"
-        rx="2"
-        className="fill-chart-blue-300"
-      />
-      <rect
-        x="65"
-        y="37"
-        width="11"
-        height="19"
-        rx="2"
-        className="fill-chart-green"
-      />
-      <rect
-        x="81"
-        y="23"
-        width="11"
-        height="33"
-        rx="2"
-        className="fill-chart-blue-500"
-      />
-      <rect
-        x="97"
-        y="32"
-        width="11"
-        height="24"
-        rx="2"
-        className="fill-chart-orange"
-      />
-    </>
-  );
-}
-
-function WebsiteOutputArtwork() {
-  return (
-    <>
-      <rect
-        x="13"
-        y="7"
-        width="114"
-        height="62"
-        rx="7"
-        className="fill-background stroke-border"
-      />
-      {[22, 29, 36].map((cx) => {
-        return (
-          <circle
-            key={cx}
-            cx={cx}
-            cy="15"
-            r="2"
-            className="fill-chart-orange"
-          />
-        );
-      })}
-      <rect x="22" y="26" width="47" height="5" rx="2" className="fill-muted" />
-      <rect
-        x="22"
-        y="36"
-        width="58"
-        height="4"
-        rx="2"
-        className="fill-border"
-      />
-      <rect
-        x="22"
-        y="45"
-        width="28"
-        height="14"
-        rx="2"
-        className="fill-chart-blue-200"
-      />
-      <rect
-        x="84"
-        y="48"
-        width="7"
-        height="11"
-        rx="1"
-        className="fill-chart-green"
-      />
-      <rect
-        x="95"
-        y="38"
-        width="7"
-        height="21"
-        rx="1"
-        className="fill-chart-blue-500"
-      />
-      <rect
-        x="106"
-        y="30"
-        width="7"
-        height="29"
-        rx="1"
-        className="fill-chart-gold"
-      />
-    </>
-  );
-}
-
-function SpreadsheetOutputArtwork() {
-  return (
-    <>
-      <rect
-        x="13"
-        y="7"
-        width="114"
-        height="62"
-        rx="7"
-        className="fill-background stroke-border"
-      />
-      {[22, 32, 42, 52].map((y) => {
-        return (
-          <line
-            key={y}
-            x1="20"
-            x2="120"
-            y1={y}
-            y2={y}
-            className="stroke-border"
-          />
-        );
-      })}
-      {[42, 65, 88].map((x) => {
-        return (
-          <line
-            key={x}
-            x1={x}
-            x2={x}
-            y1="14"
-            y2="60"
-            className="stroke-border"
-          />
-        );
-      })}
-      <rect
-        x="68"
-        y="34"
-        width="17"
-        height="6"
-        rx="1"
-        className="fill-chart-green"
-      />
-      <rect
-        x="91"
-        y="44"
-        width="26"
-        height="6"
-        rx="1"
-        className="fill-chart-blue-500"
-      />
-    </>
-  );
-}
-
-function ReportOutputArtwork() {
-  return (
-    <>
-      <rect
-        x="41"
-        y="5"
-        width="69"
-        height="60"
-        rx="7"
-        className="fill-chart-blue-100"
-      />
-      <rect
-        x="27"
-        y="12"
-        width="72"
-        height="56"
-        rx="7"
-        className="fill-background stroke-border"
-      />
-      <rect x="37" y="22" width="39" height="5" rx="2" className="fill-muted" />
-      <rect
-        x="37"
-        y="32"
-        width="52"
-        height="4"
-        rx="2"
-        className="fill-border"
-      />
-      <rect
-        x="37"
-        y="41"
-        width="8"
-        height="17"
-        rx="1"
-        className="fill-chart-blue-300"
-      />
-      <rect
-        x="50"
-        y="48"
-        width="8"
-        height="10"
-        rx="1"
-        className="fill-chart-green"
-      />
-      <rect
-        x="63"
-        y="37"
-        width="8"
-        height="21"
-        rx="1"
-        className="fill-chart-blue-500"
-      />
-      <circle
-        cx="82"
-        cy="50"
-        r="9"
-        fill="none"
-        className="stroke-chart-orange"
-        strokeWidth="5"
-      />
-    </>
-  );
-}
-
-const OUTPUT_ARTWORKS = {
-  "single-chart": SingleChartOutputArtwork,
-  presentation: PresentationOutputArtwork,
-  website: WebsiteOutputArtwork,
-  spreadsheet: SpreadsheetOutputArtwork,
-  report: ReportOutputArtwork,
-} satisfies Record<VisualizationOutput, ComponentType>;
-
-export function VisualizationOutputPreview({
-  output,
+function CartesianFrame({
+  xLabels = X_LABELS,
 }: {
-  readonly output: VisualizationOutput;
+  readonly xLabels?: readonly string[];
 }) {
-  const Artwork = OUTPUT_ARTWORKS[output];
+  const step = (PLOT.right - PLOT.left) / Math.max(xLabels.length - 1, 1);
   return (
-    <svg
-      viewBox="0 0 140 72"
-      className="h-11 w-16 shrink-0"
-      aria-hidden
-      focusable="false"
-    >
-      <Artwork />
-    </svg>
+    <g>
+      {Y_TICKS.map(({ label, y }) => {
+        return (
+          <g key={label}>
+            <line
+              x1={PLOT.left}
+              x2={PLOT.right}
+              y1={y}
+              y2={y}
+              className="stroke-border"
+              strokeOpacity="0.68"
+              strokeWidth="0.7"
+            />
+            <text
+              x="20"
+              y={y + 2}
+              textAnchor="end"
+              className="fill-muted-foreground"
+              fillOpacity="0.72"
+              fontSize="5.5"
+            >
+              {label}
+            </text>
+          </g>
+        );
+      })}
+      {xLabels.map((label, index) => {
+        return (
+          <text
+            key={`${label}-${index}`}
+            x={PLOT.left + index * step}
+            y="79"
+            textAnchor="middle"
+            className="fill-muted-foreground"
+            fillOpacity="0.72"
+            fontSize="5.5"
+          >
+            {label}
+          </text>
+        );
+      })}
+    </g>
   );
+}
+
+function SeriesLegend({ count = 2 }: { readonly count?: 2 | 3 }) {
+  return (
+    <g transform="translate(108 4)">
+      <circle cx="0" cy="0" r="2" className="fill-chart-blue-500" />
+      <line
+        x1="4"
+        x2="14"
+        y1="0"
+        y2="0"
+        className="stroke-muted-foreground"
+        strokeOpacity="0.55"
+        strokeWidth="1.2"
+      />
+      <circle cx="20" cy="0" r="2" className="fill-chart-orange" />
+      <line
+        x1="24"
+        x2="34"
+        y1="0"
+        y2="0"
+        className="stroke-muted-foreground"
+        strokeOpacity="0.55"
+        strokeWidth="1.2"
+      />
+      {count === 3 ? (
+        <circle cx="40" cy="0" r="2" className="fill-chart-green" />
+      ) : null}
+    </g>
+  );
+}
+
+function polarPoint(cx: number, cy: number, radius: number, angle: number) {
+  const radians = ((angle - 90) * Math.PI) / 180;
+  return {
+    x: cx + radius * Math.cos(radians),
+    y: cy + radius * Math.sin(radians),
+  };
+}
+
+function pieSlicePath(
+  cx: number,
+  cy: number,
+  radius: number,
+  startAngle: number,
+  endAngle: number,
+) {
+  const start = polarPoint(cx, cy, radius, endAngle);
+  const end = polarPoint(cx, cy, radius, startAngle);
+  const largeArc = endAngle - startAngle <= 180 ? 0 : 1;
+  return `M${cx} ${cy}L${start.x} ${start.y}A${radius} ${radius} 0 ${largeArc} 0 ${end.x} ${end.y}Z`;
 }
 
 function BarChartArtwork() {
+  const bars = [37, 48, 32, 55, 44, 61] as const;
   return (
     <>
-      {[32, 19, 43, 27, 52, 36].map((height, index) => {
+      <CartesianFrame />
+      {bars.map((value, index) => {
+        const height = (value / 80) * 60;
         return (
           <rect
-            key={height}
-            x={17 + index * 15}
-            y={78 - height}
-            width="8"
+            key={`${value}-${index}`}
+            x={29 + index * 21}
+            y={PLOT.bottom - height}
+            width="11"
             height={height}
             rx="1.5"
-            className="fill-chart-blue-500"
+            className={
+              index === bars.length - 1
+                ? "fill-chart-blue-600"
+                : "fill-chart-blue-300"
+            }
           />
         );
       })}
@@ -354,54 +144,119 @@ function BarChartArtwork() {
 
 function LineChartArtwork() {
   return (
-    <path
-      d="M12 29 27 35 42 62 57 43 72 39 87 52 108 48"
-      fill="none"
-      className="stroke-chart-blue-500"
-      strokeWidth="3"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
+    <>
+      <CartesianFrame />
+      <SeriesLegend />
+      <path
+        d="M25 57C36 55 39 45 50 47S67 37 76 39 92 25 101 29 116 19 127 23 142 14 153 18"
+        fill="none"
+        className="stroke-chart-blue-500"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M25 62C37 56 42 60 50 54S67 49 76 51 91 40 101 44 117 34 127 36 142 29 153 31"
+        fill="none"
+        className="stroke-chart-orange"
+        strokeOpacity="0.85"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle
+        cx="153"
+        cy="18"
+        r="2.6"
+        className="fill-chart-blue-500 stroke-background"
+      />
+    </>
   );
 }
 
 function PieChartArtwork() {
+  const slices = [
+    { className: "fill-chart-blue-500", end: 151, start: 0 },
+    { className: "fill-chart-blue-300", end: 252, start: 154 },
+    { className: "fill-chart-orange", end: 318, start: 255 },
+    { className: "fill-chart-green", end: 358, start: 321 },
+  ] as const;
+  const legend = [
+    ["42%", "fill-chart-blue-500"],
+    ["28%", "fill-chart-blue-300"],
+    ["18%", "fill-chart-orange"],
+    ["12%", "fill-chart-green"],
+  ] as const;
   return (
     <>
-      <circle cx="60" cy="47" r="27" className="fill-chart-blue-500" />
-      <path d="M60 47V20A27 27 0 0 1 84 60Z" className="fill-chart-orange" />
-      <path d="M60 47 84 60A27 27 0 0 1 43 68Z" className="fill-chart-green" />
-      <path d="M60 47 43 68A27 27 0 0 1 60 20Z" className="fill-chart-gold" />
+      {slices.map((slice) => {
+        return (
+          <path
+            key={slice.start}
+            d={pieSlicePath(54, 43, 31, slice.start, slice.end)}
+            className={`${slice.className} stroke-background`}
+            strokeWidth="1.5"
+          />
+        );
+      })}
+      {legend.map(([label, className], index) => {
+        return (
+          <g key={label} transform={`translate(103 ${24 + index * 14})`}>
+            <circle cx="0" cy="0" r="3" className={className} />
+            <text x="8" y="2" className="fill-muted-foreground" fontSize="6.5">
+              {label}
+            </text>
+            <line
+              x1="28"
+              x2="44"
+              y1="0"
+              y2="0"
+              className="stroke-border"
+              strokeWidth="1.5"
+            />
+          </g>
+        );
+      })}
     </>
   );
 }
 
 function ScatterChartArtwork() {
+  const points = [
+    [30, 61],
+    [38, 54],
+    [47, 57],
+    [55, 45],
+    [67, 47],
+    [76, 37],
+    [87, 43],
+    [97, 31],
+    [109, 34],
+    [119, 23],
+    [132, 28],
+    [143, 16],
+  ] as const;
   return (
     <>
-      {[
-        [20, 66],
-        [31, 58],
-        [38, 49],
-        [48, 55],
-        [57, 43],
-        [66, 35],
-        [76, 46],
-        [84, 28],
-        [93, 37],
-        [103, 21],
-        [106, 54],
-      ].map(([cx, cy], index) => {
+      <CartesianFrame />
+      <path
+        d="M28 63 146 15"
+        className="stroke-chart-orange"
+        strokeOpacity="0.75"
+        strokeDasharray="3 3"
+        strokeWidth="1.1"
+      />
+      {points.map(([cx, cy], index) => {
         return (
           <circle
             key={`${cx}-${cy}`}
             cx={cx}
             cy={cy}
-            r={index % 3 === 0 ? 4 : 3}
+            r={index % 4 === 0 ? 3.2 : 2.5}
             className={
-              index % 3 === 0 ? "fill-chart-orange" : "fill-chart-blue-500"
+              index % 4 === 0 ? "fill-chart-orange" : "fill-chart-blue-500"
             }
-            fillOpacity={index % 3 === 0 ? 0.9 : 0.72}
+            fillOpacity={index % 4 === 0 ? 0.92 : 0.72}
           />
         );
       })}
@@ -412,61 +267,70 @@ function ScatterChartArtwork() {
 function AreaChartArtwork() {
   return (
     <>
+      <CartesianFrame />
+      <SeriesLegend />
       <path
-        d="M10 69 25 61 40 65 55 46 70 51 85 30 100 38 110 27V78H10Z"
+        d="M25 61C37 56 42 59 51 51S68 47 77 43 91 32 102 36 115 27 127 30 142 18 153 20V69H25Z"
         className="fill-chart-blue-500"
-        fillOpacity="0.18"
+        fillOpacity="0.16"
       />
       <path
-        d="M10 69 25 61 40 65 55 46 70 51 85 30 100 38 110 27"
+        d="M25 61C37 56 42 59 51 51S68 47 77 43 91 32 102 36 115 27 127 30 142 18 153 20"
         fill="none"
         className="stroke-chart-blue-500"
-        strokeWidth="2.5"
-        strokeLinejoin="round"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M25 65C38 62 43 64 51 60S68 55 77 57 91 46 102 49 115 42 127 44 142 37 153 39V69H25Z"
+        className="fill-chart-orange"
+        fillOpacity="0.1"
+      />
+      <path
+        d="M25 65C38 62 43 64 51 60S68 55 77 57 91 46 102 49 115 42 127 44 142 37 153 39"
+        fill="none"
+        className="stroke-chart-orange"
+        strokeWidth="1.4"
       />
     </>
   );
 }
 
 function StackedBarChartArtwork() {
+  const bars = [
+    [18, 11, 8],
+    [23, 13, 10],
+    [17, 16, 9],
+    [26, 12, 11],
+    [21, 19, 12],
+    [29, 17, 10],
+  ] as const;
+  const colors = [
+    "fill-chart-blue-500",
+    "fill-chart-blue-200",
+    "fill-chart-orange",
+  ] as const;
   return (
     <>
-      {[0, 1, 2, 3, 4].map((position) => {
-        const first = 18 + position * 2;
-        const second = 13 + (position % 2) * 5;
-        const third = 10 + ((position + 1) % 3) * 3;
-        const x = 19 + position * 18;
-        return (
-          <g key={x}>
+      <CartesianFrame />
+      <SeriesLegend count={3} />
+      {bars.map((values, index) => {
+        let offset = 0;
+        return values.map((value, segment) => {
+          const y = PLOT.bottom - offset - value;
+          offset += value;
+          return (
             <rect
-              x={x}
-              y={78 - first}
-              width="10"
-              height={first}
+              key={`${index}-${segment}`}
+              x={29 + index * 21}
+              y={y}
+              width="11"
+              height={value - 1}
               rx="1"
-              className="fill-chart-blue-500 stroke-background"
-              strokeWidth="1"
+              className={colors[segment]}
             />
-            <rect
-              x={x}
-              y={78 - first - second}
-              width="10"
-              height={second}
-              rx="1"
-              className="fill-chart-orange stroke-background"
-              strokeWidth="1"
-            />
-            <rect
-              x={x}
-              y={78 - first - second - third}
-              width="10"
-              height={third}
-              rx="1"
-              className="fill-chart-green stroke-background"
-              strokeWidth="1"
-            />
-          </g>
-        );
+          );
+        });
       })}
     </>
   );
@@ -479,41 +343,99 @@ function HeatmapChartArtwork() {
     "fill-chart-blue-300",
     "fill-chart-blue-400",
     "fill-chart-blue-600",
-  ];
+  ] as const;
   return (
     <>
+      {["1", "2", "3", "4", "5"].map((label, row) => {
+        return (
+          <text
+            key={label}
+            x="18"
+            y={17 + row * 12}
+            textAnchor="end"
+            className="fill-muted-foreground"
+            fontSize="5.5"
+          >
+            {label}
+          </text>
+        );
+      })}
       {[0, 1, 2, 3, 4].flatMap((row) => {
-        return [0, 1, 2, 3, 4, 5, 6].map((column) => {
-          const level = (row * 3 + column * 2) % colors.length;
+        return [0, 1, 2, 3, 4, 5, 6, 7].map((column) => {
+          const level = (row * 7 + column * 3 + row * column) % colors.length;
           return (
             <rect
               key={`${row}-${column}`}
-              x={19 + column * 13}
-              y={18 + row * 11}
-              width="10"
-              height="8"
-              rx="1"
+              x={25 + column * 15}
+              y={9 + row * 12}
+              width="12"
+              height="9"
+              rx="1.5"
               className={colors[level]}
             />
           );
         });
       })}
+      {["01", "02", "03", "04", "05", "06", "07", "08"].map((label, index) => {
+        return (
+          <text
+            key={label}
+            x={31 + index * 15}
+            y="76"
+            textAnchor="middle"
+            className="fill-muted-foreground"
+            fontSize="5.5"
+          >
+            {label}
+          </text>
+        );
+      })}
+      <rect
+        x="119"
+        y="81"
+        width="8"
+        height="3"
+        className="fill-chart-blue-100"
+      />
+      <rect
+        x="127"
+        y="81"
+        width="8"
+        height="3"
+        className="fill-chart-blue-300"
+      />
+      <rect
+        x="135"
+        y="81"
+        width="8"
+        height="3"
+        className="fill-chart-blue-400"
+      />
+      <rect
+        x="143"
+        y="81"
+        width="8"
+        height="3"
+        className="fill-chart-blue-600"
+      />
     </>
   );
 }
 
 function BubbleChartArtwork() {
+  const bubbles = [
+    [34, 57, 5],
+    [48, 43, 8],
+    [65, 54, 11],
+    [78, 31, 6],
+    [96, 42, 9],
+    [116, 24, 13],
+    [137, 48, 7],
+  ] as const;
   return (
     <>
-      {[
-        [25, 61, 8],
-        [40, 45, 5],
-        [54, 57, 11],
-        [65, 31, 7],
-        [78, 50, 5],
-        [91, 29, 13],
-        [102, 58, 7],
-      ].map(([cx, cy, radius], index) => {
+      <CartesianFrame />
+      {bubbles.map(([cx, cy, radius], index) => {
         return (
           <circle
             key={`${cx}-${cy}`}
@@ -521,14 +443,10 @@ function BubbleChartArtwork() {
             cy={cy}
             r={radius}
             className={
-              [
-                "fill-chart-blue-500",
-                "fill-chart-orange",
-                "fill-chart-green",
-                "fill-chart-gold",
-              ][index % 4]
+              index === 5 ? "fill-chart-orange" : "fill-chart-blue-500"
             }
-            fillOpacity={index % 3 === 0 ? 0.86 : 0.68}
+            fillOpacity={index === 5 ? 0.78 : 0.34 + index * 0.055}
+            strokeWidth="1"
           />
         );
       })}
@@ -537,30 +455,57 @@ function BubbleChartArtwork() {
 }
 
 function RadarChartArtwork() {
+  const center = { x: 77, y: 44 } as const;
+  const axes = [0, 60, 120, 180, 240, 300] as const;
+  const polygon = (radius: number) => {
+    return axes
+      .map((angle) => {
+        const point = polarPoint(center.x, center.y, radius, angle);
+        return `${point.x},${point.y}`;
+      })
+      .join(" ");
+  };
   return (
     <>
+      {[12, 23, 34].map((radius) => {
+        return (
+          <polygon
+            key={radius}
+            points={polygon(radius)}
+            fill="none"
+            className="stroke-border"
+            strokeOpacity="0.8"
+            strokeWidth="0.7"
+          />
+        );
+      })}
+      {axes.map((angle) => {
+        const point = polarPoint(center.x, center.y, 34, angle);
+        return (
+          <line
+            key={angle}
+            x1={center.x}
+            x2={point.x}
+            y1={center.y}
+            y2={point.y}
+            className="stroke-border"
+            strokeWidth="0.7"
+          />
+        );
+      })}
       <polygon
-        points="60,14 91,33 84,68 60,80 34,66 29,32"
-        fill="none"
-        className="stroke-border"
-      />
-      <polygon
-        points="60,25 80,37 76,61 60,69 43,60 38,37"
-        fill="none"
-        className="stroke-border"
-      />
-      <polygon
-        points="60,20 85,39 73,66 55,60 38,57 44,35"
+        points="77,14 101,30 101,58 77,68 53,58 60,34"
         className="fill-chart-blue-500 stroke-chart-blue-500"
-        fillOpacity="0.18"
-        strokeWidth="2"
+        fillOpacity="0.15"
+        strokeWidth="1.5"
       />
       <polygon
-        points="60,29 75,38 82,63 60,72 45,58 35,34"
-        className="fill-chart-green stroke-chart-green"
-        fillOpacity="0.14"
-        strokeWidth="2"
+        points="77,22 94,34 107,61 77,62 48,61 58,33"
+        className="fill-chart-orange stroke-chart-orange"
+        fillOpacity="0.1"
+        strokeWidth="1.3"
       />
+      <SeriesLegend />
     </>
   );
 }
@@ -568,184 +513,325 @@ function RadarChartArtwork() {
 function SankeyChartArtwork() {
   return (
     <>
+      <path
+        d="M32 21C57 21 59 28 81 28S110 17 130 17"
+        fill="none"
+        className="stroke-chart-blue-500"
+        strokeOpacity="0.34"
+        strokeWidth="14"
+      />
+      <path
+        d="M32 53C57 53 58 42 81 42S109 56 130 56"
+        fill="none"
+        className="stroke-chart-blue-300"
+        strokeOpacity="0.38"
+        strokeWidth="18"
+      />
+      <path
+        d="M88 31C105 31 111 37 130 37"
+        fill="none"
+        className="stroke-chart-orange"
+        strokeOpacity="0.34"
+        strokeWidth="8"
+      />
+      <path
+        d="M88 49C105 49 111 69 130 69"
+        fill="none"
+        className="stroke-chart-green"
+        strokeOpacity="0.34"
+        strokeWidth="7"
+      />
       <rect
-        x="13"
-        y="21"
+        x="24"
+        y="10"
         width="8"
-        height="48"
+        height="53"
+        rx="2"
+        className="fill-chart-blue-600"
+      />
+      <rect
+        x="80"
+        y="20"
+        width="8"
+        height="39"
+        rx="2"
+        className="fill-chart-blue-400"
+      />
+      <rect
+        x="130"
+        y="10"
+        width="8"
+        height="15"
         rx="2"
         className="fill-chart-blue-500"
       />
       <rect
-        x="55"
-        y="29"
+        x="130"
+        y="31"
         width="8"
-        height="39"
-        rx="2"
-        className="fill-chart-green"
-      />
-      <rect
-        x="99"
-        y="17"
-        width="8"
-        height="23"
+        height="13"
         rx="2"
         className="fill-chart-orange"
       />
       <rect
-        x="99"
-        y="52"
+        x="130"
+        y="51"
         width="8"
-        height="21"
+        height="24"
         rx="2"
-        className="fill-chart-gold"
+        className="fill-chart-green"
       />
-      <path
-        d="M21 29C36 29 40 37 55 37"
-        fill="none"
-        className="stroke-chart-blue-500"
-        strokeWidth="10"
-        strokeOpacity="0.65"
-      />
-      <path
-        d="M21 56C36 56 40 59 55 59"
-        fill="none"
-        className="stroke-chart-blue-300"
-        strokeWidth="13"
-        strokeOpacity="0.65"
-      />
-      <path
-        d="M63 38C78 38 84 27 99 27"
-        fill="none"
-        className="stroke-chart-green"
-        strokeWidth="11"
-        strokeOpacity="0.6"
-      />
-      <path
-        d="M63 58C78 58 84 62 99 62"
-        fill="none"
-        className="stroke-chart-green"
-        strokeWidth="11"
-        strokeOpacity="0.6"
-      />
+      <text x="24" y="83" className="fill-muted-foreground" fontSize="5.5">
+        100
+      </text>
+      <text x="80" y="83" className="fill-muted-foreground" fontSize="5.5">
+        76
+      </text>
+      <text x="130" y="83" className="fill-muted-foreground" fontSize="5.5">
+        51
+      </text>
     </>
   );
 }
 
 function GanttChartArtwork() {
+  const items = [
+    { className: "fill-chart-blue-500", row: 0, start: 0, width: 43 },
+    { className: "fill-chart-blue-300", row: 1, start: 24, width: 56 },
+    { className: "fill-chart-orange", row: 2, start: 50, width: 43 },
+    { className: "fill-chart-green", row: 3, start: 84, width: 39 },
+  ] as const;
   return (
     <>
-      <rect
-        x="20"
-        y="19"
-        width="34"
-        height="7"
-        rx="2"
-        className="fill-chart-blue-500"
-      />
-      <rect
-        x="44"
-        y="32"
-        width="43"
-        height="7"
-        rx="2"
-        className="fill-chart-orange"
-      />
-      <rect
-        x="32"
-        y="45"
-        width="29"
-        height="7"
-        rx="2"
-        className="fill-chart-green"
-      />
-      <rect
-        x="72"
-        y="58"
-        width="31"
-        height="7"
-        rx="2"
-        className="fill-chart-purple"
+      {["01", "02", "03", "04", "05", "06"].map((label, index) => {
+        return (
+          <g key={label}>
+            <line
+              x1={32 + index * 23}
+              x2={32 + index * 23}
+              y1="13"
+              y2="70"
+              className="stroke-border"
+              strokeOpacity="0.62"
+              strokeWidth="0.7"
+            />
+            <text
+              x={32 + index * 23}
+              y="9"
+              textAnchor="middle"
+              className="fill-muted-foreground"
+              fontSize="5.5"
+            >
+              {label}
+            </text>
+          </g>
+        );
+      })}
+      {["1", "2", "3", "4"].map((label, index) => {
+        return (
+          <g key={label}>
+            <line
+              x1="25"
+              x2="153"
+              y1={18 + index * 16}
+              y2={18 + index * 16}
+              className="stroke-border"
+              strokeOpacity="0.45"
+              strokeWidth="0.7"
+            />
+            <text
+              x="18"
+              y={21 + index * 16}
+              textAnchor="end"
+              className="fill-muted-foreground"
+              fontSize="5.5"
+            >
+              {label}
+            </text>
+          </g>
+        );
+      })}
+      {items.map((item) => {
+        return (
+          <rect
+            key={item.row}
+            x={28 + item.start}
+            y={14 + item.row * 16}
+            width={item.width}
+            height="8"
+            rx="2.5"
+            className={item.className}
+          />
+        );
+      })}
+      <path
+        d="M101 10V75"
+        className="stroke-chart-red"
+        strokeDasharray="2 2"
+        strokeWidth="1"
       />
     </>
   );
 }
 
 function BarRaceChartArtwork() {
+  const rows = [
+    { className: "fill-chart-blue-500", label: "1", value: 92, width: 104 },
+    { className: "fill-chart-orange", label: "2", value: 78, width: 85 },
+    { className: "fill-chart-green", label: "3", value: 64, width: 68 },
+    { className: "fill-chart-blue-300", label: "4", value: 49, width: 50 },
+  ] as const;
   return (
     <>
-      <rect
-        x="18"
-        y="20"
-        width="71"
-        height="8"
-        rx="2"
-        className="fill-chart-blue-500"
-      />
-      <rect
-        x="18"
-        y="34"
-        width="48"
-        height="8"
-        rx="2"
-        className="fill-chart-orange"
-      />
-      <rect
-        x="18"
-        y="48"
-        width="84"
-        height="8"
-        rx="2"
-        className="fill-chart-green"
-      />
-      <rect
-        x="18"
-        y="62"
-        width="58"
-        height="8"
-        rx="2"
-        className="fill-chart-gold"
-      />
-      <path d="m101 67 9 5-9 5Z" className="fill-chart-red" />
+      {rows.map((row, index) => {
+        const y = 11 + index * 18;
+        return (
+          <g key={row.label}>
+            <text
+              x="20"
+              y={y + 8}
+              textAnchor="end"
+              className="fill-muted-foreground"
+              fontSize="6"
+            >
+              {row.label}
+            </text>
+            <rect
+              x="26"
+              y={y}
+              width="120"
+              height="11"
+              rx="3"
+              className="fill-muted"
+              fillOpacity="0.55"
+            />
+            <rect
+              x="26"
+              y={y}
+              width={row.width}
+              height="11"
+              rx="3"
+              className={row.className}
+            />
+            <text
+              x={30 + row.width}
+              y={y + 8}
+              className="fill-foreground"
+              fontSize="6"
+              fontWeight="600"
+            >
+              {row.value}
+            </text>
+          </g>
+        );
+      })}
+      <circle cx="142" cy="82" r="4" className="fill-chart-blue-500" />
+      <path d="m141 80 3 2-3 2Z" className="fill-background" />
+      <text
+        x="134"
+        y="84"
+        textAnchor="end"
+        className="fill-muted-foreground"
+        fontSize="5.5"
+      >
+        06
+      </text>
     </>
   );
 }
 
 function CandlestickChartArtwork() {
+  const candles = [
+    { close: 49, high: 61, low: 32, open: 39 },
+    { close: 42, high: 57, low: 28, open: 51 },
+    { close: 56, high: 68, low: 39, open: 45 },
+    { close: 38, high: 60, low: 30, open: 54 },
+    { close: 62, high: 73, low: 45, open: 48 },
+    { close: 67, high: 77, low: 51, open: 58 },
+    { close: 54, high: 72, low: 46, open: 65 },
+  ] as const;
+  const y = (value: number) => PLOT.bottom - (value / 80) * 60;
   return (
     <>
-      {[
-        [24, 29, 18, 43],
-        [40, 42, 30, 60],
-        [56, 33, 21, 51],
-        [72, 47, 36, 68],
-        [88, 25, 16, 45],
-        [104, 38, 28, 59],
-      ].map(([x, top, wickTop, bottom], index) => {
+      <CartesianFrame xLabels={["01", "02", "03", "04", "05", "06", "07"]} />
+      {candles.map((candle, index) => {
+        const rising = candle.close >= candle.open;
+        const top = y(Math.max(candle.open, candle.close));
+        const bottom = y(Math.min(candle.open, candle.close));
+        const x = 31 + index * 19;
         return (
           <g key={x}>
             <line
               x1={x}
               x2={x}
-              y1={wickTop}
-              y2={bottom + 7}
-              className={
-                index % 2 === 0 ? "stroke-chart-green" : "stroke-chart-red"
-              }
-              strokeWidth="1.5"
+              y1={y(candle.high)}
+              y2={y(candle.low)}
+              className={rising ? "stroke-chart-green" : "stroke-chart-red"}
+              strokeWidth="1.2"
             />
             <rect
               x={x - 4}
               y={top}
               width="8"
-              height={bottom - top}
-              rx="1"
-              className={
-                index % 2 === 0
-                  ? "fill-chart-green"
-                  : "fill-background stroke-chart-red"
-              }
+              height={Math.max(bottom - top, 2)}
+              className={rising ? "fill-chart-green" : "fill-chart-red"}
             />
+          </g>
+        );
+      })}
+      <path
+        d="M31 49C47 45 60 47 69 40S91 38 107 28 129 24 145 27"
+        fill="none"
+        className="stroke-chart-gold"
+        strokeWidth="1.2"
+      />
+    </>
+  );
+}
+
+function FunnelChartArtwork() {
+  const stages = [
+    {
+      className: "fill-chart-blue-600",
+      label: "100%",
+      points: "20,12 116,12 106,27 30,27",
+    },
+    {
+      className: "fill-chart-blue-500",
+      label: "73%",
+      points: "31,31 105,31 95,46 41,46",
+    },
+    {
+      className: "fill-chart-blue-300",
+      label: "49%",
+      points: "42,50 94,50 84,65 52,65",
+    },
+    {
+      className: "fill-chart-blue-200",
+      label: "28%",
+      points: "53,69 83,69 76,81 60,81",
+    },
+  ] as const;
+  return (
+    <>
+      {stages.map((stage, index) => {
+        return (
+          <g key={stage.label}>
+            <polygon points={stage.points} className={stage.className} />
+            <circle
+              cx="129"
+              cy={20 + index * 19}
+              r="2.5"
+              className={stage.className}
+            />
+            <text
+              x="136"
+              y={22 + index * 19}
+              className="fill-muted-foreground"
+              fontSize="6.5"
+            >
+              {stage.label}
+            </text>
           </g>
         );
       })}
@@ -753,13 +839,31 @@ function CandlestickChartArtwork() {
   );
 }
 
-function FunnelChartArtwork() {
+function RingSegment({
+  className,
+  dasharray,
+  dashoffset,
+  radius,
+  strokeWidth,
+}: {
+  readonly className: string;
+  readonly dasharray: string;
+  readonly dashoffset: number;
+  readonly radius: number;
+  readonly strokeWidth: number;
+}) {
   return (
-    <>
-      <path d="M16 18H104L93 32H27Z" className="fill-chart-blue-600" />
-      <path d="M29 37H91L82 50H38Z" className="fill-chart-blue-400" />
-      <path d="M40 55H80L72 68H48Z" className="fill-chart-blue-200" />
-    </>
+    <circle
+      cx="62"
+      cy="44"
+      r={radius}
+      fill="none"
+      className={className}
+      strokeDasharray={dasharray}
+      strokeDashoffset={dashoffset}
+      strokeWidth={strokeWidth}
+      transform="rotate(-90 62 44)"
+    />
   );
 }
 
@@ -767,64 +871,148 @@ function NestedDonutChartArtwork() {
   return (
     <>
       <circle
-        cx="60"
-        cy="47"
-        r="31"
+        cx="62"
+        cy="44"
+        r="32"
         fill="none"
-        className="stroke-chart-blue-100"
+        className="stroke-muted"
         strokeWidth="8"
       />
-      <circle
-        cx="60"
-        cy="47"
-        r="31"
-        fill="none"
+      <RingSegment
+        radius={32}
+        strokeWidth={8}
+        dasharray="116 85"
+        dashoffset={0}
         className="stroke-chart-blue-500"
-        strokeWidth="8"
-        strokeDasharray="115 80"
-        transform="rotate(-90 60 47)"
+      />
+      <RingSegment
+        radius={32}
+        strokeWidth={8}
+        dasharray="52 149"
+        dashoffset={-120}
+        className="stroke-chart-orange"
       />
       <circle
-        cx="60"
-        cy="47"
+        cx="62"
+        cy="44"
         r="20"
         fill="none"
-        className="stroke-chart-orange"
-        strokeOpacity="0.25"
+        className="stroke-muted"
         strokeWidth="7"
       />
-      <circle
-        cx="60"
-        cy="47"
-        r="20"
-        fill="none"
-        className="stroke-chart-orange"
-        strokeWidth="7"
-        strokeDasharray="48 78"
-        transform="rotate(25 60 47)"
+      <RingSegment
+        radius={20}
+        strokeWidth={7}
+        dasharray="72 54"
+        dashoffset={0}
+        className="stroke-chart-blue-300"
       />
+      <RingSegment
+        radius={20}
+        strokeWidth={7}
+        dasharray="34 92"
+        dashoffset={-76}
+        className="stroke-chart-green"
+      />
+      <text
+        x="62"
+        y="42"
+        textAnchor="middle"
+        className="fill-foreground"
+        fontSize="9"
+        fontWeight="700"
+      >
+        68%
+      </text>
+      <text
+        x="62"
+        y="51"
+        textAnchor="middle"
+        className="fill-muted-foreground"
+        fontSize="5.5"
+      >
+        100
+      </text>
+      {[
+        ["42", "fill-chart-blue-500"],
+        ["26", "fill-chart-orange"],
+        ["18", "fill-chart-blue-300"],
+        ["14", "fill-chart-green"],
+      ].map(([label, className], index) => {
+        return (
+          <g key={label} transform={`translate(113 ${23 + index * 14})`}>
+            <circle r="2.7" className={className} />
+            <text x="8" y="2" className="fill-muted-foreground" fontSize="6">
+              {label}%
+            </text>
+          </g>
+        );
+      })}
     </>
+  );
+}
+
+function MapGraticule() {
+  return (
+    <g className="stroke-border" strokeOpacity="0.48" strokeWidth="0.6">
+      <path d="M10 27H151M7 45H154M10 63H151" />
+      <path d="M42 8C30 30 30 60 42 80M80 6C73 30 73 61 80 83M118 8C130 30 130 60 118 80" />
+    </g>
+  );
+}
+
+function WorldOutline() {
+  return (
+    <g className="fill-chart-blue-100 stroke-background" strokeWidth="0.8">
+      <path d="M17 24 24 14 39 11 51 17 48 25 39 28 35 39 25 43 18 35 10 32Z" />
+      <path d="m42 46 10 5 5 12-5 18-7 2-4-16-7-12Z" />
+      <path d="m67 20 8-8 15 2 5 6 16-4 15 7 20 2 7 10-7 9-15 1-9 9-15 3-8-9-13-4-8-11Z" />
+      <path d="m82 47 16 2 8 11-7 19-12-3-8-17Z" />
+      <path d="m126 62 12-4 12 7-5 10-15 1-7-7Z" />
+      <path d="m55 12 6-5 7 4-5 7Z" />
+    </g>
   );
 }
 
 function RouteMapChartArtwork() {
   return (
     <>
+      <MapGraticule />
+      <WorldOutline />
       <path
-        d="M18 59 28 27 47 19 58 35 76 23 102 29 107 59 88 70 65 61 43 72Z"
-        className="fill-chart-blue-100 stroke-chart-blue-200"
-        strokeWidth="1.5"
-      />
-      <path
-        d="M28 58C45 27 69 69 96 32"
+        d="M31 33C59 3 104 9 137 65"
         fill="none"
-        className="stroke-chart-blue-500"
-        strokeWidth="2"
-        strokeDasharray="4 3"
+        className="stroke-chart-blue-600"
+        strokeWidth="1.7"
+        strokeLinecap="round"
       />
-      <circle cx="28" cy="58" r="4" className="fill-chart-orange" />
-      <circle cx="96" cy="32" r="4" className="fill-chart-orange" />
-      <path d="m67 48 8-1-4 7Z" className="fill-chart-blue-500" />
+      <path
+        d="M50 65C77 43 102 44 126 31"
+        fill="none"
+        className="stroke-chart-orange"
+        strokeDasharray="3 2"
+        strokeWidth="1.4"
+      />
+      {[
+        [31, 33, "fill-chart-blue-600"],
+        [137, 65, "fill-chart-blue-600"],
+        [50, 65, "fill-chart-orange"],
+        [126, 31, "fill-chart-orange"],
+      ].map(([cx, cy, className]) => {
+        return (
+          <g key={`${cx}-${cy}`}>
+            <circle
+              cx={cx}
+              cy={cy}
+              r="4.5"
+              className={className as string}
+              fillOpacity="0.18"
+            />
+            <circle cx={cx} cy={cy} r="2.2" className={className as string} />
+          </g>
+        );
+      })}
+      <path d="m90 20 7-1-3 6-1-3-4 1Z" className="fill-chart-blue-600" />
     </>
   );
 }
@@ -832,114 +1020,165 @@ function RouteMapChartArtwork() {
 function ChoroplethMapChartArtwork() {
   return (
     <>
-      <path
-        d="M15 49 23 24 42 18 53 29 68 21 81 29 104 26 109 48 97 67 76 65 61 76 42 66 25 69Z"
-        className="fill-chart-blue-100 stroke-chart-blue-200"
-        strokeWidth="1.5"
-      />
-      <path
-        d="m23 24 19 18 11-13 8 47M42 42l34 23m-8-44 8 44m5-36 16 38M15 49l27-7 19 34m43-50L76 65"
-        fill="none"
-        className="stroke-background"
-        strokeWidth="1.5"
-      />
-      <path
-        d="m42 42 11-13 15-8 8 44Z"
-        className="fill-chart-blue-600"
-        fillOpacity="0.86"
-      />
-      <path d="m76 65 21 2 12-19-5-22Z" className="fill-chart-blue-400" />
+      <MapGraticule />
+      <g className="stroke-background" strokeWidth="0.9">
+        <path
+          d="M17 24 24 14 39 11 51 17 48 25 39 28 35 39 25 43 18 35 10 32Z"
+          className="fill-chart-blue-300"
+        />
+        <path
+          d="m42 46 10 5 5 12-5 18-7 2-4-16-7-12Z"
+          className="fill-chart-blue-500"
+        />
+        <path
+          d="m67 20 8-8 15 2 5 6 16-4 15 7 20 2 7 10-7 9-15 1-9 9-15 3-8-9-13-4-8-11Z"
+          className="fill-chart-blue-200"
+        />
+        <path
+          d="m82 47 16 2 8 11-7 19-12-3-8-17Z"
+          className="fill-chart-blue-600"
+        />
+        <path
+          d="m126 62 12-4 12 7-5 10-15 1-7-7Z"
+          className="fill-chart-blue-400"
+        />
+        <path d="m55 12 6-5 7 4-5 7Z" className="fill-chart-blue-100" />
+      </g>
+      <g transform="translate(113 82)">
+        <text x="-9" y="3" className="fill-muted-foreground" fontSize="5">
+          0
+        </text>
+        <rect
+          x="0"
+          y="0"
+          width="8"
+          height="3"
+          className="fill-chart-blue-100"
+        />
+        <rect
+          x="8"
+          y="0"
+          width="8"
+          height="3"
+          className="fill-chart-blue-300"
+        />
+        <rect
+          x="16"
+          y="0"
+          width="8"
+          height="3"
+          className="fill-chart-blue-400"
+        />
+        <rect
+          x="24"
+          y="0"
+          width="8"
+          height="3"
+          className="fill-chart-blue-600"
+        />
+        <text x="36" y="3" className="fill-muted-foreground" fontSize="5">
+          100
+        </text>
+      </g>
     </>
   );
 }
 
 function WordCloudChartArtwork() {
+  const { t } = useTranslation();
+  const charts = t(
+    ($) => {
+      return $.chat.taskChips.visualization.charts;
+    },
+    { returnObjects: true },
+  );
   return (
     <>
-      <rect
-        x="34"
-        y="37"
-        width="52"
-        height="10"
-        rx="5"
-        className="fill-chart-blue-500"
-      />
-      <rect
-        x="17"
-        y="25"
-        width="31"
-        height="6"
-        rx="3"
+      <text
+        x="80"
+        y="38"
+        textAnchor="middle"
+        className="fill-chart-blue-600"
+        fontSize="17"
+        fontWeight="700"
+      >
+        {charts.bar}
+      </text>
+      <text
+        x="39"
+        y="20"
+        textAnchor="middle"
         className="fill-chart-orange"
-      />
-      <rect
-        x="62"
-        y="23"
-        width="41"
-        height="7"
-        rx="3.5"
+        fontSize="9"
+        fontWeight="600"
+      >
+        {charts.line}
+      </text>
+      <text
+        x="122"
+        y="20"
+        textAnchor="middle"
         className="fill-chart-green"
-      />
-      <rect
-        x="22"
-        y="53"
-        width="19"
-        height="7"
-        rx="3.5"
-        className="fill-chart-pink"
-      />
-      <rect
-        x="50"
-        y="54"
-        width="53"
-        height="6"
-        rx="3"
+        fontSize="8.5"
+        fontWeight="600"
+      >
+        {charts.pie}
+      </text>
+      <text
+        x="37"
+        y="57"
+        textAnchor="middle"
+        className="fill-chart-blue-300"
+        fontSize="8"
+      >
+        {charts.area}
+      </text>
+      <text
+        x="119"
+        y="57"
+        textAnchor="middle"
         className="fill-chart-purple"
-      />
-      <rect
-        x="40"
-        y="66"
-        width="37"
-        height="5"
-        rx="2.5"
+        fontSize="9.5"
+        fontWeight="600"
+      >
+        {charts.radar}
+      </text>
+      <text
+        x="79"
+        y="74"
+        textAnchor="middle"
         className="fill-chart-gold"
-      />
+        fontSize="7.5"
+      >
+        {charts.heatmap}
+      </text>
+      <circle cx="21" cy="35" r="2" className="fill-chart-blue-200" />
+      <circle cx="142" cy="39" r="2.5" className="fill-chart-pink" />
+      <circle cx="51" cy="72" r="1.5" className="fill-chart-green" />
     </>
   );
 }
 
 const CHART_ARTWORKS = {
-  bar: BarChartArtwork,
-  line: LineChartArtwork,
-  pie: PieChartArtwork,
-  scatter: ScatterChartArtwork,
   area: AreaChartArtwork,
-  "stacked-bar": StackedBarChartArtwork,
-  heatmap: HeatmapChartArtwork,
-  bubble: BubbleChartArtwork,
-  radar: RadarChartArtwork,
-  sankey: SankeyChartArtwork,
-  gantt: GanttChartArtwork,
+  bar: BarChartArtwork,
   "bar-race": BarRaceChartArtwork,
+  bubble: BubbleChartArtwork,
   candlestick: CandlestickChartArtwork,
-  funnel: FunnelChartArtwork,
-  "nested-donut": NestedDonutChartArtwork,
-  "route-map": RouteMapChartArtwork,
   "choropleth-map": ChoroplethMapChartArtwork,
+  funnel: FunnelChartArtwork,
+  gantt: GanttChartArtwork,
+  heatmap: HeatmapChartArtwork,
+  line: LineChartArtwork,
+  "nested-donut": NestedDonutChartArtwork,
+  pie: PieChartArtwork,
+  radar: RadarChartArtwork,
+  "route-map": RouteMapChartArtwork,
+  sankey: SankeyChartArtwork,
+  scatter: ScatterChartArtwork,
+  "stacked-bar": StackedBarChartArtwork,
   "word-cloud": WordCloudChartArtwork,
 } satisfies Record<VisualizationChart, ComponentType>;
-
-const GRID_CHARTS = [
-  "bar",
-  "line",
-  "scatter",
-  "area",
-  "stacked-bar",
-  "heatmap",
-  "bubble",
-  "gantt",
-  "candlestick",
-] as const satisfies readonly VisualizationChart[];
 
 export function VisualizationChartPreview({
   chart,
@@ -949,16 +1188,11 @@ export function VisualizationChartPreview({
   const Artwork = CHART_ARTWORKS[chart];
   return (
     <svg
-      viewBox="0 0 120 88"
+      viewBox="0 0 160 90"
       className="h-full w-full"
       aria-hidden
       focusable="false"
     >
-      {GRID_CHARTS.some((item) => {
-        return item === chart;
-      }) ? (
-        <ChartGrid />
-      ) : null}
       <Artwork />
     </svg>
   );

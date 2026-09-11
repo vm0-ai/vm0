@@ -8,10 +8,7 @@ import {
   type VisualizationOutput,
 } from "../../signals/okou-page/composer-visualization.ts";
 import { CURATED_VISUALIZATION_CHARTS } from "./composer-visualization-chart-data.ts";
-import {
-  VisualizationChartPreview,
-  VisualizationOutputPreview,
-} from "./composer-visualization-previews.tsx";
+import { VisualizationChartPreview } from "./composer-visualization-previews.tsx";
 
 function VisualizationHeader() {
   const { t } = useTranslation();
@@ -55,19 +52,14 @@ function VisualizationOutputButton({
       layout="tile"
       aria-label={label}
       className={cn(
-        "group h-[68px] overflow-hidden rounded-xl p-0 text-foreground last:col-span-2 sm:last:col-span-1",
+        "h-11 rounded-xl px-3 py-2 text-center text-xs font-medium text-foreground last:col-span-2 sm:last:col-span-1",
         !selected && "bg-transparent",
       )}
       onClick={() => {
         setOutput(output);
       }}
     >
-      <span className="flex h-full min-w-0 items-center gap-2 px-2.5 py-2 text-left">
-        <VisualizationOutputPreview output={output} />
-        <span className="min-w-0 text-xs font-medium leading-tight">
-          {label}
-        </span>
-      </span>
+      <span className="block truncate">{label}</span>
     </ToggleButton>
   );
 }
@@ -130,14 +122,14 @@ function VisualizationChartButton({
       layout="tile"
       aria-label={label}
       className={cn(
-        "group min-h-[98px] overflow-hidden rounded-xl p-1.5 text-foreground",
+        "group min-h-[104px] overflow-hidden rounded-xl p-1.5 text-foreground",
         !selected && "bg-transparent",
       )}
       onClick={() => {
         toggleChart(chart);
       }}
     >
-      <span className="block h-[64px]">
+      <span className="block h-[70px]">
         <VisualizationChartPreview chart={chart} />
       </span>
       <span className="mt-1.5 block truncate px-1 text-center text-xs font-medium">
