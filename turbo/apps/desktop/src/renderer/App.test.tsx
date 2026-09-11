@@ -410,8 +410,8 @@ function installDesktopBridges({
   const computerUse = createComputerUseBridge(computerUseState);
   const developerTools = createDeveloperToolsBridge(developerToolsState);
   window.vm0DesktopAuth = auth.api;
-  window.vm0DesktopComputerUse = computerUse.api;
-  window.vm0DesktopDeveloperTools = developerTools.api;
+  window.okouDesktopComputerUse = computerUse.api;
+  window.okouDesktopDeveloperTools = developerTools.api;
   return {
     auth,
     computerUse,
@@ -428,7 +428,7 @@ function buttonForText(text: string): HTMLButtonElement {
 }
 
 function renderDesktopApp(): void {
-  window.vm0DesktopIdentity = {
+  window.okouDesktopIdentity = {
     product: "okou",
     brandName: "Okou",
     displayName: "Okou",
@@ -444,8 +444,8 @@ afterEach(async () => {
   await settleDesktopActions();
   cleanup();
   delete window.vm0DesktopAuth;
-  delete window.vm0DesktopComputerUse;
-  delete window.vm0DesktopDeveloperTools;
+  delete window.okouDesktopComputerUse;
+  delete window.okouDesktopDeveloperTools;
   vi.clearAllMocks();
 });
 

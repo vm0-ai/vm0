@@ -1420,11 +1420,11 @@ async function verifyDesktopSmokeBridge() {
     `(async () => ({
       auth: typeof window.vm0DesktopAuth === "object",
       authCompletionRejected: await window.vm0DesktopAuth.completeSignIn({ token: "smoke-test-token" }).then(() => false, () => true),
-      computerUse: typeof window.vm0DesktopComputerUse === "object",
-      developerTools: typeof window.vm0DesktopDeveloperTools === "object",
-      driverControls: ["setExperimentalCuaEnabled", "selectDriver", "start", "stop"].every(name => typeof window.vm0DesktopComputerUse[name] === "function"),
-      driver: (await window.vm0DesktopComputerUse.getState()).driver,
-      identity: window.vm0DesktopIdentity ?? null,
+      computerUse: typeof window.okouDesktopComputerUse === "object",
+      developerTools: typeof window.okouDesktopDeveloperTools === "object",
+      driverControls: ["setExperimentalCuaEnabled", "selectDriver", "start", "stop"].every(name => typeof window.okouDesktopComputerUse[name] === "function"),
+      driver: (await window.okouDesktopComputerUse.getState()).driver,
+      identity: window.okouDesktopIdentity ?? null,
     }))()`,
     true,
   );
@@ -1452,7 +1452,7 @@ async function verifyDesktopSmokeBridge() {
   // Neither read authorizes an experiment or starts a driver.
   await refreshComputerUsePermissions();
   const settledDriver: unknown = await window.webContents.executeJavaScript(
-    "window.vm0DesktopComputerUse.getState().then(state => state.driver)",
+    "window.okouDesktopComputerUse.getState().then(state => state.driver)",
     true,
   );
   assertCuaDormant();
