@@ -159,7 +159,7 @@ test("Hide mention suggestions when nothing useful matches", async () => {
     ...workspace.pageOptions,
   });
 
-  const user = userEvent.setup();
+  const user = userEvent.setup({ delay: null });
   const composer = await screen.findByRole("textbox", { name: "Message" });
   await user.click(composer);
   await user.keyboard("@beta");
@@ -278,6 +278,8 @@ test("Save a selected agent mention and retain it when returning to the chat", a
       "data-agent-avatar-url",
       ZETA_CURRENT_AVATAR,
     );
+  });
+  await waitFor(() => {
     expect(
       workspace.draftPatches.some((patch) => {
         return patch.draftUserMessage?.parts.some((part) => {
