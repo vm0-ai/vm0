@@ -48,7 +48,7 @@ function CartesianFrame({
       {xLabels.map((label, index) => {
         return (
           <text
-            key={`${label}-${index}`}
+            key={label}
             x={PLOT.left + index * step}
             y="79"
             textAnchor="middle"
@@ -124,7 +124,7 @@ function BarChartArtwork() {
         const height = (value / 80) * 60;
         return (
           <rect
-            key={`${value}-${index}`}
+            key={value}
             x={29 + index * 21}
             y={PLOT.bottom - height}
             width="11"
@@ -298,12 +298,12 @@ function AreaChartArtwork() {
 
 function StackedBarChartArtwork() {
   const bars = [
-    [18, 11, 8],
-    [23, 13, 10],
-    [17, 16, 9],
-    [26, 12, 11],
-    [21, 19, 12],
-    [29, 17, 10],
+    { id: "01", values: [18, 11, 8] },
+    { id: "02", values: [23, 13, 10] },
+    { id: "03", values: [17, 16, 9] },
+    { id: "04", values: [26, 12, 11] },
+    { id: "05", values: [21, 19, 12] },
+    { id: "06", values: [29, 17, 10] },
   ] as const;
   const colors = [
     "fill-chart-blue-500",
@@ -314,14 +314,14 @@ function StackedBarChartArtwork() {
     <>
       <CartesianFrame />
       <SeriesLegend count={3} />
-      {bars.map((values, index) => {
+      {bars.map(({ id, values }, index) => {
         let offset = 0;
         return values.map((value, segment) => {
           const y = PLOT.bottom - offset - value;
           offset += value;
           return (
             <rect
-              key={`${index}-${segment}`}
+              key={`${id}-${value}`}
               x={29 + index * 21}
               y={y}
               width="11"
@@ -750,7 +750,9 @@ function CandlestickChartArtwork() {
     { close: 67, high: 77, low: 51, open: 58 },
     { close: 54, high: 72, low: 46, open: 65 },
   ] as const;
-  const y = (value: number) => PLOT.bottom - (value / 80) * 60;
+  const y = (value: number) => {
+    return PLOT.bottom - (value / 80) * 60;
+  };
   return (
     <>
       <CartesianFrame xLabels={["01", "02", "03", "04", "05", "06", "07"]} />
