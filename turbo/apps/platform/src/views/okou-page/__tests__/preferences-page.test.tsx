@@ -20,7 +20,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
-test("Debug preferences restore, change, and reset the voice input model", async () => {
+test("Debug preferences restore and change the voice input model", async () => {
   const updates = mockPreferences({
     voiceInputModel: "google/gemini-3.6-flash",
   });
@@ -29,9 +29,7 @@ test("Debug preferences restore, change, and reset the voice input model", async
     path: "/?settings=debug",
     featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
   });
-  const picker = await screen.findByRole("combobox", {
-    name: "Voice input model",
-  });
+  const picker = await screen.findByLabelText("Voice input model");
   await waitFor(() => {
     return expect(picker).toHaveTextContent("Gemini 3.6 Flash");
   });
@@ -42,6 +40,21 @@ test("Debug preferences restore, change, and reset the voice input model", async
   });
   expect(updates).toContainEqual({
     voiceInputModel: "fal-ai/elevenlabs/speech-to-text/scribe-v2",
+  });
+});
+
+test("Debug preferences reset a saved voice input model to the default", async () => {
+  const updates = mockPreferences({
+    voiceInputModel: "fal-ai/elevenlabs/speech-to-text/scribe-v2",
+  });
+  await setupPage({
+    context,
+    path: "/?settings=debug",
+    featureSwitches: { [FeatureSwitchKey.OkouDebug]: true },
+  });
+  const picker = await screen.findByLabelText("Voice input model");
+  await waitFor(() => {
+    expect(picker).toHaveTextContent("ElevenLabs Scribe v2");
   });
   click(picker);
   click(

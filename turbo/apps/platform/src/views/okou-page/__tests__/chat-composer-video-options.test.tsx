@@ -198,9 +198,27 @@ function installVideoSubmissionCapture(): SubmittedMessage[] {
 }
 
 test.each([false, true])(
+  "Show default video option controls with Create enabled: %s",
+  async (enabled) => {
+    installVideoSubmissionCapture();
+    await setupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.ComposerCreateCommands]: enabled },
+    });
+    await enterText("Generate the first cinematic clip.");
+    await enterVideoMode("Claude Fable 5.1");
+    await selectVideoTemplate();
+    await expect(
+      openVideoOptions("16:9 · 8s · 720p"),
+    ).resolves.toBeInTheDocument();
+    await userEvent.setup({ delay: null }).keyboard("{Escape}");
+  },
+);
+
+test.each([false, true])(
   "Submit default video options with Create enabled: %s",
   async (enabled) => {
-    const user = userEvent.setup({ delay: null });
     const submissions = installVideoSubmissionCapture();
     await setupPage({
       context,
@@ -212,10 +230,6 @@ test.each([false, true])(
     const editor = await enterText(prompt);
     await enterVideoMode("Claude Fable 5.1");
     const template = await selectVideoTemplate();
-    await expect(
-      openVideoOptions("16:9 · 8s · 720p"),
-    ).resolves.toBeInTheDocument();
-    await user.keyboard("{Escape}");
     await sendCurrent(editor, prompt);
 
     await waitFor(() => {

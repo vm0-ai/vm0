@@ -1,6 +1,6 @@
 use std::panic::AssertUnwindSafe;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
 use futures_util::FutureExt;
@@ -25,6 +25,7 @@ use crate::workspace_mount::freeze_workspace_drive;
 
 const SESSION_HISTORY_SIDECAR_EXPORT_TIMEOUT: Duration = Duration::from_secs(30);
 const SESSION_HISTORY_SIDECAR_COPY_TIMEOUT: Duration = Duration::from_secs(30);
+const SESSION_HISTORY_SIDECAR_SLOW_EXPORT: Duration = Duration::from_secs(5);
 
 enum WorkspacePromotionAction {
     Promoted,
@@ -256,6 +257,52 @@ impl PreparedWorkspaceImagePromotion {
     }
 }
 
+fn log_session_history_sidecar_export_timing(
+    promotion: &WorkspaceImagePromotionContext,
+    reason: &'static str,
+    metadata: &SessionHistorySidecarExportMetadata,
+    admission_duration: Duration,
+    exec_duration: Duration,
+    guest_duration_ms: Option<u32>,
+) {
+    let timings = &metadata.timings;
+    macro_rules! emit {
+        ($level:expr) => {
+            tracing::event!(
+                $level,
+                run_id = %promotion.run_id(),
+                sandbox_id = %promotion.sandbox_id(),
+                profile_name = promotion.profile_name(),
+                reason,
+                representation = ?metadata.representation,
+                history_size_bytes = promotion
+                    .restored_session_identity()
+                    .and_then(|identity| identity.cache_fields())
+                    .map(|identity| identity.history_size_bytes),
+                encoded_size = metadata.encoded_size,
+                export_admission_ms = admission_duration.as_millis() as u64,
+                export_exec_ms = exec_duration.as_millis() as u64,
+                guest_duration_ms,
+                helper_metadata_us = timings.metadata_us,
+                helper_resolve_us = timings.resolve_us,
+                helper_read_verify_us = timings.read_verify_us,
+                helper_write_us = timings.write_us,
+                helper_total_us = timings.total_us,
+                "workspace image cache session history sidecar export completed"
+            );
+        };
+    }
+    if exec_duration >= SESSION_HISTORY_SIDECAR_SLOW_EXPORT
+        || guest_duration_ms.is_some_and(|ms| {
+            Duration::from_millis(u64::from(ms)) >= SESSION_HISTORY_SIDECAR_SLOW_EXPORT
+        })
+    {
+        emit!(Level::WARN);
+    } else {
+        emit!(Level::INFO);
+    }
+}
+
 async fn export_session_history_sidecar(
     sandbox: &dyn Sandbox,
     promotion: &WorkspaceImagePromotionContext,
@@ -288,6 +335,7 @@ async fn export_session_history_sidecar(
         stdin_bytes: None,
         output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
     };
+    let admission_started = Instant::now();
     let export_permit = match promotion
         .acquire_session_history_sidecar_export_permit()
         .await
@@ -307,9 +355,12 @@ async fn export_session_history_sidecar(
             return None;
         }
     };
+    let exec_started = Instant::now();
+    let admission_duration = exec_started.duration_since(admission_started);
     let result = sandbox
         .exec_with_diagnostic_label(&request, "session-history-sidecar-export")
         .await;
+    let exec_duration = exec_started.elapsed();
     drop(export_permit);
     let result = match result {
         Ok(result) => result,
@@ -394,6 +445,15 @@ async fn export_session_history_sidecar(
             return None;
         }
     };
+    // Report helper completion independently of subsequent host copying and publication.
+    log_session_history_sidecar_export_timing(
+        promotion,
+        reason,
+        &metadata,
+        admission_duration,
+        exec_duration,
+        result.guest_duration_ms,
+    );
     let entry_guard = promotion
         .try_acquire_session_history_sidecar_entry_guard()
         .await?;

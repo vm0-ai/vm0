@@ -1,5 +1,4 @@
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import {
   chatEventsContract,
   chatThreadDraftContract,
@@ -7,7 +6,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { expect, test } from "vitest";
 
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   CHAT_LIST_AGENT_ID,
@@ -27,7 +26,7 @@ import {
 const context = testContext();
 
 async function selectClaudeSonnet(): Promise<void> {
-  await userEvent.click(await screen.findByRole("combobox"));
+  click(await screen.findByRole("combobox"));
   let option: HTMLElement | undefined;
   await waitFor(() => {
     option = Array.from(
@@ -37,16 +36,16 @@ async function selectClaudeSonnet(): Promise<void> {
     });
     expect(option).toBeDefined();
   });
-  await userEvent.click(option!);
+  click(option!);
 }
 
 async function sendComposerMessage(message: string): Promise<void> {
   const composer = await screen.findByRole("textbox", { name: "Message" });
-  await userEvent.type(composer, message);
+  await fill(composer, message);
   await waitFor(() => {
     expect(fastButton("Send")).toBeEnabled();
   });
-  await userEvent.click(fastButton("Send"));
+  click(fastButton("Send"));
 }
 
 function installNewThreadDefaults(): void {

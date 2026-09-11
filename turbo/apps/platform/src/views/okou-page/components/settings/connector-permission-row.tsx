@@ -45,7 +45,7 @@ export function ConnectorPermissionRow({
           <div className="flex items-center gap-2">
             <span
               data-testid="connector-card-label"
-              className="truncate text-sm font-medium text-foreground"
+              className="max-w-full shrink-0 truncate text-sm font-medium text-foreground"
             >
               {label}
             </span>

@@ -197,7 +197,7 @@ const CommandSeparator = React.forwardRef<
     <Autocomplete.Separator
       ref={ref}
       data-slot="command-separator"
-      className={cn("-mx-1 h-px bg-border", className)}
+      className={cn("-mx-1 h-px bg-divider", className)}
       {...props}
     />
   );

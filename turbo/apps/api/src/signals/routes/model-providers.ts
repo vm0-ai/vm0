@@ -266,6 +266,11 @@ const upsertModelProviderInner$ = command(
           type,
           authMethod,
           secretValues: secrets,
+          selectedModel:
+            bodyResult.data.type === "azure-foundry" ||
+            bodyResult.data.type === "aws-bedrock"
+              ? bodyResult.data.selectedModel
+              : undefined,
         },
         signal,
       );

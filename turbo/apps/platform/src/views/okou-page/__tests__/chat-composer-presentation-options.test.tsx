@@ -81,14 +81,9 @@ function visibleText(message: SubmittedMessage | undefined): string {
   );
 }
 
-test("Presentation sends Auto as hidden additional info while keeping the message unchanged", async () => {
+test("Presentation offers the documented slide counts and selects Auto", async () => {
   setupModels();
-  const submissions: SubmittedMessage[] = [];
-  mockChatLifecycle(context, {
-    onRunCreate: (body) => {
-      submissions.push(body);
-    },
-  });
+  mockChatLifecycle(context);
   const editor = await setupComposer();
   expect(screen.queryByRole("combobox", { name: "Slide count" })).toBeNull();
   const picker = await enterPresentation(editor);
@@ -112,6 +107,24 @@ test("Presentation sends Auto as hidden additional info while keeping the messag
   expect(
     within(menu).getByRole("option", { name: "8–12 slides" }),
   ).toHaveAttribute("aria-selected", "true");
+  click(within(menu).getByRole("option", { name: "Auto" }));
+  await waitFor(() => {
+    return expect(picker).toHaveTextContent("Auto");
+  });
+});
+
+test("Presentation sends Auto as hidden additional info while keeping the message unchanged", async () => {
+  setupModels();
+  const submissions: SubmittedMessage[] = [];
+  mockChatLifecycle(context, {
+    onRunCreate: (body) => {
+      submissions.push(body);
+    },
+  });
+  const editor = await setupComposer();
+  const picker = await enterPresentation(editor);
+  click(picker);
+  const menu = await screen.findByRole("listbox");
   click(within(menu).getByRole("option", { name: "Auto" }));
   await waitFor(() => {
     expect(picker).toHaveTextContent("Auto");

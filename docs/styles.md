@@ -35,7 +35,9 @@ Components must not introduce local CSS variables as an alternate token registry
 
 One hairline serves the whole product. `--default-border-width` in the shared `@theme` is 0.5px, and Tailwind's bare `border`, `border-t`, `border-x`, `divide-y`, and their siblings all read it, so a component asks for "a border" and the system decides how thick it is. Components must not hand-write a width: an arbitrary width such as `border-[0.7px]`, or a literal width inside a `style` prop, is a second registry for a decision this token already owns. `border-0` and the deliberate emphasis widths such as `border-2` stay available, because they express a different decision rather than a competing value for the same one.
 
-The sub-pixel value is a declaration of intent as much as a measurement. Blink and Gecko round a non-zero border up to one device pixel, so it renders exactly like 1px there and layout is unchanged in every engine; WebKit can draw the true hairline on a high-density display. Do not treat a width below 1px as a way to make a border visibly lighter in Chromium — reach for the border color for that.
+This is a real hairline, not a rounding no-op. On a 2x display 0.5px paints one device pixel where 1px paints two, so every bare border carries half the ink it used to; layout is unaffected, because the used value is still rounded to whole pixels. Colour has to carry what the width no longer does, which is why `--border` sits one stop darker than the surface ramp's lightest step: `gray-200` was calibrated for a 1px line and stops reading on a near-white card at half the thickness.
+
+Borders and rules are separate decisions with separate tokens. `--border` is for real borders, which follow `--default-border-width`. `--divider` is the lightest neutral rule — separators, `h-px` / `w-px` hairlines painted as backgrounds, and resting rail ticks. Those are sized explicitly, so they never lost thickness to the border hairline and must not inherit its compensating darkening. Use `bg-divider` for a painted rule and `border-border` for an actual border; do not reach for a raw ramp stop such as `border-gray-200` for either, because that bypasses both decisions.
 
 Color-theme presets in the App stylesheet share their anchor and companion colors between picker swatches and workspace ambience. Daydream uses cool blue and violet, while Cotton sky uses pastel pink and blue. Each preset's hue and ring values keep semantic surfaces, selected states, and focus indicators aligned with that palette in Light/Dark.
 
@@ -243,3 +245,11 @@ The check has three layers:
 CI runs this as the independent required `lint-style` job. The pre-commit hook runs the fast repository policy so the most actionable boundary failures are returned before push. Both policy diagnostics and the full lint command's failure output direct contributors to `docs/styles.md` for the style guide. The full command keeps a failing exit status for policy, CSS, Tailwind, or test failures.
 
 When a style check fails, read this guide and replace business styling with the appropriate Tailwind utilities and registered tokens. Prune the baseline when legacy code has been removed. Do not suppress the check or add a business styling exception to make it pass.
+
+## App palette previews
+
+`bg-palette-anchor bg-palette-gradient` renders the color-theme anchor and its
+fixed companion gradient. These App-owned domain utilities use `@theme inline`
+so each element resolves its own `data-color-theme` anchor/companion instead of
+inheriting the selected document palette. The 135-degree gradient and 52% sRGB
+midpoint are identical in Light/Dark; consumer geometry stays at the call site.

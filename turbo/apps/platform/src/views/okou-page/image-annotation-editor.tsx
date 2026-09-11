@@ -424,7 +424,7 @@ function ToolPill({ signals }: { readonly signals: ImageAnnotationSignals }) {
           </Tooltip>
         );
       })}
-      <span className="mx-1 h-[18px] w-px bg-border" />
+      <span className="mx-1 h-[18px] w-px bg-divider" />
       <InkSwatches signals={signals} />
     </div>
   );

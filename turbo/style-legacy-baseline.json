@@ -27,7 +27,6 @@
     "okou-chat-card",
     "okou-chat-frame",
     "okou-chat-skeleton-reveal",
-    "okou-color-theme-swatch",
     "okou-composer",
     "okou-desktop-no-drag",
     "okou-desktop-titlebar-drag-region",
@@ -538,20 +537,6 @@
         "selector": ".okou-blocks span:nth-child(3)",
         "property": "animation",
         "value": "okou-block-pop 1.4s ease-in-out 0.4s infinite",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-color-theme-swatch",
-        "property": "background-color",
-        "value": "var(--okou-color-theme-anchor)",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-color-theme-swatch",
-        "property": "background-image",
-        "value": "linear-gradient(135deg,var(--okou-color-theme-anchor) 0%,color-mix(in srgb,var(--okou-color-theme-anchor),var(--okou-color-theme-companion)) 52%,var(--okou-color-theme-companion) 100%)",
         "important": false
       },
       {
@@ -2740,62 +2725,6 @@
       },
       {
         "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "position",
-        "value": "absolute",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "top",
-        "value": "-9.73px",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "left",
-        "value": "-6.4px",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "display",
-        "value": "block",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "width",
-        "value": "76.8px",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "height",
-        "value": "76.8px",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "max-width",
-        "value": "none",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "object-fit",
-        "value": "fill",
-        "important": false
-      },
-      {
-        "atRules": [],
         "selector": ".owf-diagram-node-source",
         "property": "top",
         "value": "34px",
@@ -3577,8 +3506,7 @@
       "okou-border": 1
     },
     "apps/platform/src/views/okou-page/components/settings/color-theme-settings.tsx": {
-      "okou-border": 1,
-      "okou-color-theme-swatch": 1
+      "okou-border": 1
     },
     "apps/platform/src/views/okou-page/components/settings/connection-diagnostics-block.tsx": {
       "okou-border": 1

@@ -358,48 +358,44 @@ test.each(["Cancel", "Close", "Escape", "backdrop"] as const)(
   },
 );
 
-test("Require fresh workspace confirmation after closing Settings or navigating back", async () => {
-  context.mocks.data.org({ id: "org_1", name: "Acme", role: "admin" });
-  await openGeneralTab();
+test.each(["closing Settings", "navigating back"])(
+  "Require fresh workspace confirmation after %s",
+  async (exit) => {
+    context.mocks.data.org({ id: "org_1", name: "Acme", role: "admin" });
+    await setupPage({ context, path: "/" });
+    await reopenSettings();
 
-  const dialog = await openDeleteDialog();
-  await fill(within(dialog).getByPlaceholderText("confirm"), "confirm");
-  expect(buttonWithText(dialog, "Delete workspace")).toBeEnabled();
-  click(buttonWithText(dialog, "Cancel"));
-  const settings = await screen.findByRole("dialog", { name: "Settings" });
-  click(within(settings).getByLabelText("Close"));
-  await waitFor(() => {
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  });
+    const dialog = await openDeleteDialog();
+    await fill(within(dialog).getByPlaceholderText("confirm"), "confirm");
+    expect(buttonWithText(dialog, "Delete workspace")).toBeEnabled();
+    if (exit === "closing Settings") {
+      click(buttonWithText(dialog, "Cancel"));
+      const settings = await screen.findByRole("dialog", { name: "Settings" });
+      click(within(settings).getByLabelText("Close"));
+    } else {
+      act(() => {
+        window.history.back();
+      });
+      await screen.findByRole("heading", { name: "Preference" });
+      act(() => {
+        window.history.back();
+      });
+    }
+    await waitFor(() => {
+      expect(
+        new URLSearchParams(window.location.search).has("settings"),
+      ).toBeFalsy();
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
 
-  await reopenSettings();
-  const reopened = await openDeleteDialog();
-  expect(within(reopened).getByPlaceholderText("confirm")).toHaveValue("");
-  expect(buttonWithText(reopened, "Delete workspace")).toBeDisabled();
-
-  await fill(within(reopened).getByPlaceholderText("confirm"), "confirm");
-  expect(buttonWithText(reopened, "Delete workspace")).toBeEnabled();
-  act(() => {
-    window.history.back();
-  });
-  await screen.findByRole("heading", { name: "Preference" });
-  act(() => {
-    window.history.back();
-  });
-  await waitFor(() => {
-    expect(
-      new URLSearchParams(window.location.search).has("settings"),
-    ).toBeFalsy();
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  });
-
-  await reopenSettings();
-  const afterNavigation = await openDeleteDialog();
-  expect(within(afterNavigation).getByPlaceholderText("confirm")).toHaveValue(
-    "",
-  );
-  expect(buttonWithText(afterNavigation, "Delete workspace")).toBeDisabled();
-});
+    await reopenSettings();
+    const afterNavigation = await openDeleteDialog();
+    expect(within(afterNavigation).getByPlaceholderText("confirm")).toHaveValue(
+      "",
+    );
+    expect(buttonWithText(afterNavigation, "Delete workspace")).toBeDisabled();
+  },
+);
 
 test("Require fresh confirmation after workspace details finish saving", async () => {
   const saveReady = createDeferredPromise<void>(context.signal);
