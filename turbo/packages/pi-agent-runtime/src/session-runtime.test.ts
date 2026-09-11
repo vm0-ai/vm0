@@ -1532,3 +1532,91 @@ describe("official Pi AgentSession runtime", () => {
     }
   });
 });
+
+describe("Okou Harness base system prompt", () => {
+  it.each([
+    { mode: "sandbox" as const, snapshot: undefined },
+    { mode: "api-first" as const, snapshot: EMPTY_RESOURCE_SNAPSHOT },
+  ])("replaces the upstream base prompt for $mode", async ({ snapshot }) => {
+    const root = await mkdtemp(join(tmpdir(), "pi-harness-prompt-"));
+    onTestFinished(async () => {
+      await rm(root, { force: true, recursive: true });
+    });
+    const cwd = join(root, "workspace");
+    const created = await createPiAgentSessionForRuntime({
+      cwd,
+      agentDir: root,
+      sessionManager: SessionManager.inMemory(cwd, { id: randomUUID() }),
+      model: TERRA_MODEL,
+      appendSystemPrompt: "Caller instructions stay appended.",
+      ...(snapshot === undefined ? {} : { resourceSnapshot: snapshot }),
+    });
+
+    try {
+      const { systemPrompt } = created.session;
+      expect(systemPrompt).toContain(
+        "You are an agent running on Okou Harness, Okou's agent runtime.",
+      );
+      expect(systemPrompt).toContain("Refer to your runtime as Okou Harness.");
+
+      // The upstream base prompt names its own harness, links its own
+      // documentation tree, and points at its session environment variables.
+      expect(systemPrompt).not.toContain("coding agent harness");
+      expect(systemPrompt).not.toContain("Pi documentation");
+      expect(systemPrompt).not.toContain("PI_* environment variables");
+      expect(systemPrompt).not.toContain("Be concise in your responses");
+
+      // Tool sections are derived from the session's own tool definitions.
+      expect(systemPrompt).toContain("- read: Read file contents");
+      expect(systemPrompt).toContain(
+        "- bash: Execute bash commands (ls, grep, find, etc.)",
+      );
+      expect(systemPrompt).toContain("- edit: Make precise file edits");
+      expect(systemPrompt).toContain("- write: Create or overwrite files");
+      expect(systemPrompt).toContain(
+        "- Use read to examine files instead of cat or sed.",
+      );
+      expect(systemPrompt).toContain(
+        "- Show file paths clearly when working with files",
+      );
+
+      // Everything the official builder contributes around a custom base
+      // prompt still surrounds it.
+      expect(systemPrompt).toContain(INTERMEDIATE_COMMENTARY_PROMPT);
+      expect(systemPrompt).toContain("Caller instructions stay appended.");
+      expect(systemPrompt).toContain(`Current working directory: ${cwd}`);
+      expect(systemPrompt.indexOf("Okou Harness")).toBeLessThan(
+        systemPrompt.indexOf(INTERMEDIATE_COMMENTARY_PROMPT),
+      );
+    } finally {
+      created.session.dispose();
+    }
+  });
+
+  it("keeps no PI_* session variables in the shell tool environment", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pi-harness-env-"));
+    onTestFinished(async () => {
+      await rm(root, { force: true, recursive: true });
+    });
+    const cwd = join(root, "workspace");
+    const created = await createPiAgentSessionForRuntime({
+      cwd,
+      agentDir: root,
+      sessionManager: SessionManager.inMemory(cwd, { id: randomUUID() }),
+      model: TERRA_MODEL,
+      appendSystemPrompt: null,
+      resourceSnapshot: EMPTY_RESOURCE_SNAPSHOT,
+    });
+
+    try {
+      // The shell tool gates its session-environment guideline and its
+      // PI_SESSION_ID, PI_SESSION_FILE, PI_PROVIDER, PI_MODEL, and
+      // PI_REASONING_LEVEL exports on the same option, so an absent guideline
+      // observes that the option is off. Asserting the child environment
+      // directly would need the sandbox shell, which CI does not provide.
+      expect(created.session.systemPrompt).not.toContain("PI_");
+    } finally {
+      created.session.dispose();
+    }
+  });
+});

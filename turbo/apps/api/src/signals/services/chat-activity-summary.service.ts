@@ -331,6 +331,33 @@ type CompletionOutcome =
   | "unusable_output"
   | OpenRouterFailureReason;
 
+interface CompletionRecord {
+  readonly outcome: CompletionOutcome;
+  readonly durationMs: number;
+  readonly cooldownMs: number;
+  /** Present only for an `OpenRouterRequestError`; never a provider body. */
+  readonly providerStatus?: number;
+  /** The shared semantic classification of a provider request failure. */
+  readonly reason?: OpenRouterFailureReason;
+}
+
+/**
+ * Provider failures this optional generation already absorbs, recognized by the
+ * shared semantic reason rather than by a transport status. A shared rate limit
+ * resolves without anyone here acting: the caller keeps its last usable phrase
+ * or the existing generic label, and the same cooldown this record would report
+ * bounds the retry. Emitting it at any level would only teach operators to
+ * ignore the record. The outer status cannot decide this — a native rate limit
+ * arrives inside a synthetic 502 envelope, and a raw 429 whose native evidence
+ * is auth or invalid_request is a real failure that must keep reaching someone.
+ */
+function absorbedCompletion(completion: CompletionRecord): boolean {
+  return (
+    completion.outcome === "provider_failure" &&
+    completion.reason === "rate_limited"
+  );
+}
+
 /**
  * The level one completion deserves, or `null` when it deserves none.
  *
@@ -346,21 +373,24 @@ type CompletionOutcome =
  * reason added to that classifier later therefore surfaces instead of
  * disappearing into silence.
  *
- * The silent list names only reasons this boundary can actually receive.
+ * The silent cases name only reasons this residual arm can actually receive.
  * `auth`, `invalid_request`, `rate_limited` and `provider_unavailable` belong
  * to the shared reason union but are recorded exclusively while constructing an
- * `OpenRouterRequestError`, so they are classified as `provider_failure` above
- * and never reach the residual arm.
+ * `OpenRouterRequestError`, so they arrive as `provider_failure` and their
+ * severity is decided by `absorbedCompletion` and the provider case below.
  */
 function completionLevel(
-  outcome: CompletionOutcome,
+  completion: CompletionRecord,
 ): "info" | "warn" | "error" | null {
-  switch (outcome) {
+  if (absorbedCompletion(completion)) {
+    return null;
+  }
+  switch (completion.outcome) {
     case "success": {
       return "info";
     }
-    // The severity of an `OpenRouterRequestError` belongs to the provider
-    // classification, not to this residual boundary, and is unchanged here.
+    // The severity of a non-absorbed `OpenRouterRequestError` belongs to the
+    // provider classification, not to this residual boundary.
     case "provider_failure": {
       return "warn";
     }
@@ -396,9 +426,9 @@ function residualOutcome(result: Settled<string | null>): CompletionOutcome {
 
 /**
  * The content-free record of one generation attempt. The caller reads `outcome`
- * to pick a level and `cooldownMs` to write the next attempt, so the diagnostic
- * and the stored backoff can never disagree. No prompt, phrase, provider body
- * or driver message is ever attached.
+ * and `reason` to pick a level and `cooldownMs` to write the next attempt, so
+ * the diagnostic and the stored backoff can never disagree. No prompt, phrase,
+ * provider body or driver message is ever attached.
  */
 function completionRecord(
   started: number,
@@ -406,7 +436,7 @@ function completionRecord(
   abandoned: boolean,
   deadlineReached: boolean,
   result: Settled<string | null>,
-) {
+): CompletionRecord {
   const failure = result.ok ? undefined : result.error;
   const request =
     failure instanceof OpenRouterRequestError ? failure : undefined;
@@ -414,20 +444,24 @@ function completionRecord(
     MAX_COOLDOWN_MS,
     Math.max(FAILURE_COOLDOWN_MS, request?.retryAfterMs ?? 0),
   );
-  const outcome: CompletionOutcome = phrase
-    ? "success"
-    : abandoned
-      ? "cancelled"
-      : deadlineReached
-        ? "timeout"
-        : request
-          ? "provider_failure"
-          : residualOutcome(result);
   return {
-    outcome,
+    outcome: phrase
+      ? "success"
+      : abandoned
+        ? "cancelled"
+        : deadlineReached
+          ? "timeout"
+          : request
+            ? "provider_failure"
+            : residualOutcome(result),
     durationMs: Math.round(performance.now() - started),
     cooldownMs: phrase || abandoned ? 0 : cooldown,
-    ...(request ? { providerStatus: request.status } : {}),
+    ...(request
+      ? {
+          providerStatus: request.status,
+          reason: openRouterFailureReason(failure),
+        }
+      : {}),
   };
 }
 
@@ -481,11 +515,15 @@ async function generateSummary(
     runId: identity.runId,
     ...completionRecord(started, phrase, abandoned, deadline.aborted, result),
   };
+  // Only the diagnostic is skipped. The cooldown this attempt charged, the
+  // stored summary and the final reread below all still run, so an absorbed
+  // failure degrades exactly like a reported one.
+  //
   // Each level is dispatched through its own static member access. `api/no-logger-info`
   // only inspects a non-computed callee, so a computed `log[level](...)` would
   // quietly exempt this file's allowlisted info record from the rule that
   // governs it.
-  const level = completionLevel(completion.outcome);
+  const level = completionLevel(completion);
   if (level === "info") {
     log.info("Activity summary completion", completion);
   } else if (level === "warn") {

@@ -605,26 +605,6 @@ describe("memory summary projection", () => {
       status: "over_limit",
     },
     {
-      name: "oversized summary tokens",
-      files: () => {
-        return [
-          declaredFile(
-            "memory_summary.md",
-            Buffer.from("memory ".repeat(3000), "utf8"),
-          ),
-        ];
-      },
-      archive: () => {
-        return tarGz([
-          {
-            path: "memory_summary.md",
-            content: Buffer.from("memory ".repeat(3000), "utf8"),
-          },
-        ]);
-      },
-      status: "over_limit",
-    },
-    {
       name: "malformed manifest",
       files: () => {
         return [
@@ -791,6 +771,39 @@ describe("memory summary projection", () => {
       status: "pending",
       last_error_class: "read_integrity_mismatch",
       has_content: false,
+    });
+  });
+
+  it("materializes a full source above the prompt injection budget", async () => {
+    const summary = Buffer.from(
+      `v1\n## User Profile\n${" token".repeat(2936)}`,
+      "utf8",
+    );
+    const tokenCount = encode(summary.toString("utf8")).length;
+    expect(tokenCount).toBe(2943);
+    expect(summary.length).toBeLessThanOrEqual(64 * 1024);
+    const declared = declaredFile("memory_summary.md", summary);
+    const version = await publishVersion({
+      files: [declared],
+      archive: tarGz([{ path: "memory_summary.md", content: summary }]),
+    });
+
+    await expect(run(version)).resolves.toMatchObject({ ready: 1 });
+
+    // The stored projection describes the complete source; the runtime renderer
+    // is the only place that applies the 2500-token injection budget.
+    await expect(inspect(version)).resolves.toMatchObject({
+      status: "ready",
+      last_error_class: null,
+      source_hash: declared.hash,
+      source_size: summary.length,
+      token_count: tokenCount,
+    });
+    await expect(read(version)).resolves.toMatchObject({
+      content: summary.toString("utf8"),
+      source_hash: declared.hash,
+      source_size: summary.length,
+      token_count: tokenCount,
     });
   });
 

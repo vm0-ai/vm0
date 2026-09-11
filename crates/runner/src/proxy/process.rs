@@ -732,28 +732,28 @@ async fn spawn_mitmdump(
         .arg("upstream_cert=false")
         .arg("--set")
         .arg(format!(
-            "vm0_proxy_registry_path={}",
+            "okou_proxy_registry_path={}",
             config.registry_path.display()
         ))
         .arg("--set")
-        .arg(format!("vm0_usage_state_id={usage_state_id}"))
+        .arg(format!("okou_usage_state_id={usage_state_id}"))
         .arg("--set")
         .arg(format!(
-            "vm0_addon_ready_path={}",
+            "okou_addon_ready_path={}",
             addon_ready_path.display()
         ))
         .arg("--set")
         .arg(format!(
-            "vm0_builtin_firewall_catalog_cache_path={}",
+            "okou_builtin_firewall_catalog_cache_path={}",
             config.builtin_firewall_catalog_cache_path.display()
         ))
         .arg("--set")
         .arg(format!(
-            "vm0_client_session_id={}",
+            "okou_client_session_id={}",
             config.client_session_id
         ))
         .arg("--set")
-        .arg(format!("vm0_client_version={RUNNER_CLIENT_VERSION}"))
+        .arg(format!("okou_client_version={RUNNER_CLIENT_VERSION}"))
         .arg("--scripts")
         .arg(config.addon_dir.join("mitm_addon.py"))
         .arg("--set")
@@ -766,7 +766,7 @@ async fn spawn_mitmdump(
             crate::deps::SYSTEM_CA_BUNDLE
         ));
     if let Some(url) = &config.api_url {
-        cmd.arg("--set").arg(format!("vm0_api_url={url}"));
+        cmd.arg("--set").arg(format!("okou_api_url={url}"));
     }
     if let Some(token) = &config.runner_token {
         cmd.env(RUNNER_TOKEN_ENV, token);
@@ -1177,8 +1177,8 @@ for arg in "$@"; do
     port="$arg"
   fi
   case "$arg" in
-    vm0_addon_ready_path=*) ready_path="${arg#vm0_addon_ready_path=}" ;;
-    vm0_usage_state_id=*) usage_state_id="${arg#vm0_usage_state_id=}" ;;
+    okou_addon_ready_path=*) ready_path="${arg#okou_addon_ready_path=}" ;;
+    okou_usage_state_id=*) usage_state_id="${arg#okou_usage_state_id=}" ;;
   esac
   prev="$arg"
 done
@@ -1234,8 +1234,8 @@ ready_path=""
 usage_state_id=""
 for arg in "$@"; do
   case "$arg" in
-    vm0_addon_ready_path=*) ready_path="${arg#vm0_addon_ready_path=}" ;;
-    vm0_usage_state_id=*) usage_state_id="${arg#vm0_usage_state_id=}" ;;
+    okou_addon_ready_path=*) ready_path="${arg#okou_addon_ready_path=}" ;;
+    okou_usage_state_id=*) usage_state_id="${arg#okou_usage_state_id=}" ;;
   esac
 done
 python3 - "$ready_path" "$usage_state_id" "$0.descendant" <<'PY' &
@@ -1285,10 +1285,10 @@ previous = None
 for argument in sys.argv[1:]:
     if previous == "--listen-port":
         port = int(argument)
-    if argument.startswith("vm0_addon_ready_path="):
-        ready_path = Path(argument.removeprefix("vm0_addon_ready_path="))
-    if argument.startswith("vm0_usage_state_id="):
-        usage_state_id = argument.removeprefix("vm0_usage_state_id=")
+    if argument.startswith("okou_addon_ready_path="):
+        ready_path = Path(argument.removeprefix("okou_addon_ready_path="))
+    if argument.startswith("okou_usage_state_id="):
+        usage_state_id = argument.removeprefix("okou_usage_state_id=")
     previous = argument
 
 descendant_pid = os.fork()
@@ -1980,36 +1980,36 @@ exit 42
         );
         assert!(
             args.lines()
-                .any(|arg| arg == "vm0_usage_state_id=usage-state-test"),
-            "mitmdump args should include vm0_usage_state_id option; got:\n{args}",
+                .any(|arg| arg == "okou_usage_state_id=usage-state-test"),
+            "mitmdump args should include okou_usage_state_id option; got:\n{args}",
         );
         assert!(
             args.lines().any(|arg| {
                 arg == format!(
-                    "vm0_addon_ready_path={}",
+                    "okou_addon_ready_path={}",
                     config.addon_dir.join(ADDON_READY_FILENAME).display()
                 )
             }),
-            "mitmdump args should include vm0_addon_ready_path option; got:\n{args}",
+            "mitmdump args should include okou_addon_ready_path option; got:\n{args}",
         );
         assert!(
             args.lines().any(|arg| {
                 arg == format!(
-                    "vm0_builtin_firewall_catalog_cache_path={}",
+                    "okou_builtin_firewall_catalog_cache_path={}",
                     builtin_firewall_catalog_cache_path.display()
                 )
             }),
-            "mitmdump args should include vm0_builtin_firewall_catalog_cache_path option; got:\n{args}",
+            "mitmdump args should include okou_builtin_firewall_catalog_cache_path option; got:\n{args}",
         );
         assert!(
             args.lines()
-                .any(|arg| arg == "vm0_client_session_id=runner-session-test"),
-            "mitmdump args should include vm0_client_session_id option; got:\n{args}",
+                .any(|arg| arg == "okou_client_session_id=runner-session-test"),
+            "mitmdump args should include okou_client_session_id option; got:\n{args}",
         );
         assert!(
             args.lines()
-                .any(|arg| arg == format!("vm0_client_version={RUNNER_CLIENT_VERSION}")),
-            "mitmdump args should include vm0_client_version option; got:\n{args}",
+                .any(|arg| arg == format!("okou_client_version={RUNNER_CLIENT_VERSION}")),
+            "mitmdump args should include okou_client_version option; got:\n{args}",
         );
         assert!(!args.contains("runner-token"));
         assert!(

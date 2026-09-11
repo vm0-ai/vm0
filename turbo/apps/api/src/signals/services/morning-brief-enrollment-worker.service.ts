@@ -108,7 +108,7 @@ const executeMorningBriefEnrollmentScope$ = command(
         if (lastError) {
           log.warn("Morning Brief enrollment will retry", details);
         } else {
-          log.debug("Morning Brief enrollment changed", details);
+          log.info("Morning Brief enrollment changed", details);
         }
         await publishMorningBriefChangedSafely(identity);
         signal.throwIfAborted();

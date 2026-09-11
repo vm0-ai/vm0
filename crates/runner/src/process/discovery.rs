@@ -20,12 +20,12 @@ pub(crate) fn is_firecracker_cmdline(argv: &[String]) -> bool {
 
 /// Parse a mitmdump argv for the listen port.
 ///
-/// Identifies our mitmdump by `vm0_proxy_registry_path=` and extracts
+/// Identifies our mitmdump by `okou_proxy_registry_path=` and extracts
 /// the `--listen-port` value.
 fn parse_mitmdump_cmdline(argv: &[String]) -> Option<u16> {
     if !argv
         .iter()
-        .any(|t| t.starts_with("vm0_proxy_registry_path="))
+        .any(|t| t.starts_with("okou_proxy_registry_path="))
     {
         return None;
     }
@@ -380,7 +380,7 @@ mod tests {
             "--listen-port",
             "8080",
             "--set",
-            "vm0_proxy_registry_path=/data/runner-01/proxy-registry.json",
+            "okou_proxy_registry_path=/data/runner-01/proxy-registry.json",
         ]);
         assert_eq!(parse_mitmdump_cmdline(&a), Some(8080));
     }
@@ -393,7 +393,7 @@ mod tests {
             "--listen-port",
             "8080",
             "--set",
-            "vm0_proxy_registry_path=/data/my runner/proxy-registry.json",
+            "okou_proxy_registry_path=/data/my runner/proxy-registry.json",
         ]);
         assert_eq!(parse_mitmdump_cmdline(&a), Some(8080));
     }
@@ -409,7 +409,7 @@ mod tests {
         let a = argv(&[
             "mitmdump",
             "--set",
-            "vm0_proxy_registry_path=/data/proxy-registry.json",
+            "okou_proxy_registry_path=/data/proxy-registry.json",
         ]);
         assert!(parse_mitmdump_cmdline(&a).is_none());
     }

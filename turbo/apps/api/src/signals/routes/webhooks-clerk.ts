@@ -168,7 +168,7 @@ async function observeNewMembershipMorningBriefProvisioning(
     L.warn("Morning Brief membership provisioning outcome", details);
     return;
   }
-  L.debug("Morning Brief membership provisioning outcome", details);
+  L.info("Morning Brief membership provisioning outcome", details);
 }
 
 function enqueueMorningBriefMembershipProvisioning(args: {
