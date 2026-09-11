@@ -6148,7 +6148,7 @@
       "sharedHelp_other": "Los cambios de acceso se aplican a los {{count}} hosts:",
       "unused": "Ningún host las utiliza"
     },
-    "credentialsHelp": "Las credenciales son de solo escritura y permanecen fuera del sandbox. Pega la clave completa; se conservan los espacios. Los campos se borran al enviar o cerrar el formulario.",
+    "credentialsHelp": "Las credenciales son de solo escritura y permanecen fuera del sandbox. Pega la clave completa; se conservan los espacios. Los campos se borran al cerrar el formulario.",
     "credentialsTab": "Credenciales",
     "delete": "Eliminar host",
     "deleteHelp": "¿Eliminar este host? Sus credenciales se conservarán. Los Agents dejarán de verlo en el inventario.",

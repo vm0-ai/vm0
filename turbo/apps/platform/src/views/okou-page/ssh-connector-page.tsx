@@ -47,6 +47,7 @@ import {
   cancelSshPrivateKeyFile$,
   importSshPrivateKeyFile$,
   mountSshPrivateKey$,
+  mountSshForm$,
   sshPrivateKeyFileResult$,
 } from "../../signals/ssh.ts";
 import {
@@ -225,8 +226,10 @@ function PrivateKeyFields() {
 
 function CredentialFields({
   credential,
+  disabled,
 }: {
   readonly credential: SshCredentialResponse | null;
+  readonly disabled: boolean;
 }) {
   const { t } = useTranslation();
   const editor = useGet(sshCredentialEditor$);
@@ -261,6 +264,7 @@ function CredentialFields({
       {credential && (
         <label className="flex items-center gap-2 text-sm">
           <Checkbox
+            disabled={disabled}
             checked={editor.replace}
             onCheckedChange={(checked) => {
               return replace(checked === true);
@@ -281,6 +285,7 @@ function CredentialFields({
             </span>
             <SegmentControl
               className="justify-self-start"
+              disabled={disabled}
               aria-labelledby="ssh-auth-method-label"
               value={editor.method}
               onValueChange={chooseMethod}
@@ -319,7 +324,7 @@ function CredentialFields({
   );
 }
 
-function CredentialSelection() {
+function CredentialSelection({ disabled }: { readonly disabled: boolean }) {
   const { t } = useTranslation();
   const credentials = useLoadable(sshCredentials$);
   const editor = useGet(sshCredentialEditor$);
@@ -349,7 +354,11 @@ function CredentialSelection() {
             })}
           </p>
         ) : (
-          <Select value={editor.selection} onValueChange={choose}>
+          <Select
+            disabled={disabled}
+            value={editor.selection}
+            onValueChange={choose}
+          >
             <SelectTrigger id="ssh-selected-credential">
               <SelectValue />
             </SelectTrigger>
@@ -372,7 +381,7 @@ function CredentialSelection() {
       </div>
       {editor.selection === "new" && (
         <div className="grid gap-4 rounded-lg border bg-muted/30 p-4">
-          <CredentialFields credential={null} />
+          <CredentialFields credential={null} disabled={disabled} />
         </div>
       )}
     </fieldset>
@@ -490,12 +499,13 @@ function SshDialog() {
   const data = useLoadable(sshDialog$);
   const close = useSet(closeSshDialog$);
   const [saving, save] = useLoadableSet(saveSsh$);
+  const mountForm = useSet(mountSshForm$);
   const signal = useGet(pageSignal$);
-  const cancelRead = useSet(cancelSshPrivateKeyFile$);
   const fileResult = useLoadable(sshPrivateKeyFileResult$);
   const credentials = useLoadable(sshCredentials$);
   const dialog = data.state === "hasData" ? data.data : null;
   const { title, description } = useDialogCopy(dialog?.kind);
+  const isSaving = saving.state === "loading";
   if (!dialog) {
     return null;
   }
@@ -507,7 +517,7 @@ function SshDialog() {
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open && saving.state !== "loading") {
+        if (!open && !isSaving) {
           close();
         }
       }}
@@ -520,25 +530,35 @@ function SshDialog() {
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
         <form
+          ref={mountForm}
           className="grid gap-4"
           autoComplete="off"
-          onReset={() => {
-            cancelRead();
-          }}
+          aria-busy={isSaving}
           onSubmit={(event) => {
             event.preventDefault();
-            const form = event.currentTarget;
-            const values = new FormData(form);
-            // Never retain credentials in ccstate, query caches or the DOM during I/O.
-            form.reset();
+            if (isSaving) {
+              return;
+            }
+            // Keep retryable input only in this form, never in ccstate or caches.
+            const values = new FormData(event.currentTarget);
             detach(save(values, signal), Reason.DomCallback);
           }}
         >
-          {hostEditor && <EndpointFields connection={dialog.connection} />}
-          {hostEditor && <div aria-hidden="true" className="h-px bg-divider" />}
-          {hostEditor && <CredentialSelection />}
-          {["create-credential", "edit-credential"].includes(dialog.kind) && (
-            <CredentialFields credential={dialog.credential} />
+          {!destructive && (
+            <fieldset disabled={isSaving} className="grid min-w-0 gap-4">
+              {hostEditor ? (
+                <>
+                  <EndpointFields connection={dialog.connection} />
+                  <div aria-hidden="true" className="h-px bg-divider" />
+                  <CredentialSelection disabled={isSaving} />
+                </>
+              ) : (
+                <CredentialFields
+                  credential={dialog.credential}
+                  disabled={isSaving}
+                />
+              )}
+            </fieldset>
           )}
           {dialog.credential && (
             <CredentialImpact credential={dialog.credential} />
@@ -547,7 +567,7 @@ function SshDialog() {
             <Button
               type="button"
               variant="outline"
-              disabled={saving.state === "loading"}
+              disabled={isSaving}
               onClick={() => {
                 return close();
               }}
@@ -566,11 +586,15 @@ function SshDialog() {
               }
               variant={destructive ? "destructive" : "default"}
             >
-              {destructive
-                ? title
-                : t(($) => {
-                    return $.ssh.save;
-                  })}
+              {isSaving
+                ? t(($) => {
+                    return $.connectors.actions.saving;
+                  })
+                : destructive
+                  ? title
+                  : t(($) => {
+                      return $.ssh.save;
+                    })}
             </Button>
           </div>
         </form>

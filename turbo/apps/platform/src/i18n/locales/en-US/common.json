@@ -6077,7 +6077,7 @@
       "sharedHelp_other": "Login changes apply to all {{count}} hosts:",
       "unused": "Not used by any hosts"
     },
-    "credentialsHelp": "Credentials are write-only and stay outside the sandbox. Paste the complete key; whitespace is preserved. Fields are cleared on submission or when this form closes.",
+    "credentialsHelp": "Credentials are write-only and stay outside the sandbox. Paste the complete key; whitespace is preserved. Fields are cleared when this form closes.",
     "credentialsTab": "Credentials",
     "delete": "Delete host",
     "deleteHelp": "Delete this host? Its credential will be kept. Agents will no longer see this host in the live inventory.",

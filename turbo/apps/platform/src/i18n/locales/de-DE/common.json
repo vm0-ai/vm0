@@ -6085,7 +6085,7 @@
       "sharedHelp_other": "Anmeldeänderungen gelten für alle {{count}} Hosts:",
       "unused": "Von keinem Host verwendet"
     },
-    "credentialsHelp": "Zugangsdaten können nur geschrieben werden und bleiben außerhalb der Sandbox. Fügen Sie den vollständigen Schlüssel ein; Leerzeichen bleiben erhalten. Die Felder werden beim Absenden oder Schließen geleert.",
+    "credentialsHelp": "Zugangsdaten können nur geschrieben werden und bleiben außerhalb der Sandbox. Fügen Sie den vollständigen Schlüssel ein; Leerzeichen bleiben erhalten. Die Felder werden beim Schließen des Formulars geleert.",
     "credentialsTab": "Zugangsdaten",
     "delete": "Host löschen",
     "deleteHelp": "Diesen Host löschen? Seine Zugangsdaten bleiben erhalten. Agents sehen ihn nicht mehr im Inventar.",

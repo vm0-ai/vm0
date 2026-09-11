@@ -6069,7 +6069,7 @@
       "sharedHelp_other": "Perubahan login berlaku untuk seluruh {{count}} host:",
       "unused": "Tidak digunakan oleh host mana pun"
     },
-    "credentialsHelp": "Kredensial hanya dapat ditulis dan tetap berada di luar sandbox. Tempelkan kunci lengkap; spasi dipertahankan. Kolom dikosongkan saat formulir dikirim atau ditutup.",
+    "credentialsHelp": "Kredensial hanya dapat ditulis dan tetap berada di luar sandbox. Tempelkan kunci lengkap; spasi dipertahankan. Kolom dikosongkan saat formulir ditutup.",
     "credentialsTab": "Kredensial",
     "delete": "Hapus host",
     "deleteHelp": "Hapus host ini? Kredensialnya akan tetap disimpan. Agent tidak lagi melihat host ini dalam inventaris.",

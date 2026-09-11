@@ -49,6 +49,14 @@ export const cancelSshPrivateKeyFile$ = command(({ set }) => {
   set(resetPrivateKeyRead$);
   set(privateKeyFileRead$, null);
 });
+export const mountSshForm$ = onRef(
+  command(({ set }, form: HTMLFormElement, signal: AbortSignal) => {
+    signal.addEventListener("abort", () => {
+      form.reset();
+      set(cancelSshPrivateKeyFile$);
+    });
+  }),
+);
 export const mountSshPrivateKey$ = onRef(
   command(({ set }, input: HTMLTextAreaElement, signal: AbortSignal) => {
     signal.addEventListener("abort", () => {

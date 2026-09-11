@@ -6148,7 +6148,7 @@
       "sharedHelp_other": "Les modifications de connexion s’appliquent aux {{count}} hôtes :",
       "unused": "Aucun hôte ne les utilise"
     },
-    "credentialsHelp": "Les identifiants sont accessibles uniquement en écriture et restent hors du sandbox. Collez la clé complète ; les espaces sont conservés. Les champs sont effacés à l’envoi ou à la fermeture du formulaire.",
+    "credentialsHelp": "Les identifiants sont accessibles uniquement en écriture et restent hors du sandbox. Collez la clé complète ; les espaces sont conservés. Les champs sont effacés à la fermeture du formulaire.",
     "credentialsTab": "Identifiants",
     "delete": "Supprimer l’hôte",
     "deleteHelp": "Supprimer cet hôte ? Ses identifiants seront conservés. Les Agents ne le verront plus dans l’inventaire.",

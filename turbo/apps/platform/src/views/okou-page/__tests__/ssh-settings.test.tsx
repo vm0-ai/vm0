@@ -180,6 +180,127 @@ test("Password credentials preserve whitespace, clear mode-switched secrets, and
   expect(document.body.textContent).not.toContain("canary");
 });
 
+test.each(["host", "credential"])(
+  "A failed %s save keeps password input for a manual retry",
+  async (kind) => {
+    context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
+      return respond(200, { connections: [] });
+    });
+    const ready = context.mocks.deferred<void>();
+    const requests: unknown[] = [];
+    let fail = true;
+    const error = {
+      error: { code: "INTERNAL_ERROR", message: "Temporary save failure" },
+    };
+    if (kind === "host") {
+      context.mocks.api(
+        sshConnectionsContract.create,
+        async ({ body, respond }) => {
+          requests.push(body);
+          await ready.promise;
+          return fail ? respond(500, error) : respond(201, base);
+        },
+      );
+      await page("/connectors/ssh?add=1");
+    } else {
+      context.mocks.api(
+        sshCredentialsContract.create,
+        async ({ body, respond }) => {
+          requests.push(body);
+          await ready.promise;
+          return fail
+            ? respond(500, error)
+            : respond(201, {
+                ...credential,
+                authMethod: "password",
+                hosts: [],
+              });
+        },
+      );
+      await page();
+      click(screen.getByText("Credentials", { selector: '[role="radio"]' }));
+      click(
+        await waitFor(() => {
+          return getAction("button", "Add credential");
+        }),
+      );
+    }
+    const dialog = await screen.findByRole("dialog");
+    if (kind === "host") {
+      await fill(within(dialog).getByLabelText("Display name"), "Deployment");
+      await fill(
+        within(dialog).getByLabelText("Public hostname or IP address"),
+        "ssh.example.com",
+      );
+    }
+    await fill(
+      within(dialog).getByLabelText("Credential name"),
+      "Password login",
+    );
+    await fill(within(dialog).getByLabelText("SSH username"), "deploy");
+    click(within(dialog).getByText("Password", { selector: '[role="radio"]' }));
+    await fill(
+      within(dialog).getByLabelText("Password"),
+      "  retry-password-canary  ",
+    );
+    click(getAction("button", "Save", dialog));
+    await waitFor(() => {
+      expect(getAction("button", "Saving...", dialog)).toBeDisabled();
+    });
+    expect(within(dialog).getByLabelText("Password")).toHaveValue(
+      "  retry-password-canary  ",
+    );
+    expect(within(dialog).getByLabelText("Password")).toBeDisabled();
+    expect(within(dialog).getByLabelText("SSH username")).toBeDisabled();
+    expect(getAction("button", "Cancel", dialog)).toBeDisabled();
+    const privateKeyChoice = within(dialog).getByText("Private key", {
+      selector: '[role="radio"]',
+    });
+    expect(privateKeyChoice).toHaveAttribute("aria-disabled", "true");
+    ready.resolve();
+    await waitFor(() => {
+      expect(getAction("button", "Save", dialog)).toBeEnabled();
+    });
+    expect(within(dialog).getByLabelText("Credential name")).toHaveValue(
+      "Password login",
+    );
+    expect(within(dialog).getByLabelText("SSH username")).toHaveValue("deploy");
+    expect(within(dialog).getByLabelText("Password")).toHaveValue(
+      "  retry-password-canary  ",
+    );
+    expect(within(dialog).getByLabelText("Password")).toBeEnabled();
+    fail = false;
+    click(getAction("button", "Save", dialog));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).toBeNull();
+    });
+    const credentialBody = {
+      name: "Password login",
+      username: "deploy",
+      authentication: {
+        method: "password",
+        password: "  retry-password-canary  ",
+      },
+    };
+    const expected =
+      kind === "host"
+        ? {
+            displayName: "Deployment",
+            host: "ssh.example.com",
+            port: 22,
+            credential: { create: credentialBody },
+          }
+        : credentialBody;
+    expect(requests).toStrictEqual([expected, expected]);
+    click(getAction("button", kind === "host" ? "Add host" : "Add credential"));
+    const reopened = await screen.findByRole("dialog");
+    click(
+      within(reopened).getByText("Password", { selector: '[role="radio"]' }),
+    );
+    expect(within(reopened).getByLabelText("Password")).toHaveValue("");
+  },
+);
+
 test("Shared credential editing explains its impact and conflicts do not retry or overwrite", async () => {
   context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
     return respond(200, { connections: [base] });
@@ -636,11 +757,14 @@ test("A localized load error is retryable and distinct from feature unavailabili
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
-test("Invalid host errors are localized and clear submitted credentials", async () => {
+test("Invalid host errors preserve credentials so the host can be corrected and saved", async () => {
   context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
     return respond(200, { connections: [] });
   });
-  context.mocks.api(sshConnectionsContract.create, ({ respond }) => {
+  context.mocks.api(sshConnectionsContract.create, ({ body, respond }) => {
+    if (body.host === "ssh.example.com") {
+      return respond(201, base);
+    }
     return respond(400, {
       error: {
         code: "SSH_INVALID_HOST",
@@ -653,7 +777,7 @@ test("Invalid host errors are localized and clear submitted credentials", async 
   await fill(within(dialog).getByLabelText("Display name"), "Deployment");
   await fill(
     within(dialog).getByLabelText("Public hostname or IP address"),
-    "ssh.example.com",
+    "https://ssh.example.com",
   );
   await fill(
     within(dialog).getByLabelText("Credential name"),
@@ -668,7 +792,20 @@ test("Invalid host errors are localized and clear submitted credentials", async 
   expect(document.body.textContent).not.toContain(
     "server diagnostic must not be UI copy",
   );
-  expect(within(dialog).getByLabelText("Private key")).toHaveValue("");
+  expect(within(dialog).getByLabelText("Private key")).toHaveValue(
+    "not-a-real-key",
+  );
+  expect(within(dialog).getByLabelText("Display name")).toHaveValue(
+    "Deployment",
+  );
+  await fill(
+    within(dialog).getByLabelText("Public hostname or IP address"),
+    "ssh.example.com",
+  );
+  click(getAction("button", "Save", dialog));
+  await waitFor(() => {
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
 });
 async function page(path = "/connectors/ssh", enabled = true) {
   await setupPage({
@@ -1034,7 +1171,7 @@ test.each(["Display name", "Public hostname or IP address", "SSH username"])(
   },
 );
 
-test("Credential replacement is explicit and fields clear before the request finishes and on close", async () => {
+test("Credential replacement retains input during saving and clears secrets on close", async () => {
   context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
     return respond(200, { connections: [base] });
   });
@@ -1085,9 +1222,16 @@ test("Credential replacement is explicit and fields clear before the request fin
   });
   click(getAction("button", "Save", dialog));
   await waitFor(() => {
-    expect(getAction("button", "Save", dialog)).toBeDisabled();
+    expect(getAction("button", "Saving...", dialog)).toBeDisabled();
   });
-  expect(within(dialog).getByLabelText("Private key")).toHaveValue("");
+  expect(within(dialog).getByLabelText("Private key")).toHaveValue(
+    " new-key\n",
+  );
+  expect(within(dialog).getByLabelText("Private key")).toBeDisabled();
+  expect(
+    within(dialog).getByRole("checkbox", { name: "Replace authentication" }),
+  ).toHaveAttribute("aria-disabled", "true");
+  expect(getAction("button", "Choose file", dialog)).toBeDisabled();
   ready.resolve();
   await waitFor(() => {
     return expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
@@ -1104,6 +1248,12 @@ test("Credential replacement is explicit and fields clear before the request fin
       },
     },
   ]);
+  click(getAction("button", "Edit credential"));
+  const reopened = await screen.findByRole("dialog");
+  await userEvent.click(
+    within(reopened).getByRole("checkbox", { name: "Replace authentication" }),
+  );
+  expect(within(reopened).getByLabelText("Private key")).toHaveValue("");
 });
 
 test("Reset requires confirmation, generation conflict refreshes without retry, and deletion is explicit", async () => {

@@ -48,9 +48,14 @@ Paste a key or use **Choose file** to read a non-empty key file up to 64 KiB
 locally. File selection does not upload anything or parse the key format; Save
 submits the credential. Keys, passphrases and passwords preserve whitespace.
 Secrets are write-only and stay outside the sandbox. Use a least-privilege
-remote SSH user. Forms clear secrets on submission, close, navigation and
-authentication-method changes. A background notification refreshes the lists
-without clearing an open form; unsuccessful submissions require entering secrets again.
+remote SSH user. Submitted input stays only in the open form while saving;
+controls are disabled until the request completes. A retryable failure preserves
+the input so the user can correct it or click Save again. Successful saves close
+the form and clear its secrets, as do cancellation, navigation and owner changes.
+Changing authentication methods clears the previous method's inputs. Secrets
+are never stored in reactive state or browser caches. A background notification
+refreshes the lists without clearing an open form. Stale revisions still require
+reopening the refreshed item rather than retrying an outdated write.
 
 Each saved connection has its own ID. Multiple configurations may use the same
 host and port, with different usernames or different keys for the same username.
