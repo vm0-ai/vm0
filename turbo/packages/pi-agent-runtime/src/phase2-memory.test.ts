@@ -1094,7 +1094,6 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     );
 
     expect(result.status).toBe("prepared");
-    if (result.status !== "prepared") return;
     const published = result.files.find((file) => {
       return file.path === "memory_summary.md";
     });

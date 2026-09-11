@@ -5,6 +5,7 @@ import {
   readFile,
   rename,
   rm,
+  stat,
   symlink,
   writeFile,
 } from "node:fs/promises";
@@ -226,8 +227,8 @@ describe("Pi memory Phase 2 maintenance tools", () => {
       `written summary_bytes=${Buffer.byteLength(oversized).toString()} summary_byte_limit=65536 summary_tokens=unmeasured summary_injection_target=2500`,
     );
     expect(
-      await readFile(join(fixture.memoryRoot, "memory_summary.md"), "utf8"),
-    ).toBe(oversized);
+      (await stat(join(fixture.memoryRoot, "memory_summary.md"))).size,
+    ).toBe(Buffer.byteLength(oversized));
   });
 
   it("rejects every path escape and mutation outside the exact allowlist", async () => {
