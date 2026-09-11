@@ -1,7 +1,14 @@
 import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
+import { useGet } from "ccstate-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
+import {
+  clerkLocalizationForLocale,
+  clerkLocalizations$,
+} from "../../../i18n/clerk-localization.ts";
+import { clerkSignInErrorMessage } from "../../../i18n/clerk-sign-in-errors.ts";
+import { locale$ } from "../../../signals/locale.ts";
 import type {
   AuthV2SignInError,
   AuthV2SignInFactor,
@@ -13,6 +20,7 @@ import {
 } from "../../../signals/auth.ts";
 
 export interface AuthV2SignInCopy {
+  readonly clerkError: (error: AuthV2SignInError) => string | undefined;
   readonly accessNotAllowed: string;
   readonly authenticatorMethod: string;
   readonly authenticatorSubtitle: string;
@@ -422,7 +430,22 @@ export function useAuthV2SignInCopy(
   authBrand: AuthBrandContext = resolveAuthBrandContext(),
 ): AuthV2SignInCopy {
   const { t } = useTranslation();
+  const localization = clerkLocalizationForLocale(
+    useGet(clerkLocalizations$),
+    useGet(locale$),
+  );
   return {
+    clerkError: (error) => {
+      const code =
+        error.code === "rate-limited" ? "too_many_requests" : error.clerkCode;
+      return code
+        ? clerkSignInErrorMessage(localization, {
+            code,
+            paramName: error.clerkParamName,
+            signingInWithPassword: error.field === "password",
+          })
+        : undefined;
+    },
     ...signInEntryCopy(t, authBrand.brandName),
     ...signInCodeCopy(t, authBrand.brandName),
     ...signInPasswordCopy(t, authBrand.brandName),
@@ -455,7 +478,7 @@ export function signInErrorMessage(
   if (error.code === "user-banned") {
     return copy.userBanned;
   }
-  return copy.unknownError;
+  return copy.clerkError(error) ?? copy.unknownError;
 }
 
 export function signInCardDescription(

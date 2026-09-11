@@ -135,6 +135,7 @@ export type AuthV2SignInErrorField =
 
 export interface AuthV2SignInError {
   readonly clerkCode?: string;
+  readonly clerkParamName?: string;
   readonly code:
     | "access-not-allowed"
     | "clerk"
@@ -143,6 +144,7 @@ export interface AuthV2SignInError {
     | "passkey-cancelled"
     | "passkey-unavailable"
     | "password-mismatch"
+    | "rate-limited"
     | "user-banned"
     | "unknown";
   readonly field: AuthV2SignInErrorField;
@@ -504,11 +506,18 @@ function normalizeClerkError(
   if (!isRecord(error)) {
     return { code: "unknown", field: fallbackField };
   }
+  // Clerk's is429Error checks the response status, independently of API codes.
+  if (error.status === 429) {
+    return { code: "rate-limited", field: fallbackField };
+  }
   const apiError = Array.isArray(error.errors)
     ? error.errors.find(isRecord)
     : null;
   const normalizedError = apiError ?? error;
   const clerkCode = stringProperty(normalizedError, "code");
+  const clerkParamName = isRecord(normalizedError.meta)
+    ? stringProperty(normalizedError.meta, "paramName")
+    : undefined;
   const errorName = stringProperty(normalizedError, "name");
   const errorMessage = stringProperty(normalizedError, "message");
   const normalizedPasskeyCode = passkeyErrorCode(
@@ -520,9 +529,7 @@ function normalizeClerkError(
     return { code: "unknown", field: fallbackField };
   }
   const code =
-    fallbackField === "code" &&
-    (clerkCode?.toLowerCase().includes("expired") === true ||
-      clerkCode?.toLowerCase().includes("timeout") === true)
+    fallbackField === "code" && clerkCode === "verification_expired"
       ? "code-expired"
       : fallbackField === "code" && clerkCode === "form_code_incorrect"
         ? "invalid-code"
@@ -534,6 +541,7 @@ function normalizeClerkError(
               : "clerk"));
   return {
     ...(clerkCode ? { clerkCode } : {}),
+    ...(clerkParamName ? { clerkParamName } : {}),
     code,
     field: clerkErrorField(normalizedError, fallbackField),
   };

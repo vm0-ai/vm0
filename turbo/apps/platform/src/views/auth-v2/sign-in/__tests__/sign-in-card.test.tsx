@@ -720,6 +720,9 @@ test("Password errors are safe, relevant, and cleared by a meaningful edit", asy
   fireEvent.submit(containingForm(passwordInput));
 
   const unrelatedAlert = await screen.findByRole("alert");
+  expect(unrelatedAlert).toHaveTextContent(
+    "Enter a valid email address or username.",
+  );
   expect(document.activeElement).toBe(unrelatedAlert);
   expectNoFieldErrorAssociation(passwordInput);
   expect(screen.queryByText("Private identifier provider detail.")).toBeNull();
@@ -733,6 +736,9 @@ test("Password errors are safe, relevant, and cleared by a meaningful edit", asy
 
   fireEvent.submit(containingForm(passwordInput));
   const passwordAlert = await screen.findByRole("alert");
+  expect(passwordAlert).toHaveTextContent(
+    "Incorrect password. Please try again.",
+  );
   expect(document.activeElement).toBe(passwordAlert);
   expectFieldErrorAssociation(passwordInput, passwordAlert);
   expect(screen.queryByText("Private password provider detail.")).toBeNull();
@@ -1827,6 +1833,7 @@ test("An email lookup failure remains safe and retryable", async () => {
     .mockRejectedValueOnce({
       errors: [
         {
+          code: "form_identifier_not_found",
           longMessage: "We couldn't find an account with that identifier.",
           meta: { paramName: "identifier" },
         },
@@ -1847,7 +1854,7 @@ test("An email lookup failure remains safe and retryable", async () => {
 
   const alert = await screen.findByRole("alert");
   expect(alert).toHaveTextContent(
-    "This action couldn't be completed. Please try again later or contact support if this persists.",
+    "We couldn't find an account with those details. Check them or sign up.",
   );
   expect(document.activeElement).toBe(alert);
   expectFieldErrorAssociation(identifierInput, alert);
@@ -1872,6 +1879,204 @@ test("An email lookup failure remains safe and retryable", async () => {
   fireEvent.submit(containingForm(identifierInput));
   await expect(screen.findByLabelText("Password")).resolves.toBeVisible();
 });
+
+test.each([
+  {
+    name: "a temporarily locked account",
+    error: { errors: [{ code: "user_locked", message: "Private detail" }] },
+    message:
+      "Your account is temporarily locked after too many failed attempts. Please try again later.",
+  },
+  {
+    name: "a rate-limited response regardless of its error code",
+    error: {
+      status: 429,
+      errors: [
+        { code: "unexpected_rate_limit_code", message: "Private detail" },
+      ],
+    },
+    message: "Too many attempts. Please wait a moment before trying again.",
+  },
+  {
+    name: "an unknown Clerk error",
+    error: {
+      errors: [
+        { code: "unrecognized_provider_error", longMessage: "Private detail" },
+      ],
+    },
+    message:
+      "This action couldn't be completed. Please try again later or contact support if this persists.",
+  },
+  {
+    name: "a non-Clerk error",
+    error: new Error("Private detail"),
+    message:
+      "This action couldn't be completed. Please try again later or contact support if this persists.",
+  },
+])(
+  "Sign-in explains $name without displaying provider details",
+  async ({ error, message }) => {
+    mockedClerk.clientSignInCreate.mockRejectedValue(error);
+    await setupSignInPage({ status: "needs_identifier" });
+    const input = await screen.findByLabelText("Email address");
+    await fill(input, "person@example.com");
+    fireEvent.submit(containingForm(input));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(message);
+    expect(alert).toHaveFocus();
+    expectFieldErrorAssociation(input, alert);
+    expect(screen.queryByText("Private detail")).not.toBeInTheDocument();
+  },
+);
+
+test.each([
+  {
+    locale: "en-US",
+    label: "Email address",
+    paramName: "email_address",
+    message: "Enter a valid email address.",
+  },
+  {
+    locale: "ja-JP",
+    label: "メールアドレス",
+    paramName: "email_address",
+    message: "メールアドレスの形式が正しくありません。",
+  },
+  {
+    locale: "ja-JP",
+    label: "メールアドレス",
+    paramName: "identifier",
+    message: "入力された値の形式が正しくありません。確認して修正してください。",
+  },
+] as const)(
+  "Sign-in localizes $paramName errors in $locale",
+  async ({ locale, label, paramName, message }) => {
+    context.mocks.browser.languages([locale]);
+    mockedClerk.clientSignInCreate.mockRejectedValue({
+      errors: [
+        {
+          code: "form_param_format_invalid",
+          meta: { paramName },
+        },
+      ],
+    });
+    await setupSignInPage({ status: "needs_identifier" });
+    const input = await screen.findByLabelText(label);
+    await fill(input, "invalid-address");
+    fireEvent.submit(containingForm(input));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(message);
+    expectFieldErrorAssociation(input, alert);
+  },
+);
+
+test("Clerk's combined credential error does not claim the account is missing", async () => {
+  mockIdentifierSubmission([passwordFactor()]);
+  mockedClerk.signInAttemptFirstFactor.mockRejectedValue({
+    errors: [
+      {
+        code: "form_password_or_identifier_incorrect",
+        meta: { paramName: "password" },
+      },
+    ],
+  });
+  await setupSignInPage({ status: "needs_identifier" });
+  await submitIdentifier("person@example.com");
+  const input = await screen.findByLabelText("Password");
+  await fill(input, "wrong-password");
+  fireEvent.submit(containingForm(input));
+
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(
+    "Incorrect email address, username, or password. Please try again.",
+  );
+  expectFieldErrorAssociation(input, alert);
+});
+
+test.each([
+  {
+    status: "needs_first_factor",
+    label: "Password",
+    message:
+      "This password has been found as part of a breach and can not be used, please reset your password.",
+  },
+  {
+    status: "needs_new_password",
+    label: "New password",
+    message:
+      "This password has been found as part of a breach and can not be used, please try another password instead.",
+  },
+])(
+  "A breached password has actionable copy during $status",
+  async ({ status, label, message }) => {
+    mockIdentifierSubmission([passwordFactor()]);
+    const error = {
+      errors: [
+        { code: "form_password_pwned", meta: { paramName: "password" } },
+      ],
+    };
+    mockedClerk.signInAttemptFirstFactor.mockRejectedValue(error);
+    mockedClerk.signInResetPassword.mockRejectedValue(error);
+    await setupSignInPage({
+      status: status === "needs_first_factor" ? "needs_identifier" : status,
+      supportedFirstFactors: [passwordFactor()],
+    });
+    if (status === "needs_first_factor") {
+      await submitIdentifier("person@example.com");
+    }
+    const input = await screen.findByLabelText(label);
+    await fill(input, "breached-password");
+    if (status === "needs_new_password") {
+      await fill(
+        screen.getByLabelText("Confirm password"),
+        "breached-password",
+      );
+    }
+    fireEvent.submit(containingForm(input));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(message);
+    expectFieldErrorAssociation(input, alert);
+  },
+);
+
+test.each([
+  {
+    name: "a security-check timeout",
+    error: { errors: [{ code: "protect_check_timed_out" }] },
+    message: "Verification didn't complete in time. Please try again.",
+  },
+  {
+    name: "a Clerk runtime timeout",
+    error: {
+      code: "clerk_runtime_load_timeout",
+      message: "Private SDK timeout detail",
+    },
+    message:
+      "Sign-in took too long to load. Please refresh the page and try again.",
+  },
+])(
+  "Sign-in explains $name without expiring the verification code",
+  async ({ error, message }) => {
+    mockIdentifierSubmission([emailCodeFactor()]);
+    mockedClerk.signInAttemptFirstFactor.mockRejectedValue(error);
+    await setupSignInPage({ status: "needs_identifier" });
+    await submitIdentifier("person@example.com");
+    const input = await openVerificationCodeStep(
+      "Email code to p***@example.com",
+      "Check your email",
+    );
+    await fill(input, "123456");
+    fireEvent.submit(containingForm(input));
+
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      message,
+    );
+    expect(input).toBeEnabled();
+  },
+);
 
 test("Okou account suspension errors use safe branded support information", async () => {
   mockedClerk.clientSignInCreate.mockRejectedValue({

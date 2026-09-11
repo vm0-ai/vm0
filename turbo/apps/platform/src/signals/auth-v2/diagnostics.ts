@@ -119,6 +119,9 @@ function signInErrorCategory(
     case "unknown": {
       return "unknown";
     }
+    case "rate-limited": {
+      return "provider-error";
+    }
     case "clerk": {
       if (error.clerkCode === "external_account_not_found") {
         return "account-not-found";
