@@ -187,16 +187,16 @@ def load(loader: Loader) -> None:
         runner_flush_lifecycle.handle_runner_usage_flush_signal,
     )
     loader.add_option(
-        name="vm0_api_url",
+        name="okou_api_url",
         typespec=str,
         default="https://api.okou.ai",
         help="Okou API URL for proxy endpoint",
     )
     loader.add_option(
-        name="vm0_proxy_registry_path",
+        name="okou_proxy_registry_path",
         typespec=str,
         # This default is a placeholder shown in `mitmdump --help`; the runner
-        # always passes `--set vm0_proxy_registry_path=<per-runner path>` (see
+        # always passes `--set okou_proxy_registry_path=<per-runner path>` (see
         # `proxy::process::spawn_mitmdump` in
         # `crates/runner/src/proxy/process.rs`), so the default is never used in
         # production. Computed via tempfile.gettempdir() so that standalone
@@ -205,37 +205,37 @@ def load(loader: Loader) -> None:
         help="Path to proxy registry file",
     )
     loader.add_option(
-        name="vm0_builtin_firewall_catalog_cache_path",
+        name="okou_builtin_firewall_catalog_cache_path",
         typespec=str,
         default=str(Path(tempfile.gettempdir()) / "builtin-firewall-catalog-cache.json"),
         help="Path to runner builtin firewall catalog cache file",
     )
     loader.add_option(
-        name="vm0_usage_state_id",
+        name="okou_usage_state_id",
         typespec=str,
         default="",
         help="Runner-generated usage-pending state id",
     )
     loader.add_option(
-        name="vm0_addon_ready_path",
+        name="okou_addon_ready_path",
         typespec=str,
         default="",
         help="Path for the runner's addon initialization marker",
     )
     loader.add_option(
-        name="vm0_client_session_id",
+        name="okou_client_session_id",
         typespec=str,
         default="",
         help="Runner-generated client session id for platform API requests",
     )
     loader.add_option(
-        name="vm0_client_version",
+        name="okou_client_version",
         typespec=str,
         default="",
         help="Runner package version for platform API request attribution",
     )
     loader.add_option(
-        name="vm0_usage_flush_interval_seconds",
+        name="okou_usage_flush_interval_seconds",
         typespec=float,
         default=usage.DEFAULT_FLUSH_INTERVAL_SECONDS,
         help="Usage-event buffer flush interval in seconds",
@@ -244,29 +244,29 @@ def load(loader: Loader) -> None:
 
 def configure(updated: set[str]) -> None:
     platform_api.configure_client_headers(
-        client_session_id=ctx.options.vm0_client_session_id,
-        client_version=ctx.options.vm0_client_version,
+        client_session_id=ctx.options.okou_client_session_id,
+        client_version=ctx.options.okou_client_version,
     )
     model_provider_failure.configure_reporting(
         api_url=get_api_url(),
         bearer_credential=os.environ.get(model_provider_failure.RUNNER_AUTH_ENV, ""),
     )
-    if "vm0_usage_flush_interval_seconds" in updated:
+    if "okou_usage_flush_interval_seconds" in updated:
         usage.configure_usage_buffer(
-            flush_interval_seconds=ctx.options.vm0_usage_flush_interval_seconds
+            flush_interval_seconds=ctx.options.okou_usage_flush_interval_seconds
         )
-    if "vm0_usage_state_id" in updated:
+    if "okou_usage_state_id" in updated:
         # Custom --set options are deferred until after load() registers them,
         # so initialize this file here where ctx.options has the runner value.
         usage.set_pending_path(
             str(Path(__file__).resolve().parent / "usage-pending"),
-            usage_state_id=ctx.options.vm0_usage_state_id or None,
+            usage_state_id=ctx.options.okou_usage_state_id or None,
         )
 
 
 def running() -> None:
-    ready_path = ctx.options.vm0_addon_ready_path
-    usage_state_id = ctx.options.vm0_usage_state_id
+    ready_path = ctx.options.okou_addon_ready_path
+    usage_state_id = ctx.options.okou_usage_state_id
     if ready_path and usage_state_id:
         runner_flush_lifecycle.start_runner_jsonl_flush_worker()
         Path(ready_path).write_text(usage_state_id, encoding="utf-8")
@@ -274,12 +274,12 @@ def running() -> None:
 
 def get_api_url() -> str:
     """Get API URL from options."""
-    return ctx.options.vm0_api_url
+    return ctx.options.okou_api_url
 
 
 def get_registry_path() -> str:
     """Get registry path from options."""
-    return ctx.options.vm0_proxy_registry_path
+    return ctx.options.okou_proxy_registry_path
 
 
 def _request_headers_probe_metadata_keys() -> tuple[str, ...]:

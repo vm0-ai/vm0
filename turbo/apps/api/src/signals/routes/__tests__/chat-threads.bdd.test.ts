@@ -3387,7 +3387,7 @@ describe("CHAT-03 run usage events", () => {
 
   it("emits zero-credit usage events and skips runs without usage", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor(
-      "Zero usage message agent",
+      "Zero-credit usage message agent",
     );
 
     const agentRun = await sendChatRun(actor, {

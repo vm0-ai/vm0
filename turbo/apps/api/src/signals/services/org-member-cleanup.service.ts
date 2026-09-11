@@ -3,6 +3,8 @@ import { orgMembersMetadata } from "@okouai/db/schema/org-members-metadata";
 import { slackOrgConnections } from "@okouai/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
 import { and, eq, inArray } from "drizzle-orm";
+import { morningBriefEnrollments } from "@okouai/db/schema/morning-brief-enrollment";
+import { nowDate } from "../../lib/time";
 
 import type { Db } from "../external/db";
 
@@ -14,6 +16,20 @@ export async function cleanupOrgMemberResources(
   },
   signal: AbortSignal,
 ): Promise<void> {
+  await db
+    .update(morningBriefEnrollments)
+    .set({ state: "departed", updatedAt: nowDate() })
+    .where(
+      and(
+        eq(morningBriefEnrollments.orgId, args.orgId),
+        eq(morningBriefEnrollments.userId, args.userId),
+        inArray(morningBriefEnrollments.state, [
+          "checking",
+          "pending",
+          "ineligible",
+        ]),
+      ),
+    );
   const [installation] = await db
     .select({ slackWorkspaceId: slackOrgInstallations.slackWorkspaceId })
     .from(slackOrgInstallations)

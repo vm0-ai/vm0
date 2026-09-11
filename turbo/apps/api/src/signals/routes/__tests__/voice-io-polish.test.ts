@@ -3,6 +3,7 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 
 import { accept, testContext } from "../../../__tests__/test-context";
+import { stubTestVercelRuntimeToken } from "../../../__tests__/env-stub";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
@@ -10,13 +11,22 @@ import { createUniqueStaffOrgIdFixture } from "../../../test-fixtures/staff-org"
 import { createBddApi } from "./helpers/api-bdd";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import { createRouteMocks } from "./helpers/route-test";
-import { openRouterModelContractError } from "./helpers/openrouter-model-contract";
+import {
+  mockGoogleVoice,
+  VERTEX_VOICE_URL,
+  vertexVoiceResponse,
+} from "./helpers/google-voice";
 import { createDeferredPromise } from "../../utils";
 import { voiceIoPolishRoutes } from "../voice-io-polish";
 
 const context = testContext();
 const mocks = createRouteMocks(context);
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+beforeEach(() => {
+  mockGoogleVoice();
+});
+afterEach(() => {
+  stubTestVercelRuntimeToken(undefined);
+});
 
 function client() {
   return setupApp({ context, routes: voiceIoPolishRoutes })(
@@ -24,8 +34,8 @@ function client() {
   );
 }
 
-async function enableVoicePolish() {
-  mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+async function enableVoicePolish(useGoogleCloud = true) {
+  mockOptionalEnv("OPENROUTER_API_KEY", undefined);
   const actor = createBddApi(context).user();
   if (!actor.orgId) {
     throw new Error("Voice draft tests require an organization");
@@ -34,12 +44,265 @@ async function enableVoicePolish() {
   await updateFeatureSwitchesForUser(
     context,
     { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
-    { [FeatureSwitchKey.VoiceInputV2]: true },
+    {
+      [FeatureSwitchKey.VoiceInputV2]: true,
+      ...(useGoogleCloud ? { [FeatureSwitchKey.VoiceGoogleCloud]: true } : {}),
+    },
   );
 }
 
 describe("POST /api/voice-io/polish", () => {
-  it("preserves public provider errors and rejects incomplete polish", async () => {
+  it.each([
+    { code: "ECONNRESET", status: 503, reason: "network" },
+    { code: "UND_ERR_BODY_TIMEOUT", status: 503, reason: "upstream_timeout" },
+    { code: "CERT_HAS_EXPIRED", status: 502 },
+  ])(
+    "classifies a Google body I/O failure with $code",
+    async ({ code, status, reason }) => {
+      await enableVoicePolish();
+      let calls = 0;
+      server.use(
+        http.post(VERTEX_VOICE_URL, () => {
+          calls += 1;
+          return new HttpResponse(
+            new ReadableStream({
+              start(controller) {
+                controller.error(
+                  new TypeError("fetch failed", { cause: { code } }),
+                );
+              },
+            }),
+          );
+        }),
+      );
+      const response = await client().post({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { text: "Synthetic dictation." },
+      });
+      expect(response.status).toBe(status);
+      expect(response.body).toMatchObject({
+        error: {
+          code: status === 503 ? "PROVIDER_UNAVAILABLE" : "VOICE_POLISH_FAILED",
+        },
+      });
+      expect(calls).toBe(1);
+      if (reason) {
+        expect(context.mocks.axiomLogging.warn).toHaveBeenCalledExactlyOnceWith(
+          "Google voice request rejected",
+          expect.objectContaining({
+            model: "google/gemini-3.8-flash",
+            location: "us",
+            operation: "plain_text_polish",
+            status,
+            reason,
+          }),
+        );
+      }
+    },
+  );
+
+  it("classifies a Google connection failure without replaying generation", async () => {
+    await enableVoicePolish();
+    let calls = 0;
+    server.use(
+      http.post(VERTEX_VOICE_URL, () => {
+        calls += 1;
+        return HttpResponse.error();
+      }),
+    );
+    const response = await accept(
+      client().post({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { text: "Synthetic dictation." },
+      }),
+      [503],
+    );
+    expect(response.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+    expect(calls).toBe(1);
+  });
+
+  it("preserves OpenRouter polishing by default without Google credentials", async () => {
+    await enableVoicePolish(false);
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    mockOptionalEnv("GCP_LLM_PROJECT_ID", undefined);
+    let requestBody: unknown;
+    server.use(
+      http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          requestBody = await request.json();
+          return HttpResponse.json({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: { content: "  Ship on Monday.  " },
+              },
+            ],
+          });
+        },
+      ),
+    );
+    const response = await accept(
+      client().post({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { text: "um ship on Monday" },
+      }),
+      [200],
+    );
+    expect(response.body.text).toBe("Ship on Monday.");
+    expect(requestBody).toMatchObject({
+      model: "google/gemini-3.8-flash",
+      max_tokens: 65_536,
+      reasoning: { effort: "low" },
+      temperature: 0,
+      messages: [
+        expect.anything(),
+        {
+          role: "user",
+          content: JSON.stringify({ text: "um ship on Monday" }),
+        },
+      ],
+    });
+    expect(requestBody).not.toHaveProperty("response_format");
+  });
+
+  it("retains the maximum text contract with JSON escaping and rejects oversize output", async () => {
+    await enableVoicePolish();
+    const text = `a${"\u0001".repeat(262_142)}z`;
+    server.use(
+      http.post(VERTEX_VOICE_URL, () => {
+        return vertexVoiceResponse(text);
+      }),
+    );
+    const response = await accept(
+      client().post({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { text: "Synthetic dictation." },
+      }),
+      [200],
+    );
+    expect(response.body.text).toBe(text);
+    server.use(
+      http.post(VERTEX_VOICE_URL, () => {
+        return vertexVoiceResponse("x".repeat(262_145));
+      }),
+    );
+    await accept(
+      client().post({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { text: "Synthetic dictation." },
+      }),
+      [502],
+    );
+    server.use(
+      http.post(VERTEX_VOICE_URL, () => {
+        return new HttpResponse("x".repeat(2 * 1024 * 1024 + 1));
+      }),
+    );
+    await accept(
+      client().post({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { text: "Synthetic dictation." },
+      }),
+      [502],
+    );
+  });
+
+  it("recovers a temporary Google polish failure on the same model", async () => {
+    await enableVoicePolish();
+    const urls: string[] = [];
+    server.use(
+      http.post(VERTEX_VOICE_URL, ({ request }) => {
+        urls.push(request.url);
+        return urls.length === 1
+          ? new HttpResponse(null, { status: 503 })
+          : vertexVoiceResponse("Synthetic dictation.");
+      }),
+    );
+    await accept(
+      client().post({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { text: "Synthetic dictation." },
+      }),
+      [200],
+    );
+    expect(urls).toHaveLength(2);
+    expect(urls[1]).toBe(urls[0]);
+    expect(urls[0]).toContain(
+      "/locations/us/publishers/google/models/gemini-3.8-flash:generateContent",
+    );
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      reason: "output_truncated",
+      body: {
+        candidates: [
+          {
+            finishReason: "MAX_TOKENS",
+            content: { parts: [{ text: "private partial transcript" }] },
+          },
+        ],
+      },
+    },
+    {
+      reason: "blocked",
+      body: {
+        promptFeedback: { blockReason: "private upstream block reason" },
+      },
+    },
+    { reason: "blocked", body: { candidates: [{ finishReason: "SAFETY" }] } },
+    {
+      reason: "non_stop",
+      body: { candidates: [{ finishReason: "private unknown finish reason" }] },
+    },
+    {
+      reason: "empty_output",
+      body: {
+        candidates: [
+          {
+            finishReason: "STOP",
+            content: {
+              parts: [{ text: "private thought text", thought: true }],
+            },
+          },
+        ],
+      },
+    },
+    { reason: "invalid_response", body: { candidates: [{ finishReason: 7 }] } },
+  ])("records only safe metadata for $reason", async ({ reason, body }) => {
+    await enableVoicePolish();
+    server.use(
+      http.post(VERTEX_VOICE_URL, () => {
+        return HttpResponse.json(body);
+      }),
+    );
+    const response = await accept(
+      client().post({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { text: "private user dictation" },
+      }),
+      [502],
+    );
+    expect(response.body.error.code).toBe("VOICE_POLISH_FAILED");
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledExactlyOnceWith(
+      "Google voice request rejected",
+      expect.objectContaining({
+        model: "google/gemini-3.8-flash",
+        location: "us",
+        operation: "plain_text_polish",
+        status: 502,
+        reason,
+      }),
+    );
+    expect(
+      JSON.stringify(context.mocks.axiomLogging.warn.mock.calls),
+    ).not.toContain("private");
+  });
+
+  it("preserves public provider errors, respects long Retry-After, and rejects incomplete polish", async () => {
     await enableVoicePolish();
     const cases = [
       {
@@ -75,33 +338,25 @@ describe("POST /api/voice-io/polish", () => {
             message: "private-provider-detail",
           },
         },
-        expectedStatus: 503,
-        code: "PROVIDER_UNAVAILABLE",
+        expectedStatus: 502,
+        code: "VOICE_POLISH_FAILED",
       },
       {
         status: 200,
         body: {
-          choices: [
-            {
-              finish_reason: "error",
-              error: {
-                code: "invalid_request_error",
-                message: "private-provider-detail",
-              },
-            },
-          ],
+          promptFeedback: { blockReason: "SAFETY" },
+          candidates: [],
         },
-        expectedStatus: 503,
-        code: "PROVIDER_UNAVAILABLE",
+        expectedStatus: 502,
+        code: "VOICE_POLISH_FAILED",
       },
       {
         status: 200,
         body: {
-          choices: [
+          candidates: [
             {
-              finish_reason: "length",
-              native_finish_reason: "MAX_TOKENS",
-              message: { content: "Truncated dictation" },
+              finishReason: "MAX_TOKENS",
+              content: { parts: [{ text: "Truncated dictation" }] },
             },
           ],
         },
@@ -111,7 +366,9 @@ describe("POST /api/voice-io/polish", () => {
       {
         status: 200,
         body: {
-          choices: [{ finish_reason: "stop", message: { content: " " } }],
+          candidates: [
+            { finishReason: "STOP", content: { parts: [{ text: " " }] } },
+          ],
         },
         expectedStatus: 502,
         code: "VOICE_POLISH_FAILED",
@@ -119,8 +376,11 @@ describe("POST /api/voice-io/polish", () => {
     ];
     for (const testCase of cases) {
       server.use(
-        http.post(OPENROUTER_URL, () => {
-          return HttpResponse.json(testCase.body, { status: testCase.status });
+        http.post(VERTEX_VOICE_URL, () => {
+          return HttpResponse.json(testCase.body, {
+            status: testCase.status,
+            headers: { "Retry-After": "20" },
+          });
         }),
       );
       const response = await client().post({
@@ -153,7 +413,7 @@ describe("POST /api/voice-io/polish", () => {
     const entered = createDeferredPromise<void>(context.signal);
     const aborted = createDeferredPromise<void>(context.signal);
     server.use(
-      http.post(OPENROUTER_URL, async ({ request }) => {
+      http.post(VERTEX_VOICE_URL, async ({ request }) => {
         request.signal.addEventListener(
           "abort",
           () => {
@@ -179,10 +439,12 @@ describe("POST /api/voice-io/polish", () => {
     controller.abort();
     await expect(result).rejects.toMatchObject({ name: "AbortError" });
     await aborted.promise;
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
   });
 
   it("turns raw dictation into send-ready text without charging usage", async () => {
-    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
     const actor = createBddApi(context).user({
       orgId: createUniqueStaffOrgIdFixture(),
     });
@@ -193,21 +455,20 @@ describe("POST /api/voice-io/polish", () => {
     await updateFeatureSwitchesForUser(
       context,
       { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
-      { [FeatureSwitchKey.VoiceInputV2]: true },
+      {
+        [FeatureSwitchKey.VoiceInputV2]: true,
+        [FeatureSwitchKey.VoiceGoogleCloud]: true,
+      },
     );
     let requestBody: unknown;
     server.use(
-      http.post(OPENROUTER_URL, async ({ request }) => {
+      http.post(VERTEX_VOICE_URL, async ({ request }) => {
         requestBody = await request.json();
-        const contractError = openRouterModelContractError(requestBody);
-        if (contractError) {
-          return contractError;
-        }
         return HttpResponse.json({
-          choices: [
+          candidates: [
             {
-              finish_reason: "stop",
-              message: { content: "Ship the release on Monday." },
+              finishReason: "STOP",
+              content: { parts: [{ text: "Ship the release on Monday." }] },
             },
           ],
         });
@@ -230,27 +491,36 @@ describe("POST /api/voice-io/polish", () => {
       text: "Ship the release on Monday.",
     });
     expect(requestBody).toMatchObject({
-      model: "google/gemini-3.8-flash",
-      max_tokens: 65_536,
-      temperature: 0,
-      reasoning: { effort: "low" },
-      messages: [
-        {
-          role: "system",
-          content: expect.stringContaining(
-            "provides conversational context for resolving vocabulary",
-          ),
-        },
+      generationConfig: {
+        maxOutputTokens: 65_536,
+        thinkingConfig: { thinkingLevel: "LOW" },
+      },
+      systemInstruction: {
+        parts: [
+          {
+            text: expect.stringContaining(
+              "provides conversational context for resolving vocabulary",
+            ),
+          },
+        ],
+      },
+      contents: [
         {
           role: "user",
-          content: JSON.stringify({
-            text: "um ship the nebula release Friday no Monday",
-            lastAssistantMessage:
-              "The Project Nebula release is scheduled for Friday.",
-          }),
+          parts: [
+            {
+              text: JSON.stringify({
+                text: "um ship the nebula release Friday no Monday",
+                lastAssistantMessage:
+                  "The Project Nebula release is scheduled for Friday.",
+              }),
+            },
+          ],
         },
       ],
     });
+    expect(requestBody).not.toHaveProperty("generationConfig.temperature");
+    expect(requestBody).not.toHaveProperty("generationConfig.responseMimeType");
   });
 
   it("requires session auth and the voice draft switch for staff", async () => {
@@ -280,7 +550,7 @@ describe("POST /api/voice-io/polish", () => {
   });
 
   it("lets non-staff users enable polishing through their Lab override", async () => {
-    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
     const actor = createBddApi(context).user();
     if (!actor.orgId) {
       throw new Error("Voice draft tests require an organization");
@@ -289,16 +559,16 @@ describe("POST /api/voice-io/polish", () => {
     await updateFeatureSwitchesForUser(
       context,
       { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
-      { [FeatureSwitchKey.VoiceInputV2]: true },
+      {
+        [FeatureSwitchKey.VoiceInputV2]: true,
+        [FeatureSwitchKey.VoiceGoogleCloud]: true,
+      },
     );
     server.use(
-      http.post(OPENROUTER_URL, () => {
+      http.post(VERTEX_VOICE_URL, () => {
         return HttpResponse.json({
-          choices: [
-            {
-              finish_reason: "stop",
-              message: { content: "Hello." },
-            },
+          candidates: [
+            { finishReason: "STOP", content: { parts: [{ text: "Hello." }] } },
           ],
         });
       }),

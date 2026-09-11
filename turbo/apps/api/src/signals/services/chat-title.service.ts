@@ -613,6 +613,21 @@ export async function generateChatThreadRecommendedFollowupsFromContext(
         usable: (value) => {
           return value.length > 0;
         },
+        // Zero normalized suggestions is an omission this caller already
+        // handles: the completed-run callback inserts no follow-up event and
+        // the thread simply shows no quick replies, leaving the run's own
+        // result untouched. Count it and say nothing. The generated text is
+        // never inspected here, so the empty result cannot name a defect.
+        unusableOutput: "expected",
+        // Whatever still reaches the diagnostic after that is a failure rather
+        // than an omission: rejected credentials, a rejected request, a
+        // response that broke its contract, or an exception nothing
+        // classified. Those are reported at error. The reason stays whatever
+        // the provider classification decided, including `unknown`, which is
+        // left unknown rather than presented as a specific cause. Scoped to
+        // this caller through the option; the shared default is unchanged for
+        // features whose own outcomes have not been characterized.
+        failureLevel: "error",
         diagnosticContext: args.threadId
           ? { threadId: args.threadId }
           : undefined,

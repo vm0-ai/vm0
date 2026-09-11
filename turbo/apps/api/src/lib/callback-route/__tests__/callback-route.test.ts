@@ -57,10 +57,10 @@ function signedHeaders(
     "Content-Type": "application/json",
   };
   if (!options.skipSignature) {
-    headers["X-VM0-Signature"] = computeHmacSignature(rawBody, secret, ts);
+    headers["X-Okou-Signature"] = computeHmacSignature(rawBody, secret, ts);
   }
   if (!options.skipTimestamp) {
-    headers["X-VM0-Timestamp"] = String(ts);
+    headers["X-Okou-Timestamp"] = String(ts);
   }
   return headers;
 }
@@ -258,7 +258,7 @@ describe("callbackRoute$ primitive", () => {
     });
   });
 
-  it("returns 401 on missing X-VM0-Signature header", async () => {
+  it("returns 401 on missing X-Okou-Signature header", async () => {
     const { runId } = await seedCallback();
     const app = createAppWithRoutes({
       signal: context.signal,
@@ -276,11 +276,11 @@ describe("callbackRoute$ primitive", () => {
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toStrictEqual({
-      error: "Missing X-VM0-Signature header",
+      error: "Missing X-Okou-Signature header",
     });
   });
 
-  it("returns 401 on missing X-VM0-Timestamp header", async () => {
+  it("returns 401 on missing X-Okou-Timestamp header", async () => {
     const { runId } = await seedCallback();
     const app = createAppWithRoutes({
       signal: context.signal,
@@ -298,7 +298,7 @@ describe("callbackRoute$ primitive", () => {
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toStrictEqual({
-      error: "Missing X-VM0-Timestamp header",
+      error: "Missing X-Okou-Timestamp header",
     });
   });
 

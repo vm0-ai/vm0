@@ -4,7 +4,6 @@
  * Defines all available feature switch identifiers.
  */
 export enum FeatureSwitchKey {
-  PrivacyChoices = "privacyChoices",
   WelcomeThread = "welcomeThread",
   ThreadActivitySummary = "threadActivitySummary",
   Dummy = "_dummy",
@@ -73,6 +72,7 @@ export enum FeatureSwitchKey {
   IntroVideo = "introVideo",
   ChatTranslation = "chatTranslation",
   VoiceInputV2 = "voiceInputV2",
+  VoiceGoogleCloud = "voiceGoogleCloud",
   ComposerCreateCommands = "composerCreateCommands",
   ComposerTaskChips = "composerTaskChips",
   ComposerWorkflowFuzzySearch = "composerWorkflowFuzzySearch",
@@ -83,4 +83,5 @@ export enum FeatureSwitchKey {
   ConnectorDirectory = "connectorDirectory",
   ChatThreadHeaderActions = "chatThreadHeaderActions",
   ComposerTemplateChipCover = "composerTemplateChipCover",
+  ComposerSlashTemplatePanel = "composerSlashTemplatePanel",
 }

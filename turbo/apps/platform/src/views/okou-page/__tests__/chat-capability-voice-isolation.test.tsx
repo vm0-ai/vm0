@@ -54,6 +54,7 @@ test.each(["user", "org", "target"] as const)(
   "Keep local recordings isolated when the composer changes %s",
   async (part) => {
     installVoiceBoundaries();
+    // eslint-disable-next-line ccstate/no-create-child-abort-controller -- migrate this lifetime to the ccstate signal hierarchy
     const firstPage = createChildAbortController(context.signal);
     context.mocks.http.post("*/api/voice-io/transcribe/segment", () => {
       return HttpResponse.json({ error: "Temporary outage" }, { status: 503 });

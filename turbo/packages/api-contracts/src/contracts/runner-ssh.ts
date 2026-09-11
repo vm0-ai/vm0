@@ -11,6 +11,8 @@ import {
   SSH_USERNAME_MAX_LENGTH,
 } from "./ssh-connections";
 
+import { SSH_PASSWORD_MAX_LENGTH } from "./ssh-credentials";
+export { SSH_PASSWORD_MAX_LENGTH } from "./ssh-credentials";
 const c = initContract();
 const generationSchema = z.int().positive().max(2_147_483_647);
 
@@ -55,18 +57,28 @@ const resolveRequestSchema = z
 const unavailableSchema = z
   .object({ outcome: z.literal("unavailable") })
   .strict();
+const resolvedFields = {
+  host: z.string().min(1).max(SSH_HOST_MAX_LENGTH),
+  port: z.int().min(1).max(65_535),
+  username: z.string().min(1).max(SSH_USERNAME_MAX_LENGTH),
+  generation: generationSchema,
+  learnedHostKey: sshHostKeySchema.nullable(),
+};
 const resolveResponseSchema = z.discriminatedUnion("outcome", [
   unavailableSchema,
   z
     .object({
       outcome: z.literal("resolved"),
-      host: z.string().min(1).max(SSH_HOST_MAX_LENGTH),
-      port: z.int().min(1).max(65_535),
-      username: z.string().min(1).max(SSH_USERNAME_MAX_LENGTH),
-      generation: generationSchema,
-      learnedHostKey: sshHostKeySchema.nullable(),
+      ...resolvedFields,
       privateKey: z.string().min(1).max(SSH_PRIVATE_KEY_MAX_LENGTH),
       passphrase: z.string().min(1).max(SSH_PASSPHRASE_MAX_LENGTH).nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      outcome: z.literal("resolved_password"),
+      ...resolvedFields,
+      password: z.string().min(1).max(SSH_PASSWORD_MAX_LENGTH),
     })
     .strict(),
 ]);

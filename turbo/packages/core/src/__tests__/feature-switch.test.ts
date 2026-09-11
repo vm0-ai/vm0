@@ -82,6 +82,20 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Lab, {})).toBe(false);
   });
 
+  it("should enable the Welcome Thread switch for the staff org only", () => {
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.WelcomeThread, {
+        orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+      }),
+    ).toBe(true);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.WelcomeThread, {
+        orgId: "org_nonexistent",
+      }),
+    ).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.WelcomeThread, {})).toBe(false);
+  });
+
   it("should apply user overrides to the staff-default Official Workflows switch", () => {
     const staffOrgId = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
     expect(
@@ -103,30 +117,18 @@ describe("isFeatureEnabled", () => {
     ).toBe(true);
   });
 
-  it("should keep Morning Brief default-off with an independent staff rollout and overrides", () => {
-    const staffOrgId = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
+  it("should release Morning Brief independently and preserve false overrides", () => {
     const ordinaryOrgId = "org_nonexistent";
     expect(FeatureSwitchKey.MorningBrief).toBe("morningBrief");
-    expect(isFeatureEnabled(FeatureSwitchKey.MorningBrief, {})).toBe(false);
+    expect(isFeatureEnabled(FeatureSwitchKey.MorningBrief, {})).toBe(true);
     expect(
       isFeatureEnabled(FeatureSwitchKey.MorningBrief, {
         orgId: ordinaryOrgId,
       }),
-    ).toBe(false);
+    ).toBe(true);
     expect(
       isFeatureEnabled(FeatureSwitchKey.MorningBrief, {
         orgId: ordinaryOrgId,
-        overrides: { [FeatureSwitchKey.MorningBrief]: true },
-      }),
-    ).toBe(true);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.MorningBrief, {
-        orgId: staffOrgId,
-      }),
-    ).toBe(true);
-    expect(
-      isFeatureEnabled(FeatureSwitchKey.MorningBrief, {
-        orgId: staffOrgId,
         overrides: { [FeatureSwitchKey.MorningBrief]: false },
       }),
     ).toBe(false);
@@ -139,7 +141,7 @@ describe("isFeatureEnabled", () => {
       maintainer: "lancy@okou.ai",
       description:
         "Enable Morning Brief and email subscription management in Preferences.",
-      rolloutStage: "beta",
+      rolloutStage: "released",
     });
   });
 
@@ -228,7 +230,7 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.MorningBrief]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.MorningBrief]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ChatThreadHeaderActions]).toBe(
       false,
     );
@@ -339,6 +341,7 @@ describe("getFeatureSwitchMetadata", () => {
     );
     expect(metadata[FeatureSwitchKey.Banking].rolloutStage).toBe("beta");
     expect(metadata[FeatureSwitchKey.IntroVideo].rolloutStage).toBe("beta");
+    expect(metadata[FeatureSwitchKey.WelcomeThread].rolloutStage).toBe("beta");
     expect(metadata[FeatureSwitchKey.AhrefsConnector].rolloutStage).toBe(
       "alpha",
     );

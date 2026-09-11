@@ -231,6 +231,7 @@ const refreshFeatureSwitchState$ = command(
       return;
     }
 
+    // eslint-disable-next-line ccstate/no-create-child-abort-controller -- migrate this lifetime to the ccstate signal hierarchy
     const requestController = createChildAbortController(signal);
     const abortIfIdentityChanged = () => {
       if (

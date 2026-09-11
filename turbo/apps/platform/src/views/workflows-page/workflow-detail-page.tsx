@@ -6749,8 +6749,8 @@ function signedWebhookCurlExample(
     `SIGNATURE=$(printf "%s.%s" "$TIMESTAMP" "$BODY" | openssl dgst -sha256 -hmac "${secret}" -hex | awk '{print $2}')`,
     `curl -X POST "${webhookUrl}" \\`,
     '  -H "Content-Type: application/json" \\',
-    '  -H "X-VM0-Timestamp: $TIMESTAMP" \\',
-    '  -H "X-VM0-Signature: $SIGNATURE" \\',
+    '  -H "X-Okou-Timestamp: $TIMESTAMP" \\',
+    '  -H "X-Okou-Signature: $SIGNATURE" \\',
     '  --data "$BODY"',
   ].join("\n");
 }

@@ -96,3 +96,46 @@ export function auxiliaryWarnings(context: TestContext) {
     return message === "Auxiliary generation failed";
   });
 }
+
+const diagnosticLevels = ["debug", "info", "warn", "error"] as const;
+
+const diagnosticSchema = z.object({
+  feature: z.string(),
+  reason: z.string(),
+  errorKind: z.string(),
+  threadId: z.string().optional(),
+  runId: z.string().optional(),
+  status: z.number().optional(),
+});
+
+/**
+ * Every diagnostic level, so a caller that stops reporting an expected outcome
+ * is proved silent rather than merely quieter: a reappearance at info or debug
+ * fails the same assertion as a reappearance at warn.
+ */
+export function auxiliaryDiagnostics(
+  context: TestContext,
+  feature?: AuxiliaryFeature,
+) {
+  return diagnosticLevels.flatMap((level) => {
+    return context.mocks.axiomLogging[level].mock.calls
+      .filter(([message]) => {
+        return message === "Auxiliary generation failed";
+      })
+      .filter(([, fields]) => {
+        return (
+          feature === undefined ||
+          (typeof fields === "object" &&
+            fields !== null &&
+            "feature" in fields &&
+            fields.feature === feature)
+        );
+      })
+      .map(([, fields]) => {
+        // `fields` is kept verbatim beside the parsed projection: the schema
+        // strips unknown keys, which are exactly the provider-derived ones a
+        // leak assertion has to be able to see.
+        return { level, ...diagnosticSchema.parse(fields), fields };
+      });
+  });
+}

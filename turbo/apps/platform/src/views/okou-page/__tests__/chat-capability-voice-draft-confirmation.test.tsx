@@ -57,7 +57,9 @@ test.each([false, true])(
   "Finish voice without waiting for conversation creation confirmation (reload: %s)",
   async (reloadBeforeRetry) => {
     const auth = chatListAuth(49);
+    // eslint-disable-next-line ccstate/no-create-child-abort-controller -- migrate this lifetime to the ccstate signal hierarchy
     const initialPage = createChildAbortController(context.signal);
+    // eslint-disable-next-line ccstate/no-create-child-abort-controller -- migrate this lifetime to the ccstate signal hierarchy
     const refreshedPage = createChildAbortController(refreshedContext.signal);
     await seedPersistentChatListCache(49, auth, []);
     let createdThreadId: string | undefined;

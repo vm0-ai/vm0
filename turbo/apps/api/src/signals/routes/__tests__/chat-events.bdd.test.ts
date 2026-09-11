@@ -2195,95 +2195,113 @@ describe("CHAT-02: thread connector account selection", () => {
     );
   });
 
-  it("uses the current default connector account without persisting an override", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    if (!actor.orgId) {
-      throw new Error("Expected an organization-scoped chat actor");
-    }
-    const connection = await connectors.connectManualGrant(
-      actor,
-      "openai",
-      "api-token",
-      { apiKey: "thread-selected-openai-key" },
-      agentId,
-    );
-
-    context.mocks.ably.publish.mockClear();
-    const run = await sendChatRun(actor, {
-      agentId,
-      prompt: "Use my OpenAI connector account",
-    });
-    const { claim, sandboxHeaders } = await claimChatRun(
-      runnerGroup,
-      run.runId,
-    );
-    expect(claim.secretConnectorMetadataMap?.OPENAI_TOKEN).toMatchObject({
-      sourceId: connection.id,
-    });
-
-    const selections = await accept(
-      chatThreadConnectorSelectionsClient().get({
-        headers: sessionHeaders(actor),
-        params: { id: run.threadId },
-      }),
-      [200],
-    );
-    expect(selections.body.selections).toStrictEqual([]);
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadDetailChanged:${run.threadId}`,
-      null,
-    );
-
-    await completeChatRunOk(run.runId, sandboxHeaders);
-    await flushWaitUntilForTest();
-    await api.enableAgentConnectors(actor, agentId, []);
-    const unauthorizedResponse = await chat.requestSendEvent(
-      actor,
-      {
+  it.each(["revocation", "reauthorization"] as const)(
+    "uses the default connector account across %s without an override",
+    async (transition) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      if (!actor.orgId) {
+        throw new Error("Expected an organization-scoped chat actor");
+      }
+      const connection = await connectors.connectManualGrant(
+        actor,
+        "openai",
+        "api-token",
+        { apiKey: "thread-selected-openai-key" },
         agentId,
-        threadId: run.threadId,
-        prompt: "Continue while OpenAI is unauthorized",
-      },
-      [201],
-    );
-    if (unauthorizedResponse.status !== 201) {
-      throw new Error("Expected the unauthorized-connector send to succeed");
-    }
-    if (!unauthorizedResponse.body.runId) {
-      throw new Error("Expected the unauthorized-connector run to start");
-    }
-    const unauthorized = {
-      runId: unauthorizedResponse.body.runId,
-      threadId: unauthorizedResponse.body.threadId,
-    };
-    const unauthorizedClaim = await claimChatRun(
-      runnerGroup,
-      unauthorized.runId,
-    );
-    expect(
-      unauthorizedClaim.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
-    ).toBeUndefined();
-    await completeChatRunOk(
-      unauthorized.runId,
-      unauthorizedClaim.sandboxHeaders,
-    );
-    await flushWaitUntilForTest();
+      );
 
-    await api.enableAgentConnectors(actor, agentId, ["openai"]);
-    const reauthorized = await sendChatRun(actor, {
-      agentId,
-      threadId: run.threadId,
-      prompt: "Continue after OpenAI is authorized again",
-    });
-    const reauthorizedClaim = await claimChatRun(
-      runnerGroup,
-      reauthorized.runId,
-    );
-    expect(
-      reauthorizedClaim.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
-    ).toMatchObject({ sourceId: connection.id });
-    await cancelChatRun(actor, reauthorized.runId);
-  });
+      let threadId: string;
+      if (transition === "revocation") {
+        context.mocks.ably.publish.mockClear();
+        const authorized = await sendChatRun(actor, {
+          agentId,
+          prompt: "Use my OpenAI connector account",
+        });
+        const { claim, sandboxHeaders } = await claimChatRun(
+          runnerGroup,
+          authorized.runId,
+        );
+        expect(claim.secretConnectorMetadataMap?.OPENAI_TOKEN).toMatchObject({
+          sourceId: connection.id,
+        });
+
+        const selections = await accept(
+          chatThreadConnectorSelectionsClient().get({
+            headers: sessionHeaders(actor),
+            params: { id: authorized.threadId },
+          }),
+          [200],
+        );
+        expect(selections.body.selections).toStrictEqual([]);
+        expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+          `chatThreadDetailChanged:${authorized.threadId}`,
+          null,
+        );
+
+        await completeChatRunOk(authorized.runId, sandboxHeaders);
+        await flushWaitUntilForTest();
+        threadId = authorized.threadId;
+      } else {
+        const thread = await chat.createThread(actor, {
+          agentId,
+          title: "Connector reauthorization",
+        });
+        threadId = thread.id;
+      }
+
+      await api.enableAgentConnectors(actor, agentId, []);
+      const unauthorizedResponse = await chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId,
+          prompt: "Continue while OpenAI is unauthorized",
+        },
+        [201],
+      );
+      if (unauthorizedResponse.status !== 201) {
+        throw new Error("Expected the unauthorized-connector send to succeed");
+      }
+      if (!unauthorizedResponse.body.runId) {
+        throw new Error("Expected the unauthorized-connector run to start");
+      }
+      const unauthorized = {
+        runId: unauthorizedResponse.body.runId,
+        threadId: unauthorizedResponse.body.threadId,
+      };
+      const unauthorizedClaim = await claimChatRun(
+        runnerGroup,
+        unauthorized.runId,
+      );
+      expect(
+        unauthorizedClaim.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
+      ).toBeUndefined();
+      await completeChatRunOk(
+        unauthorized.runId,
+        unauthorizedClaim.sandboxHeaders,
+      );
+      await flushWaitUntilForTest();
+
+      if (transition === "revocation") {
+        return;
+      }
+
+      await api.enableAgentConnectors(actor, agentId, ["openai"]);
+      const reauthorized = await sendChatRun(actor, {
+        agentId,
+        threadId,
+        prompt: "Continue after OpenAI is authorized again",
+      });
+      const reauthorizedClaim = await claimChatRun(
+        runnerGroup,
+        reauthorized.runId,
+      );
+      expect(
+        reauthorizedClaim.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
+      ).toMatchObject({ sourceId: connection.id });
+      await cancelChatRun(actor, reauthorized.runId);
+    },
+  );
 
   it("does not persist connector overrides during concurrent first sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -3113,8 +3131,8 @@ async function postThreadPiAutomationEvent(args: {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "X-VM0-Timestamp": String(timestamp),
-      "X-VM0-Signature": computeHmacSignature(
+      "X-Okou-Timestamp": String(timestamp),
+      "X-Okou-Signature": computeHmacSignature(
         rawBody,
         args.webhookSecret,
         timestamp,
@@ -7104,14 +7122,14 @@ async function expectPiApiFirstTurnTerminalWithoutOutput(
   actor: ApiTestUser,
   run: { readonly runId: string; readonly threadId: string },
   status: "failed" | "cancelled",
+  failureMessage = "[PI_API_MODEL_OUTPUT_INCOMPLETE] Pi API first-turn model output is incomplete",
 ): Promise<void> {
   const terminal = await api.readRun(actor, run.runId);
   expect(terminal).toMatchObject({
     status,
     ...(status === "failed"
       ? {
-          error:
-            "[PI_API_MODEL_OUTPUT_INCOMPLETE] Pi API first-turn model output is incomplete",
+          error: failureMessage,
         }
       : {}),
   });
@@ -7142,6 +7160,9 @@ function uploadedPiS3Object(objectKey: string): Buffer | undefined {
       candidate.constructor?.name === "PutObjectCommand" &&
       piS3ObjectKey(candidate) === objectKey
     ) {
+      if (typeof candidate.input?.Body === "string") {
+        return Buffer.from(candidate.input.Body, "utf8");
+      }
       if (!(candidate.input?.Body instanceof Uint8Array)) {
         throw new Error(
           `Expected uploaded Pi S3 object bytes for ${objectKey}`,
@@ -14998,6 +15019,57 @@ describe("CHAT-02: model-first provider policies", () => {
     });
   }, 90_000);
 
+  it("keeps a raw API usage failure terminal before aborting its private attempt", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockPiResourceArchiveDownloads();
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.openai.com/v1/responses", () => {
+        modelCalls += 1;
+        return nativeCodexSseResponse(
+          piResponsesTextSse(
+            "invalid usage must not authorize H0 replay",
+            modelCalls,
+            {
+              input_tokens: 1.5,
+              output_tokens: 3,
+              total_tokens: 4.5,
+            },
+          ),
+        );
+      }),
+    );
+    const objects = mockPiCheckpointObjectStore();
+    const { anchor, anchorClaim, run, usagePricingResolution } =
+      await queueCapabilityProvenPiRun({
+        actor,
+        agentId,
+        runnerGroup,
+        prompt: "reject invalid provider usage without retrying the prompt",
+      });
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
+      usagePricingResolution,
+    });
+    await waitForRunStatus(actor, run.runId, "failed");
+    await flushWaitUntilForTest();
+    expect(modelCalls).toBe(1);
+    expectNoPiApiFirstTurnArtifacts(run.runId, objects);
+    await expectPiApiFirstTurnTerminalWithoutOutput(
+      actor,
+      run,
+      "failed",
+      "[PI_API_MODEL_FAILED] Pi API first turn failed",
+    );
+    await expectNoBuiltInModelUsage(run.runId);
+    expect(context.mocks.axiomLogging.info).not.toHaveBeenCalledWith(
+      "Pi API first-turn outcome",
+      expect.objectContaining({
+        runId: run.runId,
+        outcome: "sandbox_retry_started",
+      }),
+    );
+  }, 90_000);
+
   it.each(["H1 commit", "H1 deadline", "handoff publication"] as const)(
     "keeps a genuine %s failure terminal without replaying H0",
     async (stage) => {
@@ -15266,9 +15338,14 @@ describe("CHAT-02: model-first provider policies", () => {
     90_000,
   );
 
-  it.each(["identity", "gzip", "zstd"] as const)(
-    "saves large Pi %s history and transfers the next turn without API history or resource IO",
-    async (encoding) => {
+  it.each([
+    { encoding: "identity", responseLost: false },
+    { encoding: "gzip", responseLost: false },
+    { encoding: "zstd", responseLost: false },
+    { encoding: "identity", responseLost: true },
+  ] as const)(
+    "saves large Pi $encoding history without API history or resource IO (publication response lost: $responseLost)",
+    async ({ encoding, responseLost }) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const checkpointObjects = mockPiCheckpointObjectStore();
       let modelCalls = 0;
@@ -15431,6 +15508,44 @@ describe("CHAT-02: model-first provider policies", () => {
       await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
         status: "completed",
       });
+      if (responseLost) {
+        const deadline = new AbortController();
+        onTestFinished(() => {
+          deadline.abort();
+        });
+        // An object-store response can be lost after the manifest is visible.
+        // Expire the real attempt signal exactly at that external boundary.
+        context.mocks.abortSignal.timeout.mockImplementation((milliseconds) => {
+          return milliseconds > API_FIRST_TURN_OWNERSHIP_BUDGET_MS - 1000 &&
+            milliseconds <= API_FIRST_TURN_OWNERSHIP_BUDGET_MS
+            ? deadline.signal
+            : undefined;
+        });
+        const send = context.mocks.s3.send.getMockImplementation();
+        if (!send) {
+          throw new Error("Expected the checkpoint object store");
+        }
+        context.mocks.s3.send.mockImplementation(async (command: unknown) => {
+          const candidate = command as PiCheckpointS3Command;
+          const stored = await send(command);
+          if (
+            candidate.constructor?.name === "PutObjectCommand" &&
+            piS3ObjectKey(candidate)?.endsWith("/manifest.json")
+          ) {
+            expect(
+              checkpointObjects.has(piS3ObjectKey(candidate) ?? ""),
+            ).toBeTruthy();
+            deadline.abort(
+              new DOMException(
+                "Manifest response lost at ownership deadline",
+                "TimeoutError",
+              ),
+            );
+            throw deadline.signal.reason;
+          }
+          return stored;
+        });
+      }
       const callsBeforeResume = context.mocks.s3.send.mock.calls.length;
       const resumed = await sendChatRun(
         actor,
@@ -15444,10 +15559,14 @@ describe("CHAT-02: model-first provider policies", () => {
       );
       await flushWaitUntilForTest();
       const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${resumed.runId}/manifest.json`;
+      // Terminal cleanup removes the failed run's object. The captured write
+      // still proves that ownership publication happened before its response
+      // was lost; the normal transfer retains its currently readable object.
+      const publishedManifest = responseLost
+        ? uploadedPiS3Object(manifestKey)
+        : checkpointObjects.get(manifestKey);
       const manifest = piApiFirstTurnManifestSchema.parse(
-        JSON.parse(
-          checkpointObjects.get(manifestKey)?.toString("utf8") ?? "{}",
-        ),
+        JSON.parse(publishedManifest?.toString("utf8") ?? "{}"),
       );
       expect(manifest).toMatchObject({
         schemaVersion: 4,
@@ -15486,6 +15605,28 @@ describe("CHAT-02: model-first provider policies", () => {
           `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${resumed.runId}/session.jsonl`,
         ),
       ).toBeFalsy();
+      if (responseLost) {
+        await waitForRunStatus(actor, resumed.runId, "failed");
+        await expectPiApiFirstTurnTerminalWithoutOutput(
+          actor,
+          resumed,
+          "failed",
+          "[PI_API_FIRST_TURN_DEADLINE_EXCEEDED] Pi API first-turn deadline elapsed",
+        );
+        expect(
+          context.mocks.s3.send.mock.calls
+            .slice(callsBeforeResume)
+            .filter(([command]) => {
+              const candidate = command as PiCheckpointS3Command;
+              return (
+                candidate.constructor?.name === "PutObjectCommand" &&
+                piS3ObjectKey(candidate) === manifestKey
+              );
+            }),
+        ).toHaveLength(1);
+        await api.requestClaimRunnerJob(true, resumed.runId, [404]);
+        return;
+      }
       const resumedClaim = await claimChatRun(runnerGroup, resumed.runId);
       expect(resumedClaim.claim.resumeSession).toMatchObject({
         sessionId: run.threadId,
@@ -25801,17 +25942,17 @@ describe("CHAT-02: default assistant identity", () => {
     await cancelChatRun(actor, promoted.runId);
 
     mockEnv("APP_URL", "https://preview.example.test");
-    const customZero = await bdd.createAgent(actor, {
-      displayName: "Zero",
+    const customAgent = await bdd.createAgent(actor, {
+      displayName: "Nova",
       visibility: "private",
     });
     const customRun = await sendChatRun(actor, {
-      agentId: customZero.agentId,
+      agentId: customAgent.agentId,
       prompt: "keep my custom name",
     });
     const customPrompt = (await api.readRun(actor, customRun.runId))
       .appendSystemPrompt;
-    expect(customPrompt).toContain("Your name is Zero.");
+    expect(customPrompt).toContain("Your name is Nova.");
     expect(customPrompt).not.toContain("Your name is Okou.");
     const customClaim = await claimChatRun(runnerGroup, customRun.runId);
     await expectRunAppContext({
@@ -26092,7 +26233,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     const grantedRun = await api.readRun(actor, granted.runId);
     expect(grantedRun.appendSystemPrompt).toContain("# Computer Use");
     expect(grantedRun.appendSystemPrompt).toContain(
-      "Computer Use is enabled for this run on Zero Desktop.",
+      "Computer Use is enabled for this run on BDD Desktop.",
     );
     expect(grantedRun.appendSystemPrompt).not.toContain(hostId);
     const grantedClaim = await claimChatRun(runnerGroup, granted.runId);
@@ -26142,7 +26283,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     });
     const staleRun = await api.readRun(actor, staleGranted.runId);
     expect(staleRun.appendSystemPrompt).toContain(
-      "Computer Use is enabled for this run on Zero Desktop.",
+      "Computer Use is enabled for this run on BDD Desktop.",
     );
     clearMockNow();
     const staleClaim = await claimChatRun(runnerGroup, staleGranted.runId);

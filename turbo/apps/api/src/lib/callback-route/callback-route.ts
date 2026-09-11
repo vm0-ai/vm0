@@ -67,8 +67,8 @@ function isCommand<T>(
  * Reads the raw request body (single-shot stream consumption), parses the
  * JSON envelope, looks up the `agent_run_callbacks` row by `callbackId` (PK,
  * preferred) or `runId` (fallback), decrypts the per-callback secret, verifies
- * `X-VM0-Signature` / `X-VM0-Timestamp`, and exposes the verified envelope via
- * `callbackPayload$`.
+ * `X-Okou-Signature` / `X-Okou-Timestamp`, and exposes the verified envelope
+ * via `callbackPayload$`.
  */
 export function callbackRoute<T>(
   handler$: SignalRouteHandler<T>,
@@ -137,8 +137,8 @@ export function callbackRoute<T>(
       const verification = verifyCallbackRequest(
         rawBody,
         secret,
-        req.header("X-VM0-Signature") ?? null,
-        req.header("X-VM0-Timestamp") ?? null,
+        req.header("X-Okou-Signature") ?? null,
+        req.header("X-Okou-Timestamp") ?? null,
       );
       if (!verification.valid) {
         return {

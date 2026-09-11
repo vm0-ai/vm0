@@ -155,7 +155,7 @@ function setupBridge(): void {
   );
 }
 
-test("Pass only the page identity to the shared worker", async () => {
+test("Pass the page identity through the Vite shared worker URL", async () => {
   context.mocks.browser.url("https://app.okou.ai/chats");
   const { constructorCalls, workers } = installSharedWorkerMock();
   setupBridge();
@@ -165,10 +165,9 @@ test("Pass only the page identity to the shared worker", async () => {
 
   const workerUrl = new URL(String(constructorCalls[0]!.scriptURL));
   expect(workerUrl.origin).toBe("https://app.okou.ai");
-  expect(Object.fromEntries(workerUrl.searchParams)).toStrictEqual({
-    orgId: "shared-worker-org",
-    userId: "shared-worker-user",
-  });
+  expect(workerUrl.search).toMatch(/[?&](?:sharedworker|worker_file)(?:&|$)/u);
+  expect(workerUrl.searchParams.get("orgId")).toBe("shared-worker-org");
+  expect(workerUrl.searchParams.get("userId")).toBe("shared-worker-user");
   expect(constructorCalls[0]!.options).toStrictEqual({
     name: "okou_shared-worker-user_shared-worker-org",
     type: "module",

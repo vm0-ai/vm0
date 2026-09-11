@@ -82,8 +82,8 @@ type AgentStorageCommitBody = z.infer<
   (typeof webhookStoragesCommitContract.commit)["body"]
 >;
 interface EventConsumerSignatureHeaders {
-  readonly "x-vm0-signature": string;
-  readonly "x-vm0-timestamp": string;
+  readonly "x-okou-signature": string;
+  readonly "x-okou-timestamp": string;
 }
 
 interface CapturedInternalCallbackDelivery {
@@ -151,10 +151,10 @@ function eventConsumerSignatureHeaders(
 ): EventConsumerSignatureHeaders {
   const timestamp = Math.floor(now() / 1000);
   return {
-    "x-vm0-signature": createHmac("sha256", env("SECRETS_ENCRYPTION_KEY"))
+    "x-okou-signature": createHmac("sha256", env("SECRETS_ENCRYPTION_KEY"))
       .update(`${timestamp}.${serializedContractBody(body)}`)
       .digest("hex"),
-    "x-vm0-timestamp": String(timestamp),
+    "x-okou-timestamp": String(timestamp),
   };
 }
 
@@ -512,7 +512,7 @@ export function createWebhookCallbackApi(context: TestContext) {
     ): Promise<Response> {
       const headers: Record<string, string> = { ...delivery.headers };
       if (overrides.signature !== undefined) {
-        headers["x-vm0-signature"] = overrides.signature;
+        headers["x-okou-signature"] = overrides.signature;
       }
       const app = createApp({
         signal: context.signal,
@@ -527,7 +527,7 @@ export function createWebhookCallbackApi(context: TestContext) {
 
     /** Captured signature with one flipped hex character. */
     tamperedSignature(delivery: CapturedInternalCallbackDelivery): string {
-      const signature = delivery.headers["x-vm0-signature"] ?? "";
+      const signature = delivery.headers["x-okou-signature"] ?? "";
       const flipped = signature.startsWith("a") ? "b" : "a";
       return `${flipped}${signature.slice(1)}`;
     },

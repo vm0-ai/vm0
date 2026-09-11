@@ -1581,19 +1581,17 @@ export const CONNECTOR_AUTH_PROVIDER_METHOD_REGISTRATIONS = [
     authMethodId: "oauth",
     contract: {
       client: {
-        kind: "static-confidential-env",
-        clientIdEnv: "POSTHOG_OAUTH_CLIENT_ID",
-        clientSecretEnv: "POSTHOG_OAUTH_CLIENT_SECRET",
+        kind: "static-public-literal",
       },
       grant: {
         kind: "auth-code",
         callbackOrigin: "web",
-        outputNames: ["accessToken", "refreshToken"],
+        outputNames: ["accessToken", "baseUrl", "refreshToken", "region"],
         startOptionNames: [],
       },
       access: {
         kind: "refresh-token",
-        inputNames: ["refreshToken"],
+        inputNames: ["baseUrl", "refreshToken", "region"],
         outputNames: ["accessToken", "refreshToken"],
         platformSecrets: [],
       },

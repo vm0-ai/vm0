@@ -20,7 +20,8 @@ Run, owner, Agent, endpoint, username, private key, pin, timeout or SSH options.
 Unknown methods and invalid params are rejected before credential resolution.
 
 The Runner resolves or reuses its Run-owned credentials, validates the destination, makes one
-TCP connection, verifies host trust, authenticates using the private key, opens
+TCP connection, verifies host trust, authenticates using the selected private key
+or password, opens
 one session channel and requests one non-PTY exec with acknowledgement. It sends
 EOF on stdin. It never requests shell, environment, PTY, agent forwarding, port
 forwarding or subsystems, and rejects unsolicited server channels. There is no
@@ -69,12 +70,13 @@ or pin is required, without affecting normal Agent execution. Cache hits make no
 API request. In-flight handoffs cannot be retracted; missed invalidations may
 additionally preserve an authorized snapshot until Run end.
 
-### Run-scoped authority and key cache
+### Run-scoped authority and credential cache
 
-The first use of a connection resolves current authority and parses the private
-key under the existing CPU/admission limits. While the Runner's Ably subscription
+The first use of a connection resolves current authority and prepares exactly one
+authentication method. Private keys are parsed under the existing CPU/admission
+limits; passwords require no key-decoding slot. While the Runner's Ably subscription
 is connected, later commands in the same Run reuse that prepared configuration,
-generation, host trust and parsed key. There is no TTL, periodic refresh,
+generation, host trust and parsed key or bounded zeroizing password. There is no TTL, periodic refresh,
 connection pooling, disk persistence or cross-Run credential sharing. Raw private
 key/passphrase text is released after preparation rather than retained alongside
 the parsed key. Every connection still validates its public destination and the
@@ -164,6 +166,19 @@ deserialize fields directly rather than through tagged generic-value buffers.
 Application-owned response, PEM and decrypted buffers are bounded and zeroizing;
 this is not a claim that serde/HTTP/crypto libraries eliminate every internal
 plaintext copy. Credentials are never written to guest files or checkpoints.
+
+The private `resolved_password` response supplies a login password (1..4096 UTF-16
+code units, preserving whitespace), distinct from a private-key passphrase. The
+Runner sends it only after host proof and pin/TOFU succeed. The destination receives
+the password over encrypted SSH; unlike private-key authentication, a malicious
+destination can learn and reuse it. Partial authentication or rejection fails
+without exec, another authentication method or command replay. Keyboard-interactive,
+OTP/MFA and forced password-change exchanges are not supported.
+
+#33467 adds this contract and execution capability only. Owner configuration and
+API credential writers remain key-only until #33468 delivers reusable credentials.
+SSH is staff-only, so this work adds no legacy compatibility or reader-drain gate;
+see [fallback policy](fallback.md#2-features-behind-a-feature-switch-need-no-fallback).
 
 Per-sandbox admission is 2 requests and per-Runner admission is 16, before request
 parsing and JIT. Expensive key decoding uses 2 process-wide blocking slots.

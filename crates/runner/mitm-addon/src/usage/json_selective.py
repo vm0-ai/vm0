@@ -88,7 +88,8 @@ _SLOW_SCALAR_BYTES_PER_WORK_UNIT = 32
 _DISCARDED_STRING_BULK_BYTES_PER_WORK_UNIT = 64 * 1024
 JSON_WORK_LIMIT_EXCEEDED = "work limit exceeded"
 JSON_INTEGER_VALUE_LIMIT_EXCEEDED = "integer value limit exceeded"
-_JSON_STRING_OR_CONTAINER_RE = re.compile(rb'"(?:\\.|[^"\\])*"|[{}\[\]]', re.DOTALL)
+_JSON_CONTAINER_OR_QUOTE_RE = re.compile(rb'["{}\[\]]')
+_JSON_STRING_ESCAPE_OR_QUOTE_RE = re.compile(rb'["\\]')
 
 
 def _validate_positive_int(name: str, value: int) -> None:
@@ -103,19 +104,32 @@ def json_nesting_within_limit(body: bytes, *, max_depth: int = _DEFAULT_MAX_DEPT
 
     This is a boundedness guard, not a JSON validator. The fast path accepts
     payloads with at most ``max_depth`` opening delimiters. The slow path
-    ignores delimiters inside complete strings before tracking structural
-    object and array depth. Callers must still parse the body to validate it.
+    ignores delimiters inside strings before tracking structural object and
+    array depth, rejecting unterminated strings. Both paths take linear work
+    and constant auxiliary memory. Callers must still parse the body to
+    validate it.
     """
     _validate_positive_int("max_depth", max_depth)
     if body.count(b"{") + body.count(b"[") <= max_depth:
         return True
 
     depth = 0
-    for match in _JSON_STRING_OR_CONTAINER_RE.finditer(body):
+    position = 0
+    while match := _JSON_CONTAINER_OR_QUOTE_RE.search(body, position):
         token = body[match.start()]
+        position = match.end()
         if token == ord('"'):
-            continue
-        if token in (ord("{"), ord("[")):
+            # Search only unconsumed spans. Single-byte matches avoid retaining
+            # a long string's backtracking state or retrying a failed string
+            # from each escaped quote.
+            while string_match := _JSON_STRING_ESCAPE_OR_QUOTE_RE.search(body, position):
+                position = string_match.end()
+                if body[string_match.start()] == ord('"'):
+                    break
+                position += 1  # A backslash consumes the next byte, even a quote.
+            else:
+                return False
+        elif token in (ord("{"), ord("[")):
             depth += 1
             if depth > max_depth:
                 return False

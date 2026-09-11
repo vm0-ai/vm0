@@ -44,10 +44,13 @@ printf '%s\n' \
 core_scope_dir="${tmp_dir}/node_modules/@okouai"
 mkdir -p "$core_scope_dir"
 ln -s "${repo_root}/turbo/packages/core" "${core_scope_dir}/core"
-cp "${repo_root}/turbo/apps/app-worker/src/worker.js" "${tmp_dir}/worker.mjs"
+mkdir -p "${tmp_dir}/src" "${tmp_dir}/assets"
+cp "${repo_root}/turbo/apps/app-worker/src/worker.js" "${tmp_dir}/src/worker.mjs"
+cp "${repo_root}/turbo/apps/app-worker/assets/posthog-metadata.json" \
+  "${tmp_dir}/assets/posthog-metadata.json"
 
 node "${repo_root}/.github/scripts/tests/okou-app-worker-test.mjs" \
-  "${tmp_dir}/worker.mjs" \
+  "${tmp_dir}/src/worker.mjs" \
   "${repo_root}/turbo/apps/platform/index.html" \
   "${repo_root}/turbo/apps/platform/public/manifest.webmanifest" \
   "${repo_root}/turbo/apps/app-worker/assets/favicon.ico.bin"

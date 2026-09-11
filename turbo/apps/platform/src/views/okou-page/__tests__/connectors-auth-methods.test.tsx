@@ -37,11 +37,20 @@ import {
 
 const context = testContext();
 
-function createAuthWindow(): Window {
+function createAuthWindow(onNavigate?: (href: string) => void): Window {
   const authWindow = context.mocks.browser.authWindow();
+  let href = "";
   Object.defineProperty(authWindow, "location", {
     configurable: true,
-    value: { href: "" },
+    value: {
+      get href() {
+        return href;
+      },
+      set href(value: string) {
+        href = value;
+        onNavigate?.(value);
+      },
+    },
   });
   return authWindow;
 }
@@ -371,7 +380,15 @@ test("Add an account through OpenID", async () => {
       ],
     }),
   ]);
-  const authWindow = createAuthWindow();
+  const authorizationUrl = "https://openid.test/partner-steam/authorize";
+  const authWindow = createAuthWindow((href) => {
+    if (href !== authorizationUrl) {
+      return;
+    }
+    const connected = storeConnectedConnector(slug, "partner-openid");
+    completedAttempts.set(oauthAttemptId, connected.id);
+    context.mocks.ably.trigger("connector:changed", { connectorSlug: slug });
+  });
   context.mocks.browser.open(authWindow);
   context.mocks.api(connectorOpenIdStartContract.start, ({ body, respond }) => {
     expect(body).toMatchObject({
@@ -379,7 +396,7 @@ test("Add an account through OpenID", async () => {
       authMethod: "partner-openid",
     });
     return respond(200, {
-      authorizationUrl: "https://openid.test/partner-steam/authorize",
+      authorizationUrl,
       oauthAttemptId,
     });
   });
@@ -396,13 +413,12 @@ test("Add an account through OpenID", async () => {
   click(getConnectorAction("button", "Connect Partner Steam"));
 
   await waitFor(() => {
-    expect(authWindow.location.href).toBe(
-      "https://openid.test/partner-steam/authorize",
-    );
+    expect(authWindow.location.href).toBe(authorizationUrl);
   });
-  const connected = storeConnectedConnector(slug, "partner-openid");
-  completedAttempts.set(oauthAttemptId, connected.id);
-  context.mocks.ably.trigger("connector:changed", { connectorSlug: slug });
+  const naming = await screen.findByRole("dialog", {
+    name: "Name your Partner Steam account",
+  });
+  click(getConnectorAction("button", "Skip", naming));
   await waitFor(() => {
     expect(
       getConnectorAction("button", "Manage Partner Steam access"),
@@ -874,7 +890,9 @@ test("Complete OAuth only after the current attempt succeeds", async () => {
     );
   });
 
-  context.mocks.ably.trigger("connector:changed", null);
+  context.mocks.ably.trigger("connector:changed", {
+    connectorSlug: "stripe",
+  });
   authWindow.close();
 
   await waitFor(() => {

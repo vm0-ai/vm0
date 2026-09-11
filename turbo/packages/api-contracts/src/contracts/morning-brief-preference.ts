@@ -15,9 +15,11 @@ export const MORNING_BRIEF_PREFERENCES_PATH = `${MORNING_BRIEF_PREFERENCES_ROUTE
 export const morningBriefUnavailableReasonSchema = z.enum([
   "missing-timezone",
   "missing-default-agent",
+  "missing-data-source",
 ]);
 
 export const morningBriefPreferenceResponseSchema = z.object({
+  status: z.enum(["preparing", "enabled", "paused", "error"]),
   enabled: z.boolean(),
   nextRunAt: z.string().datetime().nullable(),
   timezone: z.string().nullable(),

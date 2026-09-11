@@ -6,6 +6,7 @@ import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { agentSessions } from "@okouai/db/schema/agent-session";
 import { agentSshAccess } from "@okouai/db/schema/agent-ssh-access";
 import { sshConnections } from "@okouai/db/schema/ssh-connection";
+import { sshCredentials } from "@okouai/db/schema/ssh-credential";
 import { and, asc, eq } from "drizzle-orm";
 
 import type { Db, ReadonlyDb } from "../external/db";
@@ -106,7 +107,7 @@ export async function listRunSshHosts(
       displayName: sshConnections.displayName,
       host: sshConnections.host,
       port: sshConnections.port,
-      username: sshConnections.username,
+      username: sshCredentials.username,
       algorithm: sshConnections.learnedHostKeyAlgorithm,
       fingerprint: sshConnections.learnedHostKeyFingerprint,
     })
@@ -140,6 +141,14 @@ export async function listRunSshHosts(
       and(
         eq(sshConnections.orgId, agentRuns.orgId),
         eq(sshConnections.userId, agentRuns.userId),
+      ),
+    )
+    .leftJoin(
+      sshCredentials,
+      and(
+        eq(sshCredentials.id, sshConnections.credentialId),
+        eq(sshCredentials.orgId, owner.orgId),
+        eq(sshCredentials.userId, owner.userId),
       ),
     )
     .where(

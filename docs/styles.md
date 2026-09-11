@@ -41,6 +41,8 @@ Borders and rules are separate decisions with separate tokens. `--border` is for
 
 Color-theme presets in the App stylesheet share their anchor and companion colors between picker swatches and workspace ambience. Daydream uses cool blue and violet, while Cotton sky uses pastel pink and blue. Each preset's hue and ring values keep semantic surfaces, selected states, and focus indicators aligned with that palette in Light/Dark.
 
+When `GradientColorThemes` is enabled on the document, each preset's HSL primary value supplies both its anchor color and the shared `--primary` token. Primary actions, including portaled dialog buttons, immediately use that fill and the preset's contrast-checked `--primary-foreground` in Light/Dark. Hover and pressed fills blend the anchor toward its companion using the existing filled-state alpha tokens. Disabled buttons retain the shared opacity treatment. Removing the document's color-theme attributes restores the shared Amber primary tokens.
+
 ## Token and variant governance
 
 New tokens must represent a reusable semantic decision, have a documented consumer contract, and define their light and dark theme behavior in the canonical stylesheet. Shared tokens and variants belong to `@okouai/ui`; App-only tokens belong to the App token layer. A new alias for one component's hard-coded values is not a token contract.
@@ -48,6 +50,10 @@ New tokens must represent a reusable semantic decision, have a documented consum
 Token and variant changes are reviewed at their owning layer together with affected consumers and theme behavior. A rename or semantic change must update those consumers; deprecated names are removed when their consumers have migrated, rather than being copied into component-local registries. A change to ownership, naming, or theme mapping must update this guide in the same PR.
 
 Large editable surfaces use `border-surface-focus` to emphasize their existing border on focus: neutral gray in light themes and muted amber in dark themes. Keep the border width constant across interaction states. A shadow-only focus overlay may fade through opacity, but must not duplicate the surface border or depend on a negative inset to align its edge. The chat composer uses the default `border` width for its surface and connector circles; intentional badge overlap remains independent of border geometry. `data-slot="chat-composer-card"` identifies the editable card for keyboard positioning and page tests.
+
+The composer's focus overlay is `--okou-composer-focus-veil`. It is a runtime theme value, so it is owned at `:root` in the App stylesheet rather than inside the `.okou-app` scope: `signals/theme.ts` writes the theme attributes onto the document element, and document scope keeps the token available to any surface that later needs it, including portaled ones. Light carries a neutral veil, dark carries none, and the gradient themes tint it with the canonical state layer. Each override keys off `[data-theme="dark"]` and `[data-gradient-color-themes]` alone and wraps the theme test in `:where()`, so it stays at the specificity of the rule it refines and source order decides between them. Do not reach for the paired `.dark` class here: a class in the selector registers a new first-party class-selector declaration and fails the shrink-only baseline.
+
+A focus overlay is also sized to the space its surface actually has. The composer sits 16px above the workspace pane's bottom edge, so the veil's offset and blur must bring its falloff back to the surface inside that gap. An overlay still painting when it meets a clipping ancestor or the pane edge ends in a visible straight seam instead of fading out, and the gap is not a place to absorb an arbitrarily wide shadow.
 
 Standalone selectable controls use the shared `ToggleButton` and its required
 `selected` prop. Its default `inline` layout keeps compact icon/text choices;
@@ -121,6 +127,36 @@ Tests scope badges through `data-slot="badge"`, which carries no styles. The ico
 Line height belongs to the badge because a font-size utility with an arbitrary value carries no paired line height. A badge that declared only `text-[11px]` therefore took its box from whatever `line-height` an ancestor happened to set: the same badge measured 22px, 26px, or 34px tall across four ancestors. It reuses the page-surface border tokens rather than declaring badge-specific aliases, so one hairline decision keeps one owner.
 
 The `okou-badge`, `okou-pill`, and `okou-border-r` selectors and their consumers have been removed. `okou-pill` was scoped to `.okou-app` and set the muted foreground; its only consumer now spells that foreground itself. `okou-border-r` was a single settings-dialog divider and became `border-r border-r-gray-300` on that nav, keeping its lighter Gray 300 stroke while its width joins the shared hairline token.
+
+### Icon controls and dialog bodies
+
+`IconButton` from `@okouai/ui` owns a neutral 36px square control, the shared
+radius, muted hover fill, and keyboard focus ring. Its `aria-label` is required;
+callers provide the icon, foreground, opacity, and positioning. It reuses
+`ButtonBase` for native button behavior, refs, render/asChild composition, and
+optional tooltip support. Tooltip stays off by default. Use `Button` for action
+variants; `IconButton` preserves the neutral dialog and sheet close treatment.
+Compose it through `DialogClose` or `SheetClose` using `render` so Base UI keeps
+ownership of closing and focus restoration, with one native button in the DOM.
+
+`DialogBody` owns a native scrolling body and its thin scrollbar. It adds no
+wrapper: layout, padding, and grid columns stay with the caller. Set
+`scrollable={false}` when a child owns scrolling, as in the plan-selection grid
+below a fixed header; the body keeps the same DOM element across step changes.
+The existing `overflow-hidden` override used by artifact previews is retained.
+The default `DialogContent` inner container also uses `DialogBody`, preserving
+its `dialog-inner` slot and its protected vertical scrolling.
+
+Scrollbar styling is private to `DialogBody`, not an exported class-name API.
+Tailwind arbitrary variants address WebKit pseudo-elements. The component owns
+the 6px width, 3px thumb radius, 4px vertical track inset, transparent track,
+and neutral thumb colors, including hover. All default dialog bodies use this
+treatment, including the existing workflow-recommendation detail body; artifact
+previews retain their own clipping and internal scroll ownership.
+
+The `icon-button` and `dialog-scrollable` selectors and their dependencies have
+been removed. `icon-tooltip-trigger` remains scoped to the third-party Mermaid
+block and migrates with that adapter.
 
 ### Animated layers
 

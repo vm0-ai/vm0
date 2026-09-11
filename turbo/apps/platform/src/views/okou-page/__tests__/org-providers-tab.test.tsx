@@ -358,7 +358,7 @@ async function openExistingGateway(displayName: string, routed = false) {
 async function openProvidersTab(): Promise<void> {
   await setupPage({
     context,
-    path: "/?settings=model",
+    path: "/agents?settings=model",
   });
   await waitFor(() => {
     expect(
@@ -371,7 +371,7 @@ async function openProvidersTab(): Promise<void> {
 async function openModelSettings(): Promise<void> {
   await setupPage({
     context,
-    path: "/?settings=model",
+    path: "/agents?settings=model",
   });
   await waitFor(() => {
     expect(
@@ -863,7 +863,7 @@ test("Connect a workspace API key to a model route", async () => {
   expect(within(row).getByText("Anthropic")).toBeInTheDocument();
 });
 
-test("Rotate a workspace model API key", async () => {
+test("Reject an empty workspace model API key without replacing its provider", async () => {
   mockApiKeyModelRouteStory();
   await openProvidersTab();
 
@@ -883,6 +883,24 @@ test("Rotate a workspace model API key", async () => {
   click(buttonByText("Save changes"));
   expect(screen.getByText("API key is required")).toBeInTheDocument();
   expect(within(row).getByText("Anthropic")).toBeInTheDocument();
+});
+
+test("Rotate a workspace model API key without exposing the new secret", async () => {
+  mockApiKeyModelRouteStory();
+  await openProvidersTab();
+
+  const row = await screen.findByTestId("org-model-policy-row-claude-opus-4-8");
+  expect(within(row).getByText("Claude Opus 4.8")).toBeInTheDocument();
+  expect(within(row).getByText("Anthropic")).toBeInTheDocument();
+
+  click(within(row).getByLabelText("Actions for Claude Opus 4.8"));
+  click(menuItemByText("Edit model"));
+
+  await waitFor(() => {
+    expect(
+      screen.getByRole("dialog", { name: "Edit model" }),
+    ).toBeInTheDocument();
+  });
   await fill(
     screen.getByPlaceholderText("Enter your API key"),
     "  sk-ant-rotated  ",

@@ -226,8 +226,8 @@ async function postWorkflowWebhook(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-VM0-Timestamp": String(timestamp),
-        "X-VM0-Signature": computeHmacSignature(
+        "X-Okou-Timestamp": String(timestamp),
+        "X-Okou-Signature": computeHmacSignature(
           rawBody,
           automation.secret,
           timestamp,
@@ -1037,7 +1037,7 @@ describe("workflow queue", () => {
     ).toBeTruthy();
   });
 
-  it("queues webhook events behind the active run and drains one per completion", async () => {
+  it("queues webhook events without extra keys and drains one per completion", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
     const kms = useSecretKmsProbe();
@@ -1070,10 +1070,29 @@ describe("workflow queue", () => {
     await completeRunThroughSandbox(scenario, firstRunId);
     const afterFirst = await workflowRunIds(automation.threadId);
     expect(afterFirst).toHaveLength(2);
-    const secondClaim = await completeRunThroughSandbox(
-      scenario,
-      afterFirst[1]!,
+    await expect(
+      pendingAutomationEvents(automation.threadId),
+    ).resolves.toHaveLength(1);
+  });
+
+  it("starts a promoted webhook run's API clock at dequeue time", async () => {
+    const scenario = await setup();
+    const automation = await createWebhookAutomation(scenario);
+    const firstRunId = await expectAcceptedRunId(
+      await postWorkflowWebhook(automation, "first"),
+      automation.threadId,
     );
+    const enqueuedAt = now() + 60_000;
+    mockNow(enqueuedAt);
+    expectAcceptedWithoutRun(await postWorkflowWebhook(automation, "second"));
+
+    const dequeuedAt = enqueuedAt + 10_000;
+    mockNow(dequeuedAt);
+    await completeRunThroughSandbox(scenario, firstRunId);
+    const runIds = await workflowRunIds(automation.threadId);
+    expect(runIds).toHaveLength(2);
+    await runsApi.heartbeatRunner(scenario.runnerGroup);
+    const secondClaim = await runsApi.claimRunnerJob(runIds[1]!);
     expect(secondClaim.apiStartTime).toBe(dequeuedAt);
   });
 

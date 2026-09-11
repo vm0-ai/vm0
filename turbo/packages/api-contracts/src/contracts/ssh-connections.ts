@@ -3,14 +3,20 @@ import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import { sshConnectionObservationSchema } from "./ssh-connection-observations";
+import {
+  SSH_DISPLAY_NAME_MAX_LENGTH,
+  sshCredentialSelectionSchema,
+} from "./ssh-credentials";
+export {
+  SSH_DISPLAY_NAME_MAX_LENGTH,
+  SSH_USERNAME_MAX_LENGTH,
+  SSH_PRIVATE_KEY_MAX_LENGTH,
+  SSH_PASSPHRASE_MAX_LENGTH,
+} from "./ssh-credentials";
 
 const c = initContract();
 
-export const SSH_DISPLAY_NAME_MAX_LENGTH = 128;
 export const SSH_HOST_MAX_LENGTH = 253;
-export const SSH_USERNAME_MAX_LENGTH = 255;
-export const SSH_PRIVATE_KEY_MAX_LENGTH = 65_536;
-export const SSH_PASSPHRASE_MAX_LENGTH = 4_096;
 
 const displayNameSchema = z
   .string()
@@ -19,40 +25,22 @@ const displayNameSchema = z
   .max(SSH_DISPLAY_NAME_MAX_LENGTH);
 const hostSchema = z.string().trim().min(1).max(SSH_HOST_MAX_LENGTH);
 const portSchema = z.int().min(1).max(65_535);
-const usernameSchema = z.string().trim().min(1).max(SSH_USERNAME_MAX_LENGTH);
-const privateKeySchema = z.string().min(1).max(SSH_PRIVATE_KEY_MAX_LENGTH);
-const passphraseSchema = z
-  .string()
-  .min(1)
-  .max(SSH_PASSPHRASE_MAX_LENGTH)
-  .nullable();
-
-export const sshConnectionCredentialsInputSchema = z
-  .object({
-    privateKey: privateKeySchema,
-    passphrase: passphraseSchema.default(null),
-  })
-  .strict();
-
 export const createSshConnectionRequestSchema = z
   .object({
     displayName: displayNameSchema,
     host: hostSchema,
     port: portSchema.default(22),
-    username: usernameSchema,
-    privateKey: privateKeySchema,
-    passphrase: passphraseSchema.default(null),
+    credential: sshCredentialSelectionSchema,
   })
   .strict();
 
 export const updateSshConnectionRequestSchema = z
   .object({
-    expectedGeneration: z.int().positive(),
+    expectedGeneration: z.int().positive().max(2_147_483_647),
     displayName: displayNameSchema.optional(),
     host: hostSchema.optional(),
     port: portSchema.optional(),
-    username: usernameSchema.optional(),
-    credentials: sshConnectionCredentialsInputSchema.optional(),
+    credential: sshCredentialSelectionSchema.optional(),
   })
   .strict()
   .refine(
@@ -61,8 +49,7 @@ export const updateSshConnectionRequestSchema = z
         body.displayName !== undefined ||
         body.host !== undefined ||
         body.port !== undefined ||
-        body.username !== undefined ||
-        body.credentials !== undefined
+        body.credential !== undefined
       );
     },
     { message: "At least one SSH connection field must be updated" },
@@ -83,6 +70,8 @@ export const sshConnectionResponseSchema = z
     host: z.string(),
     port: z.int(),
     username: z.string(),
+    credentialId: z.uuid(),
+    credentialName: z.string(),
     generation: z.int().positive(),
     learnedHostKey: z
       .object({
@@ -157,7 +146,6 @@ export const sshConnectionsContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
-      409: apiErrorSchema,
       500: apiErrorSchema,
     },
     summary: "Create an SSH connection",

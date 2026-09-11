@@ -65,6 +65,10 @@ class StateFileNotRegularError(OSError):
     """The opened state-file path does not identify a regular file."""
 
 
+class StateFileTooLargeError(OSError):
+    """The opened state file exceeds the caller's bounded-read limit."""
+
+
 @dataclass(frozen=True)
 class OpenedStateFile:
     """State-file descriptor that passed the helper's baseline checks.
@@ -98,10 +102,13 @@ class OpenedStateFile:
         is rejected before any bytes are consumed. The method then probes one
         byte beyond the limit, so underreported or growing content is also
         rejected. Success returns at most ``max_bytes`` bytes; excess content
-        raises ``OSError``.
+        raises ``StateFileTooLargeError``. Other ``OSError`` failures report
+        actual I/O errors, allowing callers to choose a separate retry policy.
         """
         if self.identity.st_size > max_bytes:
-            raise OSError(f"{self.description} {self.path} exceeds {max_bytes} bytes")
+            raise StateFileTooLargeError(
+                f"{self.description} {self.path} exceeds {max_bytes} bytes"
+            )
 
         chunks: list[bytes] = []
         total = 0
@@ -114,7 +121,9 @@ class OpenedStateFile:
             total += len(chunk)
 
         if total > max_bytes:
-            raise OSError(f"{self.description} {self.path} exceeds {max_bytes} bytes")
+            raise StateFileTooLargeError(
+                f"{self.description} {self.path} exceeds {max_bytes} bytes"
+            )
         return b"".join(chunks)
 
 
