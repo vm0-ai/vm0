@@ -156,6 +156,31 @@ test("Highlighting a workflow closes the pane instead of leaving a stale type op
   });
 });
 
+test("The panel emphasizes the typed query inside a workflow name", async () => {
+  setupModels();
+  mockChatLifecycle(context);
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}/chat`,
+    featureSwitches: {
+      [FeatureSwitchKey.ComposerCreateCommands]: true,
+      [FeatureSwitchKey.ComposerSlashTemplatePanel]: true,
+    },
+  });
+  const editor = await findComposerEditor();
+  await fill(editor, "Draft /axi");
+  const menu = await screen.findByTestId("slash-workflow-menu");
+  await waitFor(() => {
+    expect(
+      menu.querySelector('[data-slot="workflow-query-match"]'),
+    ).toHaveTextContent("axi");
+  });
+  // The rest of the name is not emphasized, so the match is what stands out.
+  expect(slashButton(`/${WORKFLOW_NAME}`)).toHaveTextContent(
+    `/${WORKFLOW_NAME}`,
+  );
+});
+
 test("Choosing a cover in the pane attaches that template without opening the picker", async () => {
   const user = userEvent.setup();
   await openSlashMenu(true);

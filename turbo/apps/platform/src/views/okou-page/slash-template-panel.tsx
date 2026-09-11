@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
+import { SlashWorkflowName } from "./slash-workflow.tsx";
 import { i18n } from "../../i18n/index.ts";
 import type { ComposerSlashWorkflowMatch } from "../../signals/okou-page/workflow-composer-domain.ts";
 import {
@@ -23,6 +24,9 @@ import {
   type SlashTemplatePreviewCategory,
 } from "./composer-template-catalog.ts";
 
+// Concentric corners, the same rule the shared DropdownMenu states: an inner
+// radius equals the outer radius minus the gap. The popover is 12px and the row
+// gutters are `p-1` (4px), so every hoverable row is `rounded-lg` (8px).
 const SLASH_TEMPLATE_CATEGORY_ICONS = {
   slides: Presentation,
   illustration: Image,
@@ -133,7 +137,12 @@ function SlashTemplateDetailPane({
       data-slot="slash-template-detail"
       data-category={category}
     >
-      <div className="flex h-full flex-col p-4">
+      {/*
+        No bottom padding: the covers scroll all the way to the panel's bottom
+        edge, so a half-visible row reads as more content rather than sitting
+        above a white gutter. The trailing space lives inside the scroller.
+      */}
+      <div className="flex h-full flex-col px-4 pt-4">
         <div className="flex shrink-0 items-center gap-2.5">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
             <Icon size={18} className="text-muted-foreground" aria-hidden />
@@ -155,40 +164,46 @@ function SlashTemplateDetailPane({
         <p className="mt-3 shrink-0 text-[13px] leading-6 text-muted-foreground">
           {categoryDescription(category)}
         </p>
-        {/* The covers scroll so the pane can carry more than one row of them. */}
-        <div className="mt-3 grid min-h-0 flex-1 grid-cols-2 content-start gap-2.5 overflow-y-auto">
-          {group.previews.map((preview) => {
-            return (
-              <button
-                key={preview.slug}
-                type="button"
-                className="group min-w-0 text-left"
-                aria-label={t(
-                  ($) => {
-                    return $.chat.composer.slashPanel.useTemplate;
-                  },
-                  { title: preview.title },
-                )}
-                onMouseDown={(event) => {
-                  // Keep the editor focused; the panel never takes selection.
-                  event.preventDefault();
-                  onSelectTemplate(preview);
-                }}
-              >
-                <span className="block aspect-video overflow-hidden rounded-lg bg-muted ring-1 ring-border/60">
-                  <img
-                    src={preview.coverUrl}
-                    alt=""
-                    loading="lazy"
-                    className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.04]"
-                  />
-                </span>
-                <span className="mt-1 block truncate text-[12px] text-muted-foreground">
-                  {preview.title}
-                </span>
-              </button>
-            );
-          })}
+        {/*
+          The grid is a child of the scroller rather than the scroller itself,
+          so its trailing padding is an ordinary block margin every engine
+          measures, not padding on a scroll container.
+        */}
+        <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
+          <div className="grid grid-cols-2 gap-2.5 pb-4">
+            {group.previews.map((preview) => {
+              return (
+                <button
+                  key={preview.slug}
+                  type="button"
+                  className="group min-w-0 text-left"
+                  aria-label={t(
+                    ($) => {
+                      return $.chat.composer.slashPanel.useTemplate;
+                    },
+                    { title: preview.title },
+                  )}
+                  onMouseDown={(event) => {
+                    // Keep the editor focused; the panel never takes selection.
+                    event.preventDefault();
+                    onSelectTemplate(preview);
+                  }}
+                >
+                  <span className="block aspect-video overflow-hidden rounded-lg bg-muted ring-1 ring-border/60">
+                    <img
+                      src={preview.coverUrl}
+                      alt=""
+                      loading="lazy"
+                      className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.04]"
+                    />
+                  </span>
+                  <span className="mt-1 block truncate text-[12px] text-muted-foreground">
+                    {preview.title}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>
@@ -228,14 +243,14 @@ function SlashPanelWorkflowList({
     );
   }
   return (
-    <div className="px-1.5">
+    <div className="px-1">
       {workflows.map((workflow) => {
         return (
           <button
             key={workflow.id}
             id={workflowOptionId(workflow.id)}
             type="button"
-            className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left transition-colors hover:bg-state-hover"
+            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-state-hover"
             onMouseEnter={() => {
               // A workflow has nothing to preview, so highlighting one closes
               // the pane rather than leaving a stale type open.
@@ -251,10 +266,10 @@ function SlashPanelWorkflowList({
               className="shrink-0 text-muted-foreground"
               aria-hidden
             />
-            <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-foreground">
-              <span className="text-brand-text">/</span>
-              {workflow.name}
-            </span>
+            <SlashWorkflowName
+              workflow={workflow}
+              className="min-w-0 flex-1 text-[13px]"
+            />
           </button>
         );
       })}
@@ -290,13 +305,13 @@ export function SlashTemplatePanel({
           left a row sliced in half under a pinned section label, and hid that
           the two groups are one index.
         */}
-        <div className="min-h-0 flex-1 overflow-y-auto pb-1.5">
+        <div className="min-h-0 flex-1 overflow-y-auto pb-1">
           <SectionLabel>
             {t(($) => {
               return $.chat.composer.slashPanel.make;
             })}
           </SectionLabel>
-          <div className="px-1.5">
+          <div className="px-1">
             {categories.map((category) => {
               const Icon = SLASH_TEMPLATE_CATEGORY_ICONS[category];
               const label = slashTemplateCategoryLabel(category);
@@ -307,7 +322,7 @@ export function SlashTemplatePanel({
                   type="button"
                   aria-label={label}
                   className={cn(
-                    "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm text-foreground transition-colors",
+                    "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-foreground transition-colors",
                     highlighted === category
                       ? "bg-state-hover"
                       : "hover:bg-state-hover",
@@ -346,7 +361,7 @@ export function SlashTemplatePanel({
         <div className="shrink-0 border-t border-border/60 p-1">
           <button
             type="button"
-            className="flex h-8 w-full items-center justify-between rounded px-2 text-sm text-foreground transition-colors hover:bg-state-hover"
+            className="flex h-8 w-full items-center justify-between rounded-lg px-2 text-sm text-foreground transition-colors hover:bg-state-hover"
             onMouseDown={(event) => {
               event.preventDefault();
               onBrowseAll();
