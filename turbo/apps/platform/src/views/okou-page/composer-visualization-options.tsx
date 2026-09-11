@@ -1,27 +1,17 @@
 import { useGet, useSet } from "ccstate-react";
-import {
-  ChartLine,
-  ChartNoAxesColumnIncreasing,
-  ChartPie,
-  ChartScatter,
-  Plus,
-} from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Button, Card, Dialog, DialogContent, ToggleButton } from "@okouai/ui";
+import { Card, ToggleButton } from "@okouai/ui";
 import type { ComposerSignals } from "../../signals/okou-page/composer-signals.ts";
-import { VISUALIZATION_OUTPUTS } from "../../signals/okou-page/composer-visualization.ts";
-import { FEATURED_VISUALIZATION_CHARTS } from "./composer-visualization-chart-data.ts";
-import { ComposerVisualizationChartLibrary } from "./composer-visualization-chart-library.tsx";
-
-type FeaturedVisualizationChart =
-  (typeof FEATURED_VISUALIZATION_CHARTS)[number];
-
-const CHART_ICONS = {
-  bar: ChartNoAxesColumnIncreasing,
-  line: ChartLine,
-  donut: ChartPie,
-  scatter: ChartScatter,
-} as const;
+import {
+  VISUALIZATION_OUTPUTS,
+  type VisualizationChart,
+  type VisualizationOutput,
+} from "../../signals/okou-page/composer-visualization.ts";
+import { CURATED_VISUALIZATION_CHARTS } from "./composer-visualization-chart-data.ts";
+import {
+  VisualizationChartPreview,
+  VisualizationOutputPreview,
+} from "./composer-visualization-previews.tsx";
 
 function VisualizationHeader() {
   const { t } = useTranslation();
@@ -32,17 +22,49 @@ function VisualizationHeader() {
     { returnObjects: true },
   );
   return (
-    <div className="flex min-w-0 items-start justify-between gap-3">
-      <div className="min-w-0">
-        <h3 className="text-sm font-semibold">{copy.title}</h3>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          {copy.description}
-        </p>
-      </div>
-      <span className="shrink-0 pt-0.5 text-xs text-muted-foreground">
+    <div className="flex min-w-0 items-center justify-between gap-3">
+      <h3 className="text-sm font-semibold">{copy.title}</h3>
+      <span className="shrink-0 text-xs text-muted-foreground">
         {copy.optional}
       </span>
     </div>
+  );
+}
+
+function VisualizationOutputButton({
+  output,
+  signals,
+}: {
+  readonly output: VisualizationOutput;
+  readonly signals: ComposerSignals;
+}) {
+  const { t } = useTranslation();
+  const copy = t(
+    ($) => {
+      return $.chat.taskChips.visualization;
+    },
+    { returnObjects: true },
+  );
+  const selectedOutput = useGet(signals.taskChips.visualization.output$);
+  const setOutput = useSet(signals.taskChips.visualization.setOutput$);
+  const label = copy.outputs[output];
+  return (
+    <ToggleButton
+      selected={selectedOutput === output}
+      layout="tile"
+      aria-label={label}
+      className="group min-h-[108px] overflow-hidden rounded-xl p-0 text-foreground last:col-span-2 sm:last:col-span-1"
+      onClick={() => {
+        setOutput(output);
+      }}
+    >
+      <span className="block px-2 pb-1 pt-2.5 text-center text-xs font-medium">
+        {label}
+      </span>
+      <span className="mt-auto block bg-gray-50 px-1 pt-1 transition-colors group-hover:bg-transparent">
+        <VisualizationOutputPreview output={output} />
+      </span>
+    </ToggleButton>
   );
 }
 
@@ -58,44 +80,33 @@ function VisualizationOutputPicker({
     },
     { returnObjects: true },
   );
-  const output = useGet(signals.taskChips.visualization.output$);
-  const setOutput = useSet(signals.taskChips.visualization.setOutput$);
   return (
-    <div className="flex min-w-0 flex-col gap-2">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-xs font-medium">{copy.outputFormat}</span>
-        <span className="text-xs text-muted-foreground">{copy.chooseOne}</span>
-      </div>
+    <section className="flex min-w-0 flex-col gap-2.5">
+      <h4 className="text-xs font-medium">{copy.outputFormat}</h4>
       <div
-        className="grid min-w-0 grid-cols-2 gap-1.5 sm:grid-cols-5"
+        className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-5"
         role="group"
         aria-label={copy.outputFormat}
       >
-        {VISUALIZATION_OUTPUTS.map((item) => {
+        {VISUALIZATION_OUTPUTS.map((output) => {
           return (
-            <ToggleButton
-              key={item}
-              selected={output === item}
-              layout="tile"
-              className="min-h-9 rounded-lg px-2 py-1.5 text-xs font-normal last:col-span-2 sm:last:col-span-1"
-              onClick={() => {
-                setOutput(item);
-              }}
-            >
-              {copy.outputs[item]}
-            </ToggleButton>
+            <VisualizationOutputButton
+              key={output}
+              output={output}
+              signals={signals}
+            />
           );
         })}
       </div>
-    </div>
+    </section>
   );
 }
 
-function FeaturedChartButton({
+function VisualizationChartButton({
   chart,
   signals,
 }: {
-  readonly chart: FeaturedVisualizationChart;
+  readonly chart: VisualizationChart;
   readonly signals: ComposerSignals;
 }) {
   const { t } = useTranslation();
@@ -107,17 +118,23 @@ function FeaturedChartButton({
   );
   const charts = useGet(signals.taskChips.visualization.charts$);
   const toggleChart = useSet(signals.taskChips.visualization.toggleChart$);
-  const Icon = CHART_ICONS[chart];
+  const label = copy.charts[chart];
   return (
     <ToggleButton
       selected={charts.includes(chart)}
-      className="h-8 rounded-full px-3 py-0 text-xs font-normal"
+      layout="tile"
+      aria-label={label}
+      className="group min-h-[112px] overflow-hidden rounded-xl p-1.5 text-foreground"
       onClick={() => {
         toggleChart(chart);
       }}
     >
-      <Icon size={14} aria-hidden />
-      {copy.featuredCharts[chart]}
+      <span className="block h-[76px] rounded-lg bg-gray-50 transition-colors group-hover:bg-transparent">
+        <VisualizationChartPreview chart={chart} />
+      </span>
+      <span className="mt-1.5 block truncate px-1 text-center text-xs font-medium">
+        {label}
+      </span>
     </ToggleButton>
   );
 }
@@ -134,38 +151,25 @@ function VisualizationChartPicker({
     },
     { returnObjects: true },
   );
-  const setLibraryOpen = useSet(
-    signals.taskChips.visualization.setLibraryOpen$,
-  );
   return (
-    <div className="flex min-w-0 flex-col gap-2 border-t pt-3">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-xs font-medium">{copy.preferredCharts}</span>
-        <span className="text-xs text-muted-foreground">{copy.chooseAny}</span>
-      </div>
+    <section className="flex min-w-0 flex-col gap-2.5 border-t pt-3">
+      <h4 className="text-xs font-medium">{copy.preferredCharts}</h4>
       <div
-        className="flex min-w-0 flex-wrap gap-1.5"
+        className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6"
         role="group"
         aria-label={copy.preferredCharts}
       >
-        {FEATURED_VISUALIZATION_CHARTS.map((chart) => {
+        {CURATED_VISUALIZATION_CHARTS.map((chart) => {
           return (
-            <FeaturedChartButton key={chart} chart={chart} signals={signals} />
+            <VisualizationChartButton
+              key={chart}
+              chart={chart}
+              signals={signals}
+            />
           );
         })}
-        <Button
-          type="button"
-          variant="outline"
-          className="h-8 rounded-full px-3 text-xs font-normal text-muted-foreground"
-          onClick={() => {
-            setLibraryOpen(true);
-          }}
-        >
-          <Plus size={14} aria-hidden />
-          {copy.more}
-        </Button>
       </div>
-    </div>
+    </section>
   );
 }
 
@@ -181,39 +185,18 @@ export function ComposerVisualizationOptions({
     },
     { returnObjects: true },
   );
-  const libraryOpen = useGet(signals.taskChips.visualization.libraryOpen$);
-  const setLibraryOpen = useSet(
-    signals.taskChips.visualization.setLibraryOpen$,
-  );
   return (
-    <>
-      <Card
-        className="min-w-0 rounded-2xl p-3 sm:p-4"
-        role="region"
-        aria-label={copy.panelLabel}
-      >
-        <div className="flex min-w-0 flex-col gap-3">
-          <VisualizationHeader />
-          <VisualizationOutputPicker signals={signals} />
-          <VisualizationChartPicker signals={signals} />
-          <p className="text-xs text-muted-foreground">{copy.chartSafety}</p>
-        </div>
-      </Card>
-      <Dialog
-        open={libraryOpen}
-        onOpenChange={(open) => {
-          setLibraryOpen(open);
-        }}
-      >
-        <DialogContent
-          smMaxWidth={680}
-          height={760}
-          closeLabel={copy.close}
-          contentClassName="gap-3 p-4 sm:p-6"
-        >
-          <ComposerVisualizationChartLibrary signals={signals} />
-        </DialogContent>
-      </Dialog>
-    </>
+    <Card
+      className="min-w-0 rounded-3xl p-3 sm:p-4"
+      role="region"
+      aria-label={copy.panelLabel}
+    >
+      <div className="flex min-w-0 flex-col gap-3">
+        <VisualizationHeader />
+        <VisualizationOutputPicker signals={signals} />
+        <VisualizationChartPicker signals={signals} />
+        <p className="text-xs text-muted-foreground">{copy.chartSafety}</p>
+      </div>
+    </Card>
   );
 }

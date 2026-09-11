@@ -51,9 +51,6 @@ export function createComposerTaskChipsSignals(
     }
     set(workflows.close$);
     const next = get(task$) === task ? null : task;
-    if (next !== "visualization") {
-      set(visualization.setLibraryOpen$, false);
-    }
     set(
       internalGeneralTask$,
       next === "workflow" || next === "website" || next === "visualization"

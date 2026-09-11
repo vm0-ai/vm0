@@ -210,7 +210,7 @@ test("Visualization starts with no selected preferences", async () => {
       return chart.hasAttribute("aria-pressed");
     },
   );
-  expect(chartOptions).toHaveLength(4);
+  expect(chartOptions).toHaveLength(18);
   for (const chart of chartOptions) {
     expect(chart).toHaveAttribute("aria-pressed", "false");
   }
@@ -263,15 +263,8 @@ test("Visualization preferences are interactive and are sent as agent-only conte
   const chartPicker = within(panel).getByRole("group", {
     name: "Preferred charts",
   });
-  click(button("Bar", chartPicker));
-  click(button("More", chartPicker));
-  const library = await screen.findByRole("dialog", { name: "Choose charts" });
-  await fill(
-    within(library).getByRole("searchbox", { name: "Search 62 chart types" }),
-    "Sankey",
-  );
-  click(button("Sankey diagram", library));
-  click(button("Done", library));
+  click(button("Bar chart", chartPicker));
+  click(button("Sankey diagram", chartPicker));
 
   click(button("Send"));
   await waitFor(() => {
