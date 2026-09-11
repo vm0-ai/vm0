@@ -17,14 +17,8 @@ Electron only owns the app shell and command bridge; the helper owns macOS
 Accessibility, target-window screenshot capture, and targeted CGEvent input
 dispatch.
 
-## Experimental Computer Use driver
-
-Okou remains the default actuator. A current Developer account can check
-**Developer Tools** in the app menu, then explicitly select **CUA (Experimental)**
-in the **Computer Use driver** panel below the hero/setup and existing developer
-panels. Showing or hiding Developer Tools does not switch or stop a driver. See [selection, recovery and manual verification](cua/README.md#developer-selection-and-recovery)
-and the exact [CUA 0.23.2 command contract](cua/ADAPTER.md). Selection is local to
-this installation; failed CUA execution never silently selects another driver.
+Computer Use uses the built-in Okou driver. Developer Tools controls filesystem,
+MCP, and screen recording features; it does not select a Computer Use backend.
 
 ## Development
 

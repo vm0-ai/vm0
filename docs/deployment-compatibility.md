@@ -874,7 +874,7 @@ The App uses the exact attempt receipt, not account timestamps, account counts, 
 
 The receipt-capable writer from [#32880](https://github.com/vm0-ai/vm0/pull/32880) shipped in release `3d58eaa4609967a4f655f7cd61d0d7cd454ba2a1`: API `1.575.2` completed [production promotion](https://github.com/vm0-ai/vm0/actions/runs/34335229479/job/102417239410) on 2026-09-09 at 09:48:46 UTC, followed by App `0.873.0` at 09:50:38 UTC. Cleanup [#32870](https://github.com/vm0-ai/vm0/issues/32870) retires the optional response field and absent-ID branch after that release. The maintainer explicitly excludes old API rollback compatibility; no rollback restriction is added or changed. Pre-receipt APIs are outside this cleanup's supported boundary. Existing App requests remain accepted, and already-loaded pre-receipt App bundles are not retired by this change; no App version floor increase is included.
 
-## Pi memory summary reader preparation
+## Pi memory summary storage and injection budget
 
 A valid `memory_summary.md` may exceed 2500 exact o200k tokens on disk. The
 2500-token budget belongs to the summary excerpt injected into the model prompt,
@@ -882,7 +882,7 @@ including its truncation marker, not to the stored artifact. The 64 KiB UTF-8
 source ceiling, `sourceHash`/`sourceSize`/`tokenCount` full-source metadata, the
 frozen storage version identity and the immutable-path guards are unchanged.
 
-The reader slice of [#33351](https://github.com/vm0-ai/vm0/issues/33351) widens
+The reader slice of [#33351](https://github.com/vm0-ai/vm0/issues/33351) widened
 acceptance only:
 
 - `piMemoryRecallSelectionSchema` bounds the ready selection's full-source
@@ -893,23 +893,47 @@ acceptance only:
 - The API projection read path no longer treats an authentic larger source as a
   read-integrity mismatch, so it does not requeue that row.
 
-Producers stay capped in this slice. Phase 2 output validation still rejects a
-`summary_tokens` overflow, and projection materialization still classifies
-token-only excess as `over_limit`. Relaxing them is a later change that must not
-ship before compatible readers are actually deployed:
+That reader shipped in release
+[#33469](https://github.com/vm0-ai/vm0/pull/33469) /
+`9ce193854ab828baeec40579a6d36cdf2d4dbf73` (API `1.584.1`, `pi-agent-runtime`
+`1.25.1`, `api-contracts` `1.428.1`, CLI `9.323.12`). The producer slice then
+stopped capping sources by tokens:
 
-- old runner -> new backend: an old `pi-agent-runtime` rejects a larger source
-  with `token-overflow` and injects no memory. Do not emit larger projections
-  while runner versions without this reader remain eligible to consume them.
+- Phase 2 output validation rejects only genuine problems: invalid UTF-8, a
+  missing `v1` header, a source above 64 KiB, immutable-path violations and a
+  failed or incomplete atomic publication. A valid larger source publishes in
+  full together with its `MEMORY.md` and skills. `summary_tokens` remains a
+  parseable historical diagnostic; new runs no longer produce it.
+- Projection materialization classifies token-only excess as `ready` and stores
+  the complete source with its original `sourceHash`, `sourceSize` and exact
+  `tokenCount`. Archive, file-size, path, link, duplicate, hash and encoding
+  rejections are unchanged, and existing terminal `over_limit` rows are neither
+  mutated nor requeued by this change.
+- `phase2_write` and `phase2_edit` return content-free numeric feedback for the
+  resulting whole `memory_summary.md`: UTF-8 bytes, the 64 KiB ceiling, exact
+  o200k tokens and the 2500-token injection target. Above the byte ceiling the
+  token count is reported as `unmeasured` so feedback stays bounded, and output
+  validation still rejects that source.
+
+Rollout ordering is a correctness requirement, not a preference:
+
+- old runner -> new backend: a `pi-agent-runtime` without the widened reader
+  rejects a larger source and injects no memory. Producers must not emit larger
+  sources while such runner versions remain eligible to consume them; the
+  reader release above is the gate that made this safe.
 - new runner -> old backend: unchanged. An old backend keeps producing sources
   within the injection budget, which the new reader accepts and leaves intact.
 - Frozen selections are pinned per run, so a resumed or pinned run keeps the
-  epoch and reader decision it started with.
+  epoch and reader decision it started with. New launch contexts bind the
+  serving API's commit-addressed CLI package; a package tag alone does not
+  prove runtime availability.
 
-Rolling the backend back below this change restores the old read-side cap: an
-already stored larger projection is then read as a read-integrity mismatch and
-requeued, and materialization re-classifies it as `over_limit`. The stored
-source itself is never truncated or rewritten by either reader.
+Rolling the backend back below the reader change restores the old read-side cap:
+an already stored larger projection is then read as a read-integrity mismatch
+and requeued, and materialization re-classifies it as `over_limit`. Rolling back
+below the producer change only stops new larger sources; it does not rewrite
+what was already published. The stored source itself is never truncated or
+rewritten by any reader, producer or rollback.
 
 ## PostHog CIMD OAuth
 

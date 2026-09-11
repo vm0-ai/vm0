@@ -635,97 +635,110 @@ afterEach(async () => {
 });
 
 describe("Teams chat callbacks", () => {
-  it("claims Teams launch material from context", async () => {
-    const teams = await setupConnectedTeamsActor();
-    teamsApiMocks({ fixture: teams.fixture });
-    const firstActivityId = teamsFixtureExternalId(
-      teams.fixture,
-      "activity-queue-params-first",
-    );
-    const queuedActivityId = teamsFixtureExternalId(
-      teams.fixture,
-      "activity-queue-params-second",
-    );
-    const firstRunId = await dispatchTeamsPersonalRun({
-      fixture: teams.fixture,
-      activityId: firstActivityId,
-      text: "hold the Teams queue",
-    });
-    const firstClaim = await claimTeamsRun({
-      runnerGroup: teams.runnerGroup,
-      runId: firstRunId,
-    });
+  it.each(["stored context", "claimed launch material"] as const)(
+    "preserves queued Teams %s",
+    async (phase) => {
+      const teams = await setupConnectedTeamsActor();
+      teamsApiMocks({ fixture: teams.fixture });
+      const firstActivityId = teamsFixtureExternalId(
+        teams.fixture,
+        "activity-queue-params-first",
+      );
+      const queuedActivityId = teamsFixtureExternalId(
+        teams.fixture,
+        "activity-queue-params-second",
+      );
+      const firstRunId = await dispatchTeamsPersonalRun({
+        fixture: teams.fixture,
+        activityId: firstActivityId,
+        text: "hold the Teams queue",
+      });
+      const firstClaim = await claimTeamsRun({
+        runnerGroup: teams.runnerGroup,
+        runId: firstRunId,
+      });
 
-    const queuedPrompt = `claim Teams launch context ${teams.fixture.teamsTenantId}`;
-    await postTeamsPersonalMessage({
-      fixture: teams.fixture,
-      activityId: queuedActivityId,
-      text: queuedPrompt,
-    });
-    const queuedParams = await findPendingChatEventByPromptFixture({
-      userId: teams.actor.userId,
-      prompt: queuedPrompt,
-    });
-    expect(queuedParams).toMatchObject({
-      eventId: expect.any(String),
-    });
-    if (!queuedParams) {
-      throw new Error("Expected queued Teams event");
-    }
-    await expect(
-      readChatEventContextFixture(queuedParams.eventId),
-    ).resolves.toMatchObject({
-      contextType: "teams",
-      teamsTenantId: teams.fixture.teamsTenantId,
-      teamsTeamId: null,
-      teamsChannelId: null,
-      teamsConversationId: `a:personal-${teams.fixture.teamsUserId}`,
-      teamsConversationType: "personal",
-      teamsActivityId: queuedActivityId,
-      teamsThreadContext: "",
-      teamsMessageText: queuedPrompt,
-      teamsMessageFiles: [],
-      teamsTenantName: teams.fixture.teamsTenantName,
-      teamsTeamName: null,
-      teamsThreadId: `direct-message:${teams.defaultAgentId}:claude-sonnet-5`,
-      teamsServiceUrl: teams.fixture.serviceUrl,
-      teamsAppId: teams.fixture.teamsAppId,
-      teamsPublicBrand: "okou",
-      teamsSenderUserId: teams.fixture.teamsUserId,
-      teamsSenderDisplayName: "Ada Lovelace",
-      teamsSenderPrincipalName: teams.fixture.teamsUserPrincipalName,
-      teamsConnectionId: expect.any(String),
-    });
-    await completeSandboxRun({
-      runId: firstRunId,
-      sandboxToken: firstClaim.sandboxToken,
-      exitCode: 0,
-    });
-    const queuedRunId = await runIdForPrompt(teams.actor, queuedPrompt);
-    const queuedClaim = await claimTeamsRun({
-      runnerGroup: teams.runnerGroup,
-      runId: queuedRunId,
-    });
-    const queuedRun = (
-      await runsApi.listAgentRuns(teams.actor, { limit: 20 })
-    ).runs.find((run) => {
-      return run.id === queuedRunId;
-    });
-    expect(queuedClaim.prompt).toBe(queuedRun?.prompt);
-    expect(queuedClaim.appendSystemPrompt).toBe(queuedRun?.appendSystemPrompt);
-    expect(queuedClaim.appendSystemPrompt).toContain(
-      "You are currently running inside: Microsoft Teams",
-    );
-    expect(queuedClaim.appendSystemPrompt).toContain(
-      `Thread ID: ${queuedActivityId}`,
-    );
+      const queuedPrompt = `claim Teams launch context ${teams.fixture.teamsTenantId}`;
+      await postTeamsPersonalMessage({
+        fixture: teams.fixture,
+        activityId: queuedActivityId,
+        text: queuedPrompt,
+      });
+      const queuedParams = await findPendingChatEventByPromptFixture({
+        userId: teams.actor.userId,
+        prompt: queuedPrompt,
+      });
+      expect(queuedParams).toMatchObject({
+        eventId: expect.any(String),
+      });
+      if (!queuedParams) {
+        throw new Error("Expected queued Teams event");
+      }
 
-    await completeSandboxRun({
-      runId: queuedRunId,
-      sandboxToken: queuedClaim.sandboxToken,
-      exitCode: 0,
-    });
-  });
+      if (phase === "stored context") {
+        await expect(
+          readChatEventContextFixture(queuedParams.eventId),
+        ).resolves.toMatchObject({
+          contextType: "teams",
+          teamsTenantId: teams.fixture.teamsTenantId,
+          teamsTeamId: null,
+          teamsChannelId: null,
+          teamsConversationId: `a:personal-${teams.fixture.teamsUserId}`,
+          teamsConversationType: "personal",
+          teamsActivityId: queuedActivityId,
+          teamsThreadContext: "",
+          teamsMessageText: queuedPrompt,
+          teamsMessageFiles: [],
+          teamsTenantName: teams.fixture.teamsTenantName,
+          teamsTeamName: null,
+          teamsThreadId: `direct-message:${teams.defaultAgentId}:claude-sonnet-5`,
+          teamsServiceUrl: teams.fixture.serviceUrl,
+          teamsAppId: teams.fixture.teamsAppId,
+          teamsPublicBrand: "okou",
+          teamsSenderUserId: teams.fixture.teamsUserId,
+          teamsSenderDisplayName: "Ada Lovelace",
+          teamsSenderPrincipalName: teams.fixture.teamsUserPrincipalName,
+          teamsConnectionId: expect.any(String),
+        });
+      }
+      await completeSandboxRun({
+        runId: firstRunId,
+        sandboxToken: firstClaim.sandboxToken,
+        exitCode: 0,
+      });
+      const queuedRunId = await runIdForPrompt(teams.actor, queuedPrompt);
+
+      if (phase === "claimed launch material") {
+        const queuedClaim = await claimTeamsRun({
+          runnerGroup: teams.runnerGroup,
+          runId: queuedRunId,
+        });
+        const queuedRun = (
+          await runsApi.listAgentRuns(teams.actor, { limit: 20 })
+        ).runs.find((run) => {
+          return run.id === queuedRunId;
+        });
+        expect(queuedClaim.prompt).toBe(queuedRun?.prompt);
+        expect(queuedClaim.appendSystemPrompt).toBe(
+          queuedRun?.appendSystemPrompt,
+        );
+        expect(queuedClaim.appendSystemPrompt).toContain(
+          "You are currently running inside: Microsoft Teams",
+        );
+        expect(queuedClaim.appendSystemPrompt).toContain(
+          `Thread ID: ${queuedActivityId}`,
+        );
+
+        await completeSandboxRun({
+          runId: queuedRunId,
+          sandboxToken: queuedClaim.sandboxToken,
+          exitCode: 0,
+        });
+      } else {
+        await runsApi.requestCancelRun(teams.actor, queuedRunId, [200]);
+      }
+    },
+  );
 
   it("delivers queued Teams admission failures with launch material", async () => {
     const teams = await setupConnectedTeamsActor();
@@ -1016,7 +1029,12 @@ describe("Teams chat callbacks", () => {
     expect(returnToMainClaim.resumeSession?.sessionId).toBe(mainSessionId);
   });
 
-  it("posts completed run replies and persists canonical Teams thread sessions", async () => {
+  it.each([
+    "canonical input",
+    "completed delivery",
+    "participant reply",
+    "participant session",
+  ] as const)("preserves Teams %s", async (phase) => {
     setupTeamsConnectTestEnv("https://app.okou.ai");
     const teams = await setupConnectedTeamsActor({
       okouDebug: true,
@@ -1035,190 +1053,220 @@ describe("Teams chat callbacks", () => {
       threadId,
       text: "finish the task",
     });
-    mocks.clerk.session(teams.fixture.userId, teams.fixture.orgId, "org:admin");
-    const threadEvents = await accept(
-      setupApp({ context, routes: chatThreadRoutes })(
-        chatThreadsContract,
-      ).events({
-        headers: { authorization: "Bearer clerk-session" },
-        query: {},
-      }),
-      [200],
-    );
-    const createdThread = threadEvents.body.events.find((event) => {
-      return event.kind === "created";
-    });
-    if (!createdThread) {
-      throw new Error("Expected the canonical Teams chat thread");
-    }
-    const threadMessages = await readProjectedChatEvents(context, {
-      threadId: createdThread.chatThreadId,
-      headers: { authorization: "Bearer clerk-session" },
-    });
-    expect(threadMessages).toContainEqual(
-      expect.objectContaining({
-        eventType: "input.prompt",
-        content: null,
-        userMessage: {
-          version: 1,
-          parts: [
-            { type: "text", text: "@Zero finish the task" },
-            {
-              type: "source",
-              kind: "teams",
-              href:
-                "https://teams.microsoft.com/l/message/" +
-                `${encodeURIComponent(teams.fixture.teamsChannelId)}/${activityId}` +
-                `?tenantId=${encodeURIComponent(teams.fixture.teamsTenantId)}`,
-            },
-          ],
-        },
-      }),
-    );
-    const claim = await claimTeamsRun({
-      runnerGroup: teams.runnerGroup,
-      runId,
-    });
-    clearTeamsApiCalls(teamsApi);
 
-    await webhooksApi.requestAgentHeartbeat(
-      { runId },
-      { authorization: `Bearer ${claim.sandboxToken}` },
-      [200],
-    );
-    await flushWaitUntilForTest();
-    expect(teamsApi.tokenRequests).toHaveLength(0);
-    expect(teamsApi.postedActivities).toHaveLength(0);
-    expect(teamsApi.reactionRequests).toHaveLength(0);
-    clearTeamsApiCalls(teamsApi);
-
-    const cliAgentSessionId = await completeSandboxRun({
-      runId,
-      sandboxToken: claim.sandboxToken,
-      exitCode: 0,
-    });
-
-    expect(teamsApi.tokenRequests).toHaveLength(2);
-    expect(teamsApi.tokenRequests[0]?.get("client_id")).toBe(BOT_APP_ID);
-    expect(teamsApi.tokenRequests[0]?.get("client_secret")).toBe(
-      BOT_APP_PASSWORD,
-    );
-    expect(teamsApi.postedActivities).toHaveLength(1);
-    expect(teamsApi.postedActivities[0]).toMatchObject({
-      type: "message",
-      textFormat: "markdown",
-      replyToId: activityId,
-      channelData: {
-        tenant: { id: teams.fixture.teamsTenantId },
-      },
-    });
-    expect(teamsApi.postedActivities[0]?.text).toContain(
-      "Task completed successfully.",
-    );
-    expect(teamsApi.postedActivities[0]?.text).toContain(
-      `[Audit](https://app.okou.ai/activities/${runId})`,
-    );
-    expect(teamsApi.postedActivities[0]?.text).not.toContain("Reply to");
-    expect(teamsApi.reactionRequests).toStrictEqual([
-      {
-        method: "DELETE",
-        conversationId: teams.fixture.teamsConversationId,
-        activityId,
-        reactionType: "1f4ad_thoughtballoon",
-      },
-    ]);
-    const completedThreadMessages = await readProjectedChatEvents(context, {
-      threadId: createdThread.chatThreadId,
-      headers: { authorization: "Bearer clerk-session" },
-    });
-    expect(completedThreadMessages).toContainEqual(
-      expect.objectContaining({
-        eventType: "output.message",
-        content: "Task completed successfully.",
-      }),
-    );
-    const summaryRequestValue = summaryRequests.find((request) => {
-      const serialized = JSON.stringify(request);
-      return serialized.includes("finish the task");
-    });
-    const summaryRequest = recordFromUnknown(
-      summaryRequestValue,
-      "Expected Teams run summary request",
-    );
-    expect(JSON.stringify(summaryRequest.messages)).toContain(
-      "finish the task",
-    );
-    const firstRunOpenRouterRequestCount = summaryRequests.length;
-
-    const secondFixture = await trackTeamsFixture(
-      Promise.resolve(
-        teamsConnectFixture({
-          orgId: teams.fixture.orgId,
-          teamsTenantId: teams.fixture.teamsTenantId,
-          teamsTenantName: teams.fixture.teamsTenantName,
-          teamsTeamId: teams.fixture.teamsTeamId,
-          teamsTeamAadGroupId: teams.fixture.teamsTeamAadGroupId,
-          teamsTeamName: teams.fixture.teamsTeamName,
-          teamsChannelId: teams.fixture.teamsChannelId,
-          teamsConversationId: teams.fixture.teamsConversationId,
-          teamsThreadId: threadId,
-          teamsAppId: teams.fixture.teamsAppId,
-          teamsBotId: teams.fixture.teamsBotId,
-          serviceUrl: teams.fixture.serviceUrl,
+    if (phase === "canonical input" || phase === "completed delivery") {
+      mocks.clerk.session(
+        teams.fixture.userId,
+        teams.fixture.orgId,
+        "org:admin",
+      );
+      const threadEvents = await accept(
+        setupApp({ context, routes: chatThreadRoutes })(
+          chatThreadsContract,
+        ).events({
+          headers: { authorization: "Bearer clerk-session" },
+          query: {},
         }),
-      ),
-    );
-    authOrgApi.user({
-      userId: secondFixture.userId,
-      orgId: secondFixture.orgId,
-      orgRole: "org:admin",
-    });
-    const tokenRequestCountBeforeConnect = teamsApi.tokenRequests.length;
-    const postedActivityCountBeforeConnect = teamsApi.postedActivities.length;
-    const secondPrincipalName = secondFixture.teamsUserPrincipalName;
-    await connectTeamsFixture(secondFixture, {
-      displayName: "Grace Hopper",
-      principalName: secondPrincipalName,
-    });
-    await flushWaitUntilForTest();
-    teamsApi.tokenRequests.splice(tokenRequestCountBeforeConnect);
-    teamsApi.postedActivities.splice(postedActivityCountBeforeConnect);
-    const secondRunId = await dispatchTeamsRun({
-      fixture: secondFixture,
-      activityId: teamsFixtureExternalId(secondFixture, "activity-completed-2"),
-      threadId,
-      text: "finish the follow-up",
-      senderName: "Grace Hopper",
-      senderPrincipalName: secondPrincipalName,
-    });
-    const secondClaim = await claimTeamsRun({
-      runnerGroup: teams.runnerGroup,
-      runId: secondRunId,
-    });
-    dropLastTeamsIndicatorRequest(teamsApi);
-    await completeSandboxRun({
-      runId: secondRunId,
-      sandboxToken: secondClaim.sandboxToken,
-      exitCode: 0,
-    });
-    expect(teamsApi.postedActivities).toHaveLength(2);
-    expect(teamsApi.postedActivities[1]?.text).toContain(
-      "Reply to Grace Hopper",
-    );
-    expect(summaryRequests.length).toBeGreaterThan(
-      firstRunOpenRouterRequestCount,
-    );
+        [200],
+      );
+      const createdThread = threadEvents.body.events.find((event) => {
+        return event.kind === "created";
+      });
+      if (!createdThread) {
+        throw new Error("Expected the canonical Teams chat thread");
+      }
+      const threadMessages = await readProjectedChatEvents(context, {
+        threadId: createdThread.chatThreadId,
+        headers: { authorization: "Bearer clerk-session" },
+      });
+      expect(threadMessages).toContainEqual(
+        expect.objectContaining({
+          eventType: "input.prompt",
+          content: null,
+          userMessage: {
+            version: 1,
+            parts: [
+              { type: "text", text: "@Zero finish the task" },
+              {
+                type: "source",
+                kind: "teams",
+                href:
+                  "https://teams.microsoft.com/l/message/" +
+                  `${encodeURIComponent(teams.fixture.teamsChannelId)}/${activityId}` +
+                  `?tenantId=${encodeURIComponent(teams.fixture.teamsTenantId)}`,
+              },
+            ],
+          },
+        }),
+      );
 
-    const followUpClaim = await claimFollowUpInThread({
-      fixture: teams.fixture,
-      runnerGroup: teams.runnerGroup,
-      threadId,
-      activityId: teamsFixtureExternalId(
-        teams.fixture,
-        "activity-completed-follow-up",
-      ),
-    });
-    expect(followUpClaim.resumeSession?.sessionId).toBe(cliAgentSessionId);
+      if (phase === "canonical input") {
+        await runsApi.requestCancelRun(teams.actor, runId, [200]);
+      } else {
+        const claim = await claimTeamsRun({
+          runnerGroup: teams.runnerGroup,
+          runId,
+        });
+        clearTeamsApiCalls(teamsApi);
+
+        await webhooksApi.requestAgentHeartbeat(
+          { runId },
+          { authorization: `Bearer ${claim.sandboxToken}` },
+          [200],
+        );
+        await flushWaitUntilForTest();
+        expect(teamsApi.tokenRequests).toHaveLength(0);
+        expect(teamsApi.postedActivities).toHaveLength(0);
+        expect(teamsApi.reactionRequests).toHaveLength(0);
+        clearTeamsApiCalls(teamsApi);
+
+        await completeSandboxRun({
+          runId,
+          sandboxToken: claim.sandboxToken,
+          exitCode: 0,
+        });
+
+        expect(teamsApi.tokenRequests).toHaveLength(2);
+        expect(teamsApi.tokenRequests[0]?.get("client_id")).toBe(BOT_APP_ID);
+        expect(teamsApi.tokenRequests[0]?.get("client_secret")).toBe(
+          BOT_APP_PASSWORD,
+        );
+        expect(teamsApi.postedActivities).toHaveLength(1);
+        expect(teamsApi.postedActivities[0]).toMatchObject({
+          type: "message",
+          textFormat: "markdown",
+          replyToId: activityId,
+          channelData: {
+            tenant: { id: teams.fixture.teamsTenantId },
+          },
+        });
+        expect(teamsApi.postedActivities[0]?.text).toContain(
+          "Task completed successfully.",
+        );
+        expect(teamsApi.postedActivities[0]?.text).toContain(
+          `[Audit](https://app.okou.ai/activities/${runId})`,
+        );
+        expect(teamsApi.postedActivities[0]?.text).not.toContain("Reply to");
+        expect(teamsApi.reactionRequests).toStrictEqual([
+          {
+            method: "DELETE",
+            conversationId: teams.fixture.teamsConversationId,
+            activityId,
+            reactionType: "1f4ad_thoughtballoon",
+          },
+        ]);
+        const completedThreadMessages = await readProjectedChatEvents(context, {
+          threadId: createdThread.chatThreadId,
+          headers: { authorization: "Bearer clerk-session" },
+        });
+        expect(completedThreadMessages).toContainEqual(
+          expect.objectContaining({
+            eventType: "output.message",
+            content: "Task completed successfully.",
+          }),
+        );
+        const summaryRequestValue = summaryRequests.find((request) => {
+          const serialized = JSON.stringify(request);
+          return serialized.includes("finish the task");
+        });
+        const summaryRequest = recordFromUnknown(
+          summaryRequestValue,
+          "Expected Teams run summary request",
+        );
+        expect(JSON.stringify(summaryRequest.messages)).toContain(
+          "finish the task",
+        );
+      }
+    } else {
+      const claim = await claimTeamsRun({
+        runnerGroup: teams.runnerGroup,
+        runId,
+      });
+      clearTeamsApiCalls(teamsApi);
+
+      const cliAgentSessionId = await completeSandboxRun({
+        runId,
+        sandboxToken: claim.sandboxToken,
+        exitCode: 0,
+      });
+
+      const firstRunOpenRouterRequestCount = summaryRequests.length;
+
+      const secondFixture = await trackTeamsFixture(
+        Promise.resolve(
+          teamsConnectFixture({
+            orgId: teams.fixture.orgId,
+            teamsTenantId: teams.fixture.teamsTenantId,
+            teamsTenantName: teams.fixture.teamsTenantName,
+            teamsTeamId: teams.fixture.teamsTeamId,
+            teamsTeamAadGroupId: teams.fixture.teamsTeamAadGroupId,
+            teamsTeamName: teams.fixture.teamsTeamName,
+            teamsChannelId: teams.fixture.teamsChannelId,
+            teamsConversationId: teams.fixture.teamsConversationId,
+            teamsThreadId: threadId,
+            teamsAppId: teams.fixture.teamsAppId,
+            teamsBotId: teams.fixture.teamsBotId,
+            serviceUrl: teams.fixture.serviceUrl,
+          }),
+        ),
+      );
+      authOrgApi.user({
+        userId: secondFixture.userId,
+        orgId: secondFixture.orgId,
+        orgRole: "org:admin",
+      });
+      const tokenRequestCountBeforeConnect = teamsApi.tokenRequests.length;
+      const postedActivityCountBeforeConnect = teamsApi.postedActivities.length;
+      const secondPrincipalName = secondFixture.teamsUserPrincipalName;
+      await connectTeamsFixture(secondFixture, {
+        displayName: "Grace Hopper",
+        principalName: secondPrincipalName,
+      });
+      await flushWaitUntilForTest();
+      teamsApi.tokenRequests.splice(tokenRequestCountBeforeConnect);
+      teamsApi.postedActivities.splice(postedActivityCountBeforeConnect);
+      const secondRunId = await dispatchTeamsRun({
+        fixture: secondFixture,
+        activityId: teamsFixtureExternalId(
+          secondFixture,
+          "activity-completed-2",
+        ),
+        threadId,
+        text: "finish the follow-up",
+        senderName: "Grace Hopper",
+        senderPrincipalName: secondPrincipalName,
+      });
+      const secondClaim = await claimTeamsRun({
+        runnerGroup: teams.runnerGroup,
+        runId: secondRunId,
+      });
+      dropLastTeamsIndicatorRequest(teamsApi);
+      await completeSandboxRun({
+        runId: secondRunId,
+        sandboxToken: secondClaim.sandboxToken,
+        exitCode: 0,
+      });
+      expect(teamsApi.postedActivities).toHaveLength(2);
+      expect(teamsApi.postedActivities[1]?.text).toContain(
+        "Reply to Grace Hopper",
+      );
+      expect(summaryRequests.length).toBeGreaterThan(
+        firstRunOpenRouterRequestCount,
+      );
+
+      if (phase === "participant session") {
+        const followUpClaim = await claimFollowUpInThread({
+          fixture: teams.fixture,
+          runnerGroup: teams.runnerGroup,
+          threadId,
+          activityId: teamsFixtureExternalId(
+            teams.fixture,
+            "activity-completed-follow-up",
+          ),
+        });
+        expect(followUpClaim.resumeSession?.sessionId).toBe(cliAgentSessionId);
+      }
+    }
   });
 
   it("posts readable failed run replies without persisting a thread session", async () => {

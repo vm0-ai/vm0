@@ -5,7 +5,7 @@ import { z } from "zod";
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { readBoundedResponseText, safeJsonParse } from "../utils";
-import type { OpenRouterVoiceAudio } from "./openrouter-voice";
+import type { VoiceAudio } from "./voice-completion-types";
 import { requestVoiceProvider } from "./voice-provider-request";
 
 type TranscriptionModel = Extract<VoiceInputModel, { kind: "transcription" }>;
@@ -27,7 +27,7 @@ export function isVoiceTranscriptionConfigured(
 
 export async function transcribeVoiceInputAudio(
   model: TranscriptionModel,
-  audio: OpenRouterVoiceAudio,
+  audio: VoiceAudio,
   signal: AbortSignal,
 ): Promise<string> {
   const elevenLabs = model.id === ELEVENLABS_MODEL;

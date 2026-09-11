@@ -397,8 +397,8 @@ async def test_malformed_platform_api_url_is_cached_as_non_match(
         assert parsed_api_urls == [malformed_platform_api_url]
 
         updated_api_url = "ftp://api.okou.ai"
-        mitm_addon.ctx.options.vm0_api_url = updated_api_url
-        mitm_addon.configure({"vm0_api_url"})
+        mitm_addon.ctx.options.okou_api_url = updated_api_url
+        mitm_addon.configure({"okou_api_url"})
         updated_flow = real_flow(with_response=False, host="api.okou.ai")
         flows.append(updated_flow)
         await mitm_addon.request(updated_flow)

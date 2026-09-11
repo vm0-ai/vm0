@@ -69,12 +69,12 @@ class _Options:
         client_version: str = "runner-version-test",
         api_url: str = "https://api.okou.ai",
     ) -> None:
-        self.vm0_usage_state_id = usage_state_id
-        self.vm0_addon_ready_path = addon_ready_path
-        self.vm0_usage_flush_interval_seconds = flush_interval_seconds
-        self.vm0_client_session_id = client_session_id
-        self.vm0_client_version = client_version
-        self.vm0_api_url = api_url
+        self.okou_usage_state_id = usage_state_id
+        self.okou_addon_ready_path = addon_ready_path
+        self.okou_usage_flush_interval_seconds = flush_interval_seconds
+        self.okou_client_session_id = client_session_id
+        self.okou_client_version = client_version
+        self.okou_api_url = api_url
 
 
 def _addon_file_path(tmp_path: Path) -> str:
@@ -118,11 +118,11 @@ class TestAddonConfiguration:
             mitm_addon.load(loader)
 
         option_names = [option.name for option in master.options.added]
-        assert "vm0_usage_state_id" in option_names
-        assert "vm0_addon_ready_path" in option_names
-        assert "vm0_client_session_id" in option_names
-        assert "vm0_client_version" in option_names
-        assert "vm0_usage_flush_interval_seconds" in option_names
+        assert "okou_usage_state_id" in option_names
+        assert "okou_addon_ready_path" in option_names
+        assert "okou_client_session_id" in option_names
+        assert "okou_client_version" in option_names
+        assert "okou_usage_flush_interval_seconds" in option_names
         assert not pending_path.exists()
         signal_handler.assert_called_once_with(
             runner_flush_lifecycle.RUNNER_USAGE_FLUSH_SIGNAL,
@@ -160,7 +160,7 @@ class TestAddonConfiguration:
             patch.object(mitm_addon, "__file__", _addon_file_path(tmp_path)),
             patch.object(mitm_addon.ctx, "options", _Options(), create=True),
         ):
-            mitm_addon.configure({"vm0_usage_state_id"})
+            mitm_addon.configure({"okou_usage_state_id"})
 
         state = assert_pending(pending_path, flows=0, buffered=0, reports=0)
         assert state["usageStateId"] == "runner-usage-state-id"
@@ -190,7 +190,7 @@ class TestAddonConfiguration:
             ),
             patch.object(logging_utils, "flush_log_path", return_value=True) as flush_log_path,
         ):
-            mitm_addon.configure({"vm0_addon_ready_path", "vm0_usage_state_id"})
+            mitm_addon.configure({"okou_addon_ready_path", "okou_usage_state_id"})
             assert not ready_path.exists()
             mitm_addon.running()
             runner_flush_lifecycle.stop_runner_jsonl_flush_worker_for_tests()
@@ -232,7 +232,7 @@ class TestAddonConfiguration:
                 create=True,
             ),
         ):
-            mitm_addon.configure({"vm0_addon_ready_path", "vm0_usage_state_id"})
+            mitm_addon.configure({"okou_addon_ready_path", "okou_usage_state_id"})
             assert not ready_path.exists()
             with (
                 patch.object(
@@ -274,7 +274,7 @@ class TestAddonConfiguration:
                 create=True,
             ),
         ):
-            mitm_addon.configure({"vm0_usage_state_id"})
+            mitm_addon.configure({"okou_usage_state_id"})
 
         state = assert_pending(pending_path, flows=0, buffered=0, reports=0)
         uuid.UUID(state["usageStateId"])
@@ -286,7 +286,7 @@ class TestAddonConfiguration:
             patch.object(mitm_addon, "__file__", _addon_file_path(tmp_path)),
             patch.object(mitm_addon.ctx, "options", _Options(), create=True),
         ):
-            mitm_addon.configure({"vm0_api_url"})
+            mitm_addon.configure({"okou_api_url"})
 
         assert not pending_path.exists()
 
@@ -300,7 +300,7 @@ class TestAddonConfiguration:
             ),
             create=True,
         ):
-            mitm_addon.configure({"vm0_client_session_id", "vm0_client_version"})
+            mitm_addon.configure({"okou_client_session_id", "okou_client_version"})
 
         req = platform_api.make_api_request("https://api.okou.ai/webhook", b"{}", "tok")
         normalized_headers = {name.lower(): value for name, value in req.header_items()}
@@ -318,7 +318,7 @@ class TestAddonConfiguration:
             _Options(flush_interval_seconds=flush_interval_seconds),
             create=True,
         ):
-            mitm_addon.configure({"vm0_usage_flush_interval_seconds"})
+            mitm_addon.configure({"okou_usage_flush_interval_seconds"})
 
         usage.buffer_usage_events(
             "https://api.test/api/webhooks/agent/usage-event",

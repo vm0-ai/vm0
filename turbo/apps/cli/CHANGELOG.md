@@ -1,5 +1,51 @@
 # Changelog
 
+## [9.323.14](https://github.com/vm0-ai/vm0/compare/cli-v9.323.13...cli-v9.323.14) (2026-09-11)
+
+
+### Bug Fixes
+
+* **pi-memory:** publish full summaries with bounded prompt injection ([#33536](https://github.com/vm0-ai/vm0/issues/33536)) ([da440bf](https://github.com/vm0-ai/vm0/commit/da440bff4d7a03293bdce027bf09d938a4a58f9a))
+
+
+### Refactoring
+
+* **pi-memory:** make phase two a local consolidation engine ([#33547](https://github.com/vm0-ai/vm0/issues/33547)) ([5d66823](https://github.com/vm0-ai/vm0/commit/5d66823659fa01a406a694bec0f26b94cb69b3aa)), closes [#33521](https://github.com/vm0-ai/vm0/issues/33521)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.428.2
+    * @okouai/core bumped to 8.654.1
+    * @okouai/pi-agent-runtime bumped to 1.26.0
+
+## [9.323.13](https://github.com/vm0-ai/vm0/compare/cli-v9.323.12...cli-v9.323.13) (2026-09-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/core bumped to 8.654.0
+
+## [9.323.12](https://github.com/vm0-ai/vm0/compare/cli-v9.323.11...cli-v9.323.12) (2026-09-11)
+
+
+### Refactoring
+
+* **test:** replace residual retired-brand fixtures and a missed comment ([#33489](https://github.com/vm0-ai/vm0/issues/33489)) ([5877266](https://github.com/vm0-ai/vm0/commit/58772661b6889713ed3b090f04adc22e0e28d711)), closes [#33475](https://github.com/vm0-ai/vm0/issues/33475)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.428.1
+    * @okouai/core bumped to 8.653.0
+    * @okouai/pi-agent-runtime bumped to 1.25.1
+
 ## [9.323.11](https://github.com/vm0-ai/vm0/compare/cli-v9.323.10...cli-v9.323.11) (2026-09-11)
 
 

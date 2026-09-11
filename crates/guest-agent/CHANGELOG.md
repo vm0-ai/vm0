@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.89.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.89.3...guest-agent-v0.89.4) (2026-09-11)
+
+
+### Bug Fixes
+
+* **guest-agent:** bound pi and codex event delivery ([#33532](https://github.com/vm0-ai/vm0/issues/33532)) ([c42da19](https://github.com/vm0-ai/vm0/commit/c42da19f700479f51954f2012106a211fe4f97c6))
+
+## [0.89.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.89.2...guest-agent-v0.89.3) (2026-09-11)
+
+## [0.89.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.89.1...guest-agent-v0.89.2) (2026-09-11)
+
 ## [0.89.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.89.0...guest-agent-v0.89.1) (2026-09-11)
 
 

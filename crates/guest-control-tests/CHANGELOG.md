@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.11.5](https://github.com/vm0-ai/vm0/compare/guest-control-tests-v0.11.4...guest-control-tests-v0.11.5) (2026-09-11)
+
+## [0.11.4](https://github.com/vm0-ai/vm0/compare/guest-control-tests-v0.11.3...guest-control-tests-v0.11.4) (2026-09-11)
+
 ## [0.11.3](https://github.com/vm0-ai/vm0/compare/guest-control-tests-v0.11.2...guest-control-tests-v0.11.3) (2026-09-11)
 
 ## [0.11.2](https://github.com/vm0-ai/vm0/compare/guest-control-tests-v0.11.1...guest-control-tests-v0.11.2) (2026-09-10)

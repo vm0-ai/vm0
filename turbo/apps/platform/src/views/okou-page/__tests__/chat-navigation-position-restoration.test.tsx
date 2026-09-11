@@ -434,7 +434,7 @@ async function expectAtLatestActivity(
 
 test("Restore the reading position during keyboard thread navigation", async () => {
   context.mocks.browser.userAgent(LINUX_CHROME_USER_AGENT);
-  const user = userEvent.setup();
+  const user = userEvent.setup({ delay: null });
   // Three exchanges keep the reading anchor between the top and tail. The
   // neighboring threads only need content that proves navigation completed.
   const currentEvents = conversationEvents("keyboard-current", "Current", 3);
@@ -503,17 +503,18 @@ test("Restore the reading position during keyboard thread navigation", async () 
 });
 
 test("Restore the reading position after switching threads from the sidebar", async () => {
-  const user = userEvent.setup();
+  // The current thread needs a middle anchor; the neighboring thread only
+  // needs enough content to prove that sidebar navigation completed.
   mockThreadStories(SIDEBAR_CURRENT_THREAD_ID, [
     {
       id: SIDEBAR_OTHER_THREAD_ID,
       title: "Planning notes",
-      events: conversationEvents("sidebar-other", "Planning"),
+      events: conversationEvents("sidebar-other", "Planning", 1),
     },
     {
       id: SIDEBAR_CURRENT_THREAD_ID,
       title: "Research notes",
-      events: conversationEvents("sidebar-current", "Research"),
+      events: conversationEvents("sidebar-current", "Research", 3),
     },
   ]);
 
@@ -523,7 +524,7 @@ test("Restore the reading position after switching threads from the sidebar", as
     path: `/chats/${SIDEBAR_CURRENT_THREAD_ID}`,
   });
 
-  const targetText = "Research message 3";
+  const targetText = "Research message 2";
   await waitForThreadMessage(SIDEBAR_CURRENT_THREAD_ID, targetText);
   const initialGeometry = installChatScrollGeometry(
     threadContainer(SIDEBAR_CURRENT_THREAD_ID),
@@ -547,11 +548,11 @@ test("Restore the reading position after switching threads from the sidebar", as
     "href",
     `/chats/${SIDEBAR_OTHER_THREAD_ID}`,
   );
-  await user.click(planningLink);
+  click(planningLink);
   await waitForInteractiveThread(
     SIDEBAR_OTHER_THREAD_ID,
     "Planning notes",
-    "Planning message 6",
+    "Planning message 1",
   );
 
   const researchLink = sidebarThreadLink(
@@ -562,7 +563,7 @@ test("Restore the reading position after switching threads from the sidebar", as
     "href",
     `/chats/${SIDEBAR_CURRENT_THREAD_ID}`,
   );
-  await user.click(researchLink);
+  click(researchLink);
   await waitForInteractiveThread(
     SIDEBAR_CURRENT_THREAD_ID,
     "Research notes",

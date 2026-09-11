@@ -270,8 +270,8 @@ test.each(["insert", "send"])(
     await expect(screen.findByLabelText("Template")).resolves.toBeVisible();
 
     if (action === "insert") {
-      await selectTemplate(user, first);
-      await selectTemplate(user, second);
+      await selectTemplate(first);
+      await selectTemplate(second);
     }
     await waitFor(() => {
       return expect(composerInlineTemplates()).toHaveLength(2);
@@ -314,8 +314,8 @@ test("Replace an inline template after sending a message", async () => {
 
   await setupPage({ context, path: `/chats/${THREAD_ID}` });
 
-  const user = userEvent.setup();
-  await selectTemplate(user, first);
+  const user = userEvent.setup({ delay: null });
+  await selectTemplate(first);
   await user.click(await findComposerEditor());
   await user.keyboard("{Enter}");
   await waitFor(() => {
@@ -324,7 +324,7 @@ test("Replace an inline template after sending a message", async () => {
     expect(composerInlineTemplates()).toHaveLength(0);
   });
 
-  await selectTemplate(user, first);
+  await selectTemplate(first);
   const inlineTemplate = composerInlineTemplates()[0];
   if (!inlineTemplate) {
     throw new Error("Expected an inline template to replace");
@@ -809,12 +809,11 @@ test("Send a template while the current run is active", async () => {
 
   await setupPage({ context, path: `/chats/${THREAD_ID}` });
 
-  const user = userEvent.setup();
   await findComposerEditor();
   await expect(
     screen.findByText("Start an active deck run"),
   ).resolves.toBeVisible();
-  await selectTemplate(user, template);
+  await selectTemplate(template);
   await waitFor(() => {
     expect(namedButton("Send")).toBeEnabled();
   });
@@ -952,9 +951,8 @@ test("Wait for a template attachment before sending", async () => {
   });
   await setupPage({ context, path: `/chats/${THREAD_ID}` });
 
-  const user = userEvent.setup();
   await findComposerEditor();
-  await selectTemplate(user, template);
+  await selectTemplate(template);
   const file = new File(["launch brief"], "brief.txt", {
     type: "text/plain",
   });

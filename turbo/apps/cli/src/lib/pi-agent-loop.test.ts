@@ -711,10 +711,15 @@ describe("sandbox Pi agent loop", () => {
   it.each(
     // Only the output-validation and mounted-apply fixtures are reproducible
     // by this scenario. Session-lifecycle fixtures are covered by the engine
-    // tests and the shared serializer boundary.
+    // tests and the shared serializer boundary. `summary_tokens` is a historical
+    // diagnostic: a valid source above the prompt injection budget now publishes
+    // in full, so the runtime cannot produce it. Its fixture stays for the
+    // parsers that must keep reading old terminal records.
     terminalFixtures.filter((fixture) => {
       return (
-        fixture.diagnostic && fixture.errorClass === "agent_output_invalid"
+        fixture.diagnostic &&
+        fixture.errorClass === "agent_output_invalid" &&
+        fixture.diagnostic.reason !== "summary_tokens"
       );
     }),
   )(
@@ -737,9 +742,7 @@ describe("sandbox Pi agent loop", () => {
       const isApply = fixture.diagnostic?.stage === "mounted_apply";
       const summary = isApply
         ? "v1\nValid summary"
-        : fixture.name === "summary_tokens"
-          ? `v1\n${" token".repeat(2605)}`
-          : "V1\nPRIVATE_SUMMARY_SENTINEL";
+        : "V1\nPRIVATE_SUMMARY_SENTINEL";
       await mkdir(memoryRoot);
       await writeFile(join(memoryRoot, "MEMORY.md"), memory);
       await writeFile(join(memoryRoot, "memory_summary.md"), summary);
@@ -847,7 +850,6 @@ describe("sandbox Pi agent loop", () => {
         candidateCount: 0,
         fileCount: 0,
         totalBytes: 0,
-        heartbeatCount: 0,
       });
       expect(() => {
         return reportPiSandboxAgentLoopFailure(failure);

@@ -41,13 +41,6 @@ const desktopAuthApi: DesktopAuthApi = {
 };
 
 const desktopComputerUseApi: DesktopComputerUseApi = {
-  setExperimentalCuaEnabled: (enabled) =>
-    ipcRenderer.invoke(
-      COMPUTER_USE_CHANNELS.setExperimentalCuaEnabled,
-      enabled,
-    ),
-  selectDriver: (driver) =>
-    ipcRenderer.invoke(COMPUTER_USE_CHANNELS.selectDriver, driver),
   getState(): Promise<DesktopComputerUseState> {
     return ipcRenderer.invoke(COMPUTER_USE_CHANNELS.getState);
   },

@@ -19698,6 +19698,165 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       },
     );
 
+    // The predicate reads only the terminal reason and the stored provider, so
+    // every built-in route reaches this record with the same two inputs no
+    // matter which framework produced the reason token.
+    it("reports capacity exhaustion on a built-in run as an error", async () => {
+      const control = await completeFailure({
+        modelProvider: "built-in",
+        failureReason: "provider_overloaded",
+      });
+      const errors = matchingLogCalls(
+        context.mocks.axiomLogging.error,
+        "Run failed",
+        control.runId,
+      );
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.[1]).toStrictEqual(
+        expect.objectContaining({
+          runId: control.runId,
+          exitCode: 1,
+          error: control.error,
+          failureReason: "provider_overloaded",
+          context: "webhook:complete",
+        }),
+      );
+      expect(genericFailureLogCalls(control.runId)).toHaveLength(1);
+    });
+
+    it.each([
+      { name: "a null provider", persistedModelProvider: null },
+      {
+        name: "a legacy provider",
+        persistedModelProvider: "legacy-unknown-provider",
+      },
+    ] satisfies readonly (FailureCase & { readonly name: string })[])(
+      "keeps capacity exhaustion on $name at warning severity",
+      async (provider) => {
+        const control = await completeFailure({
+          ...provider,
+          failureReason: "provider_overloaded",
+        });
+        expect(
+          matchingLogCalls(
+            context.mocks.axiomLogging.warn,
+            "Run failed",
+            control.runId,
+          ),
+        ).toHaveLength(1);
+        expect(genericFailureLogCalls(control.runId)).toHaveLength(1);
+      },
+    );
+
+    it("keeps built-in credit exhaustion on its own debug record", async () => {
+      const control = await completeFailure({
+        modelProvider: "built-in",
+        failureReason: "insufficient_credits",
+      });
+      expect(
+        matchingLogCalls(
+          context.mocks.axiomLogging.debug,
+          "Run stopped: insufficient credits",
+          control.runId,
+        ),
+      ).toHaveLength(1);
+      expect(genericFailureLogCalls(control.runId)).toHaveLength(0);
+    });
+
+    it("keeps one error when a duplicate repeats the capacity failure", async () => {
+      const api = createRunsApi(context);
+      const webhooks = createWebhookCallbackApi(context);
+      const first = await completeFailure({
+        modelProvider: "built-in",
+        failureReason: "provider_overloaded",
+      });
+      expect(genericFailureLogCalls(first.runId)).toHaveLength(1);
+
+      await webhooks.requestAgentComplete(
+        {
+          runId: first.runId,
+          exitCode: 1,
+          error: "late built-in capacity report",
+          failureReason: "provider_overloaded",
+        },
+        {
+          authorization: `Bearer ${api.sandboxTokenForRun(
+            first.actor,
+            first.runId,
+          )}`,
+        },
+        [200],
+      );
+
+      expect(genericFailureLogCalls(first.runId)).toHaveLength(1);
+      expect(
+        matchingLogCalls(
+          context.mocks.axiomLogging.error,
+          "Run failed",
+          first.runId,
+        ),
+      ).toHaveLength(1);
+      await expect(
+        api.readRun(first.actor, first.runId),
+      ).resolves.toMatchObject({ status: "failed", error: first.error });
+      await expect(
+        readRunFailureReasonFixture(context, first.runId),
+      ).resolves.toBe("provider_overloaded");
+    });
+
+    it("records one error when completions race the capacity failure", async () => {
+      const api = createRunsApi(context);
+      const webhooks = createWebhookCallbackApi(context);
+      await seedBuiltInDefaultModelKey();
+      const { actor, agentId } = await entitledRunActor();
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt: "race a built-in capacity completion",
+        modelProvider: "built-in",
+      });
+      const error = `racing capacity failure for ${run.runId}`;
+      const body = {
+        runId: run.runId,
+        exitCode: 1,
+        error,
+        failureReason: "provider_overloaded",
+      } as const;
+      const headers = {
+        authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
+      };
+      const lifecycleGate = await holdAgentRunRowLockFixture({
+        runId: run.runId,
+        signal: context.signal,
+      });
+      const completions = Promise.all([
+        webhooks.requestAgentComplete(body, headers, [200]),
+        webhooks.requestAgentComplete(body, headers, [200]),
+      ]);
+      onTestFinished(async () => {
+        lifecycleGate.release();
+        await Promise.allSettled([completions, lifecycleGate.done]);
+      });
+      await expect.poll(lifecycleGate.waiterCount).toBe(2);
+      lifecycleGate.release();
+      await Promise.all([lifecycleGate.done, completions]);
+
+      expect(genericFailureLogCalls(run.runId)).toHaveLength(1);
+      expect(
+        matchingLogCalls(
+          context.mocks.axiomLogging.error,
+          "Run failed",
+          run.runId,
+        ),
+      ).toHaveLength(1);
+      await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+        status: "failed",
+        error,
+      });
+      await expect(
+        readRunFailureReasonFixture(context, run.runId),
+      ).resolves.toBe("provider_overloaded");
+    });
+
     it("keeps the missing-checkpoint warning visible for a suppressible reason", async () => {
       const api = createRunsApi(context);
       const webhooks = createWebhookCallbackApi(context);

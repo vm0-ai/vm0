@@ -9,6 +9,10 @@ import { db$ } from "../../signals/external/db";
 import { decryptPersistentSecretValue } from "../../signals/services/crypto.utils";
 import { userFeatureSwitchContext } from "../../signals/services/feature-switches.service";
 import { safeJsonParse } from "../../signals/utils";
+import {
+  readSignatureHeaders,
+  reportLegacySignatureHeaderUse,
+} from "../event-consumer/signature-headers";
 import { verifyCallbackRequest } from "../event-consumer/verify-signature";
 
 /**
@@ -67,8 +71,8 @@ function isCommand<T>(
  * Reads the raw request body (single-shot stream consumption), parses the
  * JSON envelope, looks up the `agent_run_callbacks` row by `callbackId` (PK,
  * preferred) or `runId` (fallback), decrypts the per-callback secret, verifies
- * `X-VM0-Signature` / `X-VM0-Timestamp`, and exposes the verified envelope via
- * `callbackPayload$`.
+ * `X-Okou-Signature` / `X-Okou-Timestamp` (or their legacy `X-VM0-*` names),
+ * and exposes the verified envelope via `callbackPayload$`.
  */
 export function callbackRoute<T>(
   handler$: SignalRouteHandler<T>,
@@ -134,17 +138,23 @@ export function callbackRoute<T>(
       );
       signal.throwIfAborted();
 
+      const signatureHeaders = readSignatureHeaders((name) => {
+        return req.header(name) ?? null;
+      });
       const verification = verifyCallbackRequest(
         rawBody,
         secret,
-        req.header("X-VM0-Signature") ?? null,
-        req.header("X-VM0-Timestamp") ?? null,
+        signatureHeaders.signature,
+        signatureHeaders.timestamp,
       );
       if (!verification.valid) {
         return {
           status: 401,
           body: { error: verification.error ?? "Invalid signature" },
         };
+      }
+      if (signatureHeaders.legacy) {
+        reportLegacySignatureHeaderUse("callback-route");
       }
 
       set(callbackPayloadState$, {

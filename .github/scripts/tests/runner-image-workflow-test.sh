@@ -49,9 +49,9 @@ jq -e '
 jq -e '
   [.jobs | to_entries[] | .value.steps[]? |
     .with.name? // empty |
-    select(startswith("runner-binary-hits-") or startswith("runner-binary-compiled-"))
+    select(startswith("runner-binary-compiled-"))
   ] as $transport_names |
-  ($transport_names | length) == 5 and
+  ($transport_names | length) == 3 and
   all($transport_names[]; contains("${{ github.run_id }}")) and
   all($transport_names[]; contains("${{ github.run_attempt }}") | not)
 ' <<<"$workflow_json" >/dev/null || fail "runner binary transport identity must survive producer and consumer attempt mismatch"
@@ -61,22 +61,13 @@ jq -e '
   (.jobs.prepare | has("container") | not) and
   .jobs.prepare.permissions.actions == "read" and
   .jobs.prepare.outputs["runner-binary-compile-matrix"] == "${{ steps.binary-plan.outputs.compile-matrix }}" and
-  (.jobs.prepare.outputs | has("runner-binary-hit-count") | not) and
-  (.jobs.prepare.outputs | has("runner-binary-resolution-json") | not) and
+  .jobs.prepare.outputs["runner-binary-hit-references"] == "${{ steps.binary-plan.outputs.hit-references }}" and
   any(.jobs.prepare.steps[];
     .id == "binary-plan" and
     .run == ".github/scripts/runner-binary-cache-plan.sh" and
     .env.RUNNER_BINARY_CACHE_FORCE_MISS == "${{ vars.RUNNER_BINARY_CACHE_FORCE_MISS }}"
-  ) and
-  any(.jobs.prepare.steps[];
-    .uses == "actions/upload-artifact@v7" and
-    .with.name == "runner-binary-hits-${{ github.run_id }}" and
-    .with.overwrite == true and
-    .if == "steps.binary-plan.outputs.hit-count != '\''0'\''" and
-    .with["compression-level"] == 1 and
-    (. | has("continue-on-error") | not)
   )
-' <<<"$workflow_json" >/dev/null || fail "prepare must own bounded pre-container hit planning and required transport upload"
+' <<<"$workflow_json" >/dev/null || fail "prepare must publish cache references and the miss-only compile matrix"
 
 jq -e '
   .jobs.compile["runs-on"] == "ubuntu-latest-8-cores" and
@@ -115,14 +106,17 @@ jq -e '
 jq -e '
   .jobs.build.name == "Build runner image (${{ matrix.label }})" and
   .jobs.build["runs-on"] == "ubuntu-latest" and
+  .jobs.build["timeout-minutes"] == 20 and
   (.jobs.build | has("container") | not) and
   .jobs.build.strategy.matrix.include == "${{ fromJSON(needs.prepare.outputs.runner-host-groups-matrix) }}" and
   (.jobs.build.if | contains("needs.compile.result == '\''skipped'\''")) and
   (.jobs.build.if | contains("needs.compile.result == '\''success'\''")) and
   any(.jobs.build.steps[];
-    .name == "Download validated runner binary hit" and
+    .name == "Download cached runner binary from R2" and
     (.if | contains("runner-binary-hit-targets")) and
-    .with.name == "runner-binary-hits-${{ github.run_id }}"
+    .run == ".github/scripts/runner-binary-cache.sh download-reference" and
+    .env.CACHE_REFERENCE == "${{ toJSON(fromJSON(needs.prepare.outputs.runner-binary-hit-references)[matrix.target]) }}" and
+    .env.RESOLVE_OUTPUT_DIR == "runner-binary-transport/${{ matrix.target }}"
   ) and
   any(.jobs.build.steps[];
     .name == "Download compiled runner binary" and

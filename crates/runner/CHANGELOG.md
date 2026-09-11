@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.190.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.190.5...runner-rs-v0.190.6) (2026-09-11)
+
+
+### Bug Fixes
+
+* **runner:** bound proxy flush filesystem waits ([#33549](https://github.com/vm0-ai/vm0/issues/33549)) ([4ad60dc](https://github.com/vm0-ai/vm0/commit/4ad60dcfb79c4bae323a4a4d9cea0aec92bd2e9b))
+* **runner:** keep local cancellation scans responsive ([#33513](https://github.com/vm0-ai/vm0/issues/33513)) ([9a5676e](https://github.com/vm0-ai/vm0/commit/9a5676e8eacebc58e2fad416a4deff8db48ec4da))
+
+
+### Documentation
+
+* **python:** correct buffered pending-state counter semantics ([#33533](https://github.com/vm0-ai/vm0/issues/33533)) ([df04dea](https://github.com/vm0-ai/vm0/commit/df04dea683cbfcf2b35d2e0a3917c7c11b374ff7))
+
+
+### Refactoring
+
+* **runner:** rename the vm0-prefixed mitm addon options ([#33546](https://github.com/vm0-ai/vm0/issues/33546)) ([b1507ec](https://github.com/vm0-ai/vm0/commit/b1507ec2a083b67ef55a76bc7f78bd977cb03c66)), closes [#33492](https://github.com/vm0-ai/vm0/issues/33492)
+
+## [0.190.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.190.4...runner-rs-v0.190.5) (2026-09-11)
+
+## [0.190.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.190.3...runner-rs-v0.190.4) (2026-09-11)
+
+
+### Bug Fixes
+
+* **runner:** retry transient builtin catalog read failures ([#33461](https://github.com/vm0-ai/vm0/issues/33461)) ([6c7314b](https://github.com/vm0-ai/vm0/commit/6c7314bd8e8ac780fb24141f4dce0e442fed07dd))
+
+
+### Documentation
+
+* **runner:** clarify oversized background fill failure boundary ([#33454](https://github.com/vm0-ai/vm0/issues/33454)) ([266e707](https://github.com/vm0-ai/vm0/commit/266e707f5f7fc26892ccf6541166098ccd41a96c))
+
+
+### Performance Improvements
+
+* **python:** bound json nesting guard string scanning ([#33460](https://github.com/vm0-ai/vm0/issues/33460)) ([f222d69](https://github.com/vm0-ai/vm0/commit/f222d6930ff95ac74739f877566366f29fc3c36a))
+* **runner:** bound retry-after header inspection ([#33455](https://github.com/vm0-ai/vm0/issues/33455)) ([9ada863](https://github.com/vm0-ai/vm0/commit/9ada86363d7e1606c625b4caf1a6e9976d7fd4c9))
+
 ## [0.190.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.190.2...runner-rs-v0.190.3) (2026-09-11)
 
 

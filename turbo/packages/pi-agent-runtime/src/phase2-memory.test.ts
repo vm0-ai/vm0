@@ -9,57 +9,36 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { encode } from "gpt-tokenizer/encoding/o200k_base";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { PiMemoryPhase2Diagnostic } from "./phase2-memory-diagnostics";
 import { renderPiMemoryPhase2Prompt } from "./phase2-memory-prompt";
 import { PI_MEMORY_PHASE2_TOOL_NAMES } from "./phase2-memory-tools";
 import {
-  runPiMemoryPhase2Consolidation,
-  runPiMemoryPhase2ConsolidationForTest,
+  runPiMemoryPhase2LocalConsolidation,
   runPiMemoryPhase2MountedConsolidation,
-  type PiMemoryPhase2EngineTestHooks,
-  type PiMemoryPhase2SessionSnapshot,
 } from "./phase2-memory";
 import {
   snapshotMountedPiMemoryPhase2Base,
   snapshotPiMemoryPhase2Input,
 } from "./phase2-memory-filesystem";
 import {
-  PI_MEMORY_PHASE2_EXPECTED_HEARTBEAT_CADENCE_MS,
   PiMemoryPhase2EngineError,
   type PiMemoryPhase2BaseFile,
-  type PiMemoryPhase2ConsolidationArgs,
-  type PiMemoryPhase2LifecycleEvent,
+  type PiMemoryPhase2LocalConsolidationArgs,
   type PiMemoryPhase2SelectedSnapshot,
 } from "./phase2-memory-types";
 
+type PiMemoryPhase2EngineTestHooks = NonNullable<
+  Parameters<typeof runPiMemoryPhase2LocalConsolidation>[2]
+>;
+type PiMemoryPhase2SessionSnapshot = Parameters<
+  NonNullable<PiMemoryPhase2EngineTestHooks["onSessionCreated"]>
+>[0];
+
 const servers: Server[] = [];
 const temporaryDirectories: string[] = [];
-
-interface Deferred<T> {
-  readonly promise: Promise<T>;
-  resolve(value: T): void;
-  reject(error: Error): void;
-}
-
-function deferred<T>(): Deferred<T> {
-  let resolvePromise: ((value: T) => void) | undefined;
-  let rejectPromise: ((error: Error) => void) | undefined;
-  const promise = new Promise<T>((resolve, reject) => {
-    resolvePromise = resolve;
-    rejectPromise = reject;
-  });
-  return {
-    promise,
-    resolve(value) {
-      resolvePromise?.(value);
-    },
-    reject(error) {
-      rejectPromise?.(error);
-    },
-  };
-}
 
 afterEach(async () => {
   await Promise.all(
@@ -123,14 +102,10 @@ function selected(
 
 function args(
   baseUrl: string,
-  overrides: Partial<PiMemoryPhase2ConsolidationArgs> = {},
-): PiMemoryPhase2ConsolidationArgs {
+  overrides: Partial<PiMemoryPhase2LocalConsolidationArgs> = {},
+): PiMemoryPhase2LocalConsolidationArgs {
   return {
-    orgId: "org-phase2",
-    userId: "user-phase2",
     memoryStorageId: "storage-phase2",
-    claimedRevision: 9,
-    leaseToken: "LEASE_TOKEN_SECRET_31243",
     baseFiles: [
       baseFile("MEMORY.md", "# Task Group: prior\n"),
       baseFile("memory_summary.md", "v1\n## User Profile\n- prior\n"),
@@ -149,9 +124,6 @@ function args(
       dialect: "openai-responses",
       thinkingLevel: "max",
       requestHeaders: { "x-phase2-secret": "HEADER_SECRET_31243" },
-    },
-    heartbeat: async () => {
-      return true;
     },
     ...overrides,
   };
@@ -481,7 +453,7 @@ function expectBoundedFailure(
 }
 
 describe("Pi memory Phase 2 consolidation engine", () => {
-  it("runs no-diff directly against the exact mounted tree", async () => {
+  it("requires the exact mounted base and selection for a no-diff result", async () => {
     const memoryRoot = await mkdtemp(
       join(tmpdir(), "pi-memory-mounted-no-diff-"),
     );
@@ -494,21 +466,17 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     const memoryStorageId = "1d09f0c9-a5c6-4f21-9664-d80a3ca3ae63";
     const baseFiles = await snapshotMountedPiMemoryPhase2Base(memoryRoot);
 
+    const mountedArgs = {
+      memoryRoot,
+      memoryStorageId,
+      claimedBaseVersionId: storageContentIdentity(memoryStorageId, baseFiles),
+      selectionDigest:
+        "f95c6835f8a93234e88b26bc2162bd3cf8defd709037f6eefb14ee6ae3d56e48",
+      selected: [],
+      model: args("http://127.0.0.1:1/v1").model,
+    };
     const result = await runPiMemoryPhase2MountedConsolidation(
-      {
-        memoryRoot,
-        memoryStorageId,
-        claimedRevision: 7,
-        claimedBaseVersionId: storageContentIdentity(
-          memoryStorageId,
-          baseFiles,
-        ),
-        leaseToken: "44754115-d375-4c46-aea7-a55bd1b61ec7",
-        selectionDigest:
-          "f95c6835f8a93234e88b26bc2162bd3cf8defd709037f6eefb14ee6ae3d56e48",
-        selected: [],
-        model: args("http://127.0.0.1:1/v1").model,
-      },
+      mountedArgs,
       new AbortController().signal,
     );
 
@@ -516,6 +484,18 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       status: "no_diff",
       validatedVersionId: storageContentIdentity(memoryStorageId, baseFiles),
     });
+    for (const mismatch of [
+      { claimedBaseVersionId: "0".repeat(64) },
+      { selectionDigest: "0".repeat(64) },
+    ]) {
+      await expectBoundedFailure(
+        runPiMemoryPhase2MountedConsolidation(
+          { ...mountedArgs, ...mismatch },
+          new AbortController().signal,
+        ),
+        "input_invalid",
+      );
+    }
     expect(await readFile(join(memoryRoot, "MEMORY.md"), "utf8")).toBe(
       "# Task Group: existing\n",
     );
@@ -569,12 +549,10 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       {
         memoryRoot,
         memoryStorageId,
-        claimedRevision: 7,
         claimedBaseVersionId: storageContentIdentity(
           memoryStorageId,
           baseFiles,
         ),
-        leaseToken: "44754115-d375-4c46-aea7-a55bd1b61ec7",
         selectionDigest: privateInput.selectionDigest,
         selected: selectedCandidates,
         model,
@@ -596,30 +574,20 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       ),
     );
   });
-
-  it("returns an exact no-op without a heartbeat or provider call", async () => {
-    let heartbeatCount = 0;
+  it("returns an exact no-op without a provider call", async () => {
     let cleanupRoot: string | undefined;
-    const lifecycle: PiMemoryPhase2LifecycleEvent[] = [];
     const input = args("http://127.0.0.1:1/v1", {
       selected: [],
-      heartbeat: async () => {
-        heartbeatCount += 1;
-        return true;
-      },
-      onLifecycle(event) {
-        lifecycle.push(event);
-      },
     });
-    const result = await runPiMemoryPhase2ConsolidationForTest(
+    const result = await runPiMemoryPhase2LocalConsolidation(
       input,
+      new AbortController().signal,
       {
         async beforeCleanup(root) {
           cleanupRoot = root;
           await expect(stat(root)).resolves.toBeDefined();
         },
       },
-      new AbortController().signal,
     );
 
     expect(result.status).toBe("no_diff");
@@ -631,7 +599,6 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       cacheWrite: 0,
       reasoning: 0,
     });
-    expect(heartbeatCount).toBe(0);
     expect(
       result.files.map((file) => {
         return file.path;
@@ -644,18 +611,12 @@ describe("Pi memory Phase 2 consolidation engine", () => {
         .slice()
         .sort(),
     );
-    expect(
-      lifecycle.map((event) => {
-        return event.stage;
-      }),
-    ).toStrictEqual(["staged", "no_diff"]);
     await expect(stat(cleanupRoot ?? "missing")).rejects.toMatchObject({
       code: "ENOENT",
     });
   });
 
   it("uses one restricted official AgentSession and returns exact prepared usage", async () => {
-    expect(PI_MEMORY_PHASE2_EXPECTED_HEARTBEAT_CADENCE_MS).toBe(90_000);
     const provider = await startProvider([
       {
         type: "tool",
@@ -684,19 +645,9 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       },
       { type: "text", text: "MODEL_TEXT_SECRET_31243 completed" },
     ]);
-    const lifecycle: PiMemoryPhase2LifecycleEvent[] = [];
     const sessions: PiMemoryPhase2SessionSnapshot[] = [];
-    let heartbeatCount = 0;
     let cleanupRoot: string | undefined;
-    const input = args(provider.baseUrl, {
-      heartbeat: async () => {
-        heartbeatCount += 1;
-        return true;
-      },
-      onLifecycle(event) {
-        lifecycle.push(event);
-      },
-    });
+    const input = args(provider.baseUrl);
     const hooks: PiMemoryPhase2EngineTestHooks = {
       onSessionCreated(snapshot) {
         sessions.push(snapshot);
@@ -705,10 +656,10 @@ describe("Pi memory Phase 2 consolidation engine", () => {
         cleanupRoot = root;
       },
     };
-    const result = await runPiMemoryPhase2ConsolidationForTest(
+    const result = await runPiMemoryPhase2LocalConsolidation(
       input,
-      hooks,
       new AbortController().signal,
+      hooks,
     );
 
     expect(result.status).toBe("prepared");
@@ -720,7 +671,6 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       cacheWrite: 0,
       reasoning: 8,
     });
-    expect(heartbeatCount).toBe(1);
     expect(sessions).toStrictEqual([
       {
         toolNames: PI_MEMORY_PHASE2_TOOL_NAMES,
@@ -765,24 +715,10 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       role: "developer",
       content: `${renderPiMemoryPhase2Prompt()}\nCurrent working directory: /phase2-memory\n`,
     });
-    expect(
-      lifecycle.map((event) => {
-        return event.stage;
-      }),
-    ).toStrictEqual([
-      "staged",
-      "heartbeat",
-      "model_started",
-      "model_completed",
-      "validated",
-    ]);
 
     const files = new Map(
       result.files.map((file) => {
-        return [
-          file.path,
-          Buffer.from(file.contentBase64, "base64").toString(),
-        ];
+        return [file.path, Buffer.from(file.bytes).toString()];
       }),
     );
     expect(files.get(".git/config")).toBe("BASE_GIT_SECRET_31243");
@@ -804,7 +740,6 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     expect(Object.isFrozen(result.manifest.files)).toBe(true);
 
     const contentSafePayloads = JSON.stringify({
-      lifecycle,
       result: metadataWithoutContents(result),
     });
     for (const secret of [
@@ -852,7 +787,7 @@ describe("Pi memory Phase 2 consolidation engine", () => {
         requestHeaders: headers,
       },
     });
-    const promise = runPiMemoryPhase2Consolidation(
+    const promise = runPiMemoryPhase2LocalConsolidation(
       input,
       new AbortController().signal,
     );
@@ -866,10 +801,7 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     expect(result.status).toBe("prepared");
     const files = new Map(
       result.files.map((file) => {
-        return [
-          file.path,
-          Buffer.from(file.contentBase64, "base64").toString(),
-        ];
+        return [file.path, Buffer.from(file.bytes).toString()];
       }),
     );
     expect(files.get("MEMORY.md")).toBe("# Task Group: original\n");
@@ -899,7 +831,7 @@ describe("Pi memory Phase 2 consolidation engine", () => {
         baseFile("rollout_summaries/codex.md", "preserved"),
       ],
     });
-    const result = await runPiMemoryPhase2Consolidation(
+    const result = await runPiMemoryPhase2LocalConsolidation(
       input,
       new AbortController().signal,
     );
@@ -916,30 +848,25 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       }),
     ).toContain("rollout_summaries/codex.md");
   });
-
-  it("preserves output diagnostics when failure lifecycle observation throws", async () => {
+  it("preserves bounded output validation diagnostics", async () => {
     const provider = await startProvider([{ type: "text", text: "done" }]);
     const input = args(provider.baseUrl, {
       baseFiles: [
         baseFile("MEMORY.md", "# Memory\n"),
-        baseFile("memory_summary.md", `v1\n${" token".repeat(2605)}`),
+        baseFile("memory_summary.md", `v1\n${" ".repeat(64 * 1024)}`),
       ],
       selected: [],
-      onLifecycle(event) {
-        if (event.stage === "failed")
-          throw new Error("PRIVATE_OBSERVER_SENTINEL");
-      },
     });
     await expect(
-      runPiMemoryPhase2Consolidation(input, new AbortController().signal),
+      runPiMemoryPhase2LocalConsolidation(input, new AbortController().signal),
     ).rejects.toMatchObject({
       errorClass: "agent_output_invalid",
       diagnostic: {
         stage: "output_validation",
-        reason: "summary_tokens",
+        reason: "summary_bytes",
         fileClass: "summary",
-        actual: 2608,
-        limit: 2500,
+        actual: 65_539,
+        limit: 65_536,
       },
     });
   });
@@ -949,7 +876,7 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       readonly steps: readonly ProviderStep[];
       readonly errorClass: PiMemoryPhase2EngineError["errorClass"];
       readonly diagnostic?: PiMemoryPhase2Diagnostic;
-      readonly input?: Partial<PiMemoryPhase2ConsolidationArgs>;
+      readonly input?: Partial<PiMemoryPhase2LocalConsolidationArgs>;
     }> = [
       {
         steps: [{ type: "http-error" }],
@@ -1003,14 +930,14 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       const provider = await startProvider(testCase.steps);
       let cleanupRoot: string | undefined;
       await expectBoundedFailure(
-        runPiMemoryPhase2ConsolidationForTest(
+        runPiMemoryPhase2LocalConsolidation(
           args(provider.baseUrl, testCase.input),
+          new AbortController().signal,
           {
             async beforeCleanup(root) {
               cleanupRoot = root;
             },
           },
-          new AbortController().signal,
         ),
         testCase.errorClass,
         testCase.diagnostic,
@@ -1041,8 +968,7 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       },
       { type: "text", text: "", omitResponseId: true },
     ]);
-
-    const result = await runPiMemoryPhase2Consolidation(
+    const result = await runPiMemoryPhase2LocalConsolidation(
       args(provider.baseUrl),
       new AbortController().signal,
     );
@@ -1052,15 +978,54 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     expect(result.usage.output).toBeGreaterThan(0);
     const files = new Map(
       result.files.map((file) => {
-        return [
-          file.path,
-          Buffer.from(file.contentBase64, "base64").toString(),
-        ];
+        return [file.path, Buffer.from(file.bytes).toString()];
       }),
     );
     expect(files.get("MEMORY.md")).toBe("# Task Group: silent completion\n");
     expect(files.get("memory_summary.md")).toBe(
       "v1\n## User Profile\n- silent completion\n",
+    );
+  });
+
+  it("publishes a summary above the injection budget with its numeric feedback", async () => {
+    // The production failures reported exactly 2943 exact o200k source tokens.
+    const summary = `v1\n## User Profile\n${" token".repeat(2936)}`;
+    expect(encode(summary).length).toBe(2943);
+    const summaryBytes = Buffer.byteLength(summary);
+    expect(summaryBytes).toBeLessThanOrEqual(64 * 1024);
+    const provider = await startProvider([
+      {
+        type: "tool",
+        name: "phase2_write",
+        arguments: {
+          path: "memory/MEMORY.md",
+          content: "# Task Group: larger consolidation\n",
+        },
+      },
+      {
+        type: "tool",
+        name: "phase2_write",
+        arguments: { path: "memory/memory_summary.md", content: summary },
+      },
+      { type: "text", text: "done" },
+    ]);
+
+    const result = await runPiMemoryPhase2LocalConsolidation(
+      args(provider.baseUrl),
+      new AbortController().signal,
+    );
+
+    expect(result.status).toBe("prepared");
+    const published = result.files.find((file) => {
+      return file.path === "memory_summary.md";
+    });
+    expect(published?.size).toBe(summaryBytes);
+    expect(published?.bytes).toEqual(Buffer.from(summary, "utf8"));
+
+    // The write feedback the model actually observed describes the whole
+    // resulting summary, without ever repeating its content.
+    expect(JSON.stringify(provider.requests.at(-1)?.body ?? {})).toContain(
+      `written summary_bytes=${summaryBytes.toString()} summary_byte_limit=65536 summary_tokens=2943 summary_injection_target=2500`,
     );
   });
 
@@ -1078,8 +1043,9 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     ]);
 
     await expectBoundedFailure(
-      runPiMemoryPhase2ConsolidationForTest(
+      runPiMemoryPhase2LocalConsolidation(
         args(provider.baseUrl),
+        new AbortController().signal,
         {
           beforeOutputValidation() {
             return Promise.reject(
@@ -1089,187 +1055,10 @@ describe("Pi memory Phase 2 consolidation engine", () => {
             );
           },
         },
-        new AbortController().signal,
       ),
       "session_failed",
       { stage: "unknown", reason: "unexpected_error", errno: "ENOSPC" },
     );
-  });
-
-  it("confirms the heartbeat before model use and aborts on periodic lease loss", async () => {
-    const provider = await startProvider([{ type: "hang" }]);
-    let heartbeatCount = 0;
-    let cleanupRoot: string | undefined;
-    const lifecycle: PiMemoryPhase2LifecycleEvent[] = [];
-    await expectBoundedFailure(
-      runPiMemoryPhase2ConsolidationForTest(
-        args(provider.baseUrl, {
-          baseFiles: [],
-          heartbeat: async () => {
-            heartbeatCount += 1;
-            return heartbeatCount < 2;
-          },
-          onLifecycle(event) {
-            lifecycle.push(event);
-          },
-        }),
-        {
-          async waitForHeartbeat(signal, cadenceMs) {
-            expect(cadenceMs).toBe(
-              PI_MEMORY_PHASE2_EXPECTED_HEARTBEAT_CADENCE_MS,
-            );
-            signal.throwIfAborted();
-          },
-          async beforeCleanup(root) {
-            cleanupRoot = root;
-          },
-        },
-        new AbortController().signal,
-      ),
-      "lease_lost",
-    );
-    expect(heartbeatCount).toBe(2);
-    expect(
-      lifecycle.map((event) => {
-        return event.stage;
-      }),
-    ).toStrictEqual(["staged", "heartbeat", "model_started", "failed"]);
-    await expect(stat(cleanupRoot ?? "missing")).rejects.toMatchObject({
-      code: "ENOENT",
-    });
-  });
-
-  it.each<{
-    readonly description: string;
-    readonly errorClass: PiMemoryPhase2EngineError["errorClass"];
-    readonly settle: (heartbeat: Deferred<boolean>) => void;
-  }>([
-    {
-      description: "returns false",
-      errorClass: "lease_lost",
-      settle(heartbeat) {
-        heartbeat.resolve(false);
-      },
-    },
-    {
-      description: "rejects",
-      errorClass: "heartbeat_failed",
-      settle(heartbeat) {
-        heartbeat.reject(new Error("HEARTBEAT_SECRET_31252"));
-      },
-    },
-  ])(
-    "rejects an in-flight heartbeat that $description after model completion wins",
-    async ({ errorClass, settle }) => {
-      const provider = await startProvider([
-        { type: "text", text: "model completed before heartbeat" },
-      ]);
-      const heartbeatResult = deferred<boolean>();
-      const heartbeatStarted = deferred<void>();
-      const modelCompletionSelected = deferred<void>();
-      const lifecycle: PiMemoryPhase2LifecycleEvent[] = [];
-      let heartbeatCount = 0;
-      let disposedSessions = 0;
-      let cleanupRoot: string | undefined;
-      const promise = runPiMemoryPhase2ConsolidationForTest(
-        args(provider.baseUrl, {
-          heartbeat: async () => {
-            heartbeatCount += 1;
-            if (heartbeatCount === 1) {
-              return true;
-            }
-            heartbeatStarted.resolve();
-            return await heartbeatResult.promise;
-          },
-          onLifecycle(event) {
-            lifecycle.push(event);
-          },
-        }),
-        {
-          async waitForHeartbeat(signal, cadenceMs) {
-            expect(cadenceMs).toBe(
-              PI_MEMORY_PHASE2_EXPECTED_HEARTBEAT_CADENCE_MS,
-            );
-            signal.throwIfAborted();
-          },
-          async afterModelCompletionSelected() {
-            await heartbeatStarted.promise;
-            modelCompletionSelected.resolve();
-          },
-          onSessionDisposed() {
-            disposedSessions += 1;
-          },
-          async beforeCleanup(root) {
-            cleanupRoot = root;
-          },
-        },
-        new AbortController().signal,
-      );
-
-      await modelCompletionSelected.promise;
-      settle(heartbeatResult);
-      await expectBoundedFailure(promise, errorClass);
-
-      expect(heartbeatCount).toBe(2);
-      expect(provider.requests).toHaveLength(1);
-      expect(disposedSessions).toBe(1);
-      expect(
-        lifecycle.some((event) => {
-          return event.stage === "validated" || event.outcome !== undefined;
-        }),
-      ).toBe(false);
-      await expect(stat(cleanupRoot ?? "missing")).rejects.toMatchObject({
-        code: "ENOENT",
-      });
-    },
-  );
-
-  it("allows one success after an in-flight heartbeat settles true", async () => {
-    const provider = await startProvider([
-      { type: "text", text: "model completed before heartbeat" },
-    ]);
-    const heartbeatResult = deferred<boolean>();
-    const heartbeatStarted = deferred<void>();
-    const modelCompletionSelected = deferred<void>();
-    let heartbeatCount = 0;
-    let disposedSessions = 0;
-    const promise = runPiMemoryPhase2ConsolidationForTest(
-      args(provider.baseUrl, {
-        heartbeat: async () => {
-          heartbeatCount += 1;
-          if (heartbeatCount === 1) {
-            return true;
-          }
-          heartbeatStarted.resolve();
-          return await heartbeatResult.promise;
-        },
-      }),
-      {
-        async waitForHeartbeat(signal, cadenceMs) {
-          expect(cadenceMs).toBe(
-            PI_MEMORY_PHASE2_EXPECTED_HEARTBEAT_CADENCE_MS,
-          );
-          signal.throwIfAborted();
-        },
-        async afterModelCompletionSelected() {
-          await heartbeatStarted.promise;
-          modelCompletionSelected.resolve();
-        },
-        onSessionDisposed() {
-          disposedSessions += 1;
-        },
-      },
-      new AbortController().signal,
-    );
-
-    await modelCompletionSelected.promise;
-    heartbeatResult.resolve(true);
-    const result = await promise;
-
-    expect(result.status).toBe("prepared");
-    expect(heartbeatCount).toBe(2);
-    expect(provider.requests).toHaveLength(1);
-    expect(disposedSessions).toBe(1);
   });
 
   it("rejects completed model output without the required files", async () => {
@@ -1277,7 +1066,7 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       { type: "text", text: "finished without required files" },
     ]);
     await expectBoundedFailure(
-      runPiMemoryPhase2Consolidation(
+      runPiMemoryPhase2LocalConsolidation(
         args(provider.baseUrl, {
           baseFiles: [],
         }),
@@ -1287,42 +1076,96 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     );
   });
 
-  it("observes abort from the staged observer before selecting no-diff", async () => {
+  it("rejects a pre-aborted local job without contacting the provider", async () => {
+    const provider = await startProvider([{ type: "text", text: "unused" }]);
     const controller = new AbortController();
-    const lifecycle: PiMemoryPhase2LifecycleEvent[] = [];
-    let heartbeatCount = 0;
-    let cleanupRoot: string | undefined;
+    controller.abort(new Error("PRE_MODEL_ABORT_SECRET"));
     await expectBoundedFailure(
-      runPiMemoryPhase2ConsolidationForTest(
-        args("http://127.0.0.1:1/v1", {
-          selected: [],
-          heartbeat: async () => {
-            heartbeatCount += 1;
-            return true;
-          },
-          onLifecycle(event) {
-            lifecycle.push(event);
-            if (event.stage === "staged") {
-              controller.abort(new Error("STAGED_ABORT_SECRET_31252"));
-            }
-          },
-        }),
-        {
-          async beforeCleanup(root) {
-            cleanupRoot = root;
-          },
-        },
+      runPiMemoryPhase2LocalConsolidation(
+        args(provider.baseUrl),
         controller.signal,
       ),
       "aborted",
     );
+    expect(provider.requests).toHaveLength(0);
+  });
 
-    expect(heartbeatCount).toBe(0);
-    expect(
-      lifecycle.map((event) => {
-        return event.stage;
-      }),
-    ).toStrictEqual(["staged", "failed"]);
+  it("disposes a created session cancelled before its model invocation", async () => {
+    const provider = await startProvider([{ type: "text", text: "unused" }]);
+    const controller = new AbortController();
+    let disposed = false;
+    let cleanupRoot: string | undefined;
+    await expectBoundedFailure(
+      runPiMemoryPhase2LocalConsolidation(
+        args(provider.baseUrl),
+        controller.signal,
+        {
+          onSessionCreated() {
+            controller.abort(new Error("SESSION_CREATED_ABORT_SECRET"));
+          },
+          onSessionDisposed() {
+            disposed = true;
+          },
+          async beforeCleanup(root) {
+            cleanupRoot = root;
+          },
+        },
+      ),
+      "aborted",
+    );
+    expect(provider.requests).toHaveLength(0);
+    expect(disposed).toBe(true);
+    await expect(stat(cleanupRoot ?? "missing")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("rejects cancellation after model completion wins arbitration", async () => {
+    const provider = await startProvider([{ type: "text", text: "complete" }]);
+    const controller = new AbortController();
+    let disposed = false;
+    let cleanupRoot: string | undefined;
+    await expectBoundedFailure(
+      runPiMemoryPhase2LocalConsolidation(
+        args(provider.baseUrl),
+        controller.signal,
+        {
+          async afterModelCompletionSelected() {
+            controller.abort(new Error("POST_MODEL_ABORT_SECRET"));
+          },
+          onSessionDisposed() {
+            disposed = true;
+          },
+          async beforeCleanup(root) {
+            cleanupRoot = root;
+          },
+        },
+      ),
+      "aborted",
+    );
+    expect(provider.requests).toHaveLength(1);
+    expect(disposed).toBe(true);
+    await expect(stat(cleanupRoot ?? "missing")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("rejects a validated result when cancellation arrives during cleanup", async () => {
+    const controller = new AbortController();
+    let cleanupRoot: string | undefined;
+    await expectBoundedFailure(
+      runPiMemoryPhase2LocalConsolidation(
+        args("http://127.0.0.1:1/v1", { selected: [] }),
+        controller.signal,
+        {
+          async beforeCleanup(root) {
+            cleanupRoot = root;
+            controller.abort(new Error("PRE_APPLICATION_ABORT_SECRET"));
+          },
+        },
+      ),
+      "aborted",
+    );
     await expect(stat(cleanupRoot ?? "missing")).rejects.toMatchObject({
       code: "ENOENT",
     });
@@ -1333,16 +1176,12 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     const provider = await startProvider([
       { type: "text", text: "completed before validation abort" },
     ]);
-    const lifecycle: PiMemoryPhase2LifecycleEvent[] = [];
     let disposedSessions = 0;
     let cleanupRoot: string | undefined;
     await expectBoundedFailure(
-      runPiMemoryPhase2ConsolidationForTest(
-        args(provider.baseUrl, {
-          onLifecycle(event) {
-            lifecycle.push(event);
-          },
-        }),
+      runPiMemoryPhase2LocalConsolidation(
+        args(provider.baseUrl),
+        controller.signal,
         {
           async beforeOutputValidation() {
             controller.abort(new Error("VALIDATION_ABORT_SECRET_31252"));
@@ -1354,24 +1193,12 @@ describe("Pi memory Phase 2 consolidation engine", () => {
             cleanupRoot = root;
           },
         },
-        controller.signal,
       ),
       "aborted",
     );
 
     expect(provider.requests).toHaveLength(1);
     expect(disposedSessions).toBe(1);
-    expect(
-      lifecycle.map((event) => {
-        return event.stage;
-      }),
-    ).toStrictEqual([
-      "staged",
-      "heartbeat",
-      "model_started",
-      "model_completed",
-      "failed",
-    ]);
     await expect(stat(cleanupRoot ?? "missing")).rejects.toMatchObject({
       code: "ENOENT",
     });
@@ -1389,14 +1216,14 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     ]);
     let cleanupRoot: string | undefined;
     await expectBoundedFailure(
-      runPiMemoryPhase2ConsolidationForTest(
+      runPiMemoryPhase2LocalConsolidation(
         args(provider.baseUrl, { baseFiles: [] }),
+        controller.signal,
         {
           async beforeCleanup(root) {
             cleanupRoot = root;
           },
         },
-        controller.signal,
       ),
       "aborted",
     );
@@ -1408,17 +1235,18 @@ describe("Pi memory Phase 2 consolidation engine", () => {
 
   it("lets cleanup failure override an otherwise valid result", async () => {
     const input = args("http://127.0.0.1:1/v1", { selected: [] });
+    let cleanupRoot: string | undefined;
     await expectBoundedFailure(
-      runPiMemoryPhase2ConsolidationForTest(
-        input,
-        {
-          async beforeCleanup() {
-            throw new Error("CLEANUP_HOOK_SECRET_31243");
-          },
+      runPiMemoryPhase2LocalConsolidation(input, new AbortController().signal, {
+        async beforeCleanup(root) {
+          cleanupRoot = root;
+          throw new Error("CLEANUP_HOOK_SECRET_31243");
         },
-        new AbortController().signal,
-      ),
+      }),
       "cleanup_failed",
     );
+    await expect(stat(cleanupRoot ?? "missing")).rejects.toMatchObject({
+      code: "ENOENT",
+    });
   });
 });

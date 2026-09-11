@@ -153,6 +153,10 @@ interface ClerkUserProfile {
 }
 
 interface ClerkOrganizationMembership {
+  readonly id: string;
+  readonly createdAt: number;
+  readonly role: string;
+  readonly organization: { readonly id: string };
   readonly publicUserData: {
     readonly userId: string;
   };
@@ -209,7 +213,15 @@ function clerkOrganizationMemberships(
     return [];
   }
 
-  return [{ publicUserData: { userId: actor.userId } }];
+  return [
+    {
+      id: `membership-${actor.userId}-${actor.orgId}`,
+      createdAt: Date.parse("2020-01-01T00:00:00.000Z"),
+      role: actor.orgRole ?? "org:member",
+      organization: { id: actor.orgId },
+      publicUserData: { userId: actor.userId },
+    },
+  ];
 }
 
 function authenticate(

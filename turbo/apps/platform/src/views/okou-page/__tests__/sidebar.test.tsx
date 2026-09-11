@@ -1672,11 +1672,14 @@ test("Mark all of an agent’s chats read", async () => {
   const nav = await waitFor(() => {
     const current = mobileSidebar();
     expect(within(current).getByText("Research Agent")).toBeInTheDocument();
-    expect(within(current).getByText("Support Agent")).toBeInTheDocument();
     return current;
   });
   const researchSidebarRow = agentRowByName(nav, "Research Agent");
-  const supportSidebarRow = agentRowByName(nav, "Support Agent");
+  // Unpinned agents appear after the Worker finishes loading unread indicators,
+  // independently of the pinned-agent list above.
+  const supportSidebarRow = await waitFor(() => {
+    return agentRowByName(nav, "Support Agent");
+  });
   await waitFor(() => {
     expect(
       within(researchSidebarRow).getByLabelText("Unread"),
@@ -2352,80 +2355,89 @@ test("Recognize and pin sidebar conversation states", async () => {
   expect(menuItemByText("Delete chat")).toBeInTheDocument();
 });
 
-test("Refresh agent and thread unread indicators", async () => {
-  mockMobileLayout();
-  prepareAgents();
-  mockSidebarThreadStory([
-    createThread(EXISTING_THREAD_ID, "Remote unread conversation"),
-  ]);
-  let hasUnread = false;
-  let unreadIndicatorsLoaded = false;
-  const unreadCatchUpReturned = context.mocks.deferred<void>();
-  context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
-    unreadIndicatorsLoaded = hasUnread;
-    return respond(200, {
-      agents: hasUnread ? { [AGENT_ID]: "unread" } : {},
-      threads: hasUnread ? { [EXISTING_THREAD_ID]: "unread" } : {},
+test.each(["agent", "thread"] as const)(
+  "Refresh the %s unread indicator",
+  async (indicator) => {
+    mockMobileLayout();
+    prepareAgents();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Remote unread conversation"),
+    ]);
+    let hasUnread = false;
+    let unreadIndicatorsLoaded = false;
+    const unreadCatchUpReturned = context.mocks.deferred<void>();
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      unreadIndicatorsLoaded = hasUnread;
+      return respond(200, {
+        agents: hasUnread ? { [AGENT_ID]: "unread" } : {},
+        threads: hasUnread ? { [EXISTING_THREAD_ID]: "unread" } : {},
+      });
     });
-  });
-  context.mocks.api(chatThreadEventsContract.catchUp, ({ body, respond }) => {
-    const response = respond(200, {
-      events: Object.fromEntries(
-        body.map(([threadId]) => {
-          return [threadId, []];
-        }),
-      ),
-      notFoundThreads: [],
+    context.mocks.api(chatThreadEventsContract.catchUp, ({ body, respond }) => {
+      const response = respond(200, {
+        events: Object.fromEntries(
+          body.map(([threadId]) => {
+            return [threadId, []];
+          }),
+        ),
+        notFoundThreads: [],
+      });
+      if (unreadIndicatorsLoaded && !unreadCatchUpReturned.settled()) {
+        unreadCatchUpReturned.resolve(undefined);
+      }
+      return response;
     });
-    if (unreadIndicatorsLoaded && !unreadCatchUpReturned.settled()) {
-      unreadCatchUpReturned.resolve(undefined);
-    }
-    return response;
-  });
-  context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
-    return respond(200, {
-      unreads: hasUnread
-        ? [
-            {
-              threadId: EXISTING_THREAD_ID,
-              unreadAt: "2026-03-10T00:05:00Z",
-            },
-          ]
-        : [],
+    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+      return respond(200, {
+        unreads: hasUnread
+          ? [
+              {
+                threadId: EXISTING_THREAD_ID,
+                unreadAt: "2026-03-10T00:05:00Z",
+              },
+            ]
+          : [],
+      });
     });
-  });
 
-  await setupSidebarPage({
-    context,
-    path: `/agents/${AGENT_ID}/chat`,
-    sharedWorkerTestTransport: "message-port",
-  });
+    await setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      sharedWorkerTestTransport: "message-port",
+    });
 
-  const nav = await waitFor(() => {
-    const current = mobileSidebar();
-    expect(within(current).getByText("Nova")).toBeInTheDocument();
-    return current;
-  });
-  const agentRow = agentRowByName(nav, "Nova");
-  const threadRow = await waitFor(() => {
-    return threadRowByTitle("Remote unread conversation", nav);
-  });
-  await waitFor(() => {
-    expect(within(agentRow).queryByLabelText("Unread")).toBeNull();
-    expect(within(threadRow).queryByLabelText("Unread")).toBeNull();
-  });
+    await waitFor(() => {
+      const current = mobileSidebar();
+      expect(within(current).getByText("Nova")).toBeInTheDocument();
+    });
+    // Both indicator consumers must finish loading before the external refresh.
+    await waitFor(() => {
+      expect(
+        threadRowByTitle("Remote unread conversation", mobileSidebar()),
+      ).toBeInTheDocument();
+    });
+    const indicatorRow = () => {
+      return indicator === "agent"
+        ? agentRowByName(mobileSidebar(), "Nova")
+        : threadRowByTitle("Remote unread conversation", mobileSidebar());
+    };
+    await waitFor(() => {
+      expect(within(indicatorRow()).queryByLabelText("Unread")).toBeNull();
+    });
 
-  hasUnread = true;
-  changeChatThreadList();
+    hasUnread = true;
+    changeChatThreadList();
 
-  // Indicator delivery follows the throttled batch, which may start after a
-  // trailing bootstrap request. Observe that response before checking the UI.
-  await unreadCatchUpReturned.promise;
-  await waitFor(() => {
-    expect(within(agentRow).getByLabelText("Unread")).toBeInTheDocument();
-    expect(within(threadRow).getByLabelText("Unread")).toBeInTheDocument();
-  });
-});
+    // Indicator delivery follows the throttled batch, which may start after a
+    // trailing bootstrap request. Observe that response before checking the UI.
+    await unreadCatchUpReturned.promise;
+    await waitFor(() => {
+      expect(
+        within(indicatorRow()).getByLabelText("Unread"),
+      ).toBeInTheDocument();
+    });
+  },
+);
 
 test("Rename a conversation from the sidebar", async () => {
   prepareDefaultAgent();

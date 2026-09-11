@@ -8,6 +8,72 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.585.1](https://github.com/vm0-ai/vm0/compare/api-v1.585.0...api-v1.585.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **api:** absorb rate-limited activity summaries without a diagnostic ([#33522](https://github.com/vm0-ai/vm0/issues/33522)) ([034c2c2](https://github.com/vm0-ai/vm0/commit/034c2c2bd9b8c6d13e98cac330c76850eddd63c3))
+* **api:** distinguish residual activity-summary completion outcomes ([#33515](https://github.com/vm0-ai/vm0/issues/33515)) ([0bab449](https://github.com/vm0-ai/vm0/commit/0bab4493a1237205175ce2d3df2dc66f9ba8034e))
+* **api:** raise morning brief provisioning outcome logs to info ([#33540](https://github.com/vm0-ai/vm0/issues/33540)) ([31791a2](https://github.com/vm0-ai/vm0/commit/31791a2f38712a764967487fd86018230820cdff))
+* **api:** report built-in capacity failures as errors ([#33520](https://github.com/vm0-ai/vm0/issues/33520)) ([6fd5177](https://github.com/vm0-ai/vm0/commit/6fd51770aa4c8e1e62e713677ed6de205e04dfa0))
+* **api:** report unabsorbed activity-summary provider failures as errors ([#33530](https://github.com/vm0-ai/vm0/issues/33530)) ([9d7a5a4](https://github.com/vm0-ai/vm0/commit/9d7a5a4ce4cb50a429eaaad16ea4df7d9a8d6021))
+* **api:** treat empty recommended followups as an expected omission ([#33517](https://github.com/vm0-ai/vm0/issues/33517)) ([d500252](https://github.com/vm0-ai/vm0/commit/d5002522d31ebf55f1759c95fd0d0712b63e1e39))
+* **pi-memory:** publish full summaries with bounded prompt injection ([#33536](https://github.com/vm0-ai/vm0/issues/33536)) ([da440bf](https://github.com/vm0-ai/vm0/commit/da440bff4d7a03293bdce027bf09d938a4a58f9a))
+
+
+### Refactoring
+
+* **api:** accept x-okou signature headers alongside the legacy names ([#33508](https://github.com/vm0-ai/vm0/issues/33508)) ([6238e7d](https://github.com/vm0-ai/vm0/commit/6238e7d1cebdb56f2d89c45e5a1f0617c9a9703e))
+* **pi-memory:** make phase two a local consolidation engine ([#33547](https://github.com/vm0-ai/vm0/issues/33547)) ([5d66823](https://github.com/vm0-ai/vm0/commit/5d66823659fa01a406a694bec0f26b94cb69b3aa)), closes [#33521](https://github.com/vm0-ai/vm0/issues/33521)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.428.2
+    * @okouai/core bumped to 8.654.1
+    * @okouai/db bumped to 1.252.3
+    * @okouai/pi-agent-runtime bumped to 1.26.0
+
+## [1.585.0](https://github.com/vm0-ai/vm0/compare/api-v1.584.1...api-v1.585.0) (2026-09-11)
+
+
+### Features
+
+* **voice:** add gated google cloud routing ([#33462](https://github.com/vm0-ai/vm0/issues/33462)) ([4ee7737](https://github.com/vm0-ai/vm0/commit/4ee773741a7ddaed8063e8f49a76791665584f69))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.654.0
+    * @okouai/db bumped to 1.252.2
+
+## [1.584.1](https://github.com/vm0-ai/vm0/compare/api-v1.584.0...api-v1.584.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **ssh:** allow multiple login configurations per endpoint ([#33473](https://github.com/vm0-ai/vm0/issues/33473)) ([54efc25](https://github.com/vm0-ai/vm0/commit/54efc258e9b0d6df4b9c49ed7cedb92fbe4fec44))
+
+
+### Refactoring
+
+* **test:** replace residual retired-brand fixtures and a missed comment ([#33489](https://github.com/vm0-ai/vm0/issues/33489)) ([5877266](https://github.com/vm0-ai/vm0/commit/58772661b6889713ed3b090f04adc22e0e28d711)), closes [#33475](https://github.com/vm0-ai/vm0/issues/33475)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.428.1
+    * @okouai/core bumped to 8.653.0
+    * @okouai/db bumped to 1.252.1
+    * @okouai/pi-agent-runtime bumped to 1.25.1
+
 ## [1.584.0](https://github.com/vm0-ai/vm0/compare/api-v1.583.0...api-v1.584.0) (2026-09-11)
 
 
