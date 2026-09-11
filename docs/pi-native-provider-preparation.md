@@ -94,8 +94,9 @@ captured provider and harness.
 
 Every newly written generation 4 context requires a canonical `https://static.okou.io`, commit-addressed
 CLI package from its API writer commit (`/okou-cli/<GIT_COMMIT_SHA>/package.tgz`).
-The existing PR/main pipeline builds that artifact at the head SHA, and release
-promotion verifies the CLI artifact at its release target before selecting it.
+The PR preview API checkout is explicitly aligned with the CLI head SHA; merge
+groups and main keep their event SHA. Release promotion verifies the CLI artifact
+at its release target before selecting it.
 This narrowly rejects mismatched or mutable pins; it adds no deployment system
 or compatibility fallback. Old/missing Runner capability remains unclaimed by
 the existing reader. Already captured contexts keep their package and generation.

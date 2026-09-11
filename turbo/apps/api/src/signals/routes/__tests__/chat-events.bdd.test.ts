@@ -8440,16 +8440,17 @@ describe("CHAT-02: model-first provider policies", () => {
     for (const [name, snapshot] of rejectedSnapshots) {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const orgId = requireOrgId(actor);
-      await updateFeatureSwitchesForUser(
-        context,
-        { ...actor, orgId },
-        { [FeatureSwitchKey.PiLoop]: true },
-      );
       const run = await sendChatRun(actor, {
         agentId,
         prompt: `decode ${name} through the completion webhook`,
       });
       const claimed = await claimChatRun(runnerGroup, run.runId);
+      // Decode historical carriers with the current cohort enabled at completion.
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        { [FeatureSwitchKey.PiLoop]: true },
+      );
       await setRunLaunchSnapshotFixture(run.runId, snapshot);
       const completionOptions = frameworkMatchingCompletionOptions(
         run.threadId,
@@ -8471,16 +8472,17 @@ describe("CHAT-02: model-first provider policies", () => {
     for (const [name, snapshot] of admittedSnapshots) {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const orgId = requireOrgId(actor);
-      await updateFeatureSwitchesForUser(
-        context,
-        { ...actor, orgId },
-        { [FeatureSwitchKey.PiLoop]: true },
-      );
       const run = await sendChatRun(actor, {
         agentId,
         prompt: `decode ${name} through the completion webhook`,
       });
       const claimed = await claimChatRun(runnerGroup, run.runId);
+      // Decode historical carriers with the current cohort enabled at completion.
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        { [FeatureSwitchKey.PiLoop]: true },
+      );
       await setRunLaunchSnapshotFixture(run.runId, snapshot);
       const completionOptions = frameworkMatchingCompletionOptions(
         run.threadId,
