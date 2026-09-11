@@ -509,6 +509,8 @@ async fn upload_archive_bundle(
 mod tests {
     use super::*;
     use httpmock::prelude::*;
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
     use std::sync::LazyLock;
     use std::time::Duration;
 
@@ -929,11 +931,15 @@ mod tests {
                 },
             }));
         });
+        let (archive_body_tx, archive_body_rx) = std::sync::mpsc::channel();
         let archive_upload = server.mock(|when, then| {
             when.method(PUT)
                 .path("/test/artifact-archive-upload")
                 .header("Content-Type", "application/gzip");
-            then.status(200);
+            then.respond_with(move |req| {
+                archive_body_tx.send(req.body_ref().to_vec()).unwrap();
+                http_status(200)
+            });
         });
         let manifest_files = expected_files.clone();
         let manifest_upload = server.mock(|when, then| {
@@ -979,6 +985,36 @@ mod tests {
         archive_upload.assert_calls(1);
         manifest_upload.assert_calls(1);
         commit.assert_calls(1);
+
+        let archive_body = archive_body_rx
+            .try_recv()
+            .expect("captured archive PUT body");
+        // Consume the whole gzip stream to validate its checksum and trailer.
+        let mut tar_bytes = Vec::new();
+        flate2::read::GzDecoder::new(archive_body.as_slice())
+            .read_to_end(&mut tar_bytes)
+            .expect("archive PUT body must be valid gzip");
+        let mut archive = tar::Archive::new(tar_bytes.as_slice());
+        let mut entries = archive
+            .entries()
+            .expect("archive PUT body must contain tar");
+        let mut entry = entries.next().expect("alpha.txt entry").unwrap();
+        let path = entry.path().unwrap().into_owned();
+        assert_eq!(path, Path::new("alpha.txt"));
+        assert!(entry.header().entry_type().is_file());
+        let mut contents = Vec::new();
+        entry.read_to_end(&mut contents).unwrap();
+        assert_eq!(contents, b"alpha");
+        assert_eq!(
+            vec![serde_json::json!({
+                "path": path,
+                "hash": hex::encode(Sha256::digest(&contents)),
+                "size": contents.len(),
+            })],
+            expected_files
+        );
+        assert!(entries.next().is_none(), "unexpected extra archive entry");
+
         assert_eq!(
             sandbox_op_successes(&telemetry_path, "artifact_commit_api")?,
             vec![true]

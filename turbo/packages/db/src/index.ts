@@ -1,6 +1,7 @@
 import * as runActivitySnapshotSchema from "./schema/run-activity-snapshot";
 import * as artifactShareSchema from "./schema/artifact-share";
 import * as userSchema from "./schema/user";
+import * as privacyChoiceSchema from "./schema/privacy-choice";
 import * as deviceCodesSchema from "./schema/device-codes";
 import * as cliTokensSchema from "./schema/cli-tokens";
 import * as desktopAuthHandoffCodeSchema from "./schema/desktop-auth-handoff-code";
@@ -143,6 +144,7 @@ import * as agentSshAccessSchema from "./schema/agent-ssh-access";
 export const schema = {
   ...runActivitySnapshotSchema,
   ...userSchema,
+  ...privacyChoiceSchema,
   ...artifactShareSchema,
   ...deviceCodesSchema,
   ...cliTokensSchema,

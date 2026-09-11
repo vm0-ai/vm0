@@ -44,6 +44,28 @@ record already embedded in a malformed line or serialize independently
 interleaved short-write sequences. The existing Runner uploader continues to
 skip malformed physical lines and upload independently parseable records.
 
+## Model-provider failure reporting shutdown
+
+Failure reports are best-effort diagnostics with four reporter-owned daemon
+workers and at most 16 admitted reports. Shutdown closes admission, cancels
+queued reports, and gives running deliveries one shared 10-second drain window.
+Unlike standard thread-pool workers, these workers are not registered for an
+interpreter-exit join. A stalled DNS lookup or network operation can therefore
+leave a report undelivered without keeping the process alive after the drain.
+
+Running calls are not forcibly interrupted: if the process remains alive, they
+retain their worker and admission slot until completion. Normal completion and
+queued cancellation keep the same callback-owned cleanup. All workers start
+before any report payload is admitted, and failed startup joins the empty
+candidate workers. Usage webhook and SigV4 workers retain their independent
+joined-shutdown contracts.
+
+`test_model_provider_failure_shutdown.py` exercises the real addon response and
+shutdown hooks in a fresh interpreter. It requires successful process exit
+while DNS remains blocked, with the production drain budget unchanged. Old
+runners retain their previous shutdown behavior until updated; no reporting
+API or persisted format changes.
+
 ## Managed credential method boundary
 
 Firewall permissions authorize the request's actual HTTP method. Requests with
@@ -188,6 +210,38 @@ feeds non-UTF-8 values through real HTTP/1 request hooks and guards the dependen
 conversion boundary. `test_model_provider_websocket_lifecycle.py` verifies raw
 response confirmation and tracked-flow retention/release. These regressions use
 structural assertions, with no timing or allocation thresholds.
+
+## Response Content-Type inspection boundary
+
+The shared response classifier inspects at most 8,192 raw header fields and
+8,192 leading Content-Type value bytes per call. It checks field count before
+enumeration and name length before ASCII case normalization. Missing or repeated
+Content-Type fields do not establish SSE, including a parameterized first value
+followed by a duplicate.
+
+For a singleton, the media type must end at a semicolon inside the inspected
+prefix or at the actual field end within the byte limit. Exhausting the budget
+does not establish a field ending. Only this bounded media type is copied,
+stripped of SP/HTAB, and compared case-insensitively with exactly
+`text/event-stream`. An arbitrarily large parameter suffix after an early
+semicolon is neither decoded nor copied by the classifier. Lookalikes such as
+`text/event-stream+json` remain non-SSE.
+
+Missing, ambiguous, or over-budget input follows the existing non-SSE inspector
+selection and terminal JSON eligibility shared by usage and failure observers.
+This does not prove the body is JSON: a true SSE body with an unclassifiable
+header may have no parsed usage or failure event. Request and response wire
+headers and streamed bytes are preserved. These local limits do not bound
+mitmproxy's raw HTTP-head buffering or other header consumers; old runners keep
+the previous behavior until updated.
+
+`test_response_content_type_budget.py` covers parsed HTTP/1 ASCII and non-UTF-8
+parameter suffixes through the real response-header hook, guards the dependency
+conversion boundary, and verifies parsed usage and unchanged traffic. Structural
+raw-value guards and exact-boundary cases protect against unbounded suffix
+copies, name normalization, and truncated-prefix matches. The shared failure
+reporting suite also verifies the same classification for usage and failure
+observers without timing or allocation thresholds.
 
 ## Path normalization work boundary
 
