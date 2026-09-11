@@ -1,6 +1,5 @@
 import {
   InMemoryCredentialStore,
-  registerSessionResourceCleanup,
   type ModelThinkingLevel,
 } from "@earendil-works/pi-ai";
 import {
@@ -28,12 +27,16 @@ import {
   resolvePiApiMemoryRecall,
 } from "./memory-recall-node";
 import { createPiMemoryTools } from "./memory-tools-node";
-import { piAgentStreamForConfig, resolvePiAgentModel } from "./model";
+import { resolvePiAgentModel } from "./model";
 import {
   buildOkouHarnessSystemPrompt,
   type OkouHarnessToolPrompt,
 } from "./okou-harness-prompt";
 import { piPreheatedResourceLoaderOptions } from "./resources";
+import {
+  initializePiSessionResourceRegistry,
+  registeredModelConfig,
+} from "./session-model";
 import type { PiAgentModelConfig } from "./types";
 
 const PI_INTERMEDIATE_COMMENTARY_PROMPT = `## Intermediate commentary
@@ -73,57 +76,6 @@ function okouHarnessToolPrompts(cwd: string): OkouHarnessToolPrompt[] {
       guidelines: definition.promptGuidelines,
     };
   });
-}
-
-function initializePiSessionResourceRegistry(): void {
-  // Vite's SSR bundle otherwise keeps Pi's registry behind only the lazy
-  // Codex adapter initializer, while AgentSession.dispose() remains eager.
-  // Registering and immediately removing a no-op makes the shared registry's
-  // initialization explicit without changing its cleanup policy.
-  const unregister = registerSessionResourceCleanup(() => {
-    return undefined;
-  });
-  unregister();
-}
-
-function registeredModelConfig(
-  model: NonNullable<ReturnType<typeof resolvePiAgentModel>>,
-  apiKey: string,
-  config: Pick<
-    PiAgentModelConfig,
-    | "accountId"
-    | "dialect"
-    | "requestHeaders"
-    | "serviceTier"
-    | "transport"
-    | "catalogModel"
-    | "region"
-    | "bedrockAuth"
-  >,
-) {
-  return {
-    name: model.provider,
-    baseUrl: model.baseUrl,
-    apiKey,
-    api: model.api,
-    streamSimple: piAgentStreamForConfig(config),
-    models: [
-      {
-        id: model.id,
-        name: model.name,
-        api: model.api,
-        baseUrl: model.baseUrl,
-        reasoning: model.reasoning,
-        thinkingLevelMap: model.thinkingLevelMap,
-        input: model.input,
-        cost: model.cost,
-        contextWindow: model.contextWindow,
-        maxTokens: model.maxTokens,
-        headers: model.headers,
-        compat: model.compat,
-      },
-    ],
-  };
 }
 
 function configuredThinkingLevel(
