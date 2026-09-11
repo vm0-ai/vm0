@@ -63,8 +63,8 @@ export function clerkAttributionObservation(data: unknown) {
   if (!isRecord(data) || typeof data.id !== "string" || !data.id) {
     throw new Error("Clerk attribution snapshot is missing its user ID");
   }
-  const updatedAt = data.updated_at ?? data.updatedAt;
-  const metadata = data.private_metadata ?? data.privateMetadata;
+  const updatedAt = data.updated_at;
+  const metadata = data.private_metadata;
   if (
     typeof updatedAt !== "number" ||
     !Number.isSafeInteger(updatedAt) ||

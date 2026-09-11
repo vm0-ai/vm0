@@ -134,6 +134,20 @@ The endpoint is `no-store`, unavailable without configuration, and does not
 accept a user session as operator authorization. Configure no marketing sender
 to use this inspection projection as delivery authorization.
 
+## Integration verification
+
+Run the historical-command tests against local PostgreSQL from
+`turbo/packages/db`:
+
+```sh
+DATABASE_URL=postgresql://postgres@localhost:5432/postgres pnpm test:user-attribution
+```
+
+The suite uses isolated temporary databases and mocked Clerk HTTP endpoints.
+It also runs through `pnpm test:migration-consistency` in the existing
+PostgreSQL-backed CI job. The database-free package suite excludes this file;
+missing database configuration still fails the dedicated integration suite.
+
 ## Rollback and later phases
 
 During this phase all operational readers/writers still use Clerk, so reverting
