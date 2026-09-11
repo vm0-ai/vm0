@@ -847,7 +847,6 @@ describe("sandbox Pi agent loop", () => {
         candidateCount: 0,
         fileCount: 0,
         totalBytes: 0,
-        heartbeatCount: 0,
       });
       expect(() => {
         return reportPiSandboxAgentLoopFailure(failure);

@@ -178,9 +178,7 @@ export async function runPiSandboxAgentLoop(args: {
       {
         memoryRoot: args.memoryRoot ?? PI_MEMORY_ROOT,
         memoryStorageId: maintenance.memoryStorageId,
-        claimedRevision: maintenance.claimedRevision,
         claimedBaseVersionId: maintenance.claimedBaseVersionId,
-        leaseToken: maintenance.leaseToken,
         selectionDigest: maintenance.selectionDigest,
         selected: maintenance.selected.map((candidate) => {
           return {

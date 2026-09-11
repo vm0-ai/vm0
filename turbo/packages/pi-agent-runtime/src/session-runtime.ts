@@ -1,6 +1,5 @@
 import {
   InMemoryCredentialStore,
-  registerSessionResourceCleanup,
   type ModelThinkingLevel,
 } from "@earendil-works/pi-ai";
 import {
@@ -24,7 +23,11 @@ import {
   resolvePiApiMemoryRecall,
 } from "./memory-recall-node";
 import { createPiMemoryTools } from "./memory-tools-node";
-import { piAgentStreamForConfig, resolvePiAgentModel } from "./model";
+import { resolvePiAgentModel } from "./model";
+import {
+  initializePiSessionResourceRegistry,
+  registeredModelConfig,
+} from "./session-model";
 import { piPreheatedResourceLoaderOptions } from "./resources";
 import type { PiAgentModelConfig } from "./types";
 
@@ -35,57 +38,6 @@ As you work, provide brief intermediate text messages to the user. These message
 If the user's request requires calling tools, start with a brief intermediate message before the first tool call. During longer work, provide additional updates at meaningful points.
 
 Do not put a final response, such as a blocking or clarifying question, in an intermediate message. Intermediate messages are only for partial updates, partial results, or non-blocking context that can provide value while you continue working. An intermediate update does not end the task; continue working when more work remains. The final answer must always be fully self-contained.`;
-
-function initializePiSessionResourceRegistry(): void {
-  // Vite's SSR bundle otherwise keeps Pi's registry behind only the lazy
-  // Codex adapter initializer, while AgentSession.dispose() remains eager.
-  // Registering and immediately removing a no-op makes the shared registry's
-  // initialization explicit without changing its cleanup policy.
-  const unregister = registerSessionResourceCleanup(() => {
-    return undefined;
-  });
-  unregister();
-}
-
-function registeredModelConfig(
-  model: NonNullable<ReturnType<typeof resolvePiAgentModel>>,
-  apiKey: string,
-  config: Pick<
-    PiAgentModelConfig,
-    | "accountId"
-    | "dialect"
-    | "requestHeaders"
-    | "serviceTier"
-    | "transport"
-    | "catalogModel"
-    | "region"
-    | "bedrockAuth"
-  >,
-) {
-  return {
-    name: model.provider,
-    baseUrl: model.baseUrl,
-    apiKey,
-    api: model.api,
-    streamSimple: piAgentStreamForConfig(config),
-    models: [
-      {
-        id: model.id,
-        name: model.name,
-        api: model.api,
-        baseUrl: model.baseUrl,
-        reasoning: model.reasoning,
-        thinkingLevelMap: model.thinkingLevelMap,
-        input: model.input,
-        cost: model.cost,
-        contextWindow: model.contextWindow,
-        maxTokens: model.maxTokens,
-        headers: model.headers,
-        compat: model.compat,
-      },
-    ],
-  };
-}
 
 function configuredThinkingLevel(
   sessionManager: SessionManager,
