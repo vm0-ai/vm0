@@ -15,7 +15,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   Badge,
-  DialogScrollArea,
+  DialogBody,
   IconButton,
   cn,
 } from "@okouai/ui";
@@ -1241,11 +1241,13 @@ function PricingStepDialog({
           <PricingStepIndicator current={step} total={total} />
           <DialogClose
             render={
-              <IconButton className="-ml-1 shrink-0 text-muted-foreground hover:text-foreground" />
+              <IconButton
+                className="-ml-1 shrink-0 text-muted-foreground hover:text-foreground"
+                aria-label={t(($) => {
+                  return $.settings.shared.close;
+                })}
+              />
             }
-            aria-label={t(($) => {
-              return $.settings.shared.close;
-            })}
           >
             <X size={20} />
           </DialogClose>
@@ -1254,12 +1256,12 @@ function PricingStepDialog({
             bar lets the bar sit on the frame's edge. Otherwise the bar would
             float a padding's width above the frame whenever the body is short
             enough not to scroll. */}
-        <DialogScrollArea
+        <DialogBody
           scrollable={!flush}
-          className={cn("flex min-h-0 flex-1 flex-col", !flush && "px-5 pt-5")}
+          className={cn("flex flex-col", !flush && "overflow-y-auto px-5 pt-5")}
         >
           {children}
-        </DialogScrollArea>
+        </DialogBody>
       </DialogContent>
     </Dialog>
   );
@@ -1402,7 +1404,7 @@ function PlanSelectionStep({
        height of the body so the frame reads as two columns, not two cards.
        The columns take the scroll; the note stays pinned to the frame. */
     <div className="flex min-h-0 flex-1 flex-col">
-      <DialogScrollArea className="grid min-h-0 flex-1 grid-cols-1 sm:grid-cols-2">
+      <DialogBody className="grid grid-cols-1 overflow-y-auto sm:grid-cols-2">
         {USAGE_PACK_PLANS.map((plan, index) => {
           const action = resolveAction(plan.tier);
           return (
@@ -1419,7 +1421,7 @@ function PlanSelectionStep({
             />
           );
         })}
-      </DialogScrollArea>
+      </DialogBody>
       <p className="shrink-0 border-t border-[hsl(var(--gray-200))] bg-[hsl(var(--gray-0))] px-6 py-5 text-sm leading-snug text-muted-foreground">
         {i18n.t(($) => {
           return $.billing.plans.usagePacks.packagePerMemberNote;

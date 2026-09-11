@@ -211,10 +211,10 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
             )}
           >
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-              <DialogScrollArea
+              <DialogBody
                 data-slot="dialog-inner"
                 className={cn(
-                  "grid min-h-0 min-w-0 flex-1 gap-4 p-6",
+                  "grid gap-4 p-6",
                   contentClassName,
                   // A caller's clipping utility must not make footer actions
                   // unreachable when the safe viewport constrains the panel.
@@ -222,7 +222,7 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
                 )}
               >
                 {children}
-              </DialogScrollArea>
+              </DialogBody>
               {showCloseButton ? (
                 <DialogPrimitive.Close
                   data-slot="dialog-close"
@@ -245,34 +245,25 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
 );
 DialogContent.displayName = "DialogContent";
 
-interface DialogScrollAreaProps extends React.ComponentProps<"div"> {
-  /** Disable when a child region owns scrolling, keeping the same host element. */
+interface DialogBodyProps extends React.ComponentProps<"div"> {
+  /** Disable when a child owns scrolling, such as a plan grid below a header. */
   scrollable?: boolean;
 }
 
-function DialogScrollArea({
+function DialogBody({
   className,
   scrollable = true,
   ...props
-}: DialogScrollAreaProps) {
-  return (
-    <div
-      data-slot="dialog-scroll-area"
-      {...props}
-      className={cn(
-        scrollable &&
-          "overflow-y-auto [scrollbar-width:thin] [scrollbar-color:rgba(128,128,128,0.3)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:my-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-[3px] [&::-webkit-scrollbar-thumb]:bg-[rgba(128,128,128,0.3)] [&::-webkit-scrollbar-thumb:hover]:bg-[rgba(128,128,128,0.5)]",
-        className,
-      )}
-    />
-  );
-}
-
-function DialogBody({ className, ...props }: React.ComponentProps<"div">) {
+}: DialogBodyProps) {
   return (
     <div
       data-slot="dialog-body"
-      className={cn("min-h-0 min-w-0 flex-1 overflow-auto", className)}
+      className={cn(
+        "min-h-0 min-w-0 flex-1",
+        scrollable &&
+          "overflow-auto [scrollbar-width:thin] [scrollbar-color:rgba(128,128,128,0.3)_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:my-1 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-[3px] [&::-webkit-scrollbar-thumb]:bg-[rgba(128,128,128,0.3)] [&::-webkit-scrollbar-thumb:hover]:bg-[rgba(128,128,128,0.5)]",
+        className,
+      )}
       {...props}
     />
   );
@@ -336,7 +327,6 @@ export {
   DialogTrigger,
   DialogContent,
   DialogBody,
-  DialogScrollArea,
   DialogHeader,
   DialogFooter,
   DialogTitle,

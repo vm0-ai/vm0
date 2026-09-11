@@ -27,8 +27,7 @@ describe("Dialog", () => {
             <DialogTitle>Settings</DialogTitle>
             {customClose && (
               <DialogClose
-                render={<IconButton />}
-                aria-label="Dismiss settings"
+                render={<IconButton aria-label="Dismiss settings" />}
               >
                 ×
               </DialogClose>

@@ -120,35 +120,35 @@ Line height belongs to the badge because a font-size utility with an arbitrary v
 
 The `okou-badge`, `okou-pill`, and `okou-border-r` selectors and their consumers have been removed. `okou-pill` was scoped to `.okou-app` and set the muted foreground; its only consumer now spells that foreground itself. `okou-border-r` was a single settings-dialog divider and became `border-r border-r-gray-300` on that nav, keeping its lighter Gray 300 stroke while its width joins the shared hairline token.
 
-### Dialog and sheet controls
+### Icon controls and dialog bodies
 
-`IconButton` from `@okouai/ui` owns the square icon-only control used by dialog
-and sheet close buttons: a native 36px button with the shared radius, muted
-hover fill, and focus ring. Callers supply the icon, accessible label,
-foreground, and positioning. Compose it with `DialogClose` through `render` so
-Base UI retains dismissal and focus ownership. Unlike the action `Button`,
-this control preserves inherited typography and the supplied icon's size.
+`IconButton` from `@okouai/ui` owns a neutral 36px square control, the shared
+radius, muted hover fill, and keyboard focus ring. Its `aria-label` is required;
+callers provide the icon, foreground, opacity, and positioning. It reuses
+`ButtonBase` for native button behavior, refs, render/asChild composition, and
+optional tooltip support. Tooltip stays off by default. Use `Button` for action
+variants; `IconButton` preserves the neutral dialog and sheet close treatment.
+Compose it through `DialogClose` or `SheetClose` using `render` so Base UI keeps
+ownership of closing and focus restoration, with one native button in the DOM.
 
-`DialogScrollArea` from `@okouai/ui` owns vertical scrolling and the thin dialog
-scrollbar on a single native `div`. Callers keep their layout and padding;
-`scrollable={false}` leaves scrolling to a child without replacing the host or
-remounting its children. `DialogBody` retains its existing flex-body defaults.
-The WebKit scrollbar pseudo-elements use Tailwind arbitrary variants inside
-the component. Keep these utility strings private; share components and
-semantic props instead of exporting className constants.
+`DialogBody` owns a native scrolling body and its thin scrollbar. It adds no
+wrapper: layout, padding, and grid columns stay with the caller. Set
+`scrollable={false}` when a child owns scrolling, as in the plan-selection grid
+below a fixed header; the body keeps the same DOM element across step changes.
+The existing `overflow-hidden` override used by artifact previews is retained.
+The default `DialogContent` inner container also uses `DialogBody`, preserving
+its `dialog-inner` slot and its protected vertical scrolling.
 
-The App base layer already styles `*::-webkit-scrollbar` for the whole product.
-The recipe only ever differed from that default in three declarations: the
-`scrollbar-color` thumb, the track's `4px 0` margin, and the thumb's own fill
-and hover fill, which use a literal grey rather than the muted foreground. The
-replacement reproduces every declaration, including the ones that duplicate the
-global default, so the scroll container does not silently depend on that rule
-staying as it is.
+Scrollbar styling is private to `DialogBody`, not an exported class-name API.
+Tailwind arbitrary variants address WebKit pseudo-elements. The component owns
+the 6px width, 3px thumb radius, 4px vertical track inset, transparent track,
+and neutral thumb colors, including hover. All default dialog bodies use this
+treatment, including the existing workflow-recommendation detail body; artifact
+previews retain their own clipping and internal scroll ownership.
 
-The `icon-button` and `dialog-scrollable` recipes have been removed from the
-shared stylesheet. `icon-tooltip-trigger` stays for now: its only rule is
-`.wmde-markdown .mermaid-block > .icon-tooltip-trigger`, which belongs to the
-Mermaid block and migrates with it.
+The `icon-button` and `dialog-scrollable` selectors and their dependencies have
+been removed. `icon-tooltip-trigger` remains scoped to the third-party Mermaid
+block and migrates with that adapter.
 
 ## Exception boundary
 

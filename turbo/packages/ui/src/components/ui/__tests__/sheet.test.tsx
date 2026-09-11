@@ -1,10 +1,37 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { Dialog, DialogContent, DialogTitle } from "../dialog";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "../sheet";
 
 describe("Sheet", () => {
+  it("closes the nested sheet and returns focus to its parent dialog", async () => {
+    const user = userEvent.setup();
+    render(
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>Connections</DialogTitle>
+          <Sheet>
+            <SheetTrigger>Open permissions</SheetTrigger>
+            <SheetContent>
+              <SheetTitle>Permissions</SheetTitle>
+            </SheetContent>
+          </Sheet>
+        </DialogContent>
+      </Dialog>,
+    );
+
+    const trigger = screen.getByRole("button", { name: "Open permissions" });
+    await user.click(trigger);
+    const sheet = screen.getByRole("dialog", { name: "Permissions" });
+    await user.click(within(sheet).getByRole("button", { name: "Close" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Permissions" })).toBeNull();
+      expect(trigger).toHaveFocus();
+    });
+    expect(screen.getByRole("dialog", { name: "Connections" })).toBeVisible();
+  });
+
   it("closes through the icon control and restores trigger focus", async () => {
     const user = userEvent.setup();
     render(

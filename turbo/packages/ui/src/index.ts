@@ -19,7 +19,7 @@ export {
   cardClassName,
 } from "./components/ui/card";
 export { Badge, type BadgeProps } from "./components/ui/badge";
-export { IconButton } from "./components/ui/icon-button";
+export { IconButton, type IconButtonProps } from "./components/ui/icon-button";
 export { Checkbox } from "./components/ui/checkbox";
 export {
   ToggleButton,
@@ -43,7 +43,6 @@ export {
   DialogFooter,
   DialogTitle,
   DialogDescription,
-  DialogScrollArea,
 } from "./components/ui/dialog";
 export {
   Command,
