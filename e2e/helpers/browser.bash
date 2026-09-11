@@ -538,9 +538,6 @@ delete_e2e_account_if_exists() {
 
   local users_payload
   users_payload=$(curl -sS \
-    --retry 3 \
-    --retry-max-time 30 \
-    --retry-all-errors \
     -w '\n%{http_code}' \
     --get "${clerk_api_url}/v1/users" \
     --data-urlencode "email_address[]=${E2E_ACCOUNT}" \
@@ -573,9 +570,6 @@ delete_e2e_account_if_exists() {
     echo "Deleting E2E account: ${E2E_ACCOUNT} (${user_id})" >&2
     local delete_status
     if ! delete_status=$(curl -sS \
-      --retry 3 \
-      --retry-max-time 30 \
-      --retry-all-errors \
       -o /dev/null \
       -w '%{http_code}' \
       -X DELETE \

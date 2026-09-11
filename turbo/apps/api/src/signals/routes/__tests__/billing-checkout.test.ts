@@ -147,10 +147,11 @@ const STRIPE_WEBHOOK_SECRET = "whsec_checkout_test";
 
 class ClerkApiResponseTestError extends Error {
   static readonly kind = "ClerkAPIResponseError";
-  readonly status = 429;
-
-  constructor(readonly retryAfter: number) {
-    super("Clerk Backend API rate limit exceeded");
+  constructor(
+    readonly retryAfter: number,
+    readonly status = 429,
+  ) {
+    super(`Clerk Backend API request failed with ${status}`);
   }
 }
 
@@ -3016,13 +3017,13 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     });
   });
 
-  it("recovers usage pack checkout from a transient Clerk rate limit", async () => {
+  it("recovers usage pack checkout from a transient Clerk server failure", async () => {
     const fixture = createOrgFixture();
     authenticateOrg(fixture);
     const checkoutSessionId = `cs_${randomUUID()}`;
     context.mocks.signalTimers.delay.mockResolvedValue(undefined);
     context.mocks.clerk.organizations.getOrganizationMembershipList
-      .mockRejectedValueOnce(new ClerkApiResponseTestError(2))
+      .mockRejectedValueOnce(new ClerkApiResponseTestError(2, 521))
       .mockResolvedValue({
         data: [
           {
@@ -3082,7 +3083,7 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     );
   });
 
-  it("returns a non-cacheable 503 when Clerk rate limits persist", async () => {
+  it("returns a non-cacheable 503 on the first Clerk rate limit", async () => {
     const fixture = createOrgFixture();
     authenticateOrg(fixture);
     context.mocks.signalTimers.delay.mockResolvedValue(undefined);
@@ -3113,8 +3114,8 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(
       context.mocks.clerk.organizations.getOrganizationMembershipList,
-    ).toHaveBeenCalledTimes(3);
-    expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(2);
+    ).toHaveBeenCalledTimes(1);
+    expect(context.mocks.signalTimers.delay).not.toHaveBeenCalled();
     expect(context.mocks.stripe.customers.create).not.toHaveBeenCalled();
     expect(
       context.mocks.stripe.checkout.sessions.create,
@@ -3152,7 +3153,7 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("stops sibling Clerk pagination after checkout directory exhaustion", async () => {
+  it("stops sibling Clerk pagination after a checkout directory rate limit", async () => {
     const fixture = createOrgFixture();
     authenticateOrg(fixture);
     const invitationPage = createDeferredPromise<{
@@ -3182,9 +3183,10 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     );
 
     expect(response.headers.get("Retry-After")).toBe("1");
+    expect(context.mocks.signalTimers.delay).not.toHaveBeenCalled();
     expect(
       context.mocks.clerk.organizations.getOrganizationMembershipList,
-    ).toHaveBeenCalledTimes(3);
+    ).toHaveBeenCalledTimes(1);
     expect(
       context.mocks.clerk.organizations.getOrganizationInvitationList,
     ).toHaveBeenCalledTimes(1);
@@ -3209,7 +3211,7 @@ describe("POST /api/billing/usage-pack-checkout", () => {
     ).toHaveBeenCalledTimes(1);
   });
 
-  it("stops Clerk retries when usage pack checkout is cancelled", async () => {
+  it("stops Clerk 5xx retries when usage pack checkout is cancelled", async () => {
     const fixture = createOrgFixture();
     authenticateOrg(fixture);
     const controller = new AbortController();
@@ -3225,7 +3227,7 @@ describe("POST /api/billing/usage-pack-checkout", () => {
       return createDeferredPromise<void>(signal).promise;
     });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
-      new ClerkApiResponseTestError(1),
+      new ClerkApiResponseTestError(1, 521),
     );
     context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
       { data: [] },
@@ -13845,7 +13847,7 @@ describe("usage pack allocation management", () => {
     );
   });
 
-  it("recovers a saved-card invitation from a transient post-payment Clerk rate limit", async () => {
+  it("recovers a saved-card invitation from a transient post-payment Clerk server failure", async () => {
     mockEnv("APP_URL", "https://app.okou.ai");
     mockNow(new Date("2035-05-15T00:00:00.000Z"));
     onTestFinished(() => {
@@ -14024,7 +14026,7 @@ describe("usage pack allocation management", () => {
           },
         ],
       })
-      .mockRejectedValueOnce(new ClerkApiResponseTestError(2))
+      .mockRejectedValueOnce(new ClerkApiResponseTestError(2, 521))
       .mockResolvedValue({
         data: [
           {
@@ -14171,7 +14173,7 @@ describe("usage pack allocation management", () => {
     ]);
   });
 
-  it("returns a retryable 503 before starting payment when Clerk rate limits persist", async () => {
+  it("returns a retryable 503 before starting payment on the first Clerk rate limit", async () => {
     const purchase = await beginInvitationPurchase();
     context.mocks.signalTimers.delay.mockResolvedValue(undefined);
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockClear();
@@ -14204,8 +14206,8 @@ describe("usage pack allocation management", () => {
     expect(response.headers.get("Cache-Control")).toBe("no-store");
     expect(
       context.mocks.clerk.organizations.getOrganizationMembershipList,
-    ).toHaveBeenCalledTimes(3);
-    expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(2);
+    ).toHaveBeenCalledTimes(1);
+    expect(context.mocks.signalTimers.delay).not.toHaveBeenCalled();
     expect(context.mocks.stripe.invoices.createPreview).not.toHaveBeenCalled();
     expect(
       context.mocks.clerk.organizations.createOrganizationInvitation,
@@ -14259,7 +14261,7 @@ describe("usage pack allocation management", () => {
     ).toHaveLength(1);
   });
 
-  it("stops Clerk retries when an invitation purchase is cancelled", async () => {
+  it("stops Clerk 5xx retries when an invitation purchase is cancelled", async () => {
     await beginInvitationPurchase();
     const controller = new AbortController();
     const retryStarted = createDeferredPromise<void>(context.signal);
@@ -14275,7 +14277,7 @@ describe("usage pack allocation management", () => {
     });
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockClear();
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockRejectedValue(
-      new ClerkApiResponseTestError(1),
+      new ClerkApiResponseTestError(1, 521),
     );
     context.mocks.stripe.invoices.createPreview.mockClear();
     const request = setupApp({ context, routes: orgInviteRoutes })(
@@ -14307,7 +14309,7 @@ describe("usage pack allocation management", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("resumes invitation creation after a persistent post-payment Clerk rate limit", async () => {
+  it("resumes invitation creation on a later request after a post-payment Clerk rate limit", async () => {
     const purchase = await beginInvitationPurchase();
     const paymentIntentId = mockSavedCardInvitationPayment(purchase);
     const invitationId = `inv_resumed_${randomUUID()}`;
@@ -14343,8 +14345,8 @@ describe("usage pack allocation management", () => {
     expect(limited.headers.get("Cache-Control")).toBe("no-store");
     expect(
       context.mocks.clerk.organizations.getOrganizationMembershipList,
-    ).toHaveBeenCalledTimes(3);
-    expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(1);
+    ).toHaveBeenCalledTimes(2);
+    expect(context.mocks.signalTimers.delay).not.toHaveBeenCalled();
     const paid = await readUsagePackState(
       purchase.fixture.orgId,
       purchase.fixture.usagePackSubscriptionId,

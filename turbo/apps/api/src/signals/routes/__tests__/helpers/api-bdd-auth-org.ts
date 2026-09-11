@@ -170,7 +170,7 @@ interface ClerkLogoState {
 
 interface MembershipRequestHandlerOptions {
   readonly requests?: readonly BddMembershipRequest[];
-  readonly listStatus?: 200 | 404 | 429;
+  readonly listStatus?: 200 | 404 | 429 | 521;
   readonly retryAfterSeconds?: number;
   readonly acceptStatus?: 200 | 404;
   readonly rejectStatus?: 200 | 404;
