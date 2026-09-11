@@ -80,10 +80,6 @@ import { setupBankingConnectReturnPage$ } from "./banking-connect-return-page-se
 import { setupEmailUnsubscribePage$ } from "./email-unsubscribe/email-unsubscribe-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
 import {
-  setupSignInV2Page$,
-  setupSignUpV2Page$,
-} from "./auth-v2-page-setup.ts";
-import {
   setupSignInV1Page$,
   setupSignUpV1Page$,
 } from "./auth-v1-page-setup.ts";
@@ -211,34 +207,18 @@ const ROUTE_CONFIG = [
   },
   {
     path: ROUTES.signIn,
-    setup: setupPageWrapper(setupSignInV2Page$),
+    setup: setupPageWrapper(setupSignInV1Page$),
   },
   {
     path: ROUTES.signInCatchAll,
-    setup: setupPageWrapper(setupSignInV2Page$),
+    setup: setupPageWrapper(setupSignInV1Page$),
   },
   {
     path: ROUTES.signUp,
-    setup: setupPageWrapper(setupSignUpV2Page$),
-  },
-  {
-    path: ROUTES.signUpCatchAll,
-    setup: setupPageWrapper(setupSignUpV2Page$),
-  },
-  {
-    path: ROUTES.signInV1,
-    setup: setupPageWrapper(setupSignInV1Page$),
-  },
-  {
-    path: ROUTES.signInV1CatchAll,
-    setup: setupPageWrapper(setupSignInV1Page$),
-  },
-  {
-    path: ROUTES.signUpV1,
     setup: setupPageWrapper(setupSignUpV1Page$),
   },
   {
-    path: ROUTES.signUpV1CatchAll,
+    path: ROUTES.signUpCatchAll,
     setup: setupPageWrapper(setupSignUpV1Page$),
   },
 
@@ -573,7 +553,7 @@ const completeBootstrap$ = command(
     render();
 
     // These public protocol pages also run before an embedded Clerk session exists.
-    // Auth v2 task continuations retain the same ownership via redirect_url.
+    // Hosted Clerk task continuations retain the same ownership via redirect_url.
     if (isDesktopAuthFlow()) {
       await Promise.all([
         set(setupClerk$, signal),

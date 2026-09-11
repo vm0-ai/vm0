@@ -1,12 +1,5 @@
 import { expect, type Page } from "@playwright/test";
 
-import {
-  authV2Input,
-  authV2Root,
-  openAuthV2,
-  signInMethodButton,
-  submitSignInIdentifier,
-} from "./auth-v2-ui";
 import { waitForClerkReadiness } from "./clerk-readiness";
 
 const CLERK_TEST_EMAIL_CODE = "424242";
@@ -39,8 +32,11 @@ export async function signInWithClerkEmailCode(
   options: ClerkEmailCodeSignInOptions,
 ): Promise<string> {
   const signInUrl = new URL("/sign-in", appUrl);
-  await openAuthV2(page, signInUrl.toString());
-  await submitSignInIdentifier(page, email);
+  await page.goto(signInUrl.toString(), { waitUntil: "domcontentloaded" });
+  const emailAddress = page.getByLabel("Email address", { exact: true });
+  await expect(emailAddress).toBeVisible({ timeout: 30_000 });
+  await emailAddress.fill(email);
+  await page.getByRole("button", { exact: true, name: "Continue" }).click();
   await submitClerkEmailCode(page);
   await page.waitForURL(
     (url) =>
@@ -82,19 +78,22 @@ export async function signInWithClerkEmailCode(
 }
 
 async function submitClerkEmailCode(page: Page): Promise<void> {
-  const root = authV2Root(page);
-  const codeInput = authV2Input(page, "code");
-  const emailCodeButton = signInMethodButton(page, "email-code");
-  const useAnotherMethodButton = root.getByRole("button", {
+  const codeInput = page.getByRole("textbox", {
+    name: "Enter verification code",
+  });
+  const emailCodeButton = page
+    .getByRole("button", { name: /email code/i })
+    .first();
+  const useAnotherMethodLink = page.getByRole("link", {
     name: /use another method/i,
   });
 
   await expect(
-    codeInput.or(emailCodeButton).or(useAnotherMethodButton),
+    codeInput.or(emailCodeButton).or(useAnotherMethodLink),
   ).toBeVisible({ timeout: 30_000 });
   if (!(await codeInput.isVisible())) {
-    if (await useAnotherMethodButton.isVisible()) {
-      await useAnotherMethodButton.click();
+    if (await useAnotherMethodLink.isVisible()) {
+      await useAnotherMethodLink.click();
     }
     await expect(emailCodeButton).toBeVisible({ timeout: 30_000 });
     await emailCodeButton.click();
@@ -102,7 +101,6 @@ async function submitClerkEmailCode(page: Page): Promise<void> {
 
   await expect(codeInput).toBeVisible({ timeout: 30_000 });
   await codeInput.fill(CLERK_TEST_EMAIL_CODE);
-  await root.getByRole("button", { exact: true, name: "Continue" }).click();
 }
 
 async function activateClerkOrganization(

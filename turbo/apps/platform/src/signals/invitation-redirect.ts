@@ -1,12 +1,9 @@
 import { command, state } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import { clerk$ } from "./auth.ts";
-import { openAuthV2AddAccountDialog$ } from "./okou-page/auth-v2-add-account-dialog.ts";
+import { clerk$, openClerkAddAccount$ } from "./auth.ts";
 import { replaceSearchParams$, searchParams$ } from "./route.ts";
 import { jsonParseOr, onDomEventFn } from "./utils.ts";
 import { i18n } from "../i18n/index.ts";
-
-import { captureAuthV2Invitation$ } from "./auth-v2/invitation.ts";
 
 const CLERK_STATUS_PARAM = "__clerk_status";
 const CLERK_TICKET_PARAM = "__clerk_ticket";
@@ -69,7 +66,6 @@ function organizationIdFromTicket(ticket: string): string | null {
 export const captureInvitationRedirect$ = command(({ get, set }) => {
   const searchParams = new URLSearchParams(get(searchParams$));
   if (searchParams.get(CLERK_STATUS_PARAM) !== "complete") {
-    set(captureAuthV2Invitation$);
     return;
   }
 
@@ -145,7 +141,7 @@ export const handleInvitationRedirect$ = command(
             return $.invitationRedirect.actions.switchAccount;
           }),
           onClick: onDomEventFn(async () => {
-            await set(openAuthV2AddAccountDialog$, signal);
+            await set(openClerkAddAccount$, signal);
           }),
         },
       },

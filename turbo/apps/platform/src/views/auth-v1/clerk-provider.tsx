@@ -59,7 +59,7 @@ export function AuthV1ClerkProvider({
   const providerProps = {
     Clerk: clerk,
     ui,
-    afterSignOutUrl: resolveAppAuthUrl("/v1/sign-in"),
+    afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
     allowedRedirectOrigins,
     appearance: getAuthV1ProviderAppearance(theme),
     localization: clerkLocalizationForLocale(clerkLocalizations, locale),
@@ -67,9 +67,9 @@ export function AuthV1ClerkProvider({
     routerPush: clerkRouterPush,
     routerReplace: clerkRouterReplace,
     signInFallbackRedirectUrl: appUrl,
-    signInUrl: resolveAppAuthUrl("/v1/sign-in"),
+    signInUrl: resolveAppAuthUrl("/sign-in"),
     signUpFallbackRedirectUrl: appUrl,
-    signUpUrl: resolveAppAuthUrl("/v1/sign-up"),
+    signUpUrl: resolveAppAuthUrl("/sign-up"),
   };
   return (
     <BaseClerkProvider {...providerProps}>

@@ -6,6 +6,7 @@ import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import {
+  buildAuthModeSwitchUrl,
   buildSignInRedirectUrl,
   buildSignupRedirectUrl,
   resolveAuthBrandContext,
@@ -57,10 +58,22 @@ function AuthV1PageContent({ mode }: Pick<AuthV1PageProps, "mode">) {
       undefined,
       location.hash,
     );
+    const signInUrl = buildAuthModeSwitchUrl(
+      "/sign-in",
+      location.search,
+      undefined,
+      location.hash,
+    );
+    const signUpUrl = buildAuthModeSwitchUrl(
+      "/sign-up",
+      location.search,
+      undefined,
+      location.hash,
+    );
 
     return (
       <>
-        {activeRoute === "signInV1" && (
+        {activeRoute === "signIn" && (
           <GoogleOneTap
             signInForceRedirectUrl={redirectUrl}
             signUpForceRedirectUrl={redirectUrl}
@@ -77,10 +90,10 @@ function AuthV1PageContent({ mode }: Pick<AuthV1PageProps, "mode">) {
               fallback={<AuthLoadingFallback />}
               fallbackRedirectUrl={redirectUrl}
               forceRedirectUrl={redirectUrl}
-              path="/v1/sign-in"
+              path="/sign-in"
               routing="path"
-              signInUrl="/v1/sign-in"
-              signUpUrl="/v1/sign-up"
+              signInUrl={signInUrl}
+              signUpUrl={signUpUrl}
             />
           </div>
         </AuthV1Layout>
@@ -89,6 +102,12 @@ function AuthV1PageContent({ mode }: Pick<AuthV1PageProps, "mode">) {
   }
 
   const redirectUrl = buildSignupRedirectUrl(
+    location.search,
+    undefined,
+    location.hash,
+  );
+  const signInUrl = buildAuthModeSwitchUrl(
+    "/sign-in",
     location.search,
     undefined,
     location.hash,
@@ -106,9 +125,9 @@ function AuthV1PageContent({ mode }: Pick<AuthV1PageProps, "mode">) {
           fallback={<AuthLoadingFallback />}
           fallbackRedirectUrl={redirectUrl}
           forceRedirectUrl={redirectUrl}
-          path="/v1/sign-up"
+          path="/sign-up"
           routing="path"
-          signInUrl="/v1/sign-in"
+          signInUrl={signInUrl}
         />
       </div>
     </AuthV1Layout>

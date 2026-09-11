@@ -127,7 +127,7 @@ export function resolveAppUrl(): string {
 }
 
 export function resolveAppAuthUrl(
-  path: `/sign-${string}` | `/v1/sign-${string}`,
+  path: `/sign-${string}`,
   options: { redirectUrl?: string } = {},
 ): string {
   const appOrigin = resolveAuthOrigin();
@@ -301,6 +301,45 @@ export function buildSignInRedirectUrl(
   return redirectUrl?.toString() ?? resolveAppUrl();
 }
 
+export function buildAuthModeSwitchUrl(
+  path: "/sign-in" | "/sign-up",
+  authSearch: string,
+  allowedRedirectOrigins: readonly AllowedAuthRedirectOrigin[] = getAllowedAuthRedirectOriginsForCurrentPage(),
+  authHash = "",
+): string {
+  const redirectUrl = readAllowedRedirectUrl(
+    readAuthRedirectParams(authSearch, authHash),
+    allowedRedirectOrigins,
+  );
+  const searchParams = new URLSearchParams(authSearch);
+  if (searchParams.has("redirect_url")) {
+    if (redirectUrl) {
+      searchParams.set("redirect_url", redirectUrl.toString());
+    } else {
+      searchParams.delete("redirect_url");
+    }
+  }
+
+  const hashQueryIndex = authHash.indexOf("?");
+  let hash = authHash;
+  if (hashQueryIndex !== -1) {
+    const hashParams = new URLSearchParams(authHash.slice(hashQueryIndex + 1));
+    if (hashParams.has("redirect_url")) {
+      if (redirectUrl) {
+        hashParams.set("redirect_url", redirectUrl.toString());
+      } else {
+        hashParams.delete("redirect_url");
+      }
+      const hashPath = authHash.slice(0, hashQueryIndex);
+      const hashSearch = hashParams.toString();
+      hash = hashSearch ? `${hashPath}?${hashSearch}` : hashPath;
+    }
+  }
+
+  const search = searchParams.toString();
+  return `${path}${search ? `?${search}` : ""}${hash}`;
+}
+
 // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const clerkRuntime$ = computed(async (get) => {
   const { clerkPublishableKey } = resolvePlatformRuntimeConfig();
@@ -325,10 +364,7 @@ export const clerk$ = computed(async (get) => {
   return runtime.clerk;
 });
 
-/**
- * Hosted Clerk UI stays route-scoped: only v1 comparison pages request it,
- * while stable auth and application routes keep the core-only download.
- */
+/** Load Clerk's optional hosted UI for auth pages and account switching. */
 export const ensureClerkUiLoaded$ = command(
   async ({ get }, signal: AbortSignal) => {
     const runtime = await get(clerkRuntime$);
@@ -336,6 +372,21 @@ export const ensureClerkUiLoaded$ = command(
     const ui = await runtime.ensureUiLoaded();
     signal.throwIfAborted();
     return ui;
+  },
+);
+
+/** Open Clerk's hosted account switcher without leaving the active app page. */
+export const openClerkAddAccount$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+    await set(ensureClerkUiLoaded$, signal);
+    signal.throwIfAborted();
+    await clerk.openSignIn({
+      fallbackRedirectUrl: "/",
+      forceRedirectUrl: "/",
+    });
+    signal.throwIfAborted();
   },
 );
 
