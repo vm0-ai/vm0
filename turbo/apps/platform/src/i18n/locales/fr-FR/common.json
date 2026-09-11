@@ -3174,16 +3174,19 @@
         "connected": "Aucun connecteur connecté",
         "matching": "{{message}} correspondant à \"{{search}}\"",
         "notConnected": "Aucun connecteur restant à connecter",
-        "search": "Aucun connecteur correspondant à \"{{search}}\""
+        "search": "Aucun connecteur correspondant à \"{{search}}\"",
+        "unshared": "Chaque connecteur est partagé avec un agent"
       },
       "filterCategory": "Catégorie",
       "filters": {
         "agents": "Agents",
         "all": "Tous",
+        "allAgents": "Tous les agents",
         "aria": "Filtrer les connecteurs",
         "connected": "Connecté",
         "notConnected": "Non connecté",
-        "status": "Statut"
+        "status": "Statut",
+        "unshared": "Partagé avec aucun agent"
       },
       "filterWith": "Filtre : {{category}}",
       "iconUnavailable": "Icône du connecteur indisponible",
@@ -3191,6 +3194,13 @@
       "noConnectorsAlt": "Aucun connecteur",
       "otherCategory": "Autre",
       "remoteAccess": "Accès à distance",
+      "scope": {
+        "aria": "Portée des connecteurs",
+        "attention": "Nécessite votre attention",
+        "discover": "Découvrir",
+        "mine": "Vos connecteurs",
+        "searchMine": "Trouver vos connecteurs"
+      },
       "search": "Trouver des connecteurs",
       "shelf": {
         "moreCategories": "Autres catégories",
@@ -3198,8 +3208,7 @@
         "seeMore_one": "Voir {{names}} et {{count}} autre",
         "seeMore_many": "Voir {{names}} et {{count}} autres",
         "seeMore_other": "Voir {{names}} et {{count}} autres",
-        "top": "Connecteurs principaux",
-        "yours": "Vos connecteurs"
+        "top": "Connecteurs principaux"
       },
       "tabs": {
         "builtin": "Intégré",

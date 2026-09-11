@@ -38,6 +38,8 @@ import {
   reloadConnectors$,
 } from "../../external/connectors.ts";
 import { replaceSearchParams$, searchParams$ } from "../../route.ts";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
+import { featureSwitch$ } from "../../external/feature-switch.ts";
 import { connectorAgentAuthorizations$ } from "./connector-access-management.ts";
 import {
   OAUTH_API_BASE,
@@ -440,7 +442,46 @@ export function matchesConnectorDirectorySearch(
 const CONNECTORS_SEARCH_PARAM = "keywords";
 const CONNECTORS_CONNECTION_FILTER_PARAM = "connection";
 const CONNECTORS_CATEGORY_PARAM = "category";
+const CONNECTORS_SCOPE_PARAM = "scope";
 const CONNECTORS_AGENT_FILTER_PREFIX = "agent:";
+
+/**
+ * Which of the two lists the connectors page is showing. They are different
+ * tasks — checking who can use Gmail, and finding something that talks to
+ * Shopify — and each is organised by a different dimension, so a single
+ * toolbar cannot serve both. Discovery is the default because that is what a
+ * visit is usually for.
+ */
+export type ConnectorsScope = "discover" | "mine";
+
+export const connectorsScope$ = computed((get): ConnectorsScope => {
+  // Only the directory offers the control that sets this, so without it the
+  // page has one list and one scope.
+  if (get(featureSwitch$)[FeatureSwitchKey.ConnectorDirectory] !== true) {
+    return "discover";
+  }
+  return get(searchParams$).get(CONNECTORS_SCOPE_PARAM) === "mine"
+    ? "mine"
+    : "discover";
+});
+
+export const setConnectorsScope$ = command(
+  ({ get, set }, value: ConnectorsScope) => {
+    const params = new URLSearchParams(get(searchParams$));
+    if (value === "mine") {
+      params.set(CONNECTORS_SCOPE_PARAM, value);
+    } else {
+      params.delete(CONNECTORS_SCOPE_PARAM);
+    }
+    // Every other control belongs to the scope that was just left: a category
+    // means nothing among the connectors you already have, and an agent means
+    // nothing in a catalog of four thousand.
+    params.delete(CONNECTORS_SEARCH_PARAM);
+    params.delete(CONNECTORS_CATEGORY_PARAM);
+    params.delete(CONNECTORS_CONNECTION_FILTER_PARAM);
+    set(replaceSearchParams$, params);
+  },
+);
 
 // A single, mutually-exclusive connector filter: all connectors, a connection
 // status, or the connectors a given agent is authorized to use.
@@ -448,6 +489,7 @@ export type ConnectorsConnectionFilter =
   | { readonly kind: "all" }
   | { readonly kind: "connected" }
   | { readonly kind: "not-connected" }
+  | { readonly kind: "unshared" }
   | { readonly kind: "agent"; readonly agentId: string };
 
 export const connectorsConnectionFilter$ = computed(
@@ -458,6 +500,9 @@ export const connectorsConnectionFilter$ = computed(
     }
     if (raw === "not-connected") {
       return { kind: "not-connected" };
+    }
+    if (raw === "unshared") {
+      return { kind: "unshared" };
     }
     if (raw?.startsWith(CONNECTORS_AGENT_FILTER_PREFIX)) {
       const agentId = raw.slice(CONNECTORS_AGENT_FILTER_PREFIX.length);
@@ -518,6 +563,7 @@ export const filteredConnectorCatalogItems$ = computed(async (get) => {
   const keyword = get(connectorsSearch$);
   const effectiveFilter = get(connectorsConnectionFilter$);
   const category = get(connectorsCategoryFilter$);
+  const scope = get(connectorsScope$);
 
   const agentEnabledSlugs =
     effectiveFilter.kind === "agent"
@@ -525,6 +571,14 @@ export const filteredConnectorCatalogItems$ = computed(async (get) => {
           (await get(connectorAgentAuthorizations$)).find((row) => {
             return row.agent.agentId === effectiveFilter.agentId;
           })?.enabledConnectorSlugs ?? [],
+        )
+      : null;
+  const sharedSlugs =
+    effectiveFilter.kind === "unshared"
+      ? new Set(
+          (await get(connectorAgentAuthorizations$)).flatMap((row) => {
+            return [...row.enabledConnectorSlugs];
+          }),
         )
       : null;
 
@@ -536,11 +590,19 @@ export const filteredConnectorCatalogItems$ = computed(async (get) => {
     if (category !== null && connector.category !== category) {
       return false;
     }
+    // The "yours" scope is membership, not a filter: whatever else is chosen,
+    // it only ever shows what this workspace has already connected.
+    if (scope === "mine" && !connector.connected) {
+      return false;
+    }
     if (effectiveFilter.kind === "connected") {
       return connector.connected;
     }
     if (effectiveFilter.kind === "not-connected") {
       return !connector.connected;
+    }
+    if (effectiveFilter.kind === "unshared") {
+      return !sharedSlugs?.has(connector.slug);
     }
     if (effectiveFilter.kind === "agent") {
       return agentEnabledSlugs?.has(connector.slug) ?? false;

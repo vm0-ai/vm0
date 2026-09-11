@@ -3113,16 +3113,19 @@
         "connected": "コネクタが接続されていません",
         "matching": "{{message}} が「{{search}}」に一致",
         "notConnected": "接続するコネクタが残っていない",
-        "search": "「{{search}}」に一致するコネクタはありません"
+        "search": "「{{search}}」に一致するコネクタはありません",
+        "unshared": "すべてのコネクタがいずれかのエージェントと共有されています"
       },
       "filterCategory": "カテゴリ",
       "filters": {
         "agents": "エージェント",
         "all": "すべて",
+        "allAgents": "すべてのエージェント",
         "aria": "フィルターコネクター",
         "connected": "接続済み",
         "notConnected": "接続されていません",
-        "status": "ステータス"
+        "status": "ステータス",
+        "unshared": "どのエージェントとも共有されていません"
       },
       "filterWith": "フィルタ: {{category}}",
       "iconUnavailable": "コネクタアイコンが使用不可",
@@ -3130,14 +3133,20 @@
       "noConnectorsAlt": "コネクターなし",
       "otherCategory": "その他",
       "remoteAccess": "リモートアクセス",
+      "scope": {
+        "aria": "コネクタの表示範囲",
+        "attention": "対応が必要",
+        "discover": "探す",
+        "mine": "あなたのコネクタ",
+        "searchMine": "あなたのコネクタを検索"
+      },
       "search": "コネクターを検索",
       "shelf": {
         "moreCategories": "その他のカテゴリ",
         "popular": "人気",
         "seeMore_one": "{{names}} ほか {{count}} 件を見る",
         "seeMore_other": "{{names}} ほか {{count}} 件を見る",
-        "top": "人気のコネクタ",
-        "yours": "あなたのコネクタ"
+        "top": "人気のコネクタ"
       },
       "tabs": {
         "builtin": "内蔵",

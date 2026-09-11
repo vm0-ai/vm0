@@ -3174,16 +3174,19 @@
         "connected": "Sin conectores conectados",
         "matching": "{{message}} \"{{search}}\" que coincida",
         "notConnected": "No quedan conectores para conectar",
-        "search": "No hay conectores que coincidan con \"{{search}}\""
+        "search": "No hay conectores que coincidan con \"{{search}}\"",
+        "unshared": "Todos los conectores están compartidos con un agente"
       },
       "filterCategory": "Categoría",
       "filters": {
         "agents": "Agentes",
         "all": "Todos",
+        "allAgents": "Todos los agentes",
         "aria": "Conectores de filtro",
         "connected": "Conectados",
         "notConnected": "No conectado",
-        "status": "Estado"
+        "status": "Estado",
+        "unshared": "No compartido con ningún agente"
       },
       "filterWith": "Filtro: {{category}}",
       "iconUnavailable": "Icono del conector no disponible",
@@ -3191,6 +3194,13 @@
       "noConnectorsAlt": "Sin conectores",
       "otherCategory": "Otro",
       "remoteAccess": "Acceso remoto",
+      "scope": {
+        "aria": "Ámbito de conectores",
+        "attention": "Requiere atención",
+        "discover": "Descubrir",
+        "mine": "Tus conectores",
+        "searchMine": "Buscar tus conectores"
+      },
       "search": "Buscar conectores",
       "shelf": {
         "moreCategories": "Más categorías",
@@ -3198,8 +3208,7 @@
         "seeMore_one": "Ver {{names}} y {{count}} más",
         "seeMore_many": "Ver {{names}} y {{count}} más",
         "seeMore_other": "Ver {{names}} y {{count}} más",
-        "top": "Conectores principales",
-        "yours": "Tus conectores"
+        "top": "Conectores principales"
       },
       "tabs": {
         "builtin": "Integrados",

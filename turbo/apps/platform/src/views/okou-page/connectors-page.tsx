@@ -49,7 +49,10 @@ import {
   relatedCatalogItems$,
   scopeReviewSelection$,
   setScopeReviewSelection$,
+  connectorsScope$,
+  setConnectorsScope$,
   type ConnectorsConnectionFilter,
+  type ConnectorsScope,
 } from "../../signals/okou-page/settings/connectors.ts";
 import {
   buildConnectorShelves,
@@ -104,9 +107,14 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   Input,
+  SegmentControl,
+  SegmentControlItem,
 } from "@okouai/ui";
 import { i18n } from "../../i18n/index.ts";
-import { connectorAccountSummaryByTarget$ } from "../../signals/okou-page/connector-accounts.ts";
+import {
+  connectedConnectorsBadge$,
+  connectorAccountSummaryByTarget$,
+} from "../../signals/okou-page/connector-accounts.ts";
 import { ConnectorAccountManagerDialog } from "./components/settings/connector-account-manager-dialog.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
@@ -350,6 +358,50 @@ function ConnectorFilterOption({
   );
 }
 
+/**
+ * The toolbar's one filter slot. The trigger reads the same in either scope,
+ * so switching scope changes what the menu offers rather than how the toolbar
+ * is built.
+ */
+function ConnectorFilterMenu({
+  label,
+  width,
+  leading,
+  children,
+}: {
+  readonly label: string;
+  readonly width: string;
+  readonly leading?: ReactNode;
+  readonly children: ReactNode;
+}) {
+  const { t } = useTranslation();
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 shrink-0 gap-1.5"
+          aria-label={t(($) => {
+            return $.connectors.catalog.filters.aria;
+          })}
+        >
+          <Filter size={14} aria-hidden="true" />
+          {leading}
+          <span className="max-w-[160px] truncate">{label}</span>
+          <ChevronDown size={14} aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className={`max-h-[min(420px,var(--available-height))] ${width} overflow-y-auto`}
+      >
+        {children}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function ConnectorFilterDropdown({
   value,
   agents,
@@ -482,11 +534,244 @@ function ConnectorFilterDropdown({
 }
 
 /**
- * The directory toolbar. Category is the only dimension that organises four
- * thousand connectors, so it owns the filter; connection status does not need
- * a control because the page opens on what is already connected.
+ * Which list the page is showing. Discovery leads because that is what a visit
+ * is usually for; the scope you already own carries its own count, so the page
+ * does not have to show that list to say it is there, and a warning dot when
+ * one of those connections stopped working — the one thing a count cannot say.
+ */
+function ConnectorsScopeSegment({
+  scope,
+  setScope,
+  badge,
+}: {
+  readonly scope: ConnectorsScope;
+  readonly setScope: (value: ConnectorsScope) => void;
+  readonly badge: ConnectorsScopeBadge;
+}) {
+  const { t } = useTranslation();
+  return (
+    <SegmentControl
+      aria-label={t(($) => {
+        return $.connectors.catalog.scope.aria;
+      })}
+      value={scope}
+      onValueChange={setScope}
+    >
+      <SegmentControlItem value="discover">
+        {t(($) => {
+          return $.connectors.catalog.scope.discover;
+        })}
+      </SegmentControlItem>
+      <SegmentControlItem value="mine" data-testid="connectors-scope-mine">
+        {badge.needsAttention && (
+          <span
+            data-testid="connectors-scope-attention"
+            className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500"
+            aria-label={t(($) => {
+              return $.connectors.catalog.scope.attention;
+            })}
+          />
+        )}
+        {t(($) => {
+          return $.connectors.catalog.scope.mine;
+        })}
+        {badge.count > 0 && (
+          <span className="text-[11px] tabular-nums text-muted-foreground/70">
+            {formatLocalizedNumber(badge.count)}
+          </span>
+        )}
+      </SegmentControlItem>
+    </SegmentControl>
+  );
+}
+
+/** The one dimension that organises a catalog nobody knows by name. */
+function ConnectorCategoryFilterMenu({
+  categories,
+  categoryCounts,
+  categoryFilter,
+  setCategoryFilter,
+  activeLabel,
+}: {
+  readonly categories: readonly ConnectorCategorySection<PlatformConnectorCatalogStatusItem>[];
+  readonly categoryCounts: Readonly<Record<string, number>> | undefined;
+  readonly categoryFilter: string | null;
+  readonly setCategoryFilter: (category: string | null) => void;
+  readonly activeLabel: string | undefined;
+}) {
+  const { t } = useTranslation();
+  return (
+    <ConnectorFilterMenu
+      label={t(
+        ($) => {
+          return $.connectors.catalog.filterWith;
+        },
+        {
+          category:
+            activeLabel ??
+            t(($) => {
+              return $.connectors.catalog.filters.all;
+            }),
+        },
+      )}
+      width="w-64"
+    >
+      <ConnectorFilterSectionLabel>
+        {t(($) => {
+          return $.connectors.catalog.filterCategory;
+        })}
+      </ConnectorFilterSectionLabel>
+      <ConnectorFilterOption
+        active={categoryFilter === null}
+        onSelect={() => {
+          setCategoryFilter(null);
+        }}
+      >
+        {t(($) => {
+          return $.connectors.catalog.filters.all;
+        })}
+      </ConnectorFilterOption>
+      {categories.map((section) => {
+        const total = categoryCounts?.[section.category];
+        return (
+          <ConnectorFilterOption
+            key={section.category}
+            active={categoryFilter === section.category}
+            onSelect={() => {
+              setCategoryFilter(section.category);
+            }}
+          >
+            <span className="min-w-0 truncate">{section.menuLabel}</span>
+            {total !== undefined && (
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground/70">
+                {total}
+              </span>
+            )}
+          </ConnectorFilterOption>
+        );
+      })}
+    </ConnectorFilterMenu>
+  );
+}
+
+/**
+ * The one dimension that organises the connectors you already have: who uses
+ * them. Connection status is not offered because this scope is the connected
+ * ones — the question left to ask is which agent can reach them.
+ */
+function ConnectorAgentFilterMenu({
+  agents,
+  value,
+  onChange,
+}: {
+  readonly agents: readonly AgentResponse[];
+  readonly value: ConnectorsConnectionFilter;
+  readonly onChange: (value: ConnectorsConnectionFilter) => void;
+}) {
+  const { t } = useTranslation();
+  const activeAgent =
+    value.kind === "agent"
+      ? agents.find((agent) => {
+          return agent.agentId === value.agentId;
+        })
+      : undefined;
+  const label =
+    value.kind === "unshared"
+      ? t(($) => {
+          return $.connectors.catalog.filters.unshared;
+        })
+      : activeAgent
+        ? connectorAgentName(activeAgent)
+        : t(($) => {
+            return $.connectors.catalog.filters.allAgents;
+          });
+  return (
+    <ConnectorFilterMenu
+      label={t(
+        ($) => {
+          return $.connectors.catalog.filterWith;
+        },
+        { category: label },
+      )}
+      width="w-56"
+      leading={
+        activeAgent ? (
+          <AvatarFromUrl
+            avatarUrl={activeAgent.avatarUrl}
+            alt={connectorAgentName(activeAgent)}
+            size={16}
+            className="h-4 w-4 rounded-full object-cover"
+          />
+        ) : null
+      }
+    >
+      <ConnectorFilterOption
+        active={value.kind !== "agent" && value.kind !== "unshared"}
+        onSelect={() => {
+          onChange({ kind: "all" });
+        }}
+      >
+        {t(($) => {
+          return $.connectors.catalog.filters.allAgents;
+        })}
+      </ConnectorFilterOption>
+      {agents.length > 0 && (
+        <>
+          <DropdownMenuSeparator />
+          <ConnectorFilterSectionLabel>
+            {t(($) => {
+              return $.connectors.catalog.filters.agents;
+            })}
+          </ConnectorFilterSectionLabel>
+          {agents.map((agent) => {
+            return (
+              <ConnectorFilterOption
+                key={agent.agentId}
+                active={value.kind === "agent" && value.agentId === agent.agentId}
+                onSelect={() => {
+                  onChange({ kind: "agent", agentId: agent.agentId });
+                }}
+              >
+                <AvatarFromUrl
+                  avatarUrl={agent.avatarUrl}
+                  alt={connectorAgentName(agent)}
+                  size={16}
+                  className="h-4 w-4 rounded-full object-cover"
+                />
+                <span className="truncate">{connectorAgentName(agent)}</span>
+              </ConnectorFilterOption>
+            );
+          })}
+          <DropdownMenuSeparator />
+          <ConnectorFilterOption
+            active={value.kind === "unshared"}
+            onSelect={() => {
+              onChange({ kind: "unshared" });
+            }}
+          >
+            {t(($) => {
+              return $.connectors.catalog.filters.unshared;
+            })}
+          </ConnectorFilterOption>
+        </>
+      )}
+    </ConnectorFilterMenu>
+  );
+}
+
+/**
+ * The directory toolbar. Each scope is organised by exactly one dimension —
+ * category for the catalog, agent for the connectors you already have — so the
+ * filter slot holds one control and changes contents with the segment rather
+ * than putting two dropdowns side by side.
  */
 function ConnectorsDirectoryToolbar({
+  scope,
+  setScope,
+  badge,
+  agents,
+  connectionFilter,
+  setConnectionFilter,
   search,
   setSearch,
   categories,
@@ -496,6 +781,12 @@ function ConnectorsDirectoryToolbar({
   isAdmin,
   onCreateCustom,
 }: {
+  readonly scope: ConnectorsScope;
+  readonly setScope: (value: ConnectorsScope) => void;
+  readonly badge: ConnectorsScopeBadge;
+  readonly agents: readonly AgentResponse[];
+  readonly connectionFilter: ConnectorsConnectionFilter;
+  readonly setConnectionFilter: (value: ConnectorsConnectionFilter) => void;
   readonly search: string;
   readonly setSearch: (value: string) => void;
   readonly categories: readonly ConnectorCategorySection<PlatformConnectorCatalogStatusItem>[];
@@ -511,6 +802,13 @@ function ConnectorsDirectoryToolbar({
   });
   return (
     <div className="flex flex-col gap-3">
+      <div className="flex items-center">
+        <ConnectorsScopeSegment
+          scope={scope}
+          setScope={setScope}
+          badge={badge}
+        />
+      </div>
       {active && (
         <ConnectorsBreadcrumb
           label={active.label}
@@ -529,7 +827,9 @@ function ConnectorsDirectoryToolbar({
           <Input
             type="text"
             placeholder={t(($) => {
-              return $.connectors.catalog.search;
+              return scope === "mine"
+                ? $.connectors.catalog.scope.searchMine
+                : $.connectors.catalog.search;
             })}
             value={search}
             onChange={(event) => {
@@ -538,74 +838,21 @@ function ConnectorsDirectoryToolbar({
             className="pl-9 pr-3"
           />
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-9 shrink-0 gap-1.5"
-              aria-label={t(($) => {
-                return $.connectors.catalog.filters.aria;
-              })}
-            >
-              <Filter size={14} aria-hidden="true" />
-              <span className="max-w-[160px] truncate">
-                {t(
-                  ($) => {
-                    return $.connectors.catalog.filterWith;
-                  },
-                  {
-                    category:
-                      active?.menuLabel ??
-                      t(($) => {
-                        return $.connectors.catalog.filters.all;
-                      }),
-                  },
-                )}
-              </span>
-              <ChevronDown size={14} aria-hidden="true" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            className="max-h-[min(420px,var(--available-height))] w-64 overflow-y-auto"
-          >
-            <ConnectorFilterSectionLabel>
-              {t(($) => {
-                return $.connectors.catalog.filterCategory;
-              })}
-            </ConnectorFilterSectionLabel>
-            <ConnectorFilterOption
-              active={categoryFilter === null}
-              onSelect={() => {
-                setCategoryFilter(null);
-              }}
-            >
-              {t(($) => {
-                return $.connectors.catalog.filters.all;
-              })}
-            </ConnectorFilterOption>
-            {categories.map((section) => {
-              const total = categoryCounts?.[section.category];
-              return (
-                <ConnectorFilterOption
-                  key={section.category}
-                  active={categoryFilter === section.category}
-                  onSelect={() => {
-                    setCategoryFilter(section.category);
-                  }}
-                >
-                  <span className="min-w-0 truncate">{section.menuLabel}</span>
-                  {total !== undefined && (
-                    <span className="shrink-0 text-xs tabular-nums text-muted-foreground/70">
-                      {total}
-                    </span>
-                  )}
-                </ConnectorFilterOption>
-              );
-            })}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        {scope === "mine" ? (
+          <ConnectorAgentFilterMenu
+            agents={agents}
+            value={connectionFilter}
+            onChange={setConnectionFilter}
+          />
+        ) : (
+          <ConnectorCategoryFilterMenu
+            categories={categories}
+            categoryCounts={categoryCounts}
+            categoryFilter={categoryFilter}
+            setCategoryFilter={setCategoryFilter}
+            activeLabel={active?.menuLabel}
+          />
+        )}
         {isAdmin && (
           <Button
             variant="outline"
@@ -644,7 +891,7 @@ function ConnectorsBreadcrumb({
         onClick={onBack}
       >
         {t(($) => {
-          return $.connectors.catalog.title;
+          return $.connectors.catalog.scope.discover;
         })}
       </button>
       <span className="text-muted-foreground/50" aria-hidden="true">
@@ -784,40 +1031,24 @@ function ConnectorCategoryGroupSection({
 }
 
 /**
- * The browse view: what you already connected in full, then a shelf per
- * category six deep. Listing every discovered connector under twelve headings
- * puts the same wall of cards in front of someone who came to add one thing.
+ * The browse view: a shelf per category, six deep. Listing every discovered
+ * connector under twelve headings puts the same wall of cards in front of
+ * someone who came to add one thing. What this workspace already connected is
+ * not repeated here — it is the other scope, and a connected connector still
+ * shows its account on its own card wherever it appears.
  */
 function ConnectorShelfBrowse({
-  connected,
   layout,
   renderCard,
 }: {
-  readonly connected: readonly PlatformConnectorCatalogStatusItem[];
   readonly layout: ConnectorShelfLayout<PlatformConnectorCatalogStatusItem>;
   readonly renderCard: (
     connector: PlatformConnectorCatalogStatusItem,
   ) => ReactNode;
 }) {
   const onOpenCategory = useSet(setConnectorsCategoryFilter$);
-  const { t } = useTranslation();
   return (
     <>
-      {connected.length > 0 && (
-        <section
-          className="flex flex-col gap-3"
-          data-testid="connector-shelf-yours"
-        >
-          <h2 className="text-sm font-medium text-muted-foreground">
-            {t(($) => {
-              return $.connectors.catalog.shelf.yours;
-            })}
-          </h2>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {connected.map(renderCard)}
-          </div>
-        </section>
-      )}
       <section className="flex flex-col">
         {layout.shelves.map((shelf) => {
           return (
@@ -867,6 +1098,9 @@ function categoryFilterSections(
 }
 
 interface ConnectorsBrowseModel {
+  /** Whether the catalog response has arrived; an empty list is not an answer. */
+  readonly ready: boolean;
+  readonly connectionFilter: ConnectorsConnectionFilter;
   readonly showShelves: boolean;
   /**
    * The chosen category's connectors, or null when no category is open. The
@@ -930,11 +1164,10 @@ function buildConnectorsBrowseModel({
     });
   };
   const layout = buildConnectorShelves({
-    sections: sectionsOf(
-      catalogItems.filter((connector) => {
-        return !connector.connected;
-      }),
-    ),
+    // Shelves cover the whole catalog, connected included: a connector this
+    // workspace already has is still the answer to "what talks to Slack", and
+    // its card says so by showing the account instead of an add button.
+    sections: sectionsOf(catalogItems),
     categoryCounts,
     headLabel,
     // The page's card grid is three wide, so six is two whole rows.
@@ -954,6 +1187,8 @@ function buildConnectorsBrowseModel({
     });
   }
   return {
+    ready,
+    connectionFilter,
     // Shelves need something to shelve: a catalog too small for any category to
     // fill one falls through to the plain list.
     showShelves: ready && !filtered && layout.shelves.length > 0,
@@ -975,17 +1210,65 @@ function buildConnectorsBrowseModel({
 }
 
 /**
+ * The connectors this workspace already has. It is a plain grid rather than a
+ * shelf view: the list is short enough to read, and the only dimension that
+ * organises it — which agent uses it — lives in the toolbar.
+ */
+function ConnectorsMinePanel({
+  connected,
+  ready,
+  connectionFilter,
+  renderCard,
+}: {
+  readonly connected: readonly PlatformConnectorCatalogStatusItem[];
+  readonly ready: boolean;
+  readonly connectionFilter: ConnectorsConnectionFilter;
+  readonly renderCard: (
+    connector: PlatformConnectorCatalogStatusItem,
+  ) => ReactNode;
+}) {
+  const { t } = useTranslation();
+  if (ready && connected.length === 0) {
+    return (
+      <ConnectorEmptyState
+        message={t(($) => {
+          // An empty list means something different under each filter: nothing
+          // connected at all, nothing this agent can reach, or nothing left
+          // that no agent uses.
+          if (connectionFilter.kind === "agent") {
+            return $.connectors.catalog.empty.agent;
+          }
+          return connectionFilter.kind === "unshared"
+            ? $.connectors.catalog.empty.unshared
+            : $.connectors.catalog.empty.connected;
+        })}
+      />
+    );
+  }
+  return (
+    <div
+      data-testid="connectors-mine-grid"
+      className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"
+    >
+      {connected.map(renderCard)}
+    </div>
+  );
+}
+
+/**
  * The built-in tab. Chips first, because category is the dimension that makes
  * four thousand connectors browsable; then either the shelves or, once the
  * reader has filtered, the plain result list.
  */
 function ConnectorsBuiltinPanel({
+  scope,
   browse,
   renderCard,
   fallback,
   remoteAccessPanel,
   customPanel,
 }: {
+  readonly scope: ConnectorsScope;
   readonly browse: ConnectorsBrowseModel;
   readonly renderCard: (
     connector: PlatformConnectorCatalogStatusItem,
@@ -994,14 +1277,20 @@ function ConnectorsBuiltinPanel({
   readonly remoteAccessPanel: ReactNode;
   readonly customPanel: ReactNode;
 }) {
+  if (scope === "mine") {
+    return (
+      <ConnectorsMinePanel
+        connected={browse.connected}
+        ready={browse.ready}
+        connectionFilter={browse.connectionFilter}
+        renderCard={renderCard}
+      />
+    );
+  }
   return (
     <>
       {browse.showShelves ? (
-        <ConnectorShelfBrowse
-          connected={browse.connected}
-          layout={browse.layout}
-          renderCard={renderCard}
-        />
+        <ConnectorShelfBrowse layout={browse.layout} renderCard={renderCard} />
       ) : browse.categoryConnectors ? (
         <div
           data-testid="connector-category-grid"
@@ -1135,18 +1424,7 @@ function renderBuiltinList({
     if (!message) {
       return null;
     }
-    return (
-      <div className="flex flex-col items-center gap-3 py-12">
-        <img
-          src={noConnectorImg}
-          alt={i18n.t(($) => {
-            return $.connectors.catalog.noConnectorsAlt;
-          })}
-          className="h-20 w-20 object-contain opacity-80"
-        />
-        <p className="text-center text-sm text-muted-foreground">{message}</p>
-      </div>
-    );
+    return <ConnectorEmptyState message={message} />;
   }
 
   return grouped.map((group) => {
@@ -1158,6 +1436,37 @@ function renderBuiltinList({
       />
     );
   });
+}
+
+interface ConnectorsScopeBadge {
+  readonly count: number;
+  readonly needsAttention: boolean;
+}
+
+/** Before the summaries land the segment says nothing rather than zero. */
+function connectorsScopeBadge(
+  loadable: Loadable<ConnectorsScopeBadge>,
+): ConnectorsScopeBadge {
+  return loadable.state === "hasData"
+    ? loadable.data
+    : { count: 0, needsAttention: false };
+}
+
+/** What a list says when it has nothing to show and knows why. */
+function ConnectorEmptyState({ message }: { readonly message: string }) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex flex-col items-center gap-3 py-12">
+      <img
+        src={noConnectorImg}
+        alt={t(($) => {
+          return $.connectors.catalog.noConnectorsAlt;
+        })}
+        className="h-20 w-20 object-contain opacity-80"
+      />
+      <p className="text-center text-sm text-muted-foreground">{message}</p>
+    </div>
+  );
 }
 
 function connectorLabelForSlug(
@@ -1418,6 +1727,11 @@ export function ConnectorsPage() {
   const setConnectionFilter = useSet(setConnectorsConnectionFilter$);
   const categoryFilter = useGet(connectorsCategoryFilter$);
   const setCategoryFilter = useSet(setConnectorsCategoryFilter$);
+  const scope = useGet(connectorsScope$);
+  const setScope = useSet(setConnectorsScope$);
+  const scopeBadge = connectorsScopeBadge(
+    useLastLoadable(connectedConnectorsBadge$),
+  );
   const agentsLoadable = useLastLoadable(agents$);
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
 
@@ -1583,6 +1897,7 @@ export function ConnectorsPage() {
   });
   const builtinPanel = (
     <ConnectorsBuiltinPanel
+      scope={scope}
       browse={browse}
       renderCard={renderCard}
       fallback={builtinList}
@@ -1624,6 +1939,12 @@ export function ConnectorsPage() {
           <div className="min-w-0 flex w-full max-w-[900px] flex-col gap-6">
             {shelfEnabled ? (
               <ConnectorsDirectoryToolbar
+                scope={scope}
+                setScope={setScope}
+                badge={scopeBadge}
+                agents={agents}
+                connectionFilter={connectionFilter}
+                setConnectionFilter={setConnectionFilter}
                 search={search}
                 setSearch={setSearch}
                 categories={browse.chipSections}

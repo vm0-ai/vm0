@@ -3174,16 +3174,19 @@
         "connected": "Nessun connettore collegato",
         "matching": "{{message}} corrispondente a \"{{search}}\"",
         "notConnected": "Nessun connettore rimasto da collegare",
-        "search": "Nessun connettore corrispondente a \"{{search}}\""
+        "search": "Nessun connettore corrispondente a \"{{search}}\"",
+        "unshared": "Ogni connettore è condiviso con un agente"
       },
       "filterCategory": "Categoria",
       "filters": {
         "agents": "Agenti",
         "all": "Tutto",
+        "allAgents": "Tutti gli agenti",
         "aria": "Connettori filtro",
         "connected": "Connesso",
         "notConnected": "Non connesso",
-        "status": "Stato"
+        "status": "Stato",
+        "unshared": "Non condiviso con nessun agente"
       },
       "filterWith": "Filtro: {{category}}",
       "iconUnavailable": "Icona del connettore non disponibile",
@@ -3191,6 +3194,13 @@
       "noConnectorsAlt": "Nessun connettore",
       "otherCategory": "Altro",
       "remoteAccess": "Accesso remoto",
+      "scope": {
+        "aria": "Ambito dei connettori",
+        "attention": "Richiede attenzione",
+        "discover": "Esplora",
+        "mine": "I tuoi connettori",
+        "searchMine": "Trova i tuoi connettori"
+      },
       "search": "Trova connettori",
       "shelf": {
         "moreCategories": "Altre categorie",
@@ -3198,8 +3208,7 @@
         "seeMore_one": "Vedi {{names}} e altro {{count}}",
         "seeMore_many": "Vedi {{names}} e altri {{count}}",
         "seeMore_other": "Vedi {{names}} e altri {{count}}",
-        "top": "Connettori principali",
-        "yours": "I tuoi connettori"
+        "top": "Connettori principali"
       },
       "tabs": {
         "builtin": "Integrato",

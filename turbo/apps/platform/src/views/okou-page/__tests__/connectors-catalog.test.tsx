@@ -564,7 +564,7 @@ test("Browse the catalog as shelves, then enter a category and come back", async
   expect(screen.queryByTestId("connector-category-grid")).toBeInTheDocument();
 
   const back = queryAllByRoleFast("button").find((element) => {
-    return element.textContent === "Connectors";
+    return element.textContent === "Discover";
   });
   await click(back!);
   await waitFor(() => {
@@ -605,4 +605,132 @@ test("Keep every category in the filter while one of them is open", async () => 
       return option?.startsWith("Voice");
     }),
   ).toBeTruthy();
+});
+
+function connectedShelfCatalog() {
+  return shelfCatalog().map((connector) => {
+    return connector.slug === "mail-0" || connector.slug === "mail-1"
+      ? {
+          ...connector,
+          connected: true,
+          connectionStatus: "connected" as const,
+          connection: {
+            authMethod: "oauth" as const,
+            externalUsername: "octocat",
+            externalEmail: null,
+            reconnectReason: null,
+          },
+        }
+      : connector;
+  });
+}
+
+test("Land on Discover, then switch to the connectors this workspace has", async () => {
+  mockConnectors(context, [
+    { connectorSlug: "mail-0" as ConnectorSlug },
+    { connectorSlug: "mail-1" as ConnectorSlug },
+  ]);
+  mockPublicConnectorStatus(
+    context,
+    connectedShelfCatalog(),
+    shelfCategoryMetadata(),
+    { "communication-collaboration": 327, "ai-voice-audio": 50 },
+  );
+  await setupPage({
+    context,
+    path: "/connectors",
+    featureSwitches: { [FeatureSwitchKey.ConnectorDirectory]: true },
+  });
+
+  // Discovery leads: the catalog is what a visit is usually for, and the
+  // connectors this workspace has are counted rather than listed twice.
+  await waitFor(() => {
+    expect(
+      screen.getByTestId("connector-shelf-communication-collaboration"),
+    ).toBeInTheDocument();
+  });
+  const mine = screen.getByTestId("connectors-scope-mine");
+  expect(mine).toHaveTextContent("Your connectors2");
+  expect(screen.queryByTestId("connectors-mine-grid")).toBeNull();
+  // Category is the dimension that organises the catalog, so it owns the filter.
+  expect(screen.getByLabelText("Filter connectors")).toHaveTextContent(
+    "Filter: All",
+  );
+
+  await click(mine);
+  await waitFor(() => {
+    expect(locationSearch()).toContain("scope=mine");
+  });
+
+  // The other scope is the connected ones alone, and its dimension is the
+  // agent -- one control in the slot, never two.
+  const grid = await screen.findByTestId("connectors-mine-grid");
+  expect(within(grid).getAllByTestId("connector-card-label")).toHaveLength(2);
+  expect(
+    screen.queryByTestId("connector-shelf-communication-collaboration"),
+  ).toBeNull();
+  expect(screen.getByLabelText("Filter connectors")).toHaveTextContent(
+    "Filter: All agents",
+  );
+  await click(screen.getByLabelText("Filter connectors"));
+  const menu = await screen.findByRole("menu");
+  const options = queryAllByRoleFast("menuitem", menu).map((item) => {
+    return item.textContent;
+  });
+  expect(options).toContain("All agents");
+  expect(options).not.toContain("Not connected");
+});
+
+test("Leaving a category with the scope control drops the category with it", async () => {
+  mockConnectors(context, [{ connectorSlug: "mail-0" as ConnectorSlug }]);
+  mockPublicConnectorStatus(
+    context,
+    connectedShelfCatalog(),
+    shelfCategoryMetadata(),
+    { "communication-collaboration": 327, "ai-voice-audio": 50 },
+  );
+  await setupPage({
+    context,
+    path: "/connectors?category=communication-collaboration",
+    featureSwitches: { [FeatureSwitchKey.ConnectorDirectory]: true },
+  });
+
+  await waitFor(() => {
+    expect(getConnectorCard("Zendesk")).toBeInTheDocument();
+  });
+
+  // A category belongs to the scope it was opened in: carrying it across would
+  // filter the connectors you own by a dimension that does not organise them.
+  await click(screen.getByTestId("connectors-scope-mine"));
+  await waitFor(() => {
+    expect(locationSearch()).toContain("scope=mine");
+  });
+  expect(locationSearch()).not.toContain("category=");
+});
+
+test("Warn on the scope control when a connection this workspace owns needs a reconnect", async () => {
+  mockConnectors(context, [
+    {
+      connectorSlug: "mail-0" as ConnectorSlug,
+      connectionStatus: "reconnect-required",
+      reconnectReason: "authorization_expired_or_revoked",
+    },
+  ]);
+  mockPublicConnectorStatus(
+    context,
+    connectedShelfCatalog(),
+    shelfCategoryMetadata(),
+    { "communication-collaboration": 327, "ai-voice-audio": 50 },
+  );
+  await setupPage({
+    context,
+    path: "/connectors",
+    featureSwitches: { [FeatureSwitchKey.ConnectorDirectory]: true },
+  });
+
+  // The list is behind a control, so the control has to carry the one thing a
+  // count cannot say: something in there stopped working.
+  await expect(
+    screen.findByLabelText("Needs attention"),
+  ).resolves.toBeInTheDocument();
 });

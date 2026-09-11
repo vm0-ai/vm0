@@ -3117,16 +3117,19 @@
         "connected": "No connected connectors",
         "matching": "{{message}} matching \"{{search}}\"",
         "notConnected": "No connectors left to connect",
-        "search": "No connectors matching \"{{search}}\""
+        "search": "No connectors matching \"{{search}}\"",
+        "unshared": "Every connector is shared with an agent"
       },
       "filterCategory": "Category",
       "filters": {
         "agents": "Agents",
         "all": "All",
+        "allAgents": "All agents",
         "aria": "Filter connectors",
         "connected": "Connected",
         "notConnected": "Not connected",
-        "status": "Status"
+        "status": "Status",
+        "unshared": "Not shared with any agent"
       },
       "filterWith": "Filter: {{category}}",
       "iconUnavailable": "Connector icon unavailable",
@@ -3134,14 +3137,20 @@
       "noConnectorsAlt": "No connectors",
       "otherCategory": "Other",
       "remoteAccess": "Remote access",
+      "scope": {
+        "aria": "Connector scope",
+        "attention": "Needs attention",
+        "discover": "Discover",
+        "mine": "Your connectors",
+        "searchMine": "Find your connectors"
+      },
       "search": "Find connectors",
       "shelf": {
         "moreCategories": "More categories",
         "popular": "Popular",
         "seeMore_one": "See {{names}} and {{count}} more",
         "seeMore_other": "See {{names}} and {{count}} more",
-        "top": "Top connectors",
-        "yours": "Your connectors"
+        "top": "Top connectors"
       },
       "tabs": {
         "builtin": "Built-in",
