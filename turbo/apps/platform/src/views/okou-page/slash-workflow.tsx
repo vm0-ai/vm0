@@ -91,7 +91,7 @@ function SlashCreateGroup({
     return null;
   }
   return (
-    <div className="px-1.5 py-1.5">
+    <div className="px-1 py-1">
       {modes.map((mode, index) => {
         const Icon = COMPOSER_CREATE_ICONS[mode];
         return (
@@ -101,7 +101,7 @@ function SlashCreateGroup({
             type="button"
             aria-label={composerCreateCommandLabel(mode)}
             className={cn(
-              "flex w-full items-center gap-2 rounded px-2 py-2 text-left text-sm transition-colors",
+              "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors",
               index === selectedIndex ? "bg-accent" : "hover:bg-state-hover",
             )}
             onPointerDown={(event) => {
@@ -130,14 +130,20 @@ function SlashCreateGroup({
   );
 }
 
-function SlashWorkflowName({
+/**
+ * The name with the typed query emphasized. Shared with the slash panel so both
+ * menus show the same match feedback while typing.
+ */
+export function SlashWorkflowName({
   workflow,
+  className,
 }: {
   readonly workflow: ComposerSlashWorkflowMatch;
+  readonly className?: string;
 }) {
   return (
     <span
-      className="w-full truncate font-mono text-sm text-foreground"
+      className={cn("truncate font-mono text-foreground", className)}
       data-slot="slash-workflow-name"
     >
       <span className="text-brand-text">/</span>
@@ -158,6 +164,71 @@ function SlashWorkflowName({
       })}
       {workflow.name.slice(workflow.matchRanges.at(-1)?.end ?? 0)}
     </span>
+  );
+}
+
+/** The flat menu's workflow rows, split out to keep the menu within its size. */
+function SlashWorkflowRows({
+  workflows,
+  loading,
+  selectedIndex,
+  indexOffset,
+  onSelect,
+}: {
+  readonly workflows: readonly ComposerSlashWorkflowMatch[];
+  readonly loading: boolean;
+  readonly selectedIndex: number;
+  /** How many rows precede these, so the shared index still lines up. */
+  readonly indexOffset: number;
+  readonly onSelect: (workflow: ComposerSlashWorkflow) => void;
+}) {
+  const { t } = useTranslation();
+  if (loading) {
+    return (
+      <div className="px-2.5 py-2 text-sm text-muted-foreground">
+        {t(($) => {
+          return $.chat.composer.workflows.loading;
+        })}
+      </div>
+    );
+  }
+  if (workflows.length === 0) {
+    return (
+      <div className="px-2.5 pt-1 pb-2.5 text-sm text-muted-foreground">
+        {t(($) => {
+          return $.chat.composer.workflows.empty;
+        })}
+      </div>
+    );
+  }
+  return (
+    <div className="px-1 pb-1">
+      {workflows.map((workflow, index) => {
+        const selected = index + indexOffset === selectedIndex;
+        return (
+          <button
+            id={slashWorkflowOptionId(workflow.id)}
+            key={workflow.id}
+            type="button"
+            className={cn(
+              "flex w-full flex-col items-start gap-0.5 rounded-lg px-2 py-1.5 text-left transition-colors",
+              selected ? "bg-accent" : "hover:bg-state-hover",
+            )}
+            onMouseDown={(event) => {
+              event.preventDefault();
+              onSelect(workflow);
+            }}
+          >
+            <SlashWorkflowName workflow={workflow} className="w-full text-sm" />
+            {workflow.description && (
+              <span className="w-full truncate text-xs text-muted-foreground/70">
+                {workflow.description}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -221,47 +292,13 @@ export function SlashWorkflowMenu({
                 return $.chat.composer.workflows.title;
               })}
             </div>
-            {loading ? (
-              <div className="px-2.5 py-2 text-sm text-muted-foreground">
-                {t(($) => {
-                  return $.chat.composer.workflows.loading;
-                })}
-              </div>
-            ) : workflows.length > 0 ? (
-              <div className="px-1.5 pb-1.5">
-                {workflows.map((workflow, index) => {
-                  const selected = index + createModes.length === selectedIndex;
-                  return (
-                    <button
-                      id={slashWorkflowOptionId(workflow.id)}
-                      key={workflow.id}
-                      type="button"
-                      className={cn(
-                        "flex w-full flex-col items-start gap-0.5 rounded px-2 py-1.5 text-left transition-colors",
-                        selected ? "bg-accent" : "hover:bg-state-hover",
-                      )}
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                        onSelect(workflow);
-                      }}
-                    >
-                      <SlashWorkflowName workflow={workflow} />
-                      {workflow.description && (
-                        <span className="w-full truncate text-xs text-muted-foreground/70">
-                          {workflow.description}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="px-2.5 pt-1 pb-2.5 text-sm text-muted-foreground">
-                {t(($) => {
-                  return $.chat.composer.workflows.empty;
-                })}
-              </div>
-            )}
+            <SlashWorkflowRows
+              workflows={workflows}
+              loading={loading}
+              selectedIndex={selectedIndex}
+              indexOffset={createModes.length}
+              onSelect={onSelect}
+            />
           </div>
           {showWorkflowsPageLink && (
             <div className="shrink-0 border-t border-border/60 bg-popover/95 p-1">
@@ -271,7 +308,7 @@ export function SlashWorkflowMenu({
                   // Keep the composer focused until Link handles the click.
                   event.preventDefault();
                 }}
-                className="flex h-8 w-full items-center justify-between rounded px-2 text-sm font-medium text-popover-foreground transition-colors hover:bg-state-hover"
+                className="flex h-8 w-full items-center justify-between rounded-lg px-2 text-sm font-medium text-popover-foreground transition-colors hover:bg-state-hover"
               >
                 <span className="flex min-w-0 items-center gap-2">
                   <FileText
