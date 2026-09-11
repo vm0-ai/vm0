@@ -20,6 +20,7 @@ import {
   slashTemplatePreviewGroup,
   type SlashTemplateCategory,
   type SlashTemplatePreview,
+  type SlashTemplatePreviewCategory,
 } from "./composer-template-catalog.ts";
 
 const SLASH_TEMPLATE_CATEGORY_ICONS = {
@@ -120,13 +121,10 @@ function SlashTemplateDetailPane({
   category,
   onSelectTemplate,
 }: {
-  readonly category: SlashTemplateCategory;
+  readonly category: SlashTemplatePreviewCategory;
   readonly onSelectTemplate: (preview: SlashTemplatePreview) => void;
 }) {
   const { t } = useTranslation();
-  if (!isSlashTemplatePreviewCategory(category)) {
-    return null;
-  }
   const group = slashTemplatePreviewGroup(category);
   const Icon = SLASH_TEMPLATE_CATEGORY_ICONS[category];
   return (
@@ -277,8 +275,12 @@ export function SlashTemplatePanel({
   categoryOptionId,
 }: SlashTemplatePanelProps) {
   const { t } = useTranslation();
-  const showDetail =
-    highlighted !== null && isSlashTemplatePreviewCategory(highlighted);
+  // Narrowed here rather than inside the pane, so the pane has no unreachable
+  // branch for a category that can never reach it.
+  const detailCategory =
+    highlighted !== null && isSlashTemplatePreviewCategory(highlighted)
+      ? highlighted
+      : null;
   return (
     <div className="flex h-[380px] overflow-hidden" data-slot="slash-panel">
       <div className="flex min-h-0 w-[320px] shrink-0 flex-col border-r border-border/60">
@@ -357,9 +359,9 @@ export function SlashTemplatePanel({
           </button>
         </div>
       </div>
-      {showDetail && (
+      {detailCategory !== null && (
         <SlashTemplateDetailPane
-          category={highlighted}
+          category={detailCategory}
           onSelectTemplate={onSelectTemplate}
         />
       )}
