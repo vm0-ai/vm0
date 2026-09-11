@@ -37,28 +37,56 @@ The management page follows the Agent and Workflow detail-page layout, with
 breadcrumb to return to the directory. Host management remains independent of
 Agent grants.
 
-Supply a display name, public hostname or IP, port, SSH username, and
-private key with an optional passphrase. Paste the key or use **Choose file** in
-Add host or Replace credentials to read a non-empty key file up to 64 KiB locally.
-File selection does not upload anything; Save submits the existing credential
-request. The browser does not parse the key format. Credentials are write-only and stay
-outside the sandbox. Preserve complete key material, including whitespace.
-Use a least-privilege remote SSH user for the Agent's intended work.
-The form clears credentials on submission, close and navigation; unsuccessful
-submissions require entering them again.
+The **Hosts** view configures a display name, public hostname or IP, port, and a
+credential. Select an existing credential or create a named credential inline with
+the host. The **Credentials** view manages reusable logins owned by the same
+organization and user. Each credential contains an SSH username and either a
+private key with an optional passphrase, or a password. Password authentication
+uses SSH password authentication, not keyboard-interactive prompts.
+
+Paste a key or use **Choose file** to read a non-empty key file up to 64 KiB
+locally. File selection does not upload anything or parse the key format; Save
+submits the credential. Keys, passphrases and passwords preserve whitespace.
+Secrets are write-only and stay outside the sandbox. Use a least-privilege
+remote SSH user. Forms clear secrets on submission, close, navigation and
+authentication-method changes. A background notification refreshes the lists
+without clearing an open form; unsuccessful submissions require entering secrets again.
 
 Each saved connection has its own ID. Multiple configurations may use the same
 host and port, with different usernames or different keys for the same username.
 Use display names to distinguish them. An authorized Run can use all of these
-configurations by their exact IDs. Credentials, learned host keys, configuration
-generations and connection observations remain independent for each configuration.
-Editing, resetting or deleting one does not modify another at the same endpoint.
+configurations by their exact IDs. Learned host keys, configuration generations
+and observations remain independent per host. Editing a host can change its
+credential reference without changing other hosts. Deleting a host keeps its
+credential; deleting an in-use credential is rejected until all hosts are
+rebound or deleted.
 
 Saving a host is not a connectivity test. Configuration does not establish an
-SSH session. Use **Replace credentials** to rotate a key or passphrase; ordinary
-metadata edits leave credentials unchanged. Host/port changes clear the learned
-host identity. A stale generation is not retried: the list refreshes automatically.
-Reopen the host to review the current settings before saving again.
+SSH session. **Edit credential** shows affected hosts. Changing its username or
+explicitly selecting **Replace authentication** updates the login for every host
+currently using that credential, atomically advancing their generations while
+preserving learned host keys. Renaming a credential leaves host generations
+unchanged. Host/port changes clear only that host's learned identity. Stale host
+generations or credential revisions are not retried; reopen the refreshed item
+and review current settings and affected hosts.
+
+### Owner storage and pre-GA cutover
+
+`/api/ssh/credentials` provides session-authenticated, feature-gated metadata
+listing and credential creation/update/deletion. Host writes select
+`credential: { id }` or atomically create `credential: { create: ... }`.
+Responses never return plaintext or ciphertext. A composite database foreign key
+requires the host and credential to have the same organization and user.
+
+Migration `1113_reusable_ssh_credentials` implements the explicitly approved
+pre-GA reset: it deletes old SSH hosts, their bound credentials, observations and
+learned pins. Agent SSH grants and unrelated data are retained. There is no
+backfill, legacy writer or rollback restoration; old hosts must be configured
+again. Applying this migration is destructive. A production cutover must stop
+outgoing owner API writers before applying the migration and starting the new
+API; ordinary overlapping API deployment is not supported for this reset.
+Already-loaded staff pages must reload. This is separate from the Runner's
+existing support for both key and password authority responses.
 
 Enable the **SSH** row in **Agent -> Authorization**, alongside connector rows
 with the same search and loading switch, not in Profile. The description explains

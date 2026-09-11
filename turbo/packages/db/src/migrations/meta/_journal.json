@@ -246,6 +246,13 @@
       "when": 1789111622721,
       "tag": "1112_morning_brief_enrollment",
       "breakpoints": true
+    },
+    {
+      "idx": 1113,
+      "version": "7",
+      "when": 1789131798139,
+      "tag": "1113_reusable_ssh_credentials",
+      "breakpoints": true
     }
   ]
 }
