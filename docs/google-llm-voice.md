@@ -102,10 +102,13 @@ at 1 MiB and independent plain-text polish at 2 MiB.
 
 The auth helper exchanges the runtime JWT with STS, then impersonates the chosen
 account with cloud-platform scope and at most a one-hour lifetime. Token responses
-are limited to 64 KiB and validated before use. In-memory credentials are scoped
-to project/provider/account/app environment and refreshed five minutes before
-expiry. Concurrent requests share a refresh. Every waiter retains its own
-cancellation; the last departing waiter cancels exchange. A ten-second deadline
+are limited to 64 KiB and validated before use. Absolute IAM expiry validation
+allows up to five minutes of forward clock skew. Local credential reuse stays
+capped at the requested hour, with refresh five minutes before that bound or
+the provider expiry, whichever is earlier. In-memory credentials are scoped
+to project/provider/account/app environment. Concurrent requests share a refresh.
+Every waiter retains its own cancellation; the last departing waiter cancels
+exchange. A ten-second deadline
 bounds auth, and late abandoned work cannot publish credentials into a newer
 refresh. Tokens are never persisted or logged.
 

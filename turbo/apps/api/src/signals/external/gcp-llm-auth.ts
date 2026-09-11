@@ -18,6 +18,7 @@ const STS_URL = "https://sts.us-west1.rep.googleapis.com/v1/token";
 const SCOPE = "https://www.googleapis.com/auth/cloud-platform";
 const ACCESS_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
 const REFRESH_SKEW_MS = 5 * 60_000;
+const CLOCK_SKEW_MS = 5 * 60_000;
 const AUTH_TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_BYTES = 64 * 1024;
 
@@ -159,14 +160,21 @@ async function exchange(
     throw new GcpLlmAuthError("impersonation", 502);
   }
   const expiresAt = Date.parse(token.data.expireTime);
+  const receivedAt = now();
+  const maxLocalExpiry = receivedAt + 3_600_000;
   if (
     !Number.isFinite(expiresAt) ||
-    expiresAt <= now() ||
-    expiresAt > now() + 3_600_000
+    expiresAt <= receivedAt ||
+    expiresAt > maxLocalExpiry + CLOCK_SKEW_MS
   ) {
     throw new GcpLlmAuthError("impersonation", 502);
   }
-  return { accessToken: token.data.accessToken, expiresAt };
+  // Google's absolute timestamp uses its clock. Accept bounded clock skew,
+  // but do not let it extend local reuse beyond the requested token lifetime.
+  return {
+    accessToken: token.data.accessToken,
+    expiresAt: Math.min(expiresAt, maxLocalExpiry),
+  };
 }
 
 async function completeRefresh(

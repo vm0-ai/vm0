@@ -167,6 +167,38 @@ describe("Google voice workload identity through the public API", () => {
     });
   });
 
+  it("accepts Google's clock skew without extending credential reuse", async () => {
+    mockNow(new Date("2026-09-11T08:00:00Z"));
+    let impersonations = 0;
+    server.use(
+      http.post(GOOGLE_IMPERSONATION_URL, () => {
+        impersonations += 1;
+        // Google grants the requested hour using its own clock, one minute
+        // ahead of the API host. Its absolute expiry is still legitimate.
+        return HttpResponse.json({
+          accessToken: "clock-skew-token",
+          expireTime: new Date(now() + 3_660_000).toISOString(),
+        });
+      }),
+      http.post(VERTEX_VOICE_URL, ({ request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer clock-skew-token",
+        );
+        return vertexVoiceResponse("Synthetic dictation.");
+      }),
+    );
+    const response = await accept(polish(), [200]);
+    expect(response.body).toStrictEqual({ text: "Synthetic dictation." });
+    mockNow(new Date("2026-09-11T08:54:59Z"));
+    await accept(polish(), [200]);
+    expect(impersonations).toBe(1);
+    // Preserve the local five-minute refresh margin even though the absolute
+    // provider timestamp is later than the requested lifetime on this host.
+    mockNow(new Date("2026-09-11T08:55:00Z"));
+    await accept(polish(), [200]);
+    expect(impersonations).toBe(2);
+  });
+
   it.each([
     ["GCP_LLM_PROJECT_ID", undefined],
     ["GCP_LLM_WORKLOAD_IDENTITY_PROVIDER", undefined],
