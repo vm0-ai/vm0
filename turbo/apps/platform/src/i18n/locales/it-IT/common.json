@@ -6174,6 +6174,7 @@
     "fileSizeError": "Scegli un file della chiave privata non vuoto e non più grande di 64 KiB.",
     "fingerprint": "Chiave host memorizzata",
     "host": "Nome host pubblico o indirizzo IP",
+    "hostSection": "Host",
     "hostsTab": "Host",
     "label": "SSH",
     "loadFailed": "Impossibile caricare le impostazioni SSH. Riprova.",

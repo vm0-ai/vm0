@@ -6095,6 +6095,7 @@
     "fileSizeError": "空でない、64 KiB 以下の秘密鍵ファイルを選択してください。",
     "fingerprint": "記憶したホスト鍵",
     "host": "公開ホスト名または IP アドレス",
+    "hostSection": "ホスト",
     "hostsTab": "ホスト",
     "label": "SSH",
     "loadFailed": "SSH設定を読み込めませんでした。再試行してください。",

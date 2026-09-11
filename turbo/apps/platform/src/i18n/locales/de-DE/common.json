@@ -6111,6 +6111,7 @@
     "fileSizeError": "Wählen Sie eine nicht leere Datei mit privatem Schlüssel, die höchstens 64 KiB groß ist.",
     "fingerprint": "Gespeicherter Hostschlüssel",
     "host": "Öffentlicher Hostname oder IP-Adresse",
+    "hostSection": "Host",
     "hostsTab": "Hosts",
     "label": "SSH",
     "loadFailed": "SSH-Einstellungen konnten nicht geladen werden. Versuche es erneut.",

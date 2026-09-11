@@ -6103,6 +6103,7 @@
     "fileSizeError": "Choose a non-empty private key file no larger than 64 KiB.",
     "fingerprint": "Learned host key",
     "host": "Public hostname or IP address",
+    "hostSection": "Host",
     "hostsTab": "Hosts",
     "label": "SSH",
     "loadFailed": "Could not load SSH settings. Try again.",

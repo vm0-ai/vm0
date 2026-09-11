@@ -74,7 +74,12 @@ function EndpointFields({
 }) {
   const { t } = useTranslation();
   return (
-    <>
+    <fieldset className="grid min-w-0 gap-4">
+      <legend className="mb-3 text-sm font-semibold">
+        {t(($) => {
+          return $.ssh.hostSection;
+        })}
+      </legend>
       <label className="grid gap-2">
         {t(($) => {
           return $.ssh.displayName;
@@ -87,33 +92,35 @@ function EndpointFields({
           defaultValue={connection?.displayName}
         />
       </label>
-      <label className="grid gap-2">
-        {t(($) => {
-          return $.ssh.host;
-        })}
-        <Input
-          name="host"
-          required
-          pattern=".*\S.*"
-          maxLength={SSH_HOST_MAX_LENGTH}
-          defaultValue={connection?.host}
-        />
-      </label>
-      <label className="grid gap-2">
-        {t(($) => {
-          return $.ssh.port;
-        })}
-        <Input
-          name="port"
-          type="number"
-          className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-          required
-          min={1}
-          max={65_535}
-          defaultValue={connection?.port ?? 22}
-        />
-      </label>
-    </>
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_6rem]">
+        <label className="grid gap-2">
+          {t(($) => {
+            return $.ssh.host;
+          })}
+          <Input
+            name="host"
+            required
+            pattern=".*\S.*"
+            maxLength={SSH_HOST_MAX_LENGTH}
+            defaultValue={connection?.host}
+          />
+        </label>
+        <label className="grid gap-2">
+          {t(($) => {
+            return $.ssh.port;
+          })}
+          <Input
+            name="port"
+            type="number"
+            className="[appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            required
+            min={1}
+            max={65_535}
+            defaultValue={connection?.port ?? 22}
+          />
+        </label>
+      </div>
+    </fieldset>
   );
 }
 
@@ -318,7 +325,14 @@ function CredentialSelection() {
   const editor = useGet(sshCredentialEditor$);
   const choose = useSet(chooseSshCredential$);
   return (
-    <>
+    <fieldset className="grid min-w-0 gap-4">
+      <legend className="mb-3 text-sm font-semibold">
+        <label htmlFor="ssh-selected-credential">
+          {t(($) => {
+            return $.ssh.credential.label;
+          })}
+        </label>
+      </legend>
       <div className="grid gap-2">
         {credentials.state === "hasError" ? (
           <SshLoadError />
@@ -335,36 +349,33 @@ function CredentialSelection() {
             })}
           </p>
         ) : (
-          <>
-            <label htmlFor="ssh-selected-credential">
-              {t(($) => {
-                return $.ssh.credential.label;
+          <Select value={editor.selection} onValueChange={choose}>
+            <SelectTrigger id="ssh-selected-credential">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {credentials.data.map((credential) => {
+                return (
+                  <SelectItem key={credential.id} value={credential.id}>
+                    {credential.name} · {credential.username}
+                  </SelectItem>
+                );
               })}
-            </label>
-            <Select value={editor.selection} onValueChange={choose}>
-              <SelectTrigger id="ssh-selected-credential">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {credentials.data.map((credential) => {
-                  return (
-                    <SelectItem key={credential.id} value={credential.id}>
-                      {credential.name} · {credential.username}
-                    </SelectItem>
-                  );
+              <SelectItem value="new">
+                {t(($) => {
+                  return $.ssh.credential.createNew;
                 })}
-                <SelectItem value="new">
-                  {t(($) => {
-                    return $.ssh.credential.createNew;
-                  })}
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </>
+              </SelectItem>
+            </SelectContent>
+          </Select>
         )}
       </div>
-      {editor.selection === "new" && <CredentialFields credential={null} />}
-    </>
+      {editor.selection === "new" && (
+        <div className="grid gap-4 rounded-lg border bg-muted/30 p-4">
+          <CredentialFields credential={null} />
+        </div>
+      )}
+    </fieldset>
   );
 }
 
@@ -524,6 +535,7 @@ function SshDialog() {
           }}
         >
           {hostEditor && <EndpointFields connection={dialog.connection} />}
+          {hostEditor && <div aria-hidden="true" className="h-px bg-divider" />}
           {hostEditor && <CredentialSelection />}
           {["create-credential", "edit-credential"].includes(dialog.kind) && (
             <CredentialFields credential={dialog.credential} />

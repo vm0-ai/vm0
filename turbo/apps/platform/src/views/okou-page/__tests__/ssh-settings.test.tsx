@@ -79,17 +79,32 @@ test("An existing credential can be reused without entering or reading its secre
   });
   await page("/connectors/ssh?add=1");
   const dialog = await screen.findByRole("dialog");
-  await fill(within(dialog).getByLabelText("Display name"), "Second host");
+  const hostFields = within(dialog).getByRole("group", { name: "Host" });
+  const credentialFields = within(dialog).getByRole("group", {
+    name: "Credential",
+  });
+  expect(within(hostFields).getByLabelText("Port")).toHaveValue(22);
+  expect(within(hostFields).queryByLabelText("Credential name")).toBeNull();
+  expect(
+    within(credentialFields).getByLabelText("Credential name"),
+  ).toBeVisible();
+  expect(within(credentialFields).getByLabelText("SSH username")).toBeVisible();
+  expect(within(credentialFields).getByLabelText("Private key")).toBeVisible();
+  expect(within(credentialFields).queryByLabelText("Display name")).toBeNull();
+  await fill(within(hostFields).getByLabelText("Display name"), "Second host");
   await fill(
-    within(dialog).getByLabelText("Public hostname or IP address"),
+    within(hostFields).getByLabelText("Public hostname or IP address"),
     "second.example.com",
   );
-  await userEvent.click(await within(dialog).findByRole("combobox"));
+  await userEvent.click(within(credentialFields).getByRole("combobox"));
   await userEvent.click(
     await screen.findByRole("option", { name: "Deployment login · deploy" }),
   );
   expect(within(dialog).queryByLabelText("Private key")).toBeNull();
   expect(within(dialog).queryByLabelText("SSH username")).toBeNull();
+  expect(within(hostFields).getByLabelText("Display name")).toHaveValue(
+    "Second host",
+  );
   click(getAction("button", "Save", dialog));
   await waitFor(() => {
     return expect(screen.queryByRole("dialog")).toBeNull();

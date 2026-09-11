@@ -6174,6 +6174,7 @@
     "fileSizeError": "Escolha um arquivo de chave privada não vazio de até 64 KiB.",
     "fingerprint": "Chave de host armazenada",
     "host": "Nome de host público ou endereço IP",
+    "hostSection": "Host",
     "hostsTab": "Hosts",
     "label": "SSH",
     "loadFailed": "Não foi possível carregar as configurações SSH. Tente novamente.",

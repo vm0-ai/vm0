@@ -6174,6 +6174,7 @@
     "fileSizeError": "Choisissez un fichier de clé privée non vide de 64 Kio maximum.",
     "fingerprint": "Clé d’hôte mémorisée",
     "host": "Nom d’hôte public ou adresse IP",
+    "hostSection": "Hôte",
     "hostsTab": "Hôtes",
     "label": "SSH",
     "loadFailed": "Impossible de charger les paramètres SSH. Réessayez.",

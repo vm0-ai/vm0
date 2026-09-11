@@ -6095,6 +6095,7 @@
     "fileSizeError": "Pilih file kunci privat yang tidak kosong dan berukuran maksimal 64 KiB.",
     "fingerprint": "Kunci host tersimpan",
     "host": "Nama host publik atau alamat IP",
+    "hostSection": "Host",
     "hostsTab": "Host",
     "label": "SSH",
     "loadFailed": "Tidak dapat memuat pengaturan SSH. Coba lagi.",
