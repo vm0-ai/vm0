@@ -54,7 +54,7 @@ export interface MockedMembership {
   };
 }
 
-export interface MockedClientSession {
+interface MockedClientSession {
   currentTask?: { readonly key: string };
   id: string;
   status?: string;
@@ -74,7 +74,7 @@ interface MockedAuthCapabilities {
   readonly passkey?: boolean;
 }
 
-export type MockedSignInFactor =
+type MockedSignInFactor =
   | { readonly strategy: "password" }
   | {
       readonly emailAddressId: string;
@@ -89,7 +89,7 @@ export type MockedSignInFactor =
     }
   | { readonly strategy: string };
 
-export interface MockedSignInResourceState {
+interface MockedSignInResourceState {
   readonly createdSessionId?: string | null;
   readonly identifier?: string | null;
   readonly isTransferable?: boolean;
@@ -100,7 +100,7 @@ export interface MockedSignInResourceState {
   readonly supportedSecondFactors?: readonly MockedSignInFactor[] | null;
 }
 
-export interface MockedSignUpResourceState {
+interface MockedSignUpResourceState {
   readonly createdSessionId?: string | null;
   readonly emailAddress?: string | null;
   readonly externalAccountError?: ClerkAPIError | null;
@@ -287,7 +287,7 @@ let internalMockedPasswordValidation: PasswordValidation = {
   strength: undefined,
 };
 
-export function mockSignInResource(state: MockedSignInResourceState): void {
+function mockSignInResource(state: MockedSignInResourceState): void {
   internalMockedSignInResourceState = {
     createdSessionId: state.createdSessionId ?? null,
     identifier: state.identifier ?? null,
@@ -302,7 +302,7 @@ export function mockSignInResource(state: MockedSignInResourceState): void {
   };
 }
 
-export function mockSignUpResource(state: MockedSignUpResourceState): void {
+function mockSignUpResource(state: MockedSignUpResourceState): void {
   internalMockedSignUpResourceState = {
     createdSessionId: state.createdSessionId ?? null,
     emailAddress: state.emailAddress ?? null,
@@ -328,7 +328,7 @@ export function mockSignUpResource(state: MockedSignUpResourceState): void {
   };
 }
 
-export function mockSignUpConfiguration(
+function mockSignUpConfiguration(
   configuration: MockedSignUpConfiguration,
 ): void {
   const attributes = configuration.attributes;
@@ -392,6 +392,11 @@ export function mockClerkLoaded(loaded: boolean): void {
   internalMockedClerkLoaded = loaded;
 }
 
+/**
+ * Clerk's transitive state: while `setActive()` navigates it publishes
+ * `session`, `user` and `organization` as `undefined` and emits the real
+ * values only afterwards. `undefined` means unknown, not signed out.
+ */
 export function mockClerkSessionTransitioning(transitioning: boolean): void {
   internalMockedClerkSessionTransitioning = transitioning;
   emitMockedClerkEvent();
@@ -1121,9 +1126,15 @@ export const mockedClerk = {
     return internalMockedClerkLoaded ? "ready" : "loading";
   },
   get user() {
+    if (internalMockedClerkSessionTransitioning) {
+      return undefined;
+    }
     return internalMockedUser;
   },
   get organization() {
+    if (internalMockedClerkSessionTransitioning) {
+      return undefined;
+    }
     return internalMockedOrganization;
   },
   get session() {

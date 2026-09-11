@@ -3,7 +3,12 @@ import { createElement } from "react";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { isDesktopAuthFlow } from "../lib/desktop-auth-flow.ts";
 import { setupDesktopAuthPage } from "./desktop-auth/desktop-auth.ts";
-import { clerk$, setupClerk$, watchOrgSwitch$ } from "./auth.ts";
+import {
+  clerk$,
+  setupClerk$,
+  setupClerkUser$,
+  watchOrgSwitch$,
+} from "./auth.ts";
 import {
   runAuthenticatedRealtime$,
   setupAuthenticatedBootstrapData$,
@@ -557,6 +562,7 @@ const completeBootstrap$ = command(
     if (isDesktopAuthFlow()) {
       await Promise.all([
         set(setupClerk$, signal),
+        set(setupClerkUser$, signal),
         set(watchOrgSwitch$, signal),
         set(setupRoutes$, signal),
       ]);
@@ -575,6 +581,7 @@ const completeBootstrap$ = command(
       set(setupNotificationListener$, signal),
 
       set(setupGlobalKeyboardShortcuts$, signal),
+      set(setupClerkUser$, signal),
       set(watchOrgSwitch$, signal),
       set(setupFeatureSwitches$, signal),
     ]);

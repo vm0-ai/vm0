@@ -8,7 +8,7 @@ import { accept } from "../../lib/accept.ts";
 import { DesktopAuthPage } from "../../views/desktop-auth/desktop-auth-page.tsx";
 import { apiClient$ } from "../api-client.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
-import { clerk$, resolveAppAuthUrl } from "../auth.ts";
+import { clerk$, clerkUser$, resolveAppAuthUrl } from "../auth.ts";
 import { updatePage$ } from "../react-router.ts";
 import { replaceState } from "../location.ts";
 import { searchParams$ } from "../route.ts";
@@ -168,8 +168,8 @@ const activateDesktopOrganization$ = command(
 
 function createDesktopMemberships() {
   return computed(async (get) => {
-    const clerk = await get(clerk$);
-    if (!clerk.user) {
+    const user = await get(clerkUser$);
+    if (!user) {
       return [];
     }
     // Clerk's page is bounded; fetch every page so workspace choice does not
@@ -177,7 +177,7 @@ function createDesktopMemberships() {
     const memberships = [];
     let offset = 0;
     for (;;) {
-      const page = await clerk.user.getOrganizationMemberships({
+      const page = await user.getOrganizationMemberships({
         initialPage: Math.floor(offset / 100) + 1,
         pageSize: 100,
       });

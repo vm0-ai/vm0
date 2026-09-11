@@ -1,6 +1,6 @@
 import { command, state } from "ccstate";
 import { toast } from "@okouai/ui/components/ui/sonner";
-import { clerk$, openClerkAddAccount$ } from "./auth.ts";
+import { clerk$, clerkUser$, openClerkAddAccount$ } from "./auth.ts";
 import { replaceSearchParams$, searchParams$ } from "./route.ts";
 import { jsonParseOr, onDomEventFn } from "./utils.ts";
 import { i18n } from "../i18n/index.ts";
@@ -97,7 +97,10 @@ export const handleInvitationRedirect$ = command(
 
     // The ticket payload only identifies the target. Current Clerk membership
     // is the authoritative signal that the active account accepted the invite.
-    const membership = clerk.user?.organizationMemberships.find((item) => {
+    const user = await get(clerkUser$);
+    signal.throwIfAborted();
+
+    const membership = user?.organizationMemberships.find((item) => {
       return item.organization.id === redirect.organizationId;
     });
 

@@ -1,3 +1,4 @@
+import type { UserResource } from "@clerk/shared/types";
 import { command, computed, state } from "ccstate";
 import { normalizeGoogleAdsAttributionParams } from "@okouai/core/google-ads-attribution";
 import { isDesktopAuthFlow } from "../lib/desktop-auth-flow.ts";
@@ -20,7 +21,12 @@ import {
 } from "../lib/platform-host.ts";
 import { BRAND_NAME, type BrandName } from "./branding.ts";
 import { rootSignal$ } from "./root-signal.ts";
-import { bestEffort, onDomEventFn } from "./utils.ts";
+import {
+  bestEffort,
+  createDeferredPromise,
+  type DeferredPromise,
+  onDomEventFn,
+} from "./utils.ts";
 import { writeConnectionDiagnostic$ } from "./connection-diagnostics.ts";
 import { sessionStorageSignals } from "./external/session-storage.ts";
 
@@ -364,6 +370,88 @@ export const clerk$ = computed(async (get) => {
   return runtime.clerk;
 });
 
+const internalClerkUser$ = state<Promise<UserResource | null> | null>(null);
+
+/**
+ * The settled Clerk user: `null` when signed out, never the transitive
+ * `undefined`.
+ *
+ * Clerk publishes `session`, `user` and `organization` as `undefined` while
+ * `setActive()` navigates and emits the real values only once that navigation
+ * resolves. A direct `clerk.user` read inside that window reports a signed-out
+ * user, so every transition swaps in a fresh promise that settles with the
+ * value Clerk publishes next.
+ */
+export const clerkUser$ = computed(
+  async (get): Promise<UserResource | null> => {
+    const published = get(internalClerkUser$);
+    if (published) {
+      return await published;
+    }
+    // Before `setupClerkUser$` owns a listener there is nothing to wait for, so
+    // fall back to the live value and keep a plain read's behavior.
+    const clerk = await get(clerk$);
+    return clerk.user ?? null;
+  },
+);
+
+/**
+ * Owns the Clerk listener behind {@link clerkUser$}. Bootstrap starts this for
+ * every route family; until it runs, `clerkUser$` reads Clerk directly.
+ */
+export const setupClerkUser$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
+
+    let pending: DeferredPromise<UserResource | null> | null = null;
+    let published: UserResource | null | undefined;
+
+    // Token refreshes emit here too. They never clear `user`, so the identity
+    // comparison keeps them from republishing an already settled value and
+    // re-running every consumer of `clerkUser$`.
+    const publish = (): void => {
+      const user = clerk.user;
+      if (user === undefined) {
+        if (pending) {
+          return;
+        }
+        pending = createDeferredPromise<UserResource | null>(signal);
+        set(internalClerkUser$, pending.promise);
+        return;
+      }
+      published = user;
+      if (pending) {
+        const deferred = pending;
+        pending = null;
+        deferred.resolve(user);
+        return;
+      }
+      set(internalClerkUser$, Promise.resolve(user));
+    };
+
+    const unsubscribe = clerk.addListener(() => {
+      if (clerk.user !== undefined && clerk.user === published && !pending) {
+        return;
+      }
+      publish();
+    });
+    signal.addEventListener(
+      "abort",
+      () => {
+        unsubscribe();
+        // Release ownership instead of leaving a rejected or pending value
+        // behind: without a listener, `clerkUser$` reads Clerk directly again.
+        set(internalClerkUser$, null);
+      },
+      { once: true },
+    );
+    // Close the race between the current value and listener registration
+    // instead of relying on Clerk's emit-on-subscribe behavior.
+    publish();
+  },
+);
+
 /** Load Clerk's optional hosted UI for auth pages and account switching. */
 export const ensureClerkUiLoaded$ = command(
   async ({ get }, signal: AbortSignal) => {
@@ -416,6 +504,11 @@ export const setupClerk$ = command(
     // Clerk listener but don't change the user.
     let prevUserId = clerk.user?.id ?? null;
     const unsubscribe = clerk.addListener(() => {
+      if (clerk.user === undefined) {
+        // Clerk's transitive state while `setActive()` navigates: the identity
+        // is unknown, not signed out, and the next emit carries the real value.
+        return;
+      }
       // Update Sentry user context on auth state change
       if (clerk.user) {
         setSentryUser(clerk.user.id);
@@ -472,11 +565,9 @@ export const watchOrgSwitch$ = command(
     const clerk = await get(clerk$);
     signal.throwIfAborted();
 
-    let prevOrgId = get(activeOrgIdStorage.get$) ?? undefined;
-    const currentOrgId = clerk.organization?.id ?? undefined;
-    prevOrgId = currentOrgId;
-    set(persistOrgId$, currentOrgId);
-    setPostHogOrganization(currentOrgId);
+    let prevOrgId = clerk.organization?.id ?? undefined;
+    set(persistOrgId$, prevOrgId);
+    setPostHogOrganization(prevOrgId);
 
     // Listener stays `() => void`: Clerk's `ListenerCallback` signature
     // is not awaited, and returning a promise from it would trip
@@ -485,17 +576,29 @@ export const watchOrgSwitch$ = command(
     // rejects.
     const unsubscribe = clerk.addListener(
       onDomEventFn(async () => {
+        if (clerk.user === null) {
+          // Signed out: any organization that follows belongs to a new session
+          // and activates rather than switches.
+          prevOrgId = undefined;
+          return;
+        }
         const newOrgId = clerk.organization?.id ?? undefined;
-        // On mobile, Clerk can transiently clear clerk.organization to
-        // undefined during a background token refresh before restoring it on
-        // the next event. Keep the previous concrete org so that restoration
-        // is recognized as unchanged rather than as an org switch.
+        // Clerk clears the organization while `setActive()` navigates, and on
+        // mobile it can also clear it during a background token refresh. Keep
+        // the previous concrete org so that restoration is recognized as
+        // unchanged rather than as an org switch.
         if (!newOrgId || newOrgId === prevOrgId) {
           return;
         }
+        // The first organization a session activates is not a switch. Reloading
+        // there would discard the destination the sign-in flow navigates to.
+        const isFirstActivation = prevOrgId === undefined;
         prevOrgId = newOrgId;
         set(persistOrgId$, newOrgId);
         setPostHogOrganization(newOrgId);
+        if (isFirstActivation) {
+          return;
+        }
 
         // Desktop owns navigation until fresh-token IPC and handoff acknowledgement.
         // Check both sides of the token wait: a route can change while it is pending.
@@ -518,19 +621,19 @@ export const watchOrgSwitch$ = command(
 
 export const user$ = computed(async (get) => {
   get(reload$);
-  const clerk = await get(clerk$);
-  return clerk.user ?? undefined;
+  return (await get(clerkUser$)) ?? undefined;
 });
 
 export const authenticatedIdentity$ = computed(async (get) => {
+  const user = await get(clerkUser$);
   const clerk = await get(clerk$);
-  if (!clerk.user || !clerk.organization) {
+  if (!user || !clerk.organization) {
     throw new Error("Authenticated user and organization are required");
   }
   return {
-    userId: clerk.user.id,
+    userId: user.id,
     orgId: clerk.organization.id,
-    email: clerk.user.primaryEmailAddress?.emailAddress,
+    email: user.primaryEmailAddress?.emailAddress,
   };
 });
 
@@ -543,8 +646,7 @@ export const authenticatedIdentity$ = computed(async (get) => {
  */
 export const currentUserInfo$ = computed(async (get) => {
   get(clerkVersion$);
-  const clerk = await get(clerk$);
-  const user = clerk.user;
+  const user = await get(clerkUser$);
   if (!user) {
     return undefined;
   }
