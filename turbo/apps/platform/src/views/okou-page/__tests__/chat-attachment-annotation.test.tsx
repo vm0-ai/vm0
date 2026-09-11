@@ -4,7 +4,12 @@ import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { expect, test, vi } from "vitest";
 
-import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  fill,
+  queryAllByRoleFast,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   arrowAnnotation,
@@ -138,7 +143,7 @@ test("A user can click an annotation note, edit it, and close only the note", as
   await openAnnotationEditor("annotated-plan.png");
   await user.click(screen.getByTestId("annotation-note-label-editable-note"));
 
-  const note = await screen.findByPlaceholderText("What should change?");
+  const note = await screen.findByLabelText("What should change?");
   await waitFor(() => {
     expect(note).toHaveFocus();
   });
@@ -359,7 +364,7 @@ test("A note can be written over more than one line", async () => {
   await openAnnotationEditor("long-note.png");
   fireEvent.click(screen.getByTestId("annotation-mark-1"));
 
-  const field = await screen.findByPlaceholderText("What should change?");
+  const field = await screen.findByLabelText("What should change?");
   await fill(field, "Align the total with the heading");
   await user.keyboard("{Shift>}{Enter}{/Shift}");
   await user.keyboard("and drop the divider");
@@ -466,8 +471,10 @@ test("Emptying a mark's words and backspacing again removes it", async () => {
 
   await openAnnotationEditor("deletable-label.png");
   fireEvent.click(screen.getByTestId("annotation-mark-1"));
-  await screen.findByTestId("annotation-inline-editor");
-  expect(screen.queryByLabelText("Remove mark")).toBeNull();
+  const editor = await screen.findByTestId("annotation-inline-editor");
+  // The bin that used to sit beside the words is gone; the one in the pill is
+  // the only delete control, and it is not on the picture.
+  expect(queryAllByRoleFast("button", editor)).toHaveLength(0);
 
   const field = await screen.findByDisplayValue("Raise this");
   await fill(field, "");
@@ -477,6 +484,40 @@ test("Emptying a mark's words and backspacing again removes it", async () => {
     expect(screen.queryByTestId("annotation-inline-editor")).toBeNull();
   });
   expect(screen.queryByTestId("annotation-mark-1")).toBeNull();
+  expect(screen.getByText("0 marks")).toBeVisible();
+});
+
+/**
+ * Undo, redo and delete sit together in the pill, next to the tools. Delete
+ * only means something while a mark is open, so it says so until one is.
+ */
+test("The pill deletes the open mark and is dead until one is", async () => {
+  const image = draftAttachment("pill-delete.png", {
+    annotatedFileId: "draft-pill-delete-annotated",
+    annotations: boxAnnotation([{ id: "doomed-mark", ordinal: 1 }]),
+  });
+  mockAttachmentChat(context, { draft: draftForAttachment(image, "") });
+
+  await setupPage({
+    context,
+    path: `/chats/${ATTACHMENT_THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerImageAnnotation]: true },
+  });
+
+  await openAnnotationEditor("pill-delete.png");
+  await expect(findNamedButton("Remove mark")).resolves.toBeDisabled();
+
+  fireEvent.click(screen.getByTestId("annotation-mark-1"));
+  const remove = await findNamedButton("Remove mark");
+  await waitFor(() => {
+    expect(remove).toBeEnabled();
+  });
+
+  click(remove);
+
+  await waitFor(() => {
+    expect(screen.queryByTestId("annotation-mark-1")).toBeNull();
+  });
   expect(screen.getByText("0 marks")).toBeVisible();
 });
 
@@ -831,7 +872,7 @@ test("Enter confirms a note and one drag is a single undo step", async () => {
   const surface = await openAnnotationEditor("keyboard-plan.png");
   fireEvent.click(screen.getByTestId("annotation-mark-1"));
 
-  const note = await screen.findByPlaceholderText("What should change?");
+  const note = await screen.findByLabelText("What should change?");
   await fill(note, "Raise this panel");
   // Enter had no binding at all: the only way out of the field was Escape or
   // clicking off it.

@@ -482,6 +482,7 @@
       "notePlaceholder": "O que deve mudar?",
       "open": "Anotar",
       "redo": "Refazer",
+      "removeMark": "Remover anotação",
       "subtitle_one": "{{count}} marcação",
       "subtitle_many": "{{count}} marcações",
       "subtitle_other": "{{count}} marcações",

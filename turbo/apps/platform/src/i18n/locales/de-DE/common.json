@@ -468,6 +468,7 @@
       "notePlaceholder": "Was soll sich ändern?",
       "open": "Markieren",
       "redo": "Wiederholen",
+      "removeMark": "Markierung entfernen",
       "subtitle_one": "{{count}} Markierung",
       "subtitle_other": "{{count}} Markierungen",
       "textPlaceholder": "Hier eingeben",

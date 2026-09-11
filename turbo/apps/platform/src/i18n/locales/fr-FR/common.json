@@ -482,6 +482,7 @@
       "notePlaceholder": "Que faut-il changer ?",
       "open": "Annoter",
       "redo": "Rétablir",
+      "removeMark": "Supprimer l'annotation",
       "subtitle_one": "{{count}} annotation",
       "subtitle_many": "{{count}} annotations",
       "subtitle_other": "{{count}} annotations",

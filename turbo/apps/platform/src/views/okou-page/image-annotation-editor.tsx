@@ -8,6 +8,7 @@ import {
   Plus,
   Redo2,
   Square,
+  Trash2,
   Type,
   Undo2,
   X,
@@ -372,6 +373,79 @@ function ZoomControls({
   );
 }
 
+/**
+ * Undo, redo, and delete the open mark.
+ *
+ * They sit in the pill rather than up in the header because that is where the
+ * hand already is — Tong asked for the three of them together next to the
+ * tools. Delete is the only way back for a mark whose words are worth keeping;
+ * emptying the field and pressing backspace is the other.
+ */
+function PillActions({
+  signals,
+}: {
+  readonly signals: ImageAnnotationSignals;
+}) {
+  const { t } = useTranslation();
+  const canUndo = useGet(signals.annotationCanUndo$);
+  const canRedo = useGet(signals.annotationCanRedo$);
+  const openMarkId = useGet(signals.annotationOpenMarkId$);
+  const undo = useSet(signals.undoAnnotation$);
+  const redo = useSet(signals.redoAnnotation$);
+  const removeSelected = useSet(signals.removeSelectedAnnotationMark$);
+
+  const actions = [
+    {
+      key: "undo",
+      icon: Undo2,
+      disabled: !canUndo,
+      run: undo,
+      label: t(($) => {
+        return $.artifacts.annotation.undo;
+      }),
+    },
+    {
+      key: "redo",
+      icon: Redo2,
+      disabled: !canRedo,
+      run: redo,
+      label: t(($) => {
+        return $.artifacts.annotation.redo;
+      }),
+    },
+    {
+      key: "remove",
+      icon: Trash2,
+      disabled: openMarkId === null,
+      run: removeSelected,
+      label: t(($) => {
+        return $.artifacts.annotation.removeMark;
+      }),
+    },
+  ];
+
+  return (
+    <>
+      {actions.map(({ key, icon: Icon, disabled, run, label }) => {
+        return (
+          <Button
+            key={key}
+            showTooltip
+            type="button"
+            variant="quiet"
+            size="icon-sm"
+            disabled={disabled}
+            onClick={run}
+            aria-label={label}
+          >
+            <Icon size={16} />
+          </Button>
+        );
+      })}
+    </>
+  );
+}
+
 function ToolPill({ signals }: { readonly signals: ImageAnnotationSignals }) {
   const tool = useGet(signals.annotationTool$);
   const setTool = useSet(signals.setAnnotationTool$);
@@ -413,6 +487,8 @@ function ToolPill({ signals }: { readonly signals: ImageAnnotationSignals }) {
       })}
       <span className="mx-1 h-[18px] w-px bg-border" />
       <InkSwatches signals={signals} />
+      <span className="mx-1 h-[18px] w-px bg-border" />
+      <PillActions signals={signals} />
     </div>
   );
 }
@@ -516,7 +592,10 @@ function InlineMarkEditor({
   const isLabel = mark.shape === "text";
   const value = noteOf(mark);
   const box = annotationTextBox(mark);
-  const placeholder = isLabel
+  // A name for the field, not a prompt printed on the picture. Tong: *"text 不
+  // 要展示提示文字，只需要一个鼠标丨 闪烁就成，让用户直接输入文字"* — so this
+  // reaches assistive technology and the tests, and nothing else.
+  const fieldLabel = isLabel
     ? t(($) => {
         return $.artifacts.annotation.textPlaceholder;
       })
@@ -554,7 +633,9 @@ function InlineMarkEditor({
         // `select-text` and the caret cursor are the surface's own
         // `select-none cursor-crosshair` being undone: a field that cannot be
         // selected in, under a crosshair, does not read as somewhere to type.
-        "absolute z-30 grid select-text",
+        // The empty field is a caret and nothing else, so it needs a little
+        // width of its own to be seen and to be clicked back into.
+        "absolute z-30 grid min-w-4 select-text",
         // `leading-tight` rather than the line height inside `text-sm`: the
         // size is set inline by the corner handles, and a fixed 20px line box
         // would keep the rows of a scaled-up label on top of each other.
@@ -575,7 +656,7 @@ function InlineMarkEditor({
           isLabel ? LABEL_PAD : NOTE_PAD,
         )}
       >
-        {value || placeholder}
+        {value}
         {"\u200b"}
       </span>
       <textarea
@@ -586,8 +667,7 @@ function InlineMarkEditor({
         autoFocus
         rows={1}
         value={value}
-        aria-label={placeholder}
-        placeholder={placeholder}
+        aria-label={fieldLabel}
         style={{
           color: mark.ink,
           caretColor: mark.ink,
@@ -631,7 +711,7 @@ function InlineMarkEditor({
           }
         }}
         className={cn(
-          "col-start-1 row-start-1 w-full cursor-text resize-none overflow-hidden bg-transparent outline-none placeholder:text-current placeholder:opacity-50",
+          "col-start-1 row-start-1 w-full cursor-text resize-none overflow-hidden bg-transparent outline-none",
           isLabel ? LABEL_PAD : NOTE_PAD,
         )}
       />
@@ -649,10 +729,6 @@ function EditorHeader({
 }) {
   const { t } = useTranslation();
   const annotation = useGet(signals.annotationDraft$);
-  const canUndo = useGet(signals.annotationCanUndo$);
-  const canRedo = useGet(signals.annotationCanRedo$);
-  const undo = useSet(signals.undoAnnotation$);
-  const redo = useSet(signals.redoAnnotation$);
   const close = useSet(signals.closeAnnotationEditor$);
 
   return (
@@ -668,52 +744,6 @@ function EditorHeader({
           )}
         </div>
       </div>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              type="button"
-              variant="quiet"
-              size="icon-sm"
-              disabled={!canUndo}
-              onClick={undo}
-              aria-label={t(($) => {
-                return $.artifacts.annotation.undo;
-              })}
-            >
-              <Undo2 size={18} />
-            </Button>
-          }
-        />
-        <TooltipContent>
-          {t(($) => {
-            return $.artifacts.annotation.undo;
-          })}
-        </TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              type="button"
-              variant="quiet"
-              size="icon-sm"
-              disabled={!canRedo}
-              onClick={redo}
-              aria-label={t(($) => {
-                return $.artifacts.annotation.redo;
-              })}
-            >
-              <Redo2 size={18} />
-            </Button>
-          }
-        />
-        <TooltipContent>
-          {t(($) => {
-            return $.artifacts.annotation.redo;
-          })}
-        </TooltipContent>
-      </Tooltip>
       <Button
         showTooltip
         type="button"

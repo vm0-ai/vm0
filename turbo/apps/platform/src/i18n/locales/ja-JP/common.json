@@ -468,6 +468,7 @@
       "notePlaceholder": "何を変えますか？",
       "open": "注釈",
       "redo": "やり直す",
+      "removeMark": "マークを削除",
       "subtitle_other": "{{count}} 件のマーク",
       "textPlaceholder": "ここに入力",
       "tools": {
