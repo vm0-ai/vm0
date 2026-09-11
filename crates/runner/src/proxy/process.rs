@@ -234,8 +234,6 @@ pub struct MitmProxy {
     stopping: Arc<AtomicBool>,
     /// Per-mitmdump-process token written by the addon to `usage-pending`.
     usage_state_id: String,
-    /// Host timestamp from when `usage_state_id` was minted.
-    usage_state_started_at_ms: u64,
     usage_flush_state: Arc<Mutex<UsageFlushTarget>>,
     jsonl_flush_request_lock: Arc<AsyncMutex<()>>,
 }
@@ -292,10 +290,11 @@ impl MitmProxy {
 
         let (crash_tx, crash_rx) = mpsc::channel(1);
         let (usage_state_id, usage_state_started_at_ms) = new_usage_state_id();
-        let usage_flush_state = Arc::new(Mutex::new(UsageFlushTarget {
-            expected_usage_state_id: usage_state_id.clone(),
+        let usage_flush_state = Arc::new(Mutex::new(UsageFlushTarget::new(
+            usage_state_id.clone(),
             usage_state_started_at_ms,
-        }));
+            Some(Arc::clone(&runtime)),
+        )));
         let jsonl_flush_request_lock = Arc::new(AsyncMutex::new(()));
 
         Ok((
@@ -307,7 +306,6 @@ impl MitmProxy {
                 crash_tx,
                 stopping: Arc::new(AtomicBool::new(false)),
                 usage_state_id,
-                usage_state_started_at_ms,
                 usage_flush_state,
                 jsonl_flush_request_lock,
             },
@@ -440,10 +438,7 @@ impl MitmProxy {
         }
 
         let _child_pid = self.child.as_ref().and_then(|child| child.id())?;
-        Some(UsageFlushTarget {
-            expected_usage_state_id: self.usage_state_id.clone(),
-            usage_state_started_at_ms: self.usage_state_started_at_ms,
-        })
+        Some(usage_flush_state_guard(&self.usage_flush_state).clone())
     }
 
     /// Ask the running addon to flush buffered webhook work before shutdown.
@@ -524,11 +519,12 @@ impl MitmProxy {
         self.stopping = Arc::clone(&new_stopping);
         let (usage_state_id, usage_state_started_at_ms) = new_usage_state_id();
         self.usage_state_id = usage_state_id.clone();
-        self.usage_state_started_at_ms = usage_state_started_at_ms;
-        *usage_flush_state_guard(&self.usage_flush_state) = UsageFlushTarget {
-            expected_usage_state_id: usage_state_id.clone(),
-            usage_state_started_at_ms,
-        };
+        {
+            // Preserve publication ownership across addon identity changes.
+            let mut target = usage_flush_state_guard(&self.usage_flush_state);
+            target.expected_usage_state_id = usage_state_id.clone();
+            target.usage_state_started_at_ms = usage_state_started_at_ms;
+        }
         MitmRestartParams {
             old_child,
             config: self.config.clone(),
@@ -596,11 +592,11 @@ impl MitmProxy {
                 crash_tx,
                 stopping: Arc::new(AtomicBool::new(false)),
                 usage_state_id: "test-usage-state-id".to_string(),
-                usage_state_started_at_ms: super::flush::now_millis(),
-                usage_flush_state: Arc::new(Mutex::new(UsageFlushTarget {
-                    expected_usage_state_id: "test-usage-state-id".to_string(),
-                    usage_state_started_at_ms: super::flush::now_millis(),
-                })),
+                usage_flush_state: Arc::new(Mutex::new(UsageFlushTarget::new(
+                    "test-usage-state-id".to_string(),
+                    super::flush::now_millis(),
+                    None,
+                ))),
                 jsonl_flush_request_lock: Arc::new(AsyncMutex::new(())),
             },
             crash_rx,
