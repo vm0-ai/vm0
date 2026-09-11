@@ -2694,7 +2694,6 @@
         "outputs": {
           "presentation": "Presentation",
           "report": "Report",
-          "single-chart": "Single chart",
           "spreadsheet": "Spreadsheet",
           "website": "Website"
         },

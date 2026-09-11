@@ -80,7 +80,7 @@ function VisualizationOutputPicker({
     <section className="flex min-w-0 flex-col gap-2.5">
       <h4 className="text-xs font-medium">{copy.outputFormat}</h4>
       <div
-        className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-5"
+        className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4"
         role="group"
         aria-label={copy.outputFormat}
       >

@@ -1,7 +1,6 @@
 import { command, computed, state } from "ccstate";
 
 export const VISUALIZATION_OUTPUTS = [
-  "single-chart",
   "presentation",
   "website",
   "spreadsheet",
