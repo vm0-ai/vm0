@@ -785,7 +785,10 @@ function PermissionConnectorCard({
       label={connector.label}
       labelSuffix={
         connector.connection?.externalUsername ? (
-          <span className="text-xs text-muted-foreground">
+          <span
+            className="min-w-0 truncate text-xs text-muted-foreground"
+            title={`@${connector.connection.externalUsername}`}
+          >
             @{connector.connection.externalUsername}
           </span>
         ) : undefined
