@@ -932,11 +932,11 @@ describe("POST /api/telegram/register", () => {
       expectedAgentName: "Okou",
     },
     {
-      caseName: "a non-canonical Okou agent named Zero",
-      displayName: "Zero",
+      caseName: "a non-canonical Okou agent named Nova",
+      displayName: "Nova",
       seedDefaultAgent: false,
       expectedUpdateStatus: 200,
-      expectedAgentName: "Zero",
+      expectedAgentName: "Nova",
     },
   ] as const)(
     "brands Telegram command descriptions for $caseName",

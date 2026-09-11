@@ -518,9 +518,13 @@ describe("FILE-03 desktop computer-use runtime", () => {
     mockNow(base);
 
     const first = await api.startComputerUseHost(actor, {
-      hostName: "Zero Desktop",
+      hostName: "Office Mac",
     });
-    const heartbeat = await api.heartbeatComputerUseHost(first.hostToken);
+    // Every heartbeat carries the full runtime body, so it also rewrites the
+    // host name. Repeat this host's own name to keep its identity stable.
+    const heartbeat = await api.heartbeatComputerUseHost(first.hostToken, {
+      hostName: "Office Mac",
+    });
     expect(heartbeat).toStrictEqual({ ok: true, hostId: first.hostId });
 
     mockNow(base + 120_000);
@@ -529,7 +533,9 @@ describe("FILE-03 desktop computer-use runtime", () => {
     });
     expect(second.hostId).not.toBe(first.hostId);
 
-    const staleHeartbeat = await api.heartbeatComputerUseHost(first.hostToken);
+    const staleHeartbeat = await api.heartbeatComputerUseHost(first.hostToken, {
+      hostName: "Office Mac",
+    });
     expect(staleHeartbeat).toStrictEqual({ ok: true, hostId: first.hostId });
 
     const visibleHosts = await api.listComputerUseHosts(actor);
@@ -538,7 +544,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
       expect.arrayContaining([
         expect.objectContaining({
           id: first.hostId,
-          hostName: "Zero Desktop",
+          hostName: "Office Mac",
           status: "online",
         }),
         expect.objectContaining({

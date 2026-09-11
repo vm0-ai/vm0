@@ -108,7 +108,7 @@ function prepareDefaultAgent(
     {
       agentId: AGENT_ID,
       ownerId: "test-user-123",
-      displayName: "Zero",
+      displayName: "Nova",
       description: null,
       sound: null,
       avatarUrl,
@@ -123,7 +123,7 @@ function prepareAgents(targetContext = context): AgentResponse[] {
       isDefaultAgent: false,
       agentId: AGENT_ID,
       ownerId: "test-user-123",
-      displayName: "Zero",
+      displayName: "Nova",
       description: null,
       sound: null,
       avatarUrl: null,
@@ -162,7 +162,7 @@ function prepareAgents(targetContext = context): AgentResponse[] {
   targetContext.mocks.data.agents(agents);
   targetContext.mocks.api(agentsByIdContract.get, ({ params, respond }) => {
     const displayNameById: Record<string, string> = {
-      [AGENT_ID]: "Zero",
+      [AGENT_ID]: "Nova",
       [RESEARCH_AGENT_ID]: "Research Agent",
       [SUPPORT_AGENT_ID]: "Support Agent",
     };
@@ -1351,7 +1351,7 @@ test("Keep pin management usable with many pinned agents", async () => {
       return link.textContent?.trim();
     }),
   ).toStrictEqual([
-    "Zero",
+    "Nova",
     "Research Agent",
     "Support Agent",
     "Operations Agent",
@@ -1365,7 +1365,7 @@ test("Keep pin management usable with many pinned agents", async () => {
   if (!pinAgent) {
     throw new Error("Pin agent button not found");
   }
-  // Cards render as Zero, Research, Support, Operations, Pin, Analytics,
+  // Cards render as Nova, Research, Support, Operations, Pin, Analytics,
   // Billing, so Pin closes the first row and the rest wrap after it.
   const fourthAgent = pinnedAgentLink(grid, "Operations Agent");
   const fifthAgent = pinnedAgentLink(grid, "Analytics Agent");
@@ -1417,7 +1417,7 @@ test("Keep pinned agents and the chat heading visible while conversations scroll
     "pinned-agents-horizontal",
   );
   const pinnedAgent = within(pinnedHeader).getByText("Research Agent");
-  const chatTitle = within(sidebar()).getByText("Chats with Zero");
+  const chatTitle = within(sidebar()).getByText("Chats with Nova");
   expect(scrollArea).not.toContainElement(pinnedHeader);
   expect(scrollArea).not.toContainElement(pinnedAgent);
   expect(scrollArea).not.toContainElement(chatTitle);
@@ -1921,7 +1921,7 @@ test("Navigate pinned agents from the mobile sidebar", async () => {
     expect(mobileSidebar()).toHaveAttribute("data-sidebar-expanded", "true");
   });
 
-  click(pinnedAgentLink(mobileSidebar(), "Zero"));
+  click(pinnedAgentLink(mobileSidebar(), "Nova"));
   await waitFor(() => {
     expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
     expect(mobileSidebar()).not.toHaveAttribute("data-sidebar-expanded");
@@ -2130,7 +2130,7 @@ test("Pin and unpin agents without closing the pin manager", async () => {
 
   await waitFor(() => {
     expect(pinnedAgentNames(grid)).toStrictEqual([
-      "Zero",
+      "Nova",
       "Research Agent",
       "Support Agent",
     ]);
@@ -2146,7 +2146,7 @@ test("Pin and unpin agents without closing the pin manager", async () => {
   click(buttonByText("Unpin", commandItemByText(dialogList, "Support Agent")));
 
   await waitFor(() => {
-    expect(pinnedAgentNames(grid)).toStrictEqual(["Zero", "Research Agent"]);
+    expect(pinnedAgentNames(grid)).toStrictEqual(["Nova", "Research Agent"]);
   });
   expect(dialogList).toBeInTheDocument();
   expect(
@@ -2183,13 +2183,13 @@ test("Show pinned agents before unread indicators finish loading", async () => {
 
   const grid = await screen.findByTestId("pinned-agents-grid");
   await waitFor(() => {
-    expect(pinnedAgentNames(grid)).toStrictEqual(["Zero", "Research Agent"]);
+    expect(pinnedAgentNames(grid)).toStrictEqual(["Nova", "Research Agent"]);
   });
 
   releaseIndicators.resolve(undefined);
   await waitFor(() => {
     expect(pinnedAgentNames(grid)).toStrictEqual([
-      "Zero",
+      "Nova",
       "Research Agent",
       "Support Agent",
     ]);
@@ -2210,7 +2210,7 @@ test("Preserve the user’s pinned-agent order", async () => {
   const grid = await screen.findByTestId("pinned-agents-grid");
   await waitFor(() => {
     expect(pinnedAgentNames(grid)).toStrictEqual([
-      "Zero",
+      "Nova",
       "Support Agent",
       "Research Agent",
     ]);
@@ -2247,7 +2247,7 @@ test("Highlight the current thread’s agent in the pinned grid", async () => {
       "page",
     );
   });
-  expect(pinnedAgentLink(grid, "Zero")).not.toHaveAttribute("aria-current");
+  expect(pinnedAgentLink(grid, "Nova")).not.toHaveAttribute("aria-current");
 });
 
 test("Recognize and pin sidebar conversation states", async () => {
@@ -2403,10 +2403,10 @@ test("Refresh agent and thread unread indicators", async () => {
 
   const nav = await waitFor(() => {
     const current = mobileSidebar();
-    expect(within(current).getByText("Zero")).toBeInTheDocument();
+    expect(within(current).getByText("Nova")).toBeInTheDocument();
     return current;
   });
-  const agentRow = agentRowByName(nav, "Zero");
+  const agentRow = agentRowByName(nav, "Nova");
   const threadRow = await waitFor(() => {
     return threadRowByTitle("Remote unread conversation", nav);
   });
@@ -2495,7 +2495,7 @@ test("Rename a conversation from the sidebar", async () => {
   );
 });
 
-test("Reorder pinned agents while keeping Zero first", async () => {
+test("Reorder pinned agents while keeping Nova first", async () => {
   const pinnedAgentIds = prepareOverflowingPinnedAgents();
   context.mocks.data.userPreferences({ pinnedAgentIds });
 
@@ -2509,7 +2509,7 @@ test("Reorder pinned agents while keeping Zero first", async () => {
     expect(within(grid).getAllByTestId("pinned-agent-card")).toHaveLength(6);
   });
   expect(pinnedAgentNames(grid)).toStrictEqual([
-    "Zero",
+    "Nova",
     "Research Agent",
     "Support Agent",
     "Operations Agent",
@@ -2542,7 +2542,7 @@ test("Reorder pinned agents while keeping Zero first", async () => {
 
   await waitFor(() => {
     expect(pinnedAgentNames(grid)).toStrictEqual([
-      "Zero",
+      "Nova",
       "Research Agent",
       "Operations Agent",
       "Analytics Agent",
@@ -2552,7 +2552,7 @@ test("Reorder pinned agents while keeping Zero first", async () => {
   });
 
   const orderAfterReorder = pinnedAgentNames(grid);
-  const lead = pinnedAgentLink(grid, "Zero");
+  const lead = pinnedAgentLink(grid, "Nova");
   const leadDropTransfer = createDataTransferStub();
   fireEvent.dragStart(pinnedAgentLink(grid, "Research Agent"), {
     dataTransfer: leadDropTransfer,
@@ -2565,7 +2565,7 @@ test("Reorder pinned agents while keeping Zero first", async () => {
     dataTransfer: leadDropTransfer,
   });
   expect(pinnedAgentNames(grid)).toStrictEqual(orderAfterReorder);
-  expect(pinnedAgentLink(grid, "Zero")).toBeInTheDocument();
+  expect(pinnedAgentLink(grid, "Nova")).toBeInTheDocument();
 });
 
 test("Keep the default Okou sweater outside a circular mask", async () => {
