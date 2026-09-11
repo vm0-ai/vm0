@@ -52,6 +52,75 @@ async function enableVoicePolish(useGoogleCloud = true) {
 }
 
 describe("POST /api/voice-io/polish", () => {
+  it.each([
+    { code: "ECONNRESET", status: 503, reason: "network" },
+    { code: "UND_ERR_BODY_TIMEOUT", status: 503, reason: "upstream_timeout" },
+    { code: "CERT_HAS_EXPIRED", status: 502 },
+  ])(
+    "classifies a Google body I/O failure with $code",
+    async ({ code, status, reason }) => {
+      await enableVoicePolish();
+      let calls = 0;
+      server.use(
+        http.post(VERTEX_VOICE_URL, () => {
+          calls += 1;
+          return new HttpResponse(
+            new ReadableStream({
+              start(controller) {
+                controller.error(
+                  new TypeError("fetch failed", { cause: { code } }),
+                );
+              },
+            }),
+          );
+        }),
+      );
+      const response = await client().post({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { text: "Synthetic dictation." },
+      });
+      expect(response.status).toBe(status);
+      expect(response.body).toMatchObject({
+        error: {
+          code: status === 503 ? "PROVIDER_UNAVAILABLE" : "VOICE_POLISH_FAILED",
+        },
+      });
+      expect(calls).toBe(1);
+      if (reason) {
+        expect(context.mocks.axiomLogging.warn).toHaveBeenCalledExactlyOnceWith(
+          "Google voice request rejected",
+          expect.objectContaining({
+            model: "google/gemini-3.8-flash",
+            location: "us",
+            operation: "plain_text_polish",
+            status,
+            reason,
+          }),
+        );
+      }
+    },
+  );
+
+  it("classifies a Google connection failure without replaying generation", async () => {
+    await enableVoicePolish();
+    let calls = 0;
+    server.use(
+      http.post(VERTEX_VOICE_URL, () => {
+        calls += 1;
+        return HttpResponse.error();
+      }),
+    );
+    const response = await accept(
+      client().post({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { text: "Synthetic dictation." },
+      }),
+      [503],
+    );
+    expect(response.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+    expect(calls).toBe(1);
+  });
+
   it("preserves OpenRouter polishing by default without Google credentials", async () => {
     await enableVoicePolish(false);
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
@@ -162,6 +231,75 @@ describe("POST /api/voice-io/polish", () => {
     expect(urls[0]).toContain(
       "/locations/us/publishers/google/models/gemini-3.8-flash:generateContent",
     );
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      reason: "output_truncated",
+      body: {
+        candidates: [
+          {
+            finishReason: "MAX_TOKENS",
+            content: { parts: [{ text: "private partial transcript" }] },
+          },
+        ],
+      },
+    },
+    {
+      reason: "blocked",
+      body: {
+        promptFeedback: { blockReason: "private upstream block reason" },
+      },
+    },
+    { reason: "blocked", body: { candidates: [{ finishReason: "SAFETY" }] } },
+    {
+      reason: "non_stop",
+      body: { candidates: [{ finishReason: "private unknown finish reason" }] },
+    },
+    {
+      reason: "empty_output",
+      body: {
+        candidates: [
+          {
+            finishReason: "STOP",
+            content: {
+              parts: [{ text: "private thought text", thought: true }],
+            },
+          },
+        ],
+      },
+    },
+    { reason: "invalid_response", body: { candidates: [{ finishReason: 7 }] } },
+  ])("records only safe metadata for $reason", async ({ reason, body }) => {
+    await enableVoicePolish();
+    server.use(
+      http.post(VERTEX_VOICE_URL, () => {
+        return HttpResponse.json(body);
+      }),
+    );
+    const response = await accept(
+      client().post({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { text: "private user dictation" },
+      }),
+      [502],
+    );
+    expect(response.body.error.code).toBe("VOICE_POLISH_FAILED");
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledExactlyOnceWith(
+      "Google voice request rejected",
+      expect.objectContaining({
+        model: "google/gemini-3.8-flash",
+        location: "us",
+        operation: "plain_text_polish",
+        status: 502,
+        reason,
+      }),
+    );
+    expect(
+      JSON.stringify(context.mocks.axiomLogging.warn.mock.calls),
+    ).not.toContain("private");
   });
 
   it("preserves public provider errors, respects long Retry-After, and rejects incomplete polish", async () => {
@@ -301,6 +439,8 @@ describe("POST /api/voice-io/polish", () => {
     controller.abort();
     await expect(result).rejects.toMatchObject({ name: "AbortError" });
     await aborted.promise;
+    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
   });
 
   it("turns raw dictation into send-ready text without charging usage", async () => {
