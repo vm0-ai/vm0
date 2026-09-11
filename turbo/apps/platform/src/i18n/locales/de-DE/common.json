@@ -5767,8 +5767,6 @@
         "categoryVideo": "Video",
         "chatModels": "Chatmodelle",
         "effort": "Denkaufwand",
-        "effortReset": "Modellstandard wiederherstellen",
-        "effortUnavailable": "Der Denkaufwand ist für diese Modellverbindung nicht verfügbar. Stelle den Standard wieder her, um fortzufahren.",
         "fast": "Schnell",
         "fastImpact": "1,5× Modellgeschwindigkeit · 2,5× Credit-Nutzung",
         "generationPriceTiers": {

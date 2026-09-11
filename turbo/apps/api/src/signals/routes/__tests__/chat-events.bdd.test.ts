@@ -3958,7 +3958,9 @@ describe("CHAT effort: thread configuration", () => {
     );
     await expect(
       chat.readThreadMetadata(actor, explicit.threadId),
-    ).resolves.toMatchObject({ reasoningEffort: "extra" });
+    ).resolves.toMatchObject({
+      modelSettings: { "claude-sonnet-5": { effort: "extra" } },
+    });
     await cancelChatRun(actor, explicit.runId, explicitClaim.sandboxHeaders);
 
     const reset = await sendChatRun(actor, {
@@ -3966,18 +3968,17 @@ describe("CHAT effort: thread configuration", () => {
       threadId: thread.id,
       prompt: "Use the native default",
       model: "claude-opus-4-8",
-      runOptions: { reasoningEffort: null },
     });
     const resetClaim = await claimChatRun(runnerGroup, reset.runId);
-    expect(resetClaim.claim.platformEnvironment).not.toHaveProperty(
-      "OKOU_REASONING_EFFORT",
+    expect(resetClaim.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
+      "high",
     );
-    expect(
-      (await chat.readThreadMetadata(actor, thread.id)).reasoningEffort ?? null,
-    ).toBeNull();
     await expect(
       chat.readThreadMetadata(actor, thread.id),
-    ).resolves.toMatchObject({ selectedModel: "claude-opus-4-8" });
+    ).resolves.toMatchObject({
+      selectedModel: "claude-opus-4-8",
+      modelSettings: { "claude-sonnet-5": { effort: "high" } },
+    });
     await cancelChatRun(actor, reset.runId, resetClaim.sandboxHeaders);
   }, 90_000);
 
@@ -3987,20 +3988,18 @@ describe("CHAT effort: thread configuration", () => {
       effort: "high",
       pi: true,
       providerType: "openai-api-key",
-      error:
-        "Reasoning effort selection is not supported by this execution route. Restore the model default to run this message.",
+      effectiveEffort: undefined,
     },
     {
       model: "claude-sonnet-5",
       effort: "ultracode",
       pi: false,
       providerType: "anthropic-api-key",
-      error:
-        "Ultracode execution is not available yet. Choose another effort level or restore the model default.",
+      effectiveEffort: "high",
     },
   ] as const)(
-    "rejects unavailable $model $effort before queue admission",
-    async ({ model, effort, pi, providerType, error }) => {
+    "falls back from unavailable $model $effort without deleting the preference",
+    async ({ model, effort, pi, providerType, effectiveEffort }) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const { providerId } = await upsertOrgModelProvider(actor, {
         type: providerType,
@@ -4030,80 +4029,44 @@ describe("CHAT effort: thread configuration", () => {
             reasoningEffort: effort,
           });
         }
-        const result = await chat.requestSendEvent(
-          actor,
-          {
-            agentId,
-            threadId: thread.id,
-            prompt: "Do not silently ignore effort",
-            ...(saved ? {} : { runOptions: { reasoningEffort: effort } }),
-          },
-          [400],
-        );
-        expect(result.body).toMatchObject({ error: { message: error } });
-        expect(
-          (await chat.listThreadEvents(actor, thread.id)).events,
-        ).toStrictEqual([]);
+        const sent = await sendChatRun(actor, {
+          agentId,
+          threadId: thread.id,
+          prompt: "Use the route fallback",
+          ...(saved ? {} : { runOptions: { reasoningEffort: effort } }),
+        });
+        const claimed = await claimChatRun(runnerGroup, sent.runId);
+        if (effectiveEffort === undefined) {
+          expect(claimed.claim.platformEnvironment).not.toHaveProperty(
+            "OKOU_REASONING_EFFORT",
+          );
+        } else {
+          expect(claimed.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
+            effectiveEffort,
+          );
+        }
+        await expect(
+          chat.readThreadMetadata(actor, thread.id),
+        ).resolves.toMatchObject({
+          modelSettings: { [model]: { effort } },
+        });
+        await cancelChatRun(actor, sent.runId, claimed.sandboxHeaders);
       }
-      // A queued input must re-check the current route and effort, too.
-      await authDeviceSupport.updateFeatureSwitches(actor, {
-        [FeatureSwitchKey.PiLoop]: false,
-      });
-      await chat.updateThreadModelSelection(actor, thread.id, model, {
-        reasoningEffort: null,
-      });
-      const active = await sendChatRun(actor, {
-        agentId,
-        threadId: thread.id,
-        prompt: "Hold the queue before changing effort",
-      });
-      const activeClaim = await claimChatRun(runnerGroup, active.runId);
-      const clientEventId = randomUUID();
-      const queuedPrompt = "Reject unsupported effort at queued launch";
-      const queued = await chat.requestSendEvent(
-        actor,
-        { agentId, threadId: thread.id, clientEventId, prompt: queuedPrompt },
-        [201],
-      );
-      expect(queued.body).toMatchObject({ runId: null });
-      await chat.updateThreadModelSelection(actor, thread.id, model, {
-        reasoningEffort: effort,
-      });
-      await authDeviceSupport.updateFeatureSwitches(actor, {
-        [FeatureSwitchKey.PiLoop]: pi,
-      });
-      await cancelChatRun(actor, active.runId, activeClaim.sandboxHeaders);
-      const terminal = await waitForThreadMessages(
-        actor,
-        thread.id,
-        (events) => {
-          return userMessages(events).some((event) => {
-            return (
-              event.eventType === "input.rejected" &&
-              event.revokesEventId === clientEventId
-            );
-          });
-        },
-      );
-      expect(userMessages(terminal.events)).toContainEqual(
-        expect.objectContaining({
-          eventType: "input.rejected",
-          revokesEventId: clientEventId,
-          error: "bad_request",
-        }),
-      );
-      expect(
-        (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
-          return run.prompt === queuedPrompt;
-        }),
-      ).toHaveLength(0);
     },
     90_000,
   );
 
-  it.each([true, false])(
-    "uses current thread settings when a queued message starts with rollout %s",
-    async (enabled) => {
+  it.each([
+    { enabled: true, requestedEffort: "high", effectiveEffort: "high" },
+    { enabled: false, requestedEffort: "high", effectiveEffort: undefined },
+    {
+      enabled: true,
+      requestedEffort: "ultracode",
+      effectiveEffort: "high",
+    },
+  ] as const)(
+    "uses current thread settings when a queued message starts with rollout $enabled and $requestedEffort effort",
+    async ({ enabled, requestedEffort, effectiveEffort }) => {
       const { actor, agentId, providerId, runnerGroup } =
         await entitledChatActor();
       chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -4135,7 +4098,6 @@ describe("CHAT effort: thread configuration", () => {
           threadId: active.threadId,
           prompt: "Read the current thread settings at launch",
           clientEventId,
-          runOptions: { reasoningEffort: null },
         },
         [201],
       );
@@ -4144,7 +4106,7 @@ describe("CHAT effort: thread configuration", () => {
         actor,
         active.threadId,
         "claude-opus-4-8",
-        { reasoningEffort: "high" },
+        { reasoningEffort: requestedEffort },
       );
       const retry = await chat.requestSendEvent(
         actor,
@@ -4153,7 +4115,7 @@ describe("CHAT effort: thread configuration", () => {
           threadId: active.threadId,
           prompt: "Read the current thread settings at launch",
           clientEventId,
-          runOptions: { reasoningEffort: "high" },
+          runOptions: { reasoningEffort: requestedEffort },
         },
         [201],
       );
@@ -4186,13 +4148,16 @@ describe("CHAT effort: thread configuration", () => {
       });
       const claimed = await claimChatRun(runnerGroup, promoted.runId);
       expect(claimed.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
-        enabled ? "high" : undefined,
+        effectiveEffort,
       );
       await expect(
         chat.readThreadMetadata(actor, active.threadId),
       ).resolves.toMatchObject({
         selectedModel: "claude-opus-4-8",
-        reasoningEffort: "high",
+        modelSettings: {
+          "claude-sonnet-5": { effort: "extra" },
+          "claude-opus-4-8": { effort: requestedEffort },
+        },
       });
       await cancelChatRun(actor, promoted.runId, claimed.sandboxHeaders);
     },
@@ -4227,7 +4192,9 @@ describe("CHAT effort: thread configuration", () => {
       );
       await expect(
         chat.readThreadMetadata(actor, thread.id),
-      ).resolves.toMatchObject({ reasoningEffort: "high" });
+      ).resolves.toMatchObject({
+        modelSettings: { "claude-sonnet-5": { effort: "high" } },
+      });
       await cancelChatRun(actor, sent.runId, claimed.sandboxHeaders);
     }
     const disabledReset = await chat.requestSendEvent(
@@ -4236,7 +4203,7 @@ describe("CHAT effort: thread configuration", () => {
         agentId,
         threadId: thread.id,
         prompt: "Do not accept gated fields",
-        runOptions: { reasoningEffort: null },
+        runOptions: { reasoningEffort: "low" },
       },
       [400],
     );
@@ -4258,7 +4225,7 @@ describe("CHAT effort: thread configuration", () => {
     await cancelChatRun(actor, enabled.runId, enabledClaim.sandboxHeaders);
   }, 90_000);
 
-  it("preserves Fast when resetting effort and sending an Ultra override", async () => {
+  it("preserves Fast when changing effort", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await authDeviceSupport.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.ChatReasoningEffort]: true,
@@ -4286,9 +4253,6 @@ describe("CHAT effort: thread configuration", () => {
       reasoningEffort: "low",
       codexServiceTier: "fast",
     });
-    await chat.updateThreadModelSelection(actor, thread.id, "gpt-5.6-sol", {
-      reasoningEffort: null,
-    });
     await expect(
       chat.readThreadMetadata(actor, thread.id),
     ).resolves.toMatchObject({
@@ -4297,16 +4261,13 @@ describe("CHAT effort: thread configuration", () => {
     const sent = await sendChatRun(actor, {
       agentId,
       threadId: thread.id,
-      prompt: "Fast with default effort",
-      runOptions: { reasoningEffort: null },
+      prompt: "Fast with saved effort",
     });
     const claimed = await claimChatRun(runnerGroup, sent.runId);
     expect(claimed.claim.platformEnvironment.OKOU_CODEX_SERVICE_TIER).toBe(
       "fast",
     );
-    expect(claimed.claim.platformEnvironment).not.toHaveProperty(
-      "OKOU_REASONING_EFFORT",
-    );
+    expect(claimed.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe("low");
     await cancelChatRun(actor, sent.runId, claimed.sandboxHeaders);
     const explicit = await sendChatRun(actor, {
       agentId,
@@ -4322,7 +4283,7 @@ describe("CHAT effort: thread configuration", () => {
     await expect(
       chat.readThreadMetadata(actor, thread.id),
     ).resolves.toMatchObject({
-      reasoningEffort: "ultra",
+      modelSettings: { "gpt-5.6-sol": { effort: "ultra" } },
       serviceTier: "priority",
     });
     await cancelChatRun(actor, explicit.runId, explicitClaim.sandboxHeaders);
@@ -4416,15 +4377,15 @@ describe("CHAT effort: automation launches", () => {
       await expect(
         chat.readThreadMetadata(actor, threadId),
       ).resolves.toMatchObject({
-        reasoningEffort: "high",
+        modelSettings: { "claude-sonnet-5": { effort: "high" } },
       });
       await cancelChatRun(actor, nextRunId, next.sandboxHeaders);
     },
     90_000,
   );
 
-  it("rejects unsupported effort at the automation launch entry point", async () => {
-    const { actor, threadId, runId, claimed, automationId } =
+  it("uses route defaults for unsupported effort at automation launch", async () => {
+    const { actor, runnerGroup, threadId, runId, claimed, automationId } =
       await startAutomation();
     await completeChatRunOk(runId, claimed.sandboxHeaders, {
       cliAgentType: "claude-code",
@@ -4436,16 +4397,14 @@ describe("CHAT effort: automation launches", () => {
         effort: "ultracode",
         pi: false,
         providerType: "anthropic-api-key",
-        error:
-          "Ultracode execution is not available yet. Choose another effort level or restore the model default.",
+        effectiveEffort: "high",
       },
       {
         model: "gpt-5.6-sol",
         effort: "high",
         pi: true,
         providerType: "openai-api-key",
-        error:
-          "Reasoning effort selection is not supported by this execution route. Restore the model default to run this message.",
+        effectiveEffort: undefined,
       },
     ] as const) {
       const { providerId } = await upsertOrgModelProvider(actor, {
@@ -4467,17 +4426,32 @@ describe("CHAT effort: automation launches", () => {
       await chat.updateThreadModelSelection(actor, threadId, route.model, {
         reasoningEffort: route.effort,
       });
-      const rejected = await accept(
+      const started = await accept(
         threadPiAutomationsClient().run({
           headers: sessionHeaders(actor),
           params: { id: automationId },
         }),
-        [400],
+        [201],
       );
-      expect(rejected.body).toMatchObject({ error: { message: route.error } });
-      await expect(lastThreadPiAutomationRun(actor, threadId)).resolves.toBe(
-        runId,
-      );
+      if (!started.body.runId) {
+        throw new Error("Expected an automation run");
+      }
+      const next = await claimChatRun(runnerGroup, started.body.runId);
+      if (route.effectiveEffort === undefined) {
+        expect(next.claim.platformEnvironment).not.toHaveProperty(
+          "OKOU_REASONING_EFFORT",
+        );
+      } else {
+        expect(next.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
+          route.effectiveEffort,
+        );
+      }
+      await expect(
+        chat.readThreadMetadata(actor, threadId),
+      ).resolves.toMatchObject({
+        modelSettings: { [route.model]: { effort: route.effort } },
+      });
+      await cancelChatRun(actor, started.body.runId, next.sandboxHeaders);
     }
   }, 90_000);
 });

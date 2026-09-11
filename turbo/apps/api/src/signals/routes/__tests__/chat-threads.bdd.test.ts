@@ -678,7 +678,7 @@ const malformedChatThreadIdRequests = [
 ] as const;
 
 describe("CHAT-01 thread detail, create, and delete cascades", () => {
-  it("preserves reasoning effort through snapshot compaction and reset replay", async () => {
+  it("preserves model settings through snapshot compaction and patch replay", async () => {
     const { actor, thread } =
       await createSnapshotCursorScenario("Effort snapshot");
     await createBillingMediaApi(context).updateFeatureSwitches(actor, {
@@ -690,23 +690,39 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     await compactChatThreadSnapshots(actor);
     const snapshot = await chat.getThreadSnapshot(actor);
     expect(snapshot.chatThreads).toContainEqual(
-      expect.objectContaining({ id: thread.id, reasoningEffort: "high" }),
+      expect.objectContaining({
+        id: thread.id,
+        modelSettings: { "claude-sonnet-5": { effort: "high" } },
+      }),
     );
     if (snapshot.latestSeqId === null) {
       throw new Error("Expected snapshot cursor");
     }
-    await chat.updateThreadModelSelection(actor, thread.id, "claude-sonnet-5", {
-      reasoningEffort: null,
+    await chat.updateThreadModelSelection(actor, thread.id, "claude-opus-4-8", {
+      reasoningEffort: "extra",
     });
     const events = await threadEventPage(actor, snapshot.latestSeqId);
     expect(
       replayChatThreadEvents(snapshot.chatThreads, events.events),
     ).toContainEqual(
-      expect.objectContaining({ id: thread.id, reasoningEffort: null }),
+      expect.objectContaining({
+        id: thread.id,
+        selectedModel: "claude-opus-4-8",
+        modelSettings: {
+          "claude-sonnet-5": { effort: "high" },
+          "claude-opus-4-8": { effort: "extra" },
+        },
+      }),
     );
     await compactChatThreadSnapshots(actor);
     expect((await chat.getThreadSnapshot(actor)).chatThreads).toContainEqual(
-      expect.objectContaining({ id: thread.id, reasoningEffort: null }),
+      expect.objectContaining({
+        id: thread.id,
+        modelSettings: {
+          "claude-sonnet-5": { effort: "high" },
+          "claude-opus-4-8": { effort: "extra" },
+        },
+      }),
     );
   });
 

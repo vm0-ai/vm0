@@ -98,6 +98,7 @@ function preference(
   return {
     selectedModel,
     serviceTier,
+    modelSettings: {},
     selectedVideoModel: null,
     selectedImageModel: null,
     updatedAt: POLICY_DATE,
@@ -252,7 +253,9 @@ test("Make a temporary Codex speed the default", async () => {
   const scopeCard = await screen.findByRole("group", {
     name: "Model for this chat",
   });
-  expect(scopeCard).toHaveTextContent("Temporarily switch to GPT 5.6 Sol Fast");
+  expect(scopeCard).toHaveTextContent(
+    "Temporarily switch to GPT 5.6 Sol · Fast",
+  );
   const futureChats = buttonNamed("Use this for future chats", scopeCard);
 
   click(futureChats);
@@ -766,14 +769,14 @@ test("Choose a model from the flyout without leaving the type list", async () =>
 
 test("Choose effort for a new chat and keep Fast independent", async () => {
   const user = userEvent.setup({ delay: null });
-  const updates: {
+  const creates: {
     reasoningEffort?: string | null;
-    codexServiceTier?: string | null;
+    serviceTier?: string | null;
   }[] = [];
   installRunChat({
     selectedModel: "gpt-5.6-sol",
-    onModelSelectionUpdate: (body) => {
-      updates.push(body);
+    onThreadCreate: (body) => {
+      creates.push(body);
     },
   });
   configurePolicies(["gpt-5.6-sol"], "gpt-5.6-sol");
@@ -818,10 +821,10 @@ test("Choose effort for a new chat and keep Fast independent", async () => {
   await fillComposer(composer, "Use this effort for the new task");
   click(await findButton("Send"));
   await waitFor(() => {
-    expect(updates).toContainEqual(
+    expect(creates).toContainEqual(
       expect.objectContaining({
         reasoningEffort: "ultra",
-        codexServiceTier: "fast",
+        serviceTier: "priority",
       }),
     );
   });
@@ -884,7 +887,7 @@ test("Select the default effort on an existing thread without changing Fast", as
   });
 });
 
-test("Preserve compatible effort and reset incompatible choices when changing models", async () => {
+test("Keep independent effort selections when changing models", async () => {
   const user = userEvent.setup({ delay: null });
   installNewChat(
     ["claude-sonnet-5", "gpt-5.6-sol", "gpt-5.5"],
@@ -921,10 +924,6 @@ test("Preserve compatible effort and reset incompatible choices when changing mo
   });
   expect(screen.getByText("Extra")).toBeInTheDocument();
   expect(screen.queryByText("ultracode")).not.toBeInTheDocument();
-  await user.keyboard("{ArrowLeft}");
-  await waitFor(() => {
-    expect(slider).toHaveAttribute("aria-valuetext", "High");
-  });
   click(
     buttonNamed(
       "Back to models",
@@ -933,7 +932,7 @@ test("Preserve compatible effort and reset incompatible choices when changing mo
   );
   await expect(
     screen.findByRole("region", { name: "Models" }),
-  ).resolves.toHaveTextContent("High");
+  ).resolves.toHaveTextContent("Extra");
   click(
     buttonNamed(
       "Change Chat model, Claude Sonnet 5",
@@ -953,7 +952,7 @@ test("Preserve compatible effort and reset incompatible choices when changing mo
     ),
   );
   slider = await screen.findByRole("slider", { name: "Reasoning effort" });
-  expect(slider).toHaveAttribute("aria-valuetext", "high");
+  expect(slider).toHaveAttribute("aria-valuetext", "max");
   slider.focus();
   await user.keyboard("{End}");
   await waitFor(() => {
@@ -990,6 +989,33 @@ test("Preserve compatible effort and reset incompatible choices when changing mo
   await waitFor(() => {
     expect(slider).toHaveAttribute("aria-valuetext", "xhigh");
   });
+  click(
+    buttonNamed(
+      "Back to models",
+      screen.getByRole("region", { name: "Chat settings" }),
+    ),
+  );
+  click(
+    buttonNamed(
+      "Change Chat model, GPT 5.5",
+      await screen.findByRole("region", { name: "Models" }),
+    ),
+  );
+  click(
+    buttonNamed(
+      "Claude Sonnet 5",
+      await screen.findByRole("region", { name: "Chat models" }),
+    ),
+  );
+  click(
+    buttonNamed(
+      "Adjust Claude Sonnet 5 settings",
+      await screen.findByRole("region", { name: "Models" }),
+    ),
+  );
+  await expect(
+    screen.findByRole("slider", { name: "Reasoning effort" }),
+  ).resolves.toHaveAttribute("aria-valuetext", "Extra");
 });
 
 test("Keep saved effort dormant when its feature is disabled", async () => {
@@ -1040,7 +1066,7 @@ test("Keep saved effort dormant when its feature is disabled", async () => {
   ).toBeUndefined();
 });
 
-test("Allow restoring a saved effort when the route no longer supports it", async () => {
+test("Keep saved effort dormant when the route no longer supports it", async () => {
   const updates: { reasoningEffort?: string | null }[] = [];
   installRunChat({
     selectedModel: "gpt-5.6-sol",
@@ -1068,21 +1094,14 @@ test("Allow restoring a saved effort when the route no longer supports it", asyn
     ),
   );
   const settings = await screen.findByRole("region", { name: "Chat settings" });
-  expect(settings).toHaveTextContent(
-    "Effort is unavailable for this model route",
-  );
   expect(
     screen.queryByRole("slider", { name: "Reasoning effort" }),
   ).not.toBeInTheDocument();
-  click(buttonNamed("Restore model default", settings));
-  await waitFor(() => {
-    expect(updates).toContainEqual(
-      expect.objectContaining({ reasoningEffort: null }),
-    );
-  });
+  expect(settings).not.toHaveTextContent("Restore model default");
+  expect(updates).toStrictEqual([]);
 });
 
-test("Follow effort changes and resets made in another session", async () => {
+test("Follow model-scoped effort changes made in another session", async () => {
   const events: ChatThreadEvent[] = [];
   installRunChat({ selectedModel: "claude-sonnet-5", reasoningEffort: "high" });
   configurePolicies(["claude-sonnet-5"], "claude-sonnet-5");
@@ -1120,7 +1139,6 @@ test("Follow effort changes and resets made in another session", async () => {
     ["high", "High"],
     ["extra", "Extra"],
     ["max", "Max"],
-    [null, "High"],
   ] as const) {
     events.push({
       id: crypto.randomUUID(),
@@ -1130,7 +1148,10 @@ test("Follow effort changes and resets made in another session", async () => {
       agentId: "c0000000-0000-4000-a000-000000000001",
       title: null,
       selectedModel: "claude-sonnet-5",
-      reasoningEffort,
+      modelSettingsPatch: {
+        model: "claude-sonnet-5",
+        effort: reasoningEffort,
+      },
       serviceTier: null,
       computerUseHostId: null,
       selectedVideoModel: null,

@@ -276,6 +276,7 @@ import {
   voiceInputV2Enabled$,
   featureSwitch$,
 } from "../../signals/external/feature-switch.ts";
+import { effectiveChatReasoningEffort } from "../../signals/okou-page/model-reasoning-effort.ts";
 import {
   selectedComputerUseHostId,
   visibleComputerUseHosts,
@@ -10108,6 +10109,7 @@ function ComposerTemporaryModelNotice({
     updateUserModelPreference$,
   );
   const codexFastModeEnabled = useGet(codexFastModeEnabled$);
+  const featureSwitches = useGet(featureSwitch$);
   const pageSignal = useGet(pageSignal$);
   const defaultSelection = resolveModelFirstUserDefaultSelection({
     userPreference,
@@ -10121,10 +10123,16 @@ function ComposerTemporaryModelNotice({
   const modelChanged =
     selection?.selectedModel !== defaultSelection?.selectedModel;
   const serviceTierChanged = selectionServiceTier !== defaultServiceTier;
+  const effort = effectiveChatReasoningEffort(selection, featureSwitches);
+  const defaultEffort = effectiveChatReasoningEffort(
+    defaultSelection,
+    featureSwitches,
+  );
+  const effortChanged = effort !== defaultEffort;
   if (
     !selection ||
     !defaultSelection ||
-    (!modelChanged && !serviceTierChanged)
+    (!modelChanged && !serviceTierChanged && !effortChanged)
   ) {
     return withChatScrollLayout(null);
   }
@@ -10135,9 +10143,15 @@ function ComposerTemporaryModelNotice({
       ? $.settings.models.picker.fast
       : $.settings.models.picker.standard;
   });
-  const scopedModelLabel = serviceTierChanged
-    ? `${modelName} ${runSpeedLabel}`
-    : modelName;
+  const scopedModelLabel = [
+    modelName,
+    serviceTierChanged ? runSpeedLabel : undefined,
+    effortChanged && effort
+      ? effort.charAt(0).toUpperCase() + effort.slice(1)
+      : undefined,
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const useForFutureChats = () => {
     if (updating) {
       return;
@@ -10147,6 +10161,14 @@ function ComposerTemporaryModelNotice({
         {
           selectedModel: selection.selectedModel,
           serviceTier: selectionServiceTier,
+          ...(effort === undefined
+            ? {}
+            : {
+                modelSettingsPatch: {
+                  model: selection.selectedModel,
+                  effort,
+                },
+              }),
         },
         pageSignal,
       ),

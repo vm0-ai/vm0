@@ -118,6 +118,7 @@ function chatThread(title: string): ChatThreadSnapshotProjection {
     renamedAt: null,
     selectedModel: "claude-sonnet-4-6",
     serviceTier: null,
+    modelSettings: {},
     computerUseHostId: null,
     cloudBrowserEnabled: false,
     selectedVideoModel: null,
@@ -167,6 +168,7 @@ function configureExistingChat(args: {
   context.mocks.data.userModelPreference({
     selectedModel: "claude-sonnet-4-6",
     serviceTier: null,
+    modelSettings: {},
     selectedVideoModel: null,
     selectedImageModel: null,
     updatedAt: null,

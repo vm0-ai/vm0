@@ -110,6 +110,7 @@ test("A new message keeps its attachment, text, and selected model together", as
   context.mocks.data.userModelPreference({
     selectedModel: "deepseek-v4.1-flash",
     serviceTier: null,
+    modelSettings: {},
     selectedImageModel: null,
     selectedVideoModel: null,
     updatedAt: "2026-08-01T09:00:00Z",

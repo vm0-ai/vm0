@@ -54,6 +54,7 @@ function installNewThreadDefaults(): void {
   context.mocks.data.userModelPreference({
     selectedModel: "gpt-5.6-luna",
     serviceTier: null,
+    modelSettings: {},
     selectedVideoModel: null,
     selectedImageModel: null,
     updatedAt: "2026-08-01T00:00:00.000Z",
