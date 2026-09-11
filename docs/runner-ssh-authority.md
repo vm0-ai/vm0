@@ -58,7 +58,11 @@ missing/invalid auth is 401; authenticated local Runner auth is 403. Broken DB,
 KMS or stored local invariants remain server errors, not unavailable references.
 
 Configuration, encrypted credentials and relational authority are captured in
-one joined read, followed by the feature check. That authorized snapshot is an
+one joined read, including the host's required, same-owner reusable credential,
+followed by the feature check. The selected credential supplies the username and
+either the existing `resolved` private-key response or `resolved_password`
+password response; only the selected method's secrets are decrypted.
+That authorized snapshot is an
 in-flight handoff: revocation cannot retract a response already authorized.
 Every later resolve checks again and sees committed rotation/deletion/revocation.
 The Runner can reuse a successfully resolved snapshot and parsed key for the
@@ -69,11 +73,19 @@ block owner edits or revocation. Resolve never writes a learned host key.
 
 ### Invalidation and accepted freshness
 
-After a successful connection edit (including credential rotation), deletion or
+After a successful connection edit, deletion or
 explicit host-key reset, the API sends identifier-only `ssh-authority-invalidated`
 messages on `runner-group:<group>` for affected running owner Runs. Payloads are
 `{runId, connectionId}`; null `connectionId` means the whole Run. Recipient discovery
 must not require a grant or connection row that the mutation may have deleted.
+Changing a shared credential's username, secret or authentication method advances
+all referencing host generations in one transaction, then sends a Run-wide
+invalidation with null `connectionId`. Renaming a credential changes its revision
+and browser metadata only. Owner mutations serialize reference changes with an
+owner advisory lock; shared rotation locks referencing hosts in stable ID order
+before the credential, matching the connection-first pin/observation lock order.
+Encryption occurs before row locks; the credential revision is rechecked after
+locking. Invalidation is best-effort after commit, not part of that transaction.
 The Run-wide hook accepts an Agent scope. Explicit per-user Agent grant changes
 use that scope; automatic visible-Agent authorization when creating the first
 host invalidates the current user's active Runs. Discovery does not depend on
