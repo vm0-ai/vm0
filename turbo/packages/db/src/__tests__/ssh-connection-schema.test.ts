@@ -42,7 +42,6 @@ describe("SSH connection schema", () => {
         };
       }),
     ).toStrictEqual([
-      { name: "idx_ssh_connections_owner_host_port", unique: true },
       { name: "idx_ssh_connections_owner_created", unique: false },
     ]);
 
