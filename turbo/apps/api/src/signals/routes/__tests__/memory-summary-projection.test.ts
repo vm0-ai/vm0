@@ -820,8 +820,8 @@ describe("memory summary projection", () => {
 
     await expect(read(version)).resolves.toMatchObject({
       content: largeSummary,
-      sourceSize: Buffer.byteLength(largeSummary, "utf8"),
-      tokenCount: largeTokenCount,
+      source_size: Buffer.byteLength(largeSummary, "utf8"),
+      token_count: largeTokenCount,
     });
     await expect(inspect(version)).resolves.toMatchObject({
       status: "ready",
