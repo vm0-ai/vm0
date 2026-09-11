@@ -27,6 +27,9 @@ execFileSync(
   },
 );
 
+// This generated directory is copied wholesale into the application. Rebuild
+// its contents so incremental packaging cannot retain retired native helpers.
+fs.rmSync(distDir, { recursive: true, force: true });
 fs.mkdirSync(distDir, { recursive: true });
 fs.mkdirSync(symbolsDir, { recursive: true });
 
