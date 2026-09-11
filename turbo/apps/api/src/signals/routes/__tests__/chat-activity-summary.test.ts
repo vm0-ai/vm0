@@ -264,6 +264,55 @@ function captureDiagnostics() {
   };
 }
 
+type DiagnosticEvent = Awaited<
+  ReturnType<ReturnType<typeof captureDiagnostics>>
+>[number];
+
+function records(
+  logs: readonly DiagnosticEvent[],
+  message: string,
+  runId: string,
+) {
+  return logs.filter((event) => {
+    return event.message === message && event.fields.runId === runId;
+  });
+}
+function attempts(logs: readonly DiagnosticEvent[], runId: string) {
+  return records(logs, "Activity summary attempt", runId);
+}
+// Absence is asserted against this slice, never against a whole run: a run that
+// recovers legitimately carries earlier and later success records.
+function completions(logs: readonly DiagnosticEvent[], runId: string) {
+  return records(logs, "Activity summary completion", runId);
+}
+
+const privatePayload = "private-provider-payload";
+
+function completion(content: unknown, finishReason = "stop") {
+  return HttpResponse.json({
+    choices: [
+      {
+        finish_reason: finishReason,
+        ...(finishReason === "length"
+          ? { native_finish_reason: "MAX_TOKENS" }
+          : {}),
+        message: { content },
+      },
+    ],
+  });
+}
+// A rejected body stream is the only real transport failure a handler can
+// produce; a handler that throws would answer with HTTP 500 instead.
+function brokenBody(error: Error) {
+  return new HttpResponse(
+    new ReadableStream({
+      start(controller) {
+        controller.error(error);
+      },
+    }),
+  );
+}
+
 describe("thread activity summary", () => {
   it("enforces feature availability and ownership before cache or model exposure", async () => {
     const f = await fixture(false);
@@ -762,6 +811,172 @@ describe("thread activity summary", () => {
     expect(inputs).toHaveLength(1);
   });
 
+  it.each([
+    {
+      name: "a batch the strict phrase contract rejects",
+      reply: () => {
+        return "Valid message\n**Markdown**";
+      },
+    },
+    {
+      name: "a completion that spent the whole token budget",
+      reply: () => {
+        return completion(privatePayload, "length");
+      },
+    },
+    {
+      name: "a completion that ended on an unoffered tool call",
+      reply: () => {
+        return completion(privatePayload, "tool_calls");
+      },
+    },
+    {
+      name: "a rejected transport request",
+      reply: () => {
+        return HttpResponse.error();
+      },
+    },
+    {
+      name: "a body that timed out mid-stream",
+      reply: () => {
+        return brokenBody(
+          new TypeError("terminated", {
+            cause: { code: "UND_ERR_BODY_TIMEOUT" },
+          }),
+        );
+      },
+    },
+  ])("absorbs $name without any diagnostic", async ({ reply }) => {
+    const f = await fixture();
+    const diagnostics = captureDiagnostics();
+    const inputs = provider(reply);
+    const absorbed = await summarize(f.actor, f.run);
+    // The optional output is simply omitted; the response stays truthful and
+    // the shared cooldown bounds recovery.
+    expect(absorbed).toMatchObject({
+      status: "cooldown",
+      messages: [],
+      summaryRevision: null,
+    });
+    expect(absorbed.retryAfterMs).toBeGreaterThan(50_000);
+    expect(absorbed.retryAfterMs).toBeLessThanOrEqual(60_000);
+    // The cooldown really reached the database: no second provider call.
+    await summarize(f.actor, f.run);
+    expect(inputs).toHaveLength(1);
+    const logs = await diagnostics();
+    expect(attempts(logs, f.run.runId)).toHaveLength(1);
+    expect(completions(logs, f.run.runId)).toStrictEqual([]);
+    expect(JSON.stringify(logs)).not.toContain(privatePayload);
+  });
+
+  it.each([
+    {
+      name: "a body that is not JSON",
+      outcome: "invalid_output",
+      reply: () => {
+        return new HttpResponse(privatePayload);
+      },
+    },
+    {
+      name: "an envelope without choices",
+      outcome: "invalid_output",
+      reply: () => {
+        return HttpResponse.json({});
+      },
+    },
+    {
+      name: "a completion with empty content",
+      outcome: "invalid_output",
+      reply: () => {
+        return completion("");
+      },
+    },
+    {
+      name: "an exception nothing classified",
+      outcome: "unknown",
+      reply: () => {
+        return brokenBody(
+          new TypeError(`${privatePayload}\n at /src/signals/redacted.ts:1:2`),
+        );
+      },
+    },
+  ])("reports $name as an operator failure", async ({ reply, outcome }) => {
+    const f = await fixture();
+    const diagnostics = captureDiagnostics();
+    const inputs = provider(reply);
+    const failed = await summarize(f.actor, f.run);
+    // A genuine failure degrades identically for the caller; only the operator
+    // signal differs, and `unknown` claims no cause it cannot prove.
+    expect(failed).toMatchObject({ status: "cooldown", messages: [] });
+    expect(failed.retryAfterMs).toBeGreaterThan(50_000);
+    expect(inputs).toHaveLength(1);
+    const logs = await diagnostics();
+    expect(completions(logs, f.run.runId)).toStrictEqual([
+      expect.objectContaining({
+        level: "error",
+        message: "Activity summary completion",
+        fields: {
+          context: "api:activity-summary",
+          runId: f.run.runId,
+          outcome,
+          durationMs: expect.any(Number),
+          cooldownMs: 60_000,
+        },
+      }),
+    ]);
+    expect(JSON.stringify(logs)).not.toContain(privatePayload);
+  });
+
+  it("keeps a stored summary when the optional key disappears", async () => {
+    const f = await fixture();
+    const inputs = provider();
+    const first = await summarize(f.actor, f.run);
+    expect(first.messages[0]?.text).toBe("Preparing the launch checklist");
+    const diagnostics = captureDiagnostics();
+    // New evidence plus an elapsed attempt interval make a fresh attempt legal.
+    await deliver(f, [tool(0)]);
+    await advanceRunActivityClockFixture(f.run.runId, 16_000);
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+    const degraded = await summarize(f.actor, f.run);
+    // The attempt still claims, writes and rereads, so the caller degrades to
+    // the stored phrase instead of to an empty batch.
+    expect(degraded.messages).toStrictEqual(first.messages);
+    expect(degraded.summaryRevision).toBe(first.summaryRevision);
+    expect(degraded.status).toBe("cooldown");
+    expect(degraded.retryAfterMs).toBeGreaterThan(50_000);
+    expect(degraded.retryAfterMs).toBeLessThanOrEqual(60_000);
+    expect(inputs).toHaveLength(1);
+    const logs = await diagnostics();
+    expect(attempts(logs, f.run.runId)).toHaveLength(1);
+    expect(completions(logs, f.run.runId)).toStrictEqual([]);
+  });
+
+  it("keeps a stored summary through a rejected batch and recovers after the cooldown", async () => {
+    const f = await fixture();
+    const inputs = provider((_input, index) => {
+      return index === 2
+        ? "Valid message\n**Markdown**"
+        : "Preparing the launch checklist";
+    });
+    const first = await summarize(f.actor, f.run);
+    const diagnostics = captureDiagnostics();
+    await deliver(f, [tool(0)]);
+    await advanceRunActivityClockFixture(f.run.runId, 16_000);
+    const rejected = await summarize(f.actor, f.run);
+    expect(rejected.messages).toStrictEqual(first.messages);
+    expect(rejected.summaryRevision).toBe(first.summaryRevision);
+    expect(rejected.retryAfterMs).toBeGreaterThan(50_000);
+    const logs = await diagnostics();
+    expect(attempts(logs, f.run.runId)).toHaveLength(1);
+    expect(completions(logs, f.run.runId)).toStrictEqual([]);
+    // The persisted cooldown expires and the next attempt publishes a phrase.
+    await advanceRunActivityClockFixture(f.run.runId, 61_000);
+    const recovered = await summarize(f.actor, f.run);
+    expect(recovered.messages[0]?.text).toBe("Preparing the launch checklist");
+    expect(recovered.summaryRevision).not.toBe(first.summaryRevision);
+    expect(inputs).toHaveLength(3);
+  });
+
   it("accepts existing Codex commands and tool results while bounding graphemes", async () => {
     const f = await fixture();
     const inputs = provider(() => {
@@ -865,11 +1080,17 @@ describe("thread activity summary", () => {
 
   it("uses a shared cooldown when the model is unconfigured", async () => {
     const f = await fixture();
+    const diagnostics = captureDiagnostics();
     const failed = await summarize(f.actor, f.run);
     expect(failed).toMatchObject({ status: "cooldown", messages: [] });
     const inputs = provider();
     await summarize(f.actor, f.run);
     expect(inputs).toHaveLength(0);
+    // An optional key that was never set is a deliberate omission, not an
+    // operator event, even when no summary exists to fall back to.
+    const logs = await diagnostics();
+    expect(attempts(logs, f.run.runId)).toHaveLength(1);
+    expect(completions(logs, f.run.runId)).toStrictEqual([]);
   });
 
   it("bounds a hanging provider request and never retries within the request", async () => {
@@ -1040,26 +1261,12 @@ describe("thread activity summary", () => {
     expect(missed.retryAfterMs).toBeGreaterThan(50_000);
     expect(missed.retryAfterMs).toBeLessThanOrEqual(60_000);
     expect(inputs).toHaveLength(2);
+    // Diagnostics start after the seeding success, so these records belong to
+    // the missed attempt alone. An absorbed deadline reaches no operator
+    // through any level, and nothing replaces the record it used to emit.
     const logs = await diagnostics();
-    expect(logs).toContainEqual(
-      expect.objectContaining({
-        level: "info",
-        message: "Activity summary completion",
-        fields: {
-          context: "api:activity-summary",
-          runId: f.run.runId,
-          outcome: "timeout",
-          durationMs: expect.any(Number),
-          cooldownMs: 60_000,
-        },
-      }),
-    );
-    // An expected deadline must not reach an operator through any record.
-    expect(
-      logs.filter((event) => {
-        return event.level === "warn" || event.level === "error";
-      }),
-    ).toStrictEqual([]);
+    expect(attempts(logs, f.run.runId)).toHaveLength(1);
+    expect(completions(logs, f.run.runId)).toStrictEqual([]);
   });
 
   it("charges no cooldown when the instance stops before the provider answers", async () => {
@@ -1095,25 +1302,11 @@ describe("thread activity summary", () => {
     shutdown.abort(new DOMException("API instance stopping", "AbortError"));
     release.resolve("This phrase never reaches an absent caller");
     await abandoned;
+    // The abandoned attempt is the only one recorded so far, and a request that
+    // outlived its own caller is not a failure anyone can act on.
     const logs = await diagnostics();
-    expect(logs).toContainEqual(
-      expect.objectContaining({
-        level: "info",
-        message: "Activity summary completion",
-        fields: {
-          context: "api:activity-summary",
-          runId: f.run.runId,
-          outcome: "cancelled",
-          durationMs: expect.any(Number),
-          cooldownMs: 0,
-        },
-      }),
-    );
-    expect(
-      logs.filter((event) => {
-        return event.level === "warn" || event.level === "error";
-      }),
-    ).toStrictEqual([]);
+    expect(attempts(logs, f.run.runId)).toHaveLength(1);
+    expect(completions(logs, f.run.runId)).toStrictEqual([]);
     // Only the attempt interval was ever charged, so the next viewer generates
     // again instead of waiting out a failure cooldown it never caused.
     await advanceRunActivityClockFixture(f.run.runId, 16_000);

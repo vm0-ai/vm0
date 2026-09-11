@@ -30,7 +30,11 @@ import {
   generateText,
   OpenRouterRequestError,
 } from "../external/openrouter";
-import { settleIncludingAbort } from "../utils";
+import {
+  openRouterFailureReason,
+  type OpenRouterFailureReason,
+} from "../external/openrouter-failure";
+import { settleIncludingAbort, type Settled } from "../utils";
 import {
   canonicalChatEventContent,
   canonicalChatEventUserMessage,
@@ -318,16 +322,71 @@ async function claimSummary(db: Db, identity: ActivityRunIdentity) {
   });
 }
 
+type CompletionOutcome =
+  | "success"
+  | "cancelled"
+  | "timeout"
+  | "provider_failure"
+  | "unconfigured"
+  | "unusable_output"
+  | OpenRouterFailureReason;
+
 /**
- * Completion outcomes an operator cannot act on. The response stays truthful,
- * the caller keeps its last usable phrase, and the shared cooldown or the
- * attempt interval bounds recovery. Persistent provider failures and
- * contract/configuration defects stay at warn.
+ * The level one completion deserves, or `null` when it deserves none.
+ *
+ * The silent outcomes are already absorbed by this endpoint's optional
+ * fallback: the response stays truthful, the caller keeps its last usable
+ * phrase, and the shared cooldown or the attempt interval bounds recovery.
+ * Recording them at any level only trains an operator to ignore the record, so
+ * they are omitted rather than moved to a quieter level or re-emitted as an
+ * equivalent event. The rate they used to make queryable is gone with them.
+ *
+ * Everything else falls through to `error`: a response the strict contract
+ * cannot accept, and an exception the shared classifier could not name. A
+ * reason added to that classifier later therefore surfaces instead of
+ * disappearing into silence.
  */
-function expectedOutcome(outcome: string): boolean {
-  return (
-    outcome === "success" || outcome === "timeout" || outcome === "cancelled"
-  );
+function completionLevel(
+  outcome: CompletionOutcome,
+): "info" | "warn" | "error" | null {
+  switch (outcome) {
+    case "success": {
+      return "info";
+    }
+    // The severity of an `OpenRouterRequestError` belongs to the provider
+    // classification, not to this residual boundary, and is unchanged here.
+    case "provider_failure": {
+      return "warn";
+    }
+    case "cancelled":
+    case "timeout":
+    case "unconfigured":
+    case "unusable_output":
+    case "output_truncated":
+    case "unexpected_tool_calls":
+    case "network":
+    case "upstream_timeout":
+    case "provider_unavailable": {
+      return null;
+    }
+    default: {
+      return "error";
+    }
+  }
+}
+
+/**
+ * The residual result, kept distinguishable instead of collapsed into one
+ * opaque outcome. A successful `null` is the optional enrichment's documented
+ * return when no API key is configured; a successful value reached the strict
+ * phrase contract and lost there; anything else threw, and the shared
+ * classifier already recorded what it was without retaining any payload.
+ */
+function residualOutcome(result: Settled<string | null>): CompletionOutcome {
+  if (!result.ok) {
+    return openRouterFailureReason(result.error);
+  }
+  return result.value === null ? "unconfigured" : "unusable_output";
 }
 
 /**
@@ -341,24 +400,26 @@ function completionRecord(
   phrase: string | null,
   abandoned: boolean,
   deadlineReached: boolean,
-  failure: unknown,
+  result: Settled<string | null>,
 ) {
+  const failure = result.ok ? undefined : result.error;
   const request =
     failure instanceof OpenRouterRequestError ? failure : undefined;
   const cooldown = Math.min(
     MAX_COOLDOWN_MS,
     Math.max(FAILURE_COOLDOWN_MS, request?.retryAfterMs ?? 0),
   );
+  const outcome: CompletionOutcome = phrase
+    ? "success"
+    : abandoned
+      ? "cancelled"
+      : deadlineReached
+        ? "timeout"
+        : request
+          ? "provider_failure"
+          : residualOutcome(result);
   return {
-    outcome: phrase
-      ? "success"
-      : abandoned
-        ? "cancelled"
-        : deadlineReached
-          ? "timeout"
-          : request
-            ? "provider_failure"
-            : "invalid_or_unconfigured",
+    outcome,
     durationMs: Math.round(performance.now() - started),
     cooldownMs: phrase || abandoned ? 0 : cooldown,
     ...(request ? { providerStatus: request.status } : {}),
@@ -413,18 +474,11 @@ async function generateSummary(
   const abandoned = !phrase && signal.aborted;
   const completion = {
     runId: identity.runId,
-    ...completionRecord(
-      started,
-      phrase,
-      abandoned,
-      deadline.aborted,
-      result.ok ? null : result.error,
-    ),
+    ...completionRecord(started, phrase, abandoned, deadline.aborted, result),
   };
-  if (expectedOutcome(completion.outcome)) {
-    log.info("Activity summary completion", completion);
-  } else {
-    log.warn("Activity summary completion", completion);
+  const level = completionLevel(completion.outcome);
+  if (level) {
+    log[level]("Activity summary completion", completion);
   }
   // An abandoned attempt must not spend the shared cooldown on the next
   // viewer's behalf. Its lease expires like any owner that stopped reporting,
