@@ -60,8 +60,9 @@ export function AvatarSvgPreview({
       className={cn(
         "relative overflow-hidden",
         className,
-        // A circular mask would trim the collar at the shared canvas bottom.
-        preserveBaseline && "rounded-none",
+        // Keep collars and tall hair intact when the shared chin baseline puts
+        // the top of a hairstyle just beyond the composition canvas.
+        preserveBaseline && "overflow-visible rounded-none",
       )}
       style={size ? { width: size, height: size } : undefined}
       {...(alt ? { role: "img", "aria-label": alt } : undefined)}
