@@ -165,11 +165,14 @@ function SlashTemplateDetailPane({
           {categoryDescription(category)}
         </p>
         {/*
+          The scroller reaches the pane's right edge and pads its content back,
+          so the overlay scrollbar — which draws inward from the viewport edge —
+          lands in that gutter instead of on top of the right-hand covers.
           The grid is a child of the scroller rather than the scroller itself,
           so its trailing padding is an ordinary block margin every engine
           measures, not padding on a scroll container.
         */}
-        <div className="mt-3 min-h-0 flex-1 overflow-y-auto">
+        <div className="-mr-4 mt-3 min-h-0 flex-1 overflow-y-auto pr-4">
           <div className="grid grid-cols-2 gap-2.5 pb-4">
             {group.previews.map((preview) => {
               return (
