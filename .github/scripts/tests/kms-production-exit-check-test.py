@@ -265,14 +265,45 @@ print(json.dumps(data)+"\\n200", end="")
         result = self.run_script("runner-local", str(release.parent))
         self.assertEqual(result.returncode, 0)
         evidence = json.loads(result.stdout)["missingRegistryEvidence"][0]
-        self.assertEqual(
-            evidence,
-            {
-                "runnerVersion": "v1.2.3",
-                "collectionComplete": False,
-                "error": "runner_state_unavailable",
-            },
+        self.assertFalse(evidence["collectionComplete"])
+        self.assertEqual(evidence["error"], "runner_state_unavailable")
+        self.assertEqual(evidence["diagnostics"]["directoryEntryCount"], 0)
+        self.assertEqual(evidence["diagnostics"]["serviceReturnCode"], 1)
+        self.assertTrue(evidence["diagnostics"]["serviceStderrPresent"])
+        self.assertEqual(evidence["diagnostics"]["serviceProperties"], {})
+
+    def test_not_found_service_exit_preserves_evidence_without_clearing_missing_registry(
+        self,
+    ):
+        release = self.root / "runners" / "v1.2.3"
+        release.mkdir(parents=True)
+        (release / "runner.yaml").write_text(SECRET)
+        self.tool(
+            "systemctl",
+            'import sys\nprint("LoadState=not-found\\nActiveState=inactive\\nSubState=dead\\nUnitFileState=not-found\\nMainPID=0\\nControlPID=0")\nsys.exit(4)\n',
         )
+        result = self.run_script("runner-local", str(release.parent))
+        inventory = json.loads(result.stdout)
+        evidence = inventory["missingRegistryEvidence"][0]
+        self.assertTrue(evidence["collectionComplete"])
+        self.assertTrue(evidence["configFileOnly"])
+        self.assertEqual(evidence["service"]["LoadState"], "not-found")
+        self.assertEqual(inventory["counts"]["unreadable"], 1)
+
+    def test_invalid_service_values_preserve_directory_evidence_without_leaking(self):
+        release = self.root / "runners" / "v1.2.3"
+        release.mkdir(parents=True)
+        (release / "runner.yaml").write_text(SECRET)
+        self.tool(
+            "systemctl",
+            'print("LoadState=not-found\\nActiveState=inactive\\nSubState=dead\\nUnitFileState=must-not-leak-secret\\nMainPID=0\\nControlPID=0")\n',
+        )
+        result = self.run_script("runner-local", str(release.parent))
+        evidence = json.loads(result.stdout)["missingRegistryEvidence"][0]
+        self.assertFalse(evidence["collectionComplete"])
+        self.assertTrue(evidence["diagnostics"]["configFileOnly"])
+        self.assertEqual(evidence["diagnostics"]["stage"], "service_properties")
+        self.assertNotIn("UnitFileState", evidence["diagnostics"]["serviceProperties"])
 
     def test_duplicate_registry_keys_cannot_silently_hide_source_values(self):
         release = self.root / "runners" / "v1.2.3"
