@@ -32,20 +32,29 @@ type Reason =
   | "unusable_output";
 
 /**
- * How a caller wants a returned-but-unusable result reported. `expected` is for
- * a caller whose empty result is an omission it already handles, so the outcome
- * stays counted in `auxiliary_generation_result` and produces no diagnostic at
- * any level. It describes the interpreted return value only, never a thrown
- * provider error. `failure` keeps the shared default.
- */
-type UnusableOutputPolicy = "expected" | "failure";
-
-/**
- * Severity a caller's genuine failures deserve. Only a caller that has
+ * Severity a caller's actionable failures deserve. Only a caller that has
  * characterized its own outcomes can raise this, so the shared default stays
  * `warn` for features whose failure classification is not established.
  */
 type AuxiliaryFailureLevel = "warn" | "error";
+
+/**
+ * Reasons that name a defect somebody can act on: the request was rejected on
+ * its credentials or its shape, or nothing classified the failure at all.
+ *
+ * `invalid_output` is deliberately absent. It currently folds a genuine
+ * envelope contract violation together with a completion that returned no
+ * content or was stopped by a content filter, and those two are omissions of
+ * the same kind as an empty interpreted result rather than defects. Raising
+ * them would reintroduce, at a higher severity, exactly the unactionable
+ * report this boundary is removing. Separating that reason belongs to the
+ * provider classification, not to a caller's severity choice.
+ */
+function isActionableFailure(reason: Reason): boolean {
+  return (
+    reason === "auth" || reason === "invalid_request" || reason === "unknown"
+  );
+}
 
 /**
  * Provider-outcome detail the generation closure observes and the boundary
@@ -196,7 +205,13 @@ export async function generateAuxiliary<T>(
     readonly feature: AuxiliaryFeature;
     readonly generate: (record: RecordAuxiliaryGenerationDetail) => Promise<T>;
     readonly usable: (value: T) => boolean;
-    readonly unusableOutput?: UnusableOutputPolicy;
+    /**
+     * Set by a caller whose empty interpreted result is an omission it already
+     * handles: the outcome stays counted in `auxiliary_generation_result` and
+     * produces no diagnostic at any level. It describes the interpreted return
+     * value only, never a thrown provider error.
+     */
+    readonly unusableOutput?: "expected";
     readonly failureLevel?: AuxiliaryFailureLevel;
     readonly diagnosticContext?: Readonly<{
       runId?: string;
@@ -206,7 +221,14 @@ export async function generateAuxiliary<T>(
   signal?: AbortSignal,
 ): Promise<T | undefined> {
   const startedAt = now();
-  const failureLevel = args.failureLevel ?? "warn";
+  // A caller only raises the severity of the failures that name a defect.
+  // Everything else keeps the shared level, so a caller cannot escalate an
+  // outcome the boundary itself treats as unactionable.
+  const levelFor = (reason: Reason): AuxiliaryFailureLevel => {
+    return args.failureLevel !== undefined && isActionableFailure(reason)
+      ? args.failureLevel
+      : "warn";
+  };
   const runId = args.diagnosticContext?.runId;
   let detail: AuxiliaryGenerationDetail | undefined;
   const result = await settle(
@@ -250,7 +272,7 @@ export async function generateAuxiliary<T>(
             "unusable_output",
             undefined,
             args.diagnosticContext,
-            failureLevel,
+            levelFor("unusable_output"),
           );
         }
         recordResult({
@@ -285,7 +307,7 @@ export async function generateAuxiliary<T>(
             reason,
             error,
             args.diagnosticContext,
-            failureLevel,
+            levelFor(reason),
           );
         }
         const retryAfterMs = retryAfterMilliseconds(error);

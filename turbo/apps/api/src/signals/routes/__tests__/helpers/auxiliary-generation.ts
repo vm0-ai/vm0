@@ -123,7 +123,10 @@ export function auxiliaryDiagnostics(
         return message === "Auxiliary generation failed";
       })
       .map(([, fields]) => {
-        return { level, ...diagnosticSchema.parse(fields) };
+        // `fields` is kept verbatim beside the parsed projection: the schema
+        // strips unknown keys, which are exactly the provider-derived ones a
+        // leak assertion has to be able to see.
+        return { level, ...diagnosticSchema.parse(fields), fields };
       })
       .filter((diagnostic) => {
         return feature === undefined || diagnostic.feature === feature;

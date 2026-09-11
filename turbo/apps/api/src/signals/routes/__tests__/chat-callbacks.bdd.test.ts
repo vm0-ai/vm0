@@ -1700,6 +1700,58 @@ describe("CHAT-02: completed chat callback", () => {
     );
   });
 
+  it("does not raise the severity of a follow-up completion that produced no content", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const system = body.messages[0]?.content ?? "";
+      if (
+        system.includes(
+          "You generate recommended follow-up messages for a chat.",
+        )
+      ) {
+        // A completion that stops with nothing to interpret is another way to
+        // get no suggestions, not a defect this caller can act on.
+        return HttpResponse.json({
+          choices: [{ finish_reason: "stop", message: { content: "" } }],
+        });
+      }
+      return "Generated summary";
+    });
+
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "Keep the main answer",
+    });
+    await flushWaitUntilForTest();
+    await chatCallbacks.registerPushSubscription(actor);
+    chatCallbacks.enableVapid();
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "The main answer survives"),
+    ]);
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
+    const events = await chat.listThreadEvents(actor, run.threadId);
+    expect(events.events).toContainEqual(
+      expect.objectContaining({ content: "The main answer survives" }),
+    );
+    expect(auxiliaryResults(context, "recommended_followups")).toStrictEqual([
+      expect.objectContaining({ outcome: "error", reason: "invalid_output" }),
+    ]);
+    // The caller's raised severity covers the reasons that name a defect, so
+    // this one keeps the shared level instead of being escalated.
+    expect(
+      auxiliaryDiagnostics(context, "recommended_followups"),
+    ).toStrictEqual([
+      expect.objectContaining({ level: "warn", reason: "invalid_output" }),
+    ]);
+    expect(context.mocks.axiomLogging.error.mock.calls).toStrictEqual([]);
+  });
+
   it("keeps title and summary storage failures observable after successful generation", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
@@ -2088,7 +2140,10 @@ describe("CHAT-02: completed chat callback", () => {
         reason: "output_truncated",
       }),
     );
-    expect(auxiliaryWarnings(context)).toStrictEqual([]);
+    // Truncation keeps classifying ahead of this caller's expected-empty
+    // policy, and this caller can now report at error, so silence has to be
+    // proved across every level rather than on the warning channel alone.
+    expect(auxiliaryDiagnostics(context)).toStrictEqual([]);
   });
 
   it("auto-sends the queued message before completed-run LLM side effects finish", async () => {
