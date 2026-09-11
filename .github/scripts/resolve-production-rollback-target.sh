@@ -10,6 +10,7 @@ readonly OKOU_GOAL_SCHEMA_READER_COMMIT=2c231766e383b651867893852cfb47dcc78af0bd
 readonly OKOU_GOAL_SCHEMA_REPAIR_COMMIT=077a9a644986e13bed4750796f91e55c4a876aad
 readonly OKOU_GOAL_SCHEMA_RELEASE=4a4881bf84cb1d79723fd38c83e00f2215bb1e31
 readonly OKOU_GOAL_RETIREMENT_RELEASE=1f68f182a2457ec3aea52d8063be2bd2d2263abd
+readonly COMPUTER_USE_HOST_CLIENT_PRODUCT_DROP_COMMIT=669d0befc9a181e44e3f1f9e39093efddabcc0f8
 
 fail() {
   echo "::error::$*" >&2
@@ -68,6 +69,14 @@ fi
 if ! git merge-base --is-ancestor "$OKOU_GOAL_SCHEMA_READER_COMMIT" "$TARGET_COMMIT" ||
   ! git merge-base --is-ancestor "$OKOU_GOAL_SCHEMA_REPAIR_COMMIT" "$TARGET_COMMIT"; then
   fail "Target commit lacks the combined S4 Goal schema compatibility boundary. The first verified compatible release is ${OKOU_GOAL_SCHEMA_RELEASE} (API 1.580.0)."
+fi
+
+# Rollback promotes artifacts without restoring schema, so an API target that
+# still declares client_product names a dropped column in every insert,
+# bare select and bare returning.
+if ! git merge-base --is-ancestor \
+  "$COMPUTER_USE_HOST_CLIENT_PRODUCT_DROP_COMMIT" "$TARGET_COMMIT"; then
+  fail "Target commit predates the computer_use_hosts.client_product drop: ${COMPUTER_USE_HOST_CLIENT_PRODUCT_DROP_COMMIT}."
 fi
 
 deployments=$(curl -fsS --get "https://api.vercel.com/v6/deployments" \
