@@ -63,9 +63,9 @@ async fn expect_request<F: Future>(capture: Pin<&mut F>, peer: &mut AsyncUnixStr
 }
 
 async fn expect_disconnect(peer: &mut AsyncUnixStream) {
-    let result = tokio::time::timeout(Duration::from_secs(1), peer.read(&mut [0]))
-        .await
-        .expect("cancelled or failed exchange must close its socket");
+    // The paused clock can expire a timeout before Tokio observes the close.
+    // Use the same bounded I/O readiness wait as the request and response checks.
+    let result = ready_io(peer.read(&mut [0])).await;
     assert!(
         matches!(result, Ok(0))
             || matches!(result, Err(error) if error.kind() == io::ErrorKind::ConnectionReset)
