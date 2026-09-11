@@ -122,6 +122,36 @@ Line height belongs to the badge because a font-size utility with an arbitrary v
 
 The `okou-badge`, `okou-pill`, and `okou-border-r` selectors and their consumers have been removed. `okou-pill` was scoped to `.okou-app` and set the muted foreground; its only consumer now spells that foreground itself. `okou-border-r` was a single settings-dialog divider and became `border-r border-r-gray-300` on that nav, keeping its lighter Gray 300 stroke while its width joins the shared hairline token.
 
+### Icon controls and dialog bodies
+
+`IconButton` from `@okouai/ui` owns a neutral 36px square control, the shared
+radius, muted hover fill, and keyboard focus ring. Its `aria-label` is required;
+callers provide the icon, foreground, opacity, and positioning. It reuses
+`ButtonBase` for native button behavior, refs, render/asChild composition, and
+optional tooltip support. Tooltip stays off by default. Use `Button` for action
+variants; `IconButton` preserves the neutral dialog and sheet close treatment.
+Compose it through `DialogClose` or `SheetClose` using `render` so Base UI keeps
+ownership of closing and focus restoration, with one native button in the DOM.
+
+`DialogBody` owns a native scrolling body and its thin scrollbar. It adds no
+wrapper: layout, padding, and grid columns stay with the caller. Set
+`scrollable={false}` when a child owns scrolling, as in the plan-selection grid
+below a fixed header; the body keeps the same DOM element across step changes.
+The existing `overflow-hidden` override used by artifact previews is retained.
+The default `DialogContent` inner container also uses `DialogBody`, preserving
+its `dialog-inner` slot and its protected vertical scrolling.
+
+Scrollbar styling is private to `DialogBody`, not an exported class-name API.
+Tailwind arbitrary variants address WebKit pseudo-elements. The component owns
+the 6px width, 3px thumb radius, 4px vertical track inset, transparent track,
+and neutral thumb colors, including hover. All default dialog bodies use this
+treatment, including the existing workflow-recommendation detail body; artifact
+previews retain their own clipping and internal scroll ownership.
+
+The `icon-button` and `dialog-scrollable` selectors and their dependencies have
+been removed. `icon-tooltip-trigger` remains scoped to the third-party Mermaid
+block and migrates with that adapter.
+
 ### Animated layers
 
 `RunningIndicator` owns its Tailwind utilities directly in JSX. Reuse the
