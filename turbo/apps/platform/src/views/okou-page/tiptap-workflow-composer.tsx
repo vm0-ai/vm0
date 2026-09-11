@@ -25,8 +25,18 @@ import {
 } from "../../signals/okou-page/workflow-composer-domain";
 import {
   scrollSlashWorkflowIntoView,
+  slashWorkflowOptionId,
   SlashWorkflowMenu,
 } from "./slash-workflow.tsx";
+import {
+  SlashTemplatePanel,
+  slashTemplateCategoryLabel,
+} from "./slash-template-panel.tsx";
+import {
+  SLASH_TEMPLATE_CATEGORIES,
+  type SlashTemplateCategory,
+  type SlashTemplatePreview,
+} from "./composer-template-catalog.ts";
 import type { ComposerPasteEvent } from "./composer-input-types.ts";
 
 import {
@@ -309,6 +319,14 @@ interface ComposerSuggestionMenuState {
   readonly workflows: readonly ComposerSlashWorkflowMatch[];
   readonly createModes: readonly ComposerCreateCommand[];
   readonly selectCreate: (mode: ComposerCreateCommand) => void;
+  /** Non-empty only while ComposerSlashTemplatePanel is on. */
+  readonly panelCategories: readonly SlashTemplateCategory[];
+  readonly highlightedCategory: SlashTemplateCategory | null;
+  readonly highlightCategory: (category: SlashTemplateCategory | null) => void;
+  readonly selectCategory: (category: SlashTemplateCategory) => void;
+  readonly selectTemplate: (preview: SlashTemplatePreview) => void;
+  readonly browseAllTemplates: () => void;
+  readonly showTemplatePanel: boolean;
   readonly workflowsLoading: boolean;
   readonly showWorkflows: boolean;
   readonly agents: readonly ComposerAgentSuggestion[];
@@ -345,6 +363,101 @@ function useComposerCreateSuggestions(
   });
 }
 
+/**
+ * The three categories that are also composer create modes keep their existing
+ * action, so choosing "Presentation" from the panel does exactly what choosing
+ * it from the flat menu does today. Website and Workflow have no create mode,
+ * so they open the template picker on their own tab instead.
+ */
+const SLASH_TEMPLATE_CATEGORY_CREATE_MODE = {
+  slides: "presentation",
+  illustration: "image",
+  video: "video",
+} as const satisfies Partial<
+  Record<SlashTemplateCategory, ComposerCreateCommand>
+>;
+
+function createModeForCategory(
+  category: SlashTemplateCategory,
+): ComposerCreateCommand | undefined {
+  return category in SLASH_TEMPLATE_CATEGORY_CREATE_MODE
+    ? SLASH_TEMPLATE_CATEGORY_CREATE_MODE[
+        category as keyof typeof SLASH_TEMPLATE_CATEGORY_CREATE_MODE
+      ]
+    : undefined;
+}
+
+function useSlashTemplateCategorySuggestions(
+  composer: ComposerSignals,
+  query: string | undefined,
+): readonly SlashTemplateCategory[] {
+  useTranslation();
+  const enabled = useGet(composer.create.enabled$);
+  if (!enabled || query === undefined) {
+    return [];
+  }
+  const normalized = query.toLowerCase().trim();
+  return SLASH_TEMPLATE_CATEGORIES.filter((category) => {
+    return slashTemplateCategoryLabel(category)
+      .toLowerCase()
+      .includes(normalized);
+  });
+}
+
+/**
+ * Everything the two-pane panel needs that the flat menu does not: which rows
+ * the typed query leaves, and what each row does when it is chosen.
+ */
+function useSlashTemplatePanelActions(
+  composer: ComposerSignals,
+  query: string | undefined,
+  selection: {
+    readonly selectedIndex: number;
+    readonly setSelectedIndex: (index: number) => void;
+    readonly close: () => void;
+  },
+) {
+  const enabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ComposerSlashTemplatePanel] ===
+    true;
+  const selectCreate = useSet(composer.create.selectCommand$);
+  const insertTemplate = useSet(composer.template.insertTemplate$);
+  const openTemplatePicker = useSet(composer.template.openTemplatePicker$);
+  const categories = useSlashTemplateCategorySuggestions(
+    composer,
+    enabled ? query : undefined,
+  );
+  return {
+    enabled,
+    categories,
+    selectCategory(category: SlashTemplateCategory): void {
+      const mode = createModeForCategory(category);
+      if (mode) {
+        selectCreate(mode);
+        return;
+      }
+      openTemplatePicker({ kind: "insert", category });
+    },
+    highlighted:
+      enabled && selection.selectedIndex < categories.length
+        ? (categories[selection.selectedIndex] ?? null)
+        : null,
+    highlight(category: SlashTemplateCategory | null): void {
+      const index = category === null ? -1 : categories.indexOf(category);
+      // A row with no index (a workflow) parks the selection past the head so
+      // the pane closes without pointing the keyboard at a category.
+      selection.setSelectedIndex(index < 0 ? categories.length : index);
+    },
+    selectTemplate(preview: SlashTemplatePreview): void {
+      insertTemplate(preview.template, preview.attachment);
+      selection.close();
+    },
+    browseAll(): void {
+      openTemplatePicker({ kind: "insert", category: "slides" });
+    },
+  };
+}
+
 function useComposerWorkflowSuggestions(
   composer: ComposerSignals,
   query: string | undefined,
@@ -367,6 +480,124 @@ function useComposerWorkflowSuggestions(
   };
 }
 
+/**
+ * The @-mention half of the suggestion menu. Only the result for the current
+ * agent and the current query counts; a stale resolution shows nothing.
+ */
+function useComposerMentionSuggestions(
+  composer: ComposerSignals,
+  slashRange: { readonly query: string } | null,
+) {
+  const chatThreadRange = useGet(
+    composer.suggestion.activeChatThreadSuggestionRange$,
+  );
+  const chatThreadResult = useLastResolved(
+    composer.suggestion.chatThreadSuggestions$,
+  );
+  const result =
+    chatThreadRange &&
+    chatThreadResult &&
+    chatThreadResult.agentId === composer.agentId &&
+    chatThreadResult.query === chatThreadRange.query
+      ? chatThreadResult
+      : null;
+  const agents = result?.agents ?? [];
+  const chatThreads = result?.chatThreads ?? [];
+  return {
+    chatThreadRange,
+    agents,
+    chatThreads,
+    showMentions:
+      slashRange === null &&
+      chatThreadRange !== null &&
+      agents.length + chatThreads.length > 0,
+  };
+}
+
+interface SuggestionRows {
+  readonly showWorkflows: boolean;
+  readonly panelEnabled: boolean;
+  readonly panelCategories: readonly SlashTemplateCategory[];
+  readonly createModes: readonly ComposerCreateCommand[];
+  /** How many rows sit above the workflow suggestions. */
+  readonly headCount: number;
+  readonly workflows: readonly ComposerSlashWorkflowMatch[];
+  readonly agents: readonly ComposerAgentSuggestion[];
+  readonly chatThreads: readonly ComposerChatThreadSuggestion[];
+}
+
+interface SuggestionRowActions {
+  readonly selectCategory: (category: SlashTemplateCategory) => void;
+  readonly selectCreate: (mode: ComposerCreateCommand) => void;
+  readonly insertWorkflow: (workflow: ComposerSlashWorkflow) => void;
+  readonly insertAgent: (agent: ComposerAgentSuggestion) => void;
+  readonly insertChatThread: (chatThread: ComposerChatThreadSuggestion) => void;
+}
+
+/** The head row for an index, whichever of the two menus is rendered. */
+function suggestionHeadRow(
+  index: number,
+  rows: SuggestionRows,
+): SlashTemplateCategory | ComposerCreateCommand | undefined {
+  return rows.panelEnabled
+    ? rows.panelCategories[index]
+    : rows.createModes[index];
+}
+
+function selectSlashSuggestionRow(
+  index: number,
+  rows: SuggestionRows,
+  actions: SuggestionRowActions,
+): void {
+  if (rows.panelEnabled) {
+    const category = rows.panelCategories[index];
+    if (category) {
+      actions.selectCategory(category);
+      return;
+    }
+  } else {
+    const mode = rows.createModes[index];
+    if (mode) {
+      actions.selectCreate(mode);
+      return;
+    }
+  }
+  const workflow = rows.workflows[index - rows.headCount];
+  if (workflow) {
+    actions.insertWorkflow(workflow);
+  }
+}
+
+function selectSuggestionRow(
+  index: number,
+  rows: SuggestionRows,
+  actions: SuggestionRowActions,
+): void {
+  if (rows.showWorkflows) {
+    selectSlashSuggestionRow(index, rows, actions);
+    return;
+  }
+  const agent = rows.agents[index];
+  if (agent) {
+    actions.insertAgent(agent);
+    return;
+  }
+  const chatThread = rows.chatThreads[index - rows.agents.length];
+  if (chatThread) {
+    actions.insertChatThread(chatThread);
+  }
+}
+
+function suggestionRowScrollTarget(
+  index: number,
+  rows: SuggestionRows,
+): { readonly id: string } | undefined {
+  const head = suggestionHeadRow(index, rows);
+  return head === undefined
+    ? rows.workflows[index - rows.headCount]
+    : { id: head };
+}
+
 function useComposerSuggestionMenu({
   composer,
   onKeyDown,
@@ -380,81 +611,73 @@ function useComposerSuggestionMenu({
   const slashRange = useGet(composer.suggestion.activeSlashRange$);
   const selectedTask = useGet(composer.taskChips.task$);
   const selectTask = useSet(composer.taskChips.selectTask$);
-  const createModes = useComposerCreateSuggestions(composer, slashRange?.query);
-  const chatThreadRange = useGet(
-    composer.suggestion.activeChatThreadSuggestionRange$,
-  );
-  const chatThreadResult = useLastResolved(
-    composer.suggestion.chatThreadSuggestions$,
+  const flatCreateModes = useComposerCreateSuggestions(
+    composer,
+    slashRange?.query,
   );
   const selectedIndex = useGet(composer.suggestion.selectedSuggestionIndex$);
   const setSelectedIndex = useSet(
     composer.suggestion.setSelectedSuggestionIndex$,
   );
   const close = useSet(composer.suggestion.closeSuggestionMenu$);
+  const templatePanel = useSlashTemplatePanelActions(
+    composer,
+    slashRange?.query,
+    { selectedIndex, setSelectedIndex, close },
+  );
+  const templatePanelEnabled = templatePanel.enabled;
+  const panelCategories = templatePanel.categories;
+  // The panel replaces the flat Create group, so only one of the two occupies
+  // the indexes ahead of the workflow suggestions.
+  const createModes = templatePanelEnabled ? [] : flatCreateModes;
   const insertWorkflow = useSet(composer.workflow.insertWorkflow$);
   const insertAgent = useSet(composer.suggestion.insertAgent$);
   const insertChatThread = useSet(composer.suggestion.insertChatThread$);
-  const currentAgentId = composer.agentId;
   const workflowResult = useComposerWorkflowSuggestions(
     composer,
     slashRange?.query,
   );
   const workflowSuggestions = workflowResult.workflows;
   const showWorkflows = slashRange !== null;
-  const mentionResult =
-    chatThreadRange &&
-    chatThreadResult &&
-    chatThreadResult.agentId === currentAgentId &&
-    chatThreadResult.query === chatThreadRange.query
-      ? chatThreadResult
-      : null;
-  const agents = mentionResult?.agents ?? [];
-  const chatThreads = mentionResult?.chatThreads ?? [];
-  const showMentions =
-    slashRange === null &&
-    chatThreadRange !== null &&
-    agents.length + chatThreads.length > 0;
+  const mentions = useComposerMentionSuggestions(composer, slashRange);
+  const { agents, chatThreads, chatThreadRange, showMentions } = mentions;
   const open = showWorkflows || showMentions;
   const range = showWorkflows
     ? slashRange
     : showMentions
       ? chatThreadRange
       : null;
+  const headCount = templatePanelEnabled
+    ? panelCategories.length
+    : createModes.length;
   const suggestionCount = showWorkflows
-    ? createModes.length + workflowSuggestions.length
+    ? headCount + workflowSuggestions.length
     : agents.length + chatThreads.length;
 
+  const rows: SuggestionRows = {
+    showWorkflows,
+    panelEnabled: templatePanelEnabled,
+    panelCategories,
+    createModes,
+    headCount,
+    workflows: workflowSuggestions,
+    agents,
+    chatThreads,
+  };
+
   function selectSuggestion(index: number): void {
-    if (showWorkflows) {
-      const createMode = createModes[index];
-      if (createMode) {
-        selectCreate(createMode);
-        return;
-      }
-      const workflow = workflowSuggestions[index - createModes.length];
-      if (workflow) {
-        insertWorkflow(workflow);
-      }
-      return;
-    }
-    const agent = agents[index];
-    if (agent) {
-      insertAgent(agent);
-      return;
-    }
-    const chatThread = chatThreads[index - agents.length];
-    if (chatThread) {
-      insertChatThread(chatThread);
-    }
+    selectSuggestionRow(index, rows, {
+      selectCategory: templatePanel.selectCategory,
+      selectCreate,
+      insertWorkflow,
+      insertAgent,
+      insertChatThread,
+    });
   }
 
   function scrollSuggestionIntoView(index: number): void {
     if (showWorkflows) {
-      const mode = createModes[index];
-      scrollSlashWorkflowIntoView(
-        mode ? { id: mode } : workflowSuggestions[index - createModes.length],
-      );
+      scrollSlashWorkflowIntoView(suggestionRowScrollTarget(index, rows));
     }
   }
 
@@ -487,6 +710,13 @@ function useComposerSuggestionMenu({
     workflows: workflowSuggestions,
     createModes,
     selectCreate,
+    panelCategories,
+    highlightedCategory: templatePanel.highlighted,
+    highlightCategory: templatePanel.highlight,
+    selectCategory: templatePanel.selectCategory,
+    selectTemplate: templatePanel.selectTemplate,
+    browseAllTemplates: templatePanel.browseAll,
+    showTemplatePanel: templatePanelEnabled,
     workflowsLoading: workflowResult.loading,
     showWorkflows,
     agents,
@@ -597,6 +827,23 @@ export function TiptapWorkflowComposer({
           selectedIndex={suggestionMenu.selectedIndex}
           showWorkflowsPageLink
           onSelect={suggestionMenu.selectWorkflow}
+          panel={
+            suggestionMenu.showTemplatePanel ? (
+              <SlashTemplatePanel
+                categories={suggestionMenu.panelCategories}
+                workflows={suggestionMenu.workflows}
+                workflowsLoading={suggestionMenu.workflowsLoading}
+                highlighted={suggestionMenu.highlightedCategory}
+                onHighlight={suggestionMenu.highlightCategory}
+                onSelectCategory={suggestionMenu.selectCategory}
+                onSelectTemplate={suggestionMenu.selectTemplate}
+                onSelectWorkflow={suggestionMenu.selectWorkflow}
+                onBrowseAll={suggestionMenu.browseAllTemplates}
+                workflowOptionId={slashWorkflowOptionId}
+                categoryOptionId={slashWorkflowOptionId}
+              />
+            ) : undefined
+          }
         />
       )}
       {suggestionMenu.showMentions && (

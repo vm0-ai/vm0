@@ -1910,6 +1910,17 @@
       "selectedModelUnavailable": "選択されたモデルは使用できません。送信する前に設定してください。",
       "selectedModelUnavailableToast": "選択したモデルは利用できません",
       "selectModel": "モデルを選択してください",
+      "slashPanel": {
+        "browseAll": "すべてのテンプレートを見る",
+        "illustrationDescription": "選んだスタイルで 1 枚の画像を生成します",
+        "make": "作成",
+        "slidesDescription": "そのまま発表できる HTML スライド",
+        "templateCount_other": "{{count}} 件のテンプレート",
+        "useTemplate": "テンプレート {{title}} を使う",
+        "videoDescription": "テキストから動画を生成し、パラメーターは選択したモデルに従います",
+        "websiteDescription": "公開できる静的サイト",
+        "workflowDescription": "コンポーザーから実行できる保存済みワークフロー"
+      },
       "temporarilySwitchTo": "一時的な切り替え先",
       "threadSuggestions": "チャットスレッド",
       "useForFutureChats": "今後のチャットでも使用",

@@ -83,4 +83,5 @@ export enum FeatureSwitchKey {
   ConnectorDirectory = "connectorDirectory",
   ChatThreadHeaderActions = "chatThreadHeaderActions",
   ComposerTemplateChipCover = "composerTemplateChipCover",
+  ComposerSlashTemplatePanel = "composerSlashTemplatePanel",
 }
