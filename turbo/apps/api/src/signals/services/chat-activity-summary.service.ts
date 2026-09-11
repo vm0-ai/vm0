@@ -398,7 +398,9 @@ function realProviderFailure(completion: CompletionRecord): boolean {
  * Everything else falls through to `error`: a response the strict contract
  * cannot accept, and an exception the shared classifier could not name. A
  * reason added to that classifier later therefore surfaces instead of
- * disappearing into silence.
+ * disappearing into silence. No completion is reported at `warn`: a provider
+ * failure is either absorbed or a real failure, and the residual arm is either
+ * absorbed or a defect.
  *
  * The silent cases name only reasons this residual arm can actually receive.
  * `auth`, `invalid_request`, `rate_limited` and `provider_unavailable` belong
@@ -408,7 +410,7 @@ function realProviderFailure(completion: CompletionRecord): boolean {
  */
 function completionLevel(
   completion: CompletionRecord,
-): "info" | "warn" | "error" | null {
+): "info" | "error" | null {
   if (absorbedCompletion(completion)) {
     return null;
   }
@@ -551,8 +553,6 @@ async function generateSummary(
   const level = completionLevel(completion);
   if (level === "info") {
     log.info("Activity summary completion", completion);
-  } else if (level === "warn") {
-    log.warn("Activity summary completion", completion);
   } else if (level === "error") {
     log.error("Activity summary completion", completion);
   }
