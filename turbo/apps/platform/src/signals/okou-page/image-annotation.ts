@@ -337,7 +337,7 @@ function offsetMark(
  * now hugs whatever was typed and only wraps once it reaches this ceiling, so
  * there is no width left to compute and nothing to leave empty.
  */
-export interface AnnotationTextBox {
+interface AnnotationTextBox {
   readonly x: number;
   readonly y: number;
   readonly maxWidth: number;

@@ -21,13 +21,6 @@ import {
  * showing a clean image while the editor showed the annotations.
  */
 
-export function markInk(mark: ImageAnnotationMark): string {
-  if (mark.shape === "highlight" || mark.shape === "redact") {
-    return REDACT_FILL;
-  }
-  return mark.ink;
-}
-
 /** Head length as a fraction of the shorter edge. */
 const ARROW_HEAD_UNITS = 0.045;
 
