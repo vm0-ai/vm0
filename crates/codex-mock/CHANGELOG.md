@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.6](https://github.com/vm0-ai/vm0/compare/codex-mock-v0.11.5...codex-mock-v0.11.6) (2026-09-11)
+
+
+### Bug Fixes
+
+* **guest-agent:** bound pi and codex event delivery ([#33532](https://github.com/vm0-ai/vm0/issues/33532)) ([c42da19](https://github.com/vm0-ai/vm0/commit/c42da19f700479f51954f2012106a211fe4f97c6))
+
 ## [0.11.5](https://github.com/vm0-ai/vm0/compare/codex-mock-v0.11.4...codex-mock-v0.11.5) (2026-09-11)
 
 ## [0.11.4](https://github.com/vm0-ai/vm0/compare/codex-mock-v0.11.3...codex-mock-v0.11.4) (2026-09-11)

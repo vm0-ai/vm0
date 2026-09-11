@@ -11,6 +11,28 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.888.0](https://github.com/vm0-ai/vm0/compare/app-v0.887.1...app-v0.888.0) (2026-09-11)
+
+
+### Features
+
+* **app:** narrow the slash panel and scroll its index as one list ([#33544](https://github.com/vm0-ai/vm0/issues/33544)) ([15955e5](https://github.com/vm0-ai/vm0/commit/15955e559159871e588a068c30d922fc03f6599e))
+
+
+### Bug Fixes
+
+* **app:** write every annotation note on the image ([#33418](https://github.com/vm0-ai/vm0/issues/33418)) ([461ab76](https://github.com/vm0-ai/vm0/commit/461ab76a89de2b55b86f06f92a72afb93c6f085c))
+* **guest-agent:** bound pi and codex event delivery ([#33532](https://github.com/vm0-ai/vm0/issues/33532)) ([c42da19](https://github.com/vm0-ai/vm0/commit/c42da19f700479f51954f2012106a211fe4f97c6))
+* **platform:** let the composer focus veil fade past the scrollport ([#33514](https://github.com/vm0-ai/vm0/issues/33514)) ([b70d0a4](https://github.com/vm0-ai/vm0/commit/b70d0a4046487a8787b8d7b68507fa2fca717c6e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.428.2
+    * @okouai/core bumped to 8.654.1
+
 ## [0.887.1](https://github.com/vm0-ai/vm0/compare/app-v0.887.0...app-v0.887.1) (2026-09-11)
 
 
