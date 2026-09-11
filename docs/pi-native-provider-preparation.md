@@ -1,6 +1,6 @@
 # Pi native provider consumer preparation
 
-This is the reader/runtime/accounting release for [#32803](https://github.com/vm0-ai/vm0/issues/32803), part of [#32795](https://github.com/vm0-ai/vm0/issues/32795). It does not admit a new production route or emit native model configs. The controller owns independent acceptance, authorized publication and the subsequent activation child.
+This records the reader/runtime/accounting preparation release for [#32803](https://github.com/vm0-ai/vm0/issues/32803), part of [#32795](https://github.com/vm0-ai/vm0/issues/32795). That preparation release did not admit a new production route or emit native model configs; the later writer is described under Shared route activation below. The controller owns independent acceptance, authorized publication and the subsequent activation child.
 
 ## Two independent version axes
 
@@ -48,3 +48,71 @@ There is no migration/backfill and no new permanent compatibility fallback. Exis
 The parent records a fully paged MaskDB snapshot for `[2026-08-10T03:00:00Z, 2026-09-09T03:00:00Z)`: 32,699 unique relevant runs, 33 pages, final page 699. Active Built-in Claude: 912 in 30 days / 159 in 7 days. Excluded official Claude subscription: 13,333 / 3,524. Existing Built-in DeepSeek: 18,005 in 30 days; custom Responses DeepSeek: 398. Other new BYOK/cloud routes had zero observed runs; this is not a live pass.
 
 The 03:04:33Z configuration census found DeepSeek 8, Anthropic API key 8, OpenRouter Claude 11, OpenRouter Codex 1, Vercel Claude 2 and subscription 38; no Bedrock/Foundry rows. Three custom Messages surfaces exist. These are bounded historical inventory, not current eligibility, complete traffic coverage, deployment proof or production acceptance.
+
+## Shared route activation (#33348)
+
+The subsequent [activation child](https://github.com/vm0-ai/vm0/issues/33348)
+connects the shared writer to the prepared consumers above. Preparation was
+accepted at `31133fc7ba5eeecbc1c8a0cda32f16f1ff2b4602`; the controller's
+[read-only publication receipt](https://github.com/vm0-ai/vm0/issues/32803#issuecomment-5627813459)
+records compatible serving API, CLI and Runner releases and retained rollback
+code. That receipt releases the implementation dependency. It is not a native
+route live pass or permission for this child to publish.
+
+Canonical owned-thread admission remains behind the existing `PiLoop` cohort.
+The same policy selection and launch writer serve direct chat, connector
+callbacks, delegated inputs and Automation turns. Threadless/private maintenance,
+test/replay and retired Goal admission remain outside foreground activation.
+Provider `framework` values still describe the protocol family; they are not
+rewritten to `pi`.
+
+| Logical models                     | Activated route                                                                                                                     | Stored carrier                                                        |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| DeepSeek V4 Flash / Pro            | Existing direct BYOK or user OpenRouter Responses, including canonical `deepseek/` aliases                                          | Existing Responses generation; other GPT/DeepSeek producers unchanged |
+| Five active Claude catalog models  | Built-in concrete Anthropic or managed OpenRouter; org Anthropic, user OpenRouter, Vercel or mapped custom Messages                 | Prepared native generation 4                                          |
+| Same Claude catalog                | Already-configured Foundry resource/deployment; Bedrock region and foundation/profile with existing bearer or explicit SigV4 bundle | Prepared native generation 4                                          |
+| Official Claude OAuth/subscription | Existing Claude Code routes, including member/account and queued/source flows                                                       | No Pi admission                                                       |
+
+An org cloud provider now retains its configured `selectedModel` as the opaque
+upstream deployment/profile. The org policy separately binds a logical catalog
+model to that provider. Missing mappings and recognizable incompatible model IDs
+are unavailable; an explicit policy is required for an opaque profile/deployment.
+The native contract additionally validates the exact region/resource, URL and
+auth mode. Rotating cloud credentials without specifying a new upstream ID keeps
+the configured deployment. No cloud selector is exposed and no provisioning,
+new authentication mode or provider fallback is added.
+
+The writer locks a selected cloud row while capturing its resource/region/key
+bundle, materializes only selected credentials, rejects recognizable Claude
+subscription material before Pi I/O, and freezes the secret references and exact
+native firewall in the encrypted execution context. Custom Messages own their
+configured header and template. Later provider, policy or feature-switch edits
+cannot rewrite an admitted route. No raw cloud/Anthropic credentials or ambient
+cloud credential sources enter the native guest; only selected opaque markers
+are overlaid after untrusted environment expansion. Native errors retain the
+captured provider and harness.
+
+Every newly written generation 4 context requires a canonical `https://static.okou.io`, commit-addressed
+CLI package from its API writer commit (`/okou-cli/<GIT_COMMIT_SHA>/package.tgz`).
+The existing PR/main pipeline builds that artifact at the head SHA, and release
+promotion verifies the CLI artifact at its release target before selecting it.
+This narrowly rejects mismatched or mutable pins; it adds no deployment system
+or compatibility fallback. Old/missing Runner capability remains unclaimed by
+the existing reader. Already captured contexts keep their package and generation.
+
+API-first native calls retain the API usage writer; subsequent sandbox calls use
+the proxy writer. BYOK foreground model tokens are not Built-in charges. Tools,
+infrastructure and shared Stage 1/Phase 2 maintenance keep their existing pricing,
+credential ownership and proxy-only Phase 2 accounting. No memory learner or
+session format is copied.
+
+The child contract records a separate fully paged, deduplicated one-day snapshot
+`[2026-09-10T00:00:00Z, 2026-09-11T00:00:00Z)`: 556 rows (250 + 250 + 56),
+including 285 Built-in DeepSeek, 15 custom Responses, 33 Built-in Claude and 223
+excluded subscriptions; 527 completed, 19 failed and 10 cancelled. It contains
+internal activity and is not a customer count or causal attribution. The saved
+configuration census contains 68 providers and 8 custom surfaces (3 Messages,
+5 Responses); no Bedrock/Foundry rows were observed. Zero observed traffic and
+bounded Axiom evidence do not establish native live acceptance. This child ends
+at protected merge; the controller owns independent acceptance and a separately
+authorized release and production verification. Parent #32795 remains open.

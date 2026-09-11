@@ -750,6 +750,27 @@ test("Limit free workspaces to eligible built-in models", async () => {
   expect(within(deepseekRow).getByText("DeepSeek V4 Pro")).toBeInTheDocument();
 });
 
+test("Keep cloud onboarding hidden while native routes are supported", async () => {
+  await openAddApiKeyModelDialog();
+  const dialog = screen.getByRole("dialog", { name: "Add model" });
+  const provider = within(dialog)
+    .getAllByRole("combobox")
+    .find((element) => {
+      return element.textContent === "Anthropic";
+    });
+  if (!provider) {
+    throw new Error("Expected the selected Anthropic provider");
+  }
+  click(provider);
+  await expect(
+    screen.findByRole("option", { name: "Anthropic" }),
+  ).resolves.toBeVisible();
+  expect(screen.getByRole("option", { name: "OpenRouter" })).toBeVisible();
+  expect(
+    screen.queryByRole("option", { name: /Bedrock|Foundry/u }),
+  ).not.toBeInTheDocument();
+});
+
 test("Connect a workspace API key to a model route", async () => {
   await openAddApiKeyModelDialog();
   const dialog = screen.getByRole("dialog", { name: "Add model" });

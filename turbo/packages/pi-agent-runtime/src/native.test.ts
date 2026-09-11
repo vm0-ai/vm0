@@ -37,7 +37,7 @@ afterAll(() => {
   return server.close();
 });
 
-function messagesResponse() {
+function messagesResponse(model = "claude-sonnet-4-6") {
   const events = [
     {
       type: "message_start",
@@ -45,7 +45,7 @@ function messagesResponse() {
         id: "native-response",
         type: "message",
         role: "assistant",
-        model: "claude-sonnet-4-6",
+        model,
         content: [],
         stop_reason: null,
         usage: {
@@ -488,7 +488,7 @@ describe("native Pi execution edges", () => {
           );
           bodies.push(await request.text());
           return config.dialect === "anthropic-messages"
-            ? messagesResponse()
+            ? messagesResponse(config.model)
             : bedrockResponse();
         }),
       );
@@ -536,6 +536,12 @@ describe("native Pi execution edges", () => {
       expect(bodies[1]).toContain("opaque-signature");
       expect(bodies[1]).toContain("tool-result-content");
       expect(bodies[1]).toContain("iVBORw0KGgo=");
+      await stream(
+        model,
+        { messages: [user, { ...first, model: "unselected-upstream-model" }] },
+        { apiKey: materialized.apiKey },
+      ).result();
+      expect(bodies[2]).not.toContain("opaque-signature");
     },
   );
 

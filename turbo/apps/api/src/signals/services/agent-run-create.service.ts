@@ -1,3 +1,13 @@
+import { isCloudModelMappingValid } from "@okouai/api-contracts/contracts/cloud-model-mapping";
+import {
+  assertPiNativeCredential,
+  materializePiAgentModelConfig,
+} from "@okouai/pi-agent-runtime";
+import {
+  PI_NATIVE_CREDENTIAL_PLACEHOLDER,
+  type PiModelConfigV4,
+} from "@okouai/api-contracts/contracts/pi-native";
+import { piNativeFirewall } from "@okouai/api-contracts/contracts/pi-native-firewall";
 import type { ReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
 import { isUnsupportedRunAdmission } from "./run-admission-input";
 import { createHash, randomUUID } from "node:crypto";
@@ -251,6 +261,10 @@ import {
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { resolvePiSandboxModelConfig } from "./pi-sandbox-config";
+import {
+  isPiNativeModel,
+  PiNativeConfigurationError,
+} from "./pi-native-model-config";
 import {
   piResourceDiscoveryMounts,
   piResourceSnapshotDigest,
@@ -889,6 +903,9 @@ interface InternalRunCallback {
 type RunCallback = HttpRunCallback | InternalRunCallback;
 
 interface ResolvedModelProviderEnvironment {
+  readonly credentialOwner: PiModelConfigV4["credentialOwner"];
+  readonly authMethod?: string | null;
+  readonly piModelConfig?: PiModelConfig;
   readonly id: string | null;
   readonly type: ModelProviderType;
   readonly concreteType?: ModelProviderType;
@@ -2162,12 +2179,13 @@ function modelProviderEnvironment(args: {
   readonly secretValue: string | undefined;
   readonly sourceUserId: string;
   readonly sourceId?: string;
+  readonly captureSecret?: boolean;
   readonly selectedModel: string | null;
 }): ResolvedModelProviderEnvironment {
   const firewall = getModelProviderFirewall(args.type);
   const hasFirewallAuth = firewall !== undefined;
   let secrets: Record<string, string> = {};
-  if (!hasFirewallAuth) {
+  if (!hasFirewallAuth || args.captureSecret) {
     if (args.secretValue === undefined) {
       throw new Error(`Missing eager secret for model provider ${args.type}`);
     }
@@ -2198,6 +2216,8 @@ function modelProviderEnvironment(args: {
   return {
     id: args.id,
     type: args.type,
+    credentialOwner:
+      args.sourceUserId === ORG_SENTINEL_USER_ID ? "organization" : "member",
     environment,
     secrets,
     selectedModel: model,
@@ -2318,6 +2338,34 @@ function providerEnvironmentFromSecretMap(
   return environment;
 }
 
+function resolveMultiAuthRuntimeModel(
+  args: {
+    readonly type: ModelProviderType;
+    readonly configuredModel?: string | null;
+    readonly piExecution?: boolean;
+  },
+  selectedModel: string | null,
+): string | null {
+  const cloud = args.type === "azure-foundry" || args.type === "aws-bedrock";
+  const runtimeModel =
+    cloud && args.configuredModel !== undefined
+      ? args.configuredModel
+      : selectedModel
+        ? getProviderRuntimeModel(args.type, selectedModel)
+        : null;
+  if (
+    cloud &&
+    args.piExecution &&
+    (!selectedModel ||
+      !isCloudModelMappingValid(args.type, selectedModel, runtimeModel))
+  ) {
+    throw new PiNativeConfigurationError(
+      "Cloud provider requires its explicitly configured deployment or profile",
+    );
+  }
+  return runtimeModel;
+}
+
 async function multiAuthModelProviderEnvironment(
   db: Db,
   args: {
@@ -2327,6 +2375,8 @@ async function multiAuthModelProviderEnvironment(
     readonly type: ModelProviderType;
     readonly authMethod: string | null;
     readonly selectedModel: string | null;
+    readonly configuredModel?: string | null;
+    readonly piExecution?: boolean;
     readonly featureSwitchContext: FeatureSwitchContext;
     readonly accountId?: string;
   },
@@ -2409,9 +2459,7 @@ async function multiAuthModelProviderEnvironment(
     defaultModel: getDefaultModel(args.type),
     envBindings: selectedModelEnvBindings,
   });
-  const runtimeModel = selectedModel
-    ? getProviderRuntimeModel(args.type, selectedModel)
-    : null;
+  const runtimeModel = resolveMultiAuthRuntimeModel(args, selectedModel);
   const authMaps = modelProviderFirewallAuthMaps(
     args.type,
     args.userId,
@@ -2421,6 +2469,9 @@ async function multiAuthModelProviderEnvironment(
   return {
     id: args.id,
     type: args.type,
+    credentialOwner:
+      args.userId === ORG_SENTINEL_USER_ID ? "organization" : "member",
+    authMethod: args.authMethod,
     environment: providerEnvironmentFromSecretMap(
       args.type,
       forwardableSecrets,
@@ -2523,6 +2574,7 @@ async function builtInModelProviderEnvironment(
   return {
     id: null,
     type: "built-in",
+    credentialOwner: "builtin",
     concreteType: route.providerType,
     environment,
     secrets: { [secretName]: key.apiKey },
@@ -2616,6 +2668,7 @@ async function customGatewayModelProviderEnvironment(
   return {
     id: row.id,
     type: runtime.type,
+    credentialOwner: "organization",
     environment: runtime.environment,
     secrets: { [GATEWAY_RUNTIME_SECRET_NAME]: secretValue },
     selectedModel: args.selectedModelOverride,
@@ -2831,6 +2884,63 @@ async function resolveActivePersonalModelProviderAccountEnvironment(
     : null;
 }
 
+async function resolveMultiAuthCandidate(
+  db: Db,
+  args: ResolveModelProviderEnvironmentArgs,
+  row: ResolvableModelProviderEnvironmentRow,
+): Promise<ResolvedModelProviderEnvironment | null> {
+  const resolve = (
+    reader: Db,
+    selected: Pick<
+      ResolvableModelProviderEnvironmentRow,
+      "authMethod" | "selectedModel"
+    >,
+  ) => {
+    return multiAuthModelProviderEnvironment(reader, {
+      id: row.id,
+      orgId: args.orgId,
+      userId: row.userId,
+      type: row.type,
+      authMethod: selected.authMethod,
+      selectedModel: args.selectedModelOverride ?? selected.selectedModel,
+      configuredModel: selected.selectedModel,
+      piExecution: args.piExecution,
+      featureSwitchContext: args.featureSwitchContext,
+    });
+  };
+  if (
+    args.piExecution &&
+    (row.type === "azure-foundry" || row.type === "aws-bedrock")
+  ) {
+    // Hold the selected row while reading its atomic resource/region/key
+    // bundle. A concurrent settings write cannot mix old and new identities.
+    return await db.transaction(async (tx) => {
+      const [selected] = await tx
+        .select({
+          authMethod: modelProviders.authMethod,
+          selectedModel: modelProviders.selectedModel,
+        })
+        .from(modelProviders)
+        .where(
+          and(
+            eq(modelProviders.id, row.id),
+            eq(modelProviders.orgId, args.orgId),
+            eq(modelProviders.userId, row.userId),
+            eq(modelProviders.type, row.type),
+          ),
+        )
+        .for("share");
+      if (!selected) {
+        throw new PiNativeConfigurationError(
+          "Selected cloud provider is unavailable",
+        );
+      }
+      return await resolve(tx, selected);
+    });
+  }
+  return await resolve(db, row);
+}
+
 async function resolveCandidateModelProviderEnvironment(
   db: Db,
   args: ResolveModelProviderEnvironmentArgs,
@@ -2865,22 +2975,18 @@ async function resolveCandidateModelProviderEnvironment(
   }
 
   if (hasAuthMethods(row.type)) {
-    return await multiAuthModelProviderEnvironment(db, {
-      id: row.id,
-      orgId: args.orgId,
-      userId: row.userId,
-      type: row.type,
-      authMethod: row.authMethod,
-      selectedModel: args.selectedModelOverride ?? row.selectedModel,
-      featureSwitchContext: args.featureSwitchContext,
-    });
+    return await resolveMultiAuthCandidate(db, args, row);
   }
 
   const config = MODEL_PROVIDER_TYPES[row.type];
   if (!isSingleSecretModelProviderConfig(config) || !row.encryptedValue) {
     return null;
   }
-  if (getModelProviderFirewall(row.type) !== undefined) {
+  const captureSecret =
+    args.piExecution &&
+    (isPiNativeModel(args.selectedModelOverride) ||
+      args.selectedModelOverride?.startsWith("deepseek-v4-"));
+  if (getModelProviderFirewall(row.type) !== undefined && !captureSecret) {
     return modelProviderEnvironment({
       id: row.id,
       type: row.type,
@@ -2902,6 +3008,7 @@ async function resolveCandidateModelProviderEnvironment(
     type: row.type,
     config,
     secretValue,
+    captureSecret,
     sourceUserId: row.userId,
     selectedModel: args.selectedModelOverride ?? row.selectedModel,
   });
@@ -6551,6 +6658,77 @@ function buildStoredUntrustedEnvironment(args: {
   );
 }
 
+function assertNativeCredentialOverrides(
+  provider: ResolvedModelProviderEnvironment | null,
+  bodySecrets: Record<string, string> | undefined,
+): void {
+  const native = provider?.piModelConfig;
+  if (
+    native &&
+    "schemaVersion" in native &&
+    native.schemaVersion === 4 &&
+    native.credentialBindings.some((binding) => {
+      return bodySecrets?.[binding.secretName] !== undefined;
+    })
+  ) {
+    throw new PiNativeConfigurationError(
+      "Native Pi credentials cannot be overridden after route capture",
+    );
+  }
+}
+
+function nativeCredentialEnvironment(
+  provider: ResolvedModelProviderEnvironment | null,
+): Record<string, string> {
+  const nativeConfig = provider?.piModelConfig;
+  return nativeConfig &&
+    "schemaVersion" in nativeConfig &&
+    nativeConfig.schemaVersion === 4
+    ? Object.fromEntries(
+        nativeConfig.credentialBindings.map((binding) => {
+          return [binding.environment, PI_NATIVE_CREDENTIAL_PLACEHOLDER];
+        }),
+      )
+    : {};
+}
+
+function assertNativeEnvironment(
+  provider: ResolvedModelProviderEnvironment | null,
+  effectiveEnvironment: Record<string, string>,
+): void {
+  const nativeConfig = provider?.piModelConfig;
+  if (
+    nativeConfig &&
+    "schemaVersion" in nativeConfig &&
+    nativeConfig.schemaVersion === 4
+  ) {
+    for (const key of [
+      "AWS_ACCESS_KEY_ID",
+      "AWS_SECRET_ACCESS_KEY",
+      "AWS_SESSION_TOKEN",
+      "AWS_BEARER_TOKEN_BEDROCK",
+      "AWS_PROFILE",
+      "AWS_DEFAULT_PROFILE",
+      "AWS_WEB_IDENTITY_TOKEN_FILE",
+      "AWS_CONTAINER_CREDENTIALS_FULL_URI",
+      "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+      "ANTHROPIC_FOUNDRY_API_KEY",
+      "CLAUDE_CODE_OAUTH_TOKEN",
+      "ANTHROPIC_API_KEY",
+      "ANTHROPIC_AUTH_TOKEN",
+      "OPENROUTER_API_KEY",
+      "VERCEL_AI_GATEWAY_API_KEY",
+      "OKOU_MODEL_PROVIDER_API_KEY",
+    ]) {
+      if (effectiveEnvironment[key]) {
+        throw new PiNativeConfigurationError(
+          "Native Pi context cannot carry ambient provider authentication",
+        );
+      }
+    }
+  }
+}
+
 async function buildStoredExecutionContextDraft(args: {
   readonly runId: string;
   readonly userId: string;
@@ -6573,6 +6751,7 @@ async function buildStoredExecutionContextDraft(args: {
   readonly includeOkouTokenSecret: boolean | undefined;
 }): Promise<BuiltStoredExecutionContextDraft> {
   const permissions = args.permissionManifest;
+  assertNativeCredentialOverrides(args.modelProvider, args.body.secrets);
   const executionSecrets = buildStoredExecutionSecrets({
     connectorContext: args.connectorContext,
     modelProvider: args.modelProvider,
@@ -6602,18 +6781,24 @@ async function buildStoredExecutionContextDraft(args: {
       connectorVars: args.connectorContext.vars,
     }),
   );
+  const nativeEnvironment = nativeCredentialEnvironment(args.modelProvider);
   const platformEnvironment = buildStoredPlatformEnvironment({
-    platformEnvironment: args.platformEnvironment,
+    platformEnvironment: { ...args.platformEnvironment, ...nativeEnvironment },
     canonicalOkouRuntime: args.includeOkouTokenSecret === true,
   });
-  const environment = buildStoredUntrustedEnvironment({
+  const untrustedEnvironment = buildStoredUntrustedEnvironment({
     expandedEnvironment,
     canonicalOkouRuntime: args.includeOkouTokenSecret === true,
   });
+  const environment =
+    Object.keys(nativeEnvironment).length > 0
+      ? { ...untrustedEnvironment, ...nativeEnvironment }
+      : untrustedEnvironment;
   const effectiveEnvironment = {
     ...environment,
     ...platformEnvironment,
   };
+  assertNativeEnvironment(args.modelProvider, effectiveEnvironment);
   const environmentKeyByValue = new Map<string, string>();
   for (const [key, value] of Object.entries(effectiveEnvironment)) {
     if (!environmentKeyByValue.has(value)) {
@@ -8671,6 +8856,103 @@ interface FinalizedPreparedRunContext extends PreparedRunContext {
   readonly launchSnapshot: AgentRunLaunchSnapshot;
 }
 
+async function materializePreparedPiProvider(
+  createArgs: CreateAgentRunArgs,
+  provider: ResolvedModelProviderEnvironment | null,
+): Promise<ResolvedModelProviderEnvironment | null> {
+  if (!createArgs.piExecution) {
+    return provider;
+  }
+  const config = resolvePiSandboxModelConfig(
+    provider,
+    createArgs.codexServiceTier,
+  );
+  if (!config || !provider) {
+    throw new Error(
+      "Selected Pi execution requires a supported model provider configuration",
+    );
+  }
+  if (!("schemaVersion" in config) || config.schemaVersion !== 4) {
+    if (
+      !("schemaVersion" in config) &&
+      (provider.type === "deepseek" || provider.type === "openrouter-codex") &&
+      provider.selectedModel?.startsWith("deepseek-v4-")
+    ) {
+      const credential = safeSync(() => {
+        return assertPiNativeCredential(
+          provider.secrets[config.credentialSecretName] ?? "",
+        );
+      });
+      if ("error" in credential) {
+        throw new PiNativeConfigurationError(
+          "Selected Pi credential is invalid",
+        );
+      }
+      return {
+        ...provider,
+        piModelConfig: config,
+        secretConnectorMap: undefined,
+        secretConnectorMetadataMap: undefined,
+      };
+    }
+    return { ...provider, piModelConfig: config };
+  }
+  // The writer and CLI reader are built from the same commit. A mutable or
+  // differently pinned package cannot consume a newly captured native route.
+  const commit = env("GIT_COMMIT_SHA");
+  const cliUrl = new URL(env("CLI_PKG_URL"));
+  if (
+    !/^[0-9a-f]{40}$/u.test(commit) ||
+    cliUrl.origin !== "https://static.okou.io" ||
+    cliUrl.username ||
+    cliUrl.password ||
+    cliUrl.search ||
+    cliUrl.hash ||
+    cliUrl.pathname !== `/okou-cli/${commit}/package.tgz`
+  ) {
+    throw new PiNativeConfigurationError(
+      "Native Pi requires the current commit-addressed CLI reader artifact",
+    );
+  }
+  const secrets: Record<string, string> = {};
+  await materializePiAgentModelConfig({
+    config,
+    target: "direct",
+    resolveCredential(binding) {
+      const value = provider.secrets[binding.secretName];
+      if (!value) {
+        throw new PiNativeConfigurationError(
+          "Selected native Pi credential is unavailable",
+        );
+      }
+      const credential = safeSync(() => {
+        return assertPiNativeCredential(value);
+      });
+      if ("error" in credential) {
+        throw new PiNativeConfigurationError(
+          "Selected Pi credential is invalid",
+        );
+      }
+      secrets[binding.secretName] = value;
+      return value;
+    },
+  });
+  return {
+    ...provider,
+    piModelConfig: config,
+    environment: Object.fromEntries(
+      config.credentialBindings.map((binding) => {
+        return [binding.environment, PI_NATIVE_CREDENTIAL_PLACEHOLDER];
+      }),
+    ),
+    secrets,
+    secretConnectorMap: undefined,
+    secretConnectorMetadataMap: undefined,
+    firewall: piNativeFirewall(config),
+    inlineFirewall: true,
+  };
+}
+
 function resolvePreparedPiModelConfig(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
@@ -9437,6 +9719,39 @@ async function resolvePreparedThreadConnectorSelections(
   };
 }
 
+function piConfigurationRouteError(
+  error: unknown,
+): ReturnType<typeof badRequestMessage> {
+  if (error instanceof PiNativeConfigurationError) {
+    return badRequestMessage(error.message);
+  }
+  throw error;
+}
+
+async function materializeResolvedPiProvider(
+  createArgs: CreateAgentRunArgs,
+  modelProviderResult: PromiseSettledResult<
+    Awaited<ReturnType<typeof resolvePreparedRunModelProvider>>
+  >,
+  signal: AbortSignal,
+): Promise<ResolvedModelProviderEnvironment | null | CreateRunErrorResult> {
+  if (modelProviderResult.status === "rejected") {
+    return piConfigurationRouteError(modelProviderResult.reason);
+  }
+  const resolvedModelProvider = modelProviderResult.value;
+  if (isRouteError(resolvedModelProvider)) {
+    return resolvedModelProvider;
+  }
+  const materializedProvider = await settle(
+    materializePreparedPiProvider(createArgs, resolvedModelProvider),
+    signal,
+  );
+  if (!materializedProvider.ok) {
+    return piConfigurationRouteError(materializedProvider.error);
+  }
+  return materializedProvider.value;
+}
+
 async function prepareRunRuntimeContext(
   args: {
     readonly db: Db;
@@ -9494,10 +9809,11 @@ async function prepareRunRuntimeContext(
           connectorCatalogSelection.selection,
         )
       : args.connectorScope;
-  if (modelProviderResult.status === "rejected") {
-    throw modelProviderResult.reason;
-  }
-  const modelProvider = modelProviderResult.value;
+  const modelProvider = await materializeResolvedPiProvider(
+    args.createArgs,
+    modelProviderResult,
+    signal,
+  );
   if (isRouteError(modelProvider)) {
     return modelProvider;
   }
