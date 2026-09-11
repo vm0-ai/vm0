@@ -9365,6 +9365,7 @@ function ComposerInputSlot({
   const notifyDraftChanged = useComposerDraftChange(signals);
   const restoreAttachments = useSet(signals.draft.restoreAttachments$);
   const pageSignal = useGet(pageSignal$);
+  const focusEditor = useSet(signals.editor.focus$);
   const insertPromptMarkdown = useSet(signals.editor.insertPromptMarkdown$);
   const insertUserMessage = useSet(signals.editor.insertUserMessage$);
   const uploadFile = useComposerFileUpload(signals);
@@ -9473,7 +9474,17 @@ function ComposerInputSlot({
     >
       <div
         className="col-start-1 row-start-1 min-h-0"
+        data-slot="chat-composer-input"
         hidden={createPickerOpen}
+        onClick={(event) => {
+          const target = event.target;
+          if (
+            target instanceof Node &&
+            !signals.editor.editor.view.dom.contains(target)
+          ) {
+            focusEditor();
+          }
+        }}
       >
         <TiptapWorkflowComposer
           signals={signals}
