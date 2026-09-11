@@ -221,6 +221,13 @@ Runner Rust logs are recorded to local files, stderr, and CI at `info` and
 above by default. Axiom ingests `warn` and above. Use `debug` or `trace` only
 for local diagnostics that are acceptable to miss in production logs.
 
+Per-run network-log uploads have a 30-second total budget, with a separate
+10-second timeout for each sequential HTTP request. Uploads remain best-effort,
+limited to 32 MiB of source data and 32 batches, with no automatic retries.
+They run after completion reporting and sandbox ownership settlement, but
+graceful Runner shutdown waits for outstanding uploads. Deadline cancellation
+can leave a request's result unknown; it does not prove that ingestion failed.
+
 ## TLS in Guest Binaries
 
 Guest crates (`guest-agent`, `guest-storage-apply`) **must** use system certificate roots, not bundled webpki roots. The host runs a mitmproxy transparent proxy that intercepts HTTPS traffic with its own CA certificate, which is installed into the guest's system certificate store at boot. Using bundled roots would bypass the proxy CA and cause TLS verification failures.
