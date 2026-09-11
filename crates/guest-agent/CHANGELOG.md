@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.89.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.89.0...guest-agent-v0.89.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **guest-agent:** keep oom evidence waits off tokio workers ([#33396](https://github.com/vm0-ai/vm0/issues/33396)) ([0c7a535](https://github.com/vm0-ai/vm0/commit/0c7a535c995853acc1226a0c9815baecc3f0b870))
+
 ## [0.89.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.88.3...guest-agent-v0.89.0) (2026-09-11)
 
 

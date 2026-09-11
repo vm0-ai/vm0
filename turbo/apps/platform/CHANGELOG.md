@@ -11,6 +11,39 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.886.0](https://github.com/vm0-ai/vm0/compare/app-v0.885.0...app-v0.886.0) (2026-09-11)
+
+
+### Features
+
+* **api:** activate shared deepseek and native claude pi routes ([#33397](https://github.com/vm0-ai/vm0/issues/33397)) ([f942995](https://github.com/vm0-ai/vm0/commit/f942995d317de177dd344a12577bb6e151c47a01))
+
+
+### Bug Fixes
+
+* **app:** contain long connector account names ([#33437](https://github.com/vm0-ai/vm0/issues/33437)) ([41fc47d](https://github.com/vm0-ai/vm0/commit/41fc47d0666cb4d694865c0bdce46657562df4bf))
+* **app:** restore border contrast lost to the 0.5px hairline ([#33408](https://github.com/vm0-ai/vm0/issues/33408)) ([2ee706c](https://github.com/vm0-ai/vm0/commit/2ee706cd7e0b2e8b137aae2de8939152d4f5d308))
+* **connectors:** add Mercury compliance disclosures ([#33381](https://github.com/vm0-ai/vm0/issues/33381)) ([c13be86](https://github.com/vm0-ai/vm0/commit/c13be861672a425555d9dffdf3d29da982131bd8))
+* **connectors:** organize and search custom connectors in directory mode ([#33416](https://github.com/vm0-ai/vm0/issues/33416)) ([366a302](https://github.com/vm0-ai/vm0/commit/366a302f039ca55283d0d01f6f0235476cedde0a))
+* **platform:** focus composer from empty input area ([#33415](https://github.com/vm0-ai/vm0/issues/33415)) ([69cdf6f](https://github.com/vm0-ai/vm0/commit/69cdf6fbdf197bfcb5f8424827c1c26b59e3a920))
+* **platform:** replace onboarding avatar ([#33344](https://github.com/vm0-ai/vm0/issues/33344)) ([985f555](https://github.com/vm0-ai/vm0/commit/985f555d595866c095b4e93dc4ba9b46ce2d7a45))
+* **voice:** recover completion-body provider failures ([#33403](https://github.com/vm0-ai/vm0/issues/33403)) ([1c005dd](https://github.com/vm0-ai/vm0/commit/1c005ddbb297aec5f576d4d9063f82c61d809be8))
+
+
+### Refactoring
+
+* **ui:** encapsulate dialog bodies and icon controls in components ([#33320](https://github.com/vm0-ai/vm0/issues/33320)) ([8c455be](https://github.com/vm0-ai/vm0/commit/8c455bee21f6ab9fe34e952741f62cc00bc0ce1b))
+* **ui:** migrate color theme preview swatches to utilities ([#33063](https://github.com/vm0-ai/vm0/issues/33063)) ([2fe0502](https://github.com/vm0-ai/vm0/commit/2fe050253492f3df5c4546b8c54a705ecdb1f424))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.428.0
+    * @okouai/core bumped to 8.652.1
+    * @okouai/ui bumped to 1.8.3
+
 ## [0.885.0](https://github.com/vm0-ai/vm0/compare/app-v0.884.5...app-v0.885.0) (2026-09-11)
 
 

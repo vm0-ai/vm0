@@ -8,6 +8,30 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.584.0](https://github.com/vm0-ai/vm0/compare/api-v1.583.0...api-v1.584.0) (2026-09-11)
+
+
+### Features
+
+* **api:** activate shared deepseek and native claude pi routes ([#33397](https://github.com/vm0-ai/vm0/issues/33397)) ([f942995](https://github.com/vm0-ai/vm0/commit/f942995d317de177dd344a12577bb6e151c47a01))
+* **api:** verify marketing delivery consent ([#33436](https://github.com/vm0-ai/vm0/issues/33436)) ([832dbe4](https://github.com/vm0-ai/vm0/commit/832dbe4b652792461633ad4e4bd92902e7dc4165))
+
+
+### Bug Fixes
+
+* **connectors:** add Mercury compliance disclosures ([#33381](https://github.com/vm0-ai/vm0/issues/33381)) ([c13be86](https://github.com/vm0-ai/vm0/commit/c13be861672a425555d9dffdf3d29da982131bd8))
+* **voice:** recover completion-body provider failures ([#33403](https://github.com/vm0-ai/vm0/issues/33403)) ([1c005dd](https://github.com/vm0-ai/vm0/commit/1c005ddbb297aec5f576d4d9063f82c61d809be8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.428.0
+    * @okouai/core bumped to 8.652.1
+    * @okouai/db bumped to 1.252.0
+    * @okouai/pi-agent-runtime bumped to 1.25.0
+
 ## [1.583.0](https://github.com/vm0-ai/vm0/compare/api-v1.582.3...api-v1.583.0) (2026-09-11)
 
 
