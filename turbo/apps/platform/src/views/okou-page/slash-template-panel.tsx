@@ -31,7 +31,7 @@ const SLASH_TEMPLATE_CATEGORY_ICONS = {
   workflow: Workflow,
 } as const satisfies Record<SlashTemplateCategory, typeof Presentation>;
 
-export interface SlashTemplatePanelProps {
+interface SlashTemplatePanelProps {
   /** Already filtered by the typed slash query. */
   readonly categories: readonly SlashTemplateCategory[];
   readonly workflows: readonly ComposerSlashWorkflowMatch[];

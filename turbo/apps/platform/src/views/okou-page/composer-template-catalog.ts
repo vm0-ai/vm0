@@ -135,7 +135,7 @@ export interface SlashTemplatePreview {
   readonly attachment: ComposerTemplateAttachment;
 }
 
-export interface SlashTemplatePreviewGroup {
+interface SlashTemplatePreviewGroup {
   readonly category: SlashTemplatePreviewCategory;
   /** Every template in the category, not just the previewed ones. */
   readonly total: number;
