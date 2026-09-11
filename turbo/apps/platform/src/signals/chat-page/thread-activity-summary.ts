@@ -20,7 +20,6 @@ import {
   setLoop,
   withCleanup,
 } from "../utils.ts";
-import { registerChatEventChangeHandler$ } from "./chat-event-change-registry.ts";
 import { liveRunIdsFromChatEvents } from "./chat-event-state.ts";
 import type { ChatEvent } from "./chat-event-types.ts";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
@@ -38,21 +37,22 @@ export interface ThinkingSummaries extends Pick<
   readonly messages: readonly ThinkingMessage[];
 }
 
-function createThinkingSummaryDemand(
+function createThreadSummaryDemand(
   threadId: string,
   currentActiveRunId$: Computed<string | null>,
-  chatEvents$: Computed<ChatEvent[]>,
 ) {
-  const internalReloadDemandSummary$ = state(0);
-  const summaryDemandRunId$ = state<string | null>(null);
-  const summaryDemandReadyRunId$ = state<string | null>(null);
+  const internalReloadThreadSummaries$ = state(0);
+  const summaryLoopRunId$ = state<string | null>(null);
   const resetSummaryDemand$ = resetSignal();
-  const demandSummaries$ = computed(async (get) => {
-    get(internalReloadDemandSummary$);
-    const runId = get(summaryDemandRunId$);
-    if (!runId || get(summaryDemandReadyRunId$) !== runId) {
+  let latestSummaryLoop = Promise.resolve();
+  const threadSummaries$ = computed(async (get) => {
+    const runId = get(currentActiveRunId$);
+    if (runId === null) {
       return null;
     }
+    // Run changes invalidate this computed directly. The reload dependency only
+    // drives interval refreshes while this thread has summary demand.
+    get(internalReloadThreadSummaries$);
     const response = await accept(
       get(apiClient$)(chatThreadActivitySummaryContract).summarize({
         params: { id: threadId },
@@ -74,12 +74,12 @@ function createThinkingSummaryDemand(
     }
     return data;
   });
-  const startSummaryDemand$ = command(
+  const startSummaryLoop$ = command(
     async ({ set }, signal: AbortSignal): Promise<void> => {
       const [completion] = await Promise.allSettled([
         setLoop(
           () => {
-            set(internalReloadDemandSummary$, (version) => {
+            set(internalReloadThreadSummaries$, (version) => {
               return version + 1;
             });
             return false;
@@ -97,69 +97,45 @@ function createThinkingSummaryDemand(
       }
     },
   );
+  const reconcileThreadSummaryDemand$ = command(
+    ({ get, set }, demandOwnerSignal: AbortSignal): void => {
+      demandOwnerSignal.throwIfAborted();
+      const runId = get(currentActiveRunId$);
+      if (runId === get(summaryLoopRunId$)) {
+        return;
+      }
+      const loopSignal = set(resetSummaryDemand$, demandOwnerSignal);
+      set(summaryLoopRunId$, runId);
+      if (runId !== null) {
+        latestSummaryLoop = set(startSummaryLoop$, loopSignal);
+      }
+    },
+  );
+  const reconcileHydratedThreadSummaryDemand$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      await get(initialFeatureSwitchHydration$);
+      signal.throwIfAborted();
+      set(reconcileThreadSummaryDemand$, signal);
+    },
+  );
   const subscribe$ = command(async ({ set }, signal: AbortSignal) => {
     signal.throwIfAborted();
-    let activeDemand = Promise.resolve();
-    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
-    const ensureSummaryDemand$ = command(
-      async ({ get, set }, demandOwnerSignal: AbortSignal) => {
-        demandOwnerSignal.throwIfAborted();
-        const runId = get(currentActiveRunId$);
-        if (
-          runId === get(summaryDemandRunId$) &&
-          (runId === null || get(summaryDemandReadyRunId$) === runId)
-        ) {
-          return;
-        }
-        set(summaryDemandReadyRunId$, null);
-        const previousDemand = activeDemand;
-        const demandSignal = set(resetSummaryDemand$, demandOwnerSignal);
-        set(summaryDemandRunId$, runId);
-        await previousDemand;
-        demandOwnerSignal.throwIfAborted();
-        if (runId !== get(summaryDemandRunId$)) {
-          return;
-        }
-        if (runId) {
-          activeDemand = set(startSummaryDemand$, demandSignal);
-          set(summaryDemandReadyRunId$, runId);
-        }
-      },
-    );
-    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
-    const afterEventsChange$ = command(({ set }) => {
-      return set(ensureSummaryDemand$, signal);
-    });
-    set(
-      registerChatEventChangeHandler$,
-      chatEvents$,
-      afterEventsChange$,
-      signal,
-    );
-    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
-    const ensureHydratedSummaryDemand$ = command(
-      async ({ get, set }, signal: AbortSignal) => {
-        await get(initialFeatureSwitchHydration$);
-        signal.throwIfAborted();
-        await set(ensureSummaryDemand$, signal);
-      },
-    );
+    set(reconcileThreadSummaryDemand$, signal);
     const subscriptionEnd = createDeferredPromise<void>(signal);
     await withCleanup(
       Promise.all([
-        set(ensureSummaryDemand$, signal),
-        set(ensureHydratedSummaryDemand$, signal),
+        set(reconcileHydratedThreadSummaryDemand$, signal),
         subscriptionEnd.promise,
       ]),
       async () => {
-        set(summaryDemandReadyRunId$, null);
+        set(summaryLoopRunId$, null);
         set(resetSummaryDemand$);
-        await activeDemand;
+        await latestSummaryLoop;
       },
     );
   });
 
-  return { demandSummaries$, subscribe$, summaryDemandRunId$ };
+  return { threadSummaries$, reconcileThreadSummaryDemand$, subscribe$ };
 }
 
 export function createThreadActivitySummarySignals(
@@ -188,16 +164,13 @@ export function createThreadActivitySummarySignals(
         .at(-1) ?? null
     );
   });
-  const demand = createThinkingSummaryDemand(
-    threadId,
-    currentActiveRunId$,
-    chatEvents$,
-  );
+  const demand = createThreadSummaryDemand(threadId, currentActiveRunId$);
 
   return {
     subscribe$: demand.subscribe$,
+    reconcileThreadSummaryDemand$: demand.reconcileThreadSummaryDemand$,
     enabled$,
-    thinkingSummaries$: demand.demandSummaries$,
-    thinkingRunId$: demand.summaryDemandRunId$,
+    thinkingSummaries$: demand.threadSummaries$,
+    thinkingRunId$: currentActiveRunId$,
   };
 }
