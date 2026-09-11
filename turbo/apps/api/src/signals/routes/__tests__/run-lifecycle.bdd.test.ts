@@ -3017,15 +3017,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, filteredRun.runId, [200]);
   });
 
-  it("loads, deduplicates, and reuses an exact scoped runtime projection", async () => {
+  async function exactRuntimeProjection() {
     const api = createRunsApi(context);
     const fw = createFirewallApi(context);
     mockEnv(
       "R2_USER_STORAGES_BUCKET_NAME",
       `test-run-lifecycle-runtime-projection-${randomUUID()}`,
     );
+    const catalogVersion = `api-test-runtime-projection-${randomUUID()}`;
     await installApiTestConnectorCatalog({
-      catalogVersion: `api-test-runtime-projection-${randomUUID()}`,
+      catalogVersion,
       runtimeProjection: true,
     });
     await corruptApiTestConnectorCatalogRuntimeProjectionDigest("slack");
@@ -3049,6 +3050,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       });
     };
 
+    return { api, actor, runnerGroup, catalogVersion, createProjectedRun };
+  }
+
+  it("deduplicates concurrent scoped runtime projection loads and reuses the warm result", async () => {
+    const { api, actor, runnerGroup, createProjectedRun } =
+      await exactRuntimeProjection();
     const concurrentRuns = await Promise.all(
       Array.from({ length: 2 }, async (_, index) => {
         return await createProjectedRun(
@@ -3185,6 +3192,14 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     );
     await api.requestCancelRun(actor, repeatedRun.runId, [200]);
+  });
+
+  it("invalidates scoped runtime projection history when the catalog version changes", async () => {
+    const { api, actor, createProjectedRun } = await exactRuntimeProjection();
+    const initialRun = await createProjectedRun(
+      "warm the previous catalog identity",
+    );
+    await api.requestCancelRun(actor, initialRun.runId, [200]);
 
     const rotatedVersion = `api-test-projection-observation-${randomUUID()}`;
     await installApiTestConnectorCatalog({
@@ -3222,10 +3237,19 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     );
     await api.requestCancelRun(actor, resetRun.runId, [200]);
+  });
+
+  it("invalidates a scoped runtime projection when capabilities change at the same catalog version", async () => {
+    const { api, actor, catalogVersion, createProjectedRun } =
+      await exactRuntimeProjection();
+    const initialRun = await createProjectedRun(
+      "warm the previous capability identity",
+    );
+    await api.requestCancelRun(actor, initialRun.runId, [200]);
 
     mockOptionalEnv("CALCOM_OAUTH_CLIENT_ID", undefined);
     await installApiTestConnectorCatalog({
-      catalogVersion: rotatedVersion,
+      catalogVersion,
       runtimeProjection: true,
     });
     const capabilityRun = await createProjectedRun(

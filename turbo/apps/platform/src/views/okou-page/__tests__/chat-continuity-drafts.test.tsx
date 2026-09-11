@@ -98,7 +98,9 @@ async function editSeparateConversationDrafts() {
     expect(document.body).toHaveTextContent("Keep this quoted requirement");
   });
   expect(secondComposer).not.toHaveTextContent("First conversation follow-up");
-  await userEvent.type(secondComposer, " and a separate note");
+  await userEvent
+    .setup({ delay: null })
+    .type(secondComposer, " and a separate note");
 
   await openConversation(first.id);
   return { second };

@@ -1,5 +1,5 @@
 import { HttpResponse } from "msw";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
   uploadsContract,
@@ -112,10 +112,22 @@ function templateTab(name: string): HTMLElement {
 async function openTemplateCategory(
   category: string,
   templateLabel = "Template",
-): Promise<void> {
+): Promise<HTMLElement> {
   click(await screen.findByLabelText(templateLabel));
-  await expect(screen.findByRole("dialog")).resolves.toBeVisible();
-  click(templateTab(category));
+  const dialog = await waitFor(() => {
+    const element = document.querySelector<HTMLElement>('[role="dialog"]');
+    if (!element) {
+      throw new Error("Expected the template picker dialog");
+    }
+    expect(element).toBeVisible();
+    return element;
+  });
+  const tab = templateTab(category);
+  click(tab);
+  await waitFor(() => {
+    expect(tab).toHaveAttribute("aria-selected", "true");
+  });
+  return dialog;
 }
 
 function structuredTemplateReferences(): HTMLElement[] {
@@ -397,7 +409,7 @@ async function openWorkflowRefreshChat(initialWorkflows: WorkflowFixture[]) {
     path: `/chats/${THREAD_ID}?sidebar=${SPLIT_THREAD_ID}`,
   });
 
-  const user = userEvent.setup();
+  const user = userEvent.setup({ delay: null });
   await waitFor(() => {
     expect(composerForThread(THREAD_ID)).toBeVisible();
     expect(composerForThread(SPLIT_THREAD_ID)).toBeVisible();
@@ -448,45 +460,45 @@ test("A newly available workflow highlights the existing draft without changing 
   });
 });
 
-test("Successive workflow updates reach both open composers without disrupting their drafts", async () => {
-  const { primaryEditor, splitEditor, user, traffic, updateWorkflows } =
-    await openWorkflowRefreshChat([workflow("release-report")]);
-  await waitFor(() => {
-    return expect(workflowHighlights(primaryEditor)).toHaveLength(1);
-  });
-  updateWorkflows([workflow("release-report"), workflow("first-live-change")]);
-  await waitFor(() => {
-    expect(traffic.requests.length).toBeGreaterThanOrEqual(4);
-  });
-  updateWorkflows([
-    workflow("release-report"),
-    workflow("first-live-change"),
-    workflow("latest-attached"),
-  ]);
+test.each([
+  { pane: "primary", threadId: THREAD_ID, input: " /latest", highlights: 2 },
+  { pane: "split", threadId: SPLIT_THREAD_ID, input: "/latest", highlights: 1 },
+])(
+  "Successive workflow updates reach the $pane composer while both panes are open",
+  async ({ threadId, input, highlights }) => {
+    const { primaryEditor, user, traffic, updateWorkflows } =
+      await openWorkflowRefreshChat([workflow("release-report")]);
+    await waitFor(() => {
+      return expect(workflowHighlights(primaryEditor)).toHaveLength(1);
+    });
+    updateWorkflows([
+      workflow("release-report"),
+      workflow("first-live-change"),
+    ]);
+    await waitFor(() => {
+      expect(traffic.requests.length).toBeGreaterThanOrEqual(4);
+    });
+    updateWorkflows([
+      workflow("release-report"),
+      workflow("first-live-change"),
+      workflow("latest-attached"),
+    ]);
 
-  await user.click(primaryEditor);
-  await user.keyboard(" /latest");
-  await waitFor(() => {
-    expect(slashButton("/latest-attached")).toBeVisible();
-  });
-  await user.keyboard("{Enter}");
-  await waitFor(() => {
-    expect(primaryEditor).toHaveTextContent("/latest-attached");
-  });
+    const editor = composerForThread(threadId);
+    await user.click(editor);
+    await user.keyboard(input);
+    await waitFor(() => {
+      expect(slashButton("/latest-attached")).toBeVisible();
+    });
+    await user.keyboard("{Enter}");
 
-  await user.click(splitEditor);
-  await user.keyboard("/latest");
-  await waitFor(() => {
-    expect(slashButton("/latest-attached")).toBeVisible();
-  });
-  await user.keyboard("{Enter}");
-
-  await waitFor(() => {
-    expect(workflowHighlights(primaryEditor)).toHaveLength(2);
-    expect(workflowHighlights(splitEditor)).toHaveLength(1);
-    expect(splitEditor).toHaveTextContent("/latest-attached");
-  });
-});
+    await waitFor(() => {
+      expect(workflowHighlights(editor)).toHaveLength(highlights);
+      expect(editor).toHaveTextContent("/latest-attached");
+      expect(primaryEditor).toHaveTextContent("/release-report");
+    });
+  },
+);
 
 test("Insert an attached workflow with slash suggestions", async () => {
   mockAgent();
@@ -841,16 +853,17 @@ test.each(["find", "send"])(
 
     await setupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const editor = await findComposerEditor();
-    await openTemplateCategory("Workflow");
-    const search = screen.getByRole("textbox", { name: "Search templates" });
+    const dialog = await openTemplateCategory("Workflow");
+    const search = within(dialog).getByLabelText("Search templates");
+    expect(search).toBeVisible();
     await fill(
       search,
       action === "find" ? "merged pull requests" : template.title,
     );
     click(
-      await screen.findByLabelText(
+      await within(dialog).findByLabelText(
         `Select workflow template ${template.title}`,
       ),
     );

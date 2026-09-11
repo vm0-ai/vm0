@@ -34,7 +34,12 @@ test("Debug preferences restore and change the voice input model", async () => {
     return expect(picker).toHaveTextContent("Gemini 3.6 Flash");
   });
   click(picker);
-  click(await screen.findByRole("option", { name: "ElevenLabs Scribe v2" }));
+  const option = await waitFor(() => {
+    const element = getFastRole("option", "ElevenLabs Scribe v2");
+    expect(element).toBeVisible();
+    return element;
+  });
+  click(option);
   await waitFor(() => {
     return expect(picker).toHaveTextContent("ElevenLabs Scribe v2");
   });
@@ -57,11 +62,12 @@ test("Debug preferences reset a saved voice input model to the default", async (
     expect(picker).toHaveTextContent("ElevenLabs Scribe v2");
   });
   click(picker);
-  click(
-    await screen.findByRole("option", {
-      name: "Default (Gemini 3.1 Flash-Lite)",
-    }),
-  );
+  const option = await waitFor(() => {
+    const element = getFastRole("option", "Default (Gemini 3.1 Flash-Lite)");
+    expect(element).toBeVisible();
+    return element;
+  });
+  click(option);
   await waitFor(() => {
     return expect(picker).toHaveTextContent("Default (Gemini 3.1 Flash-Lite)");
   });

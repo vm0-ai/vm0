@@ -238,7 +238,7 @@ async function openConnectorFilterCatalog() {
   return { researchId };
 }
 
-test("Filter connected and disconnected connectors without losing a text search", async () => {
+test("Switch between connected and disconnected connector filters", async () => {
   await openConnectorFilterCatalog();
   click(getConnectorAction("button", "Filter connectors"));
   click(getConnectorAction("menuitem", "Connected"));
@@ -247,6 +247,13 @@ test("Filter connected and disconnected connectors without losing a text search"
     "connected",
   );
 
+  click(getConnectorAction("button", "Filter connectors"));
+  click(getConnectorAction("menuitem", "Not connected"));
+  await expectCards({ github: false, asana: true });
+});
+
+test("Retain a text search when clearing the connector connection filter", async () => {
+  await openConnectorFilterCatalog();
   click(getConnectorAction("button", "Filter connectors"));
   click(getConnectorAction("menuitem", "Not connected"));
   await expectCards({ github: false, asana: true });
