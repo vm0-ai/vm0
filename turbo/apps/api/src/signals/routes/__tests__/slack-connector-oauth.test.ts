@@ -2,11 +2,9 @@ import { randomUUID } from "node:crypto";
 
 import { connectorAccountsContract } from "@okouai/api-contracts/contracts/connector-accounts";
 import { connectorsSlugCallbackContract } from "@okouai/api-contracts/contracts/connectors-slug-callback";
-import { featureSwitchesContract } from "@okouai/api-contracts/contracts/feature-switches";
 import { integrationsSlackContract } from "@okouai/api-contracts/contracts/integrations-slack";
 import { slackConnectContract } from "@okouai/api-contracts/contracts/slack-connect";
 import { slackOauthContract } from "@okouai/api-contracts/contracts/slack-oauth";
-import { FeatureSwitchKey } from "@okouai/core";
 import { http, HttpResponse } from "msw";
 import { beforeEach, expect, onTestFinished, test } from "vitest";
 
@@ -16,7 +14,6 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { connectorAccountRoutes } from "../connector-accounts";
 import { connectorsSlugCallbackRoutes } from "../connectors-slug-callback";
-import { featureSwitchesRoutes } from "../feature-switches";
 import { integrationsSlackRoutes } from "../integrations-slack";
 import { slackConnectRoutes } from "../slack-connect";
 import { slackOauthRoutes } from "../slack-oauth";
@@ -34,7 +31,6 @@ const routes = [
   ...integrationsSlackRoutes,
   ...connectorAccountRoutes,
   ...connectorsSlugCallbackRoutes,
-  ...featureSwitchesRoutes,
 ] as const;
 
 function clients() {
@@ -75,7 +71,7 @@ async function integrationStatus() {
   ).body;
 }
 
-async function actor(overrides: Partial<Actor> = {}): Promise<Actor> {
+function actor(overrides: Partial<Actor> = {}): Actor {
   const suffix = randomUUID();
   const result: Actor = {
     userId: `user_${suffix}`,
@@ -87,13 +83,6 @@ async function actor(overrides: Partial<Actor> = {}): Promise<Actor> {
     ...overrides,
   };
   authenticate(result);
-  await accept(
-    clients()(featureSwitchesContract).update({
-      headers,
-      body: { switches: { [FeatureSwitchKey.SlackOAuthConnector]: true } },
-    }),
-    [200],
-  );
   onTestFinished(async () => {
     authenticate(result);
     for (const account of await accounts()) {
@@ -113,7 +102,6 @@ async function actor(overrides: Partial<Actor> = {}): Promise<Actor> {
       }),
       [200, 404],
     );
-    await accept(clients()(featureSwitchesContract).delete({ headers }), [200]);
   });
   return result;
 }
@@ -231,7 +219,7 @@ beforeEach(() => {
 });
 
 test("installation grants bot and user scopes and connects the OAuth account", async () => {
-  const current = await actor();
+  const current = actor();
   const authorization = await startInstall();
   expect(authorization.origin).toBe("https://slack.com");
   expect(parameter(authorization, "scope").split(",")).toContain(
@@ -268,7 +256,7 @@ test("installation grants bot and user scopes and connects the OAuth account", a
 });
 
 test("connect reuses the same OAuth account and both disconnect operations stay independent", async () => {
-  const current = await actor();
+  const current = actor();
   await complete(await startInstall(), current);
   const [original] = await accounts();
   if (!original) {
@@ -312,7 +300,7 @@ test("connect reuses the same OAuth account and both disconnect operations stay 
 });
 
 test("a Slack-origin connect requests OAuth before binding and rejects another Slack identity", async () => {
-  const current = await actor();
+  const current = actor();
   await complete(await startInstall(), current);
   await disconnectChat();
   const pending = await accept(
@@ -362,7 +350,7 @@ test("a Slack-origin connect requests OAuth before binding and rejects another S
 });
 
 test("a different workspace cannot replace the installed workspace or add its user account", async () => {
-  const current = await actor();
+  const current = actor();
   await complete(await startInstall(), current);
   await disconnectChat();
   const status = await integrationStatus();
@@ -384,9 +372,9 @@ test("a different workspace cannot replace the installed workspace or add its us
 });
 
 test("a Slack identity already linked to another user cannot create a partial connector connection", async () => {
-  const original = await actor();
+  const original = actor();
   await complete(await startInstall(), original);
-  const second = await actor({
+  const second = actor({
     orgId: original.orgId,
     workspaceId: original.workspaceId,
     slackUserId: original.slackUserId,
@@ -409,7 +397,7 @@ test("a Slack identity already linked to another user cannot create a partial co
 });
 
 test("reinstall refreshes the existing connector and preserves the upgrade redirect", async () => {
-  const current = await actor();
+  const current = actor();
   await complete(await startInstall(), current, { botScopes: "chat:write" });
   const [original] = await accounts();
   const status = await integrationStatus();
@@ -433,7 +421,7 @@ test("reinstall refreshes the existing connector and preserves the upgrade redir
 test.each([{ missingUserToken: true }, { userScopes: "users:read" }])(
   "incomplete user consent does not report a connected installation: %j",
   async (options) => {
-    const current = await actor();
+    const current = actor();
     const result = await complete(await startInstall(), current, options);
     expect(result.searchParams.has("error")).toBeTruthy();
     await expect(accounts()).resolves.toHaveLength(0);
@@ -445,7 +433,7 @@ test.each([{ missingUserToken: true }, { userScopes: "users:read" }])(
 );
 
 test("a combined grant cannot bypass identity checks through the standalone connector callback", async () => {
-  const current = await actor();
+  const current = actor();
   const authorization = await startInstall();
   const wrongCallback = await accept(
     clients()(connectorsSlugCallbackContract).callback({
@@ -468,7 +456,7 @@ test("a combined grant cannot bypass identity checks through the standalone conn
 });
 
 test("unsigned install parameters cannot opt into a user's connector grant", async () => {
-  const current = await actor();
+  const current = actor();
   const legacy = await accept(
     clients()(slackOauthContract).install({
       query: { orgId: current.orgId, userId: current.userId },
@@ -491,8 +479,8 @@ test("unsigned install parameters cannot opt into a user's connector grant", asy
   await expect(accounts()).resolves.toHaveLength(0);
 });
 
-test("existing clients and a disabled rollout keep the original connect response", async () => {
-  const current = await actor();
+test("existing clients keep the original connect response", async () => {
+  const current = actor();
   await complete(await startInstall(), current);
   await disconnectChat();
   const legacy = await accept(
@@ -506,24 +494,4 @@ test("existing clients and a disabled rollout keep the original connect response
     [200],
   );
   expect(legacy.body.success).toBeTruthy();
-  await disconnectChat();
-  await accept(
-    clients()(featureSwitchesContract).update({
-      headers,
-      body: { switches: { [FeatureSwitchKey.SlackOAuthConnector]: false } },
-    }),
-    [200],
-  );
-  const disabled = await accept(
-    clients()(slackConnectContract).connect({
-      headers,
-      body: {
-        workspaceId: current.workspaceId,
-        slackUserId: current.slackUserId,
-        requestUserScopes: true,
-      },
-    }),
-    [200],
-  );
-  expect(disabled.body.success).toBeTruthy();
 });

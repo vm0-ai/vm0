@@ -4,7 +4,6 @@ import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation"
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { agents } from "@okouai/db/schema/agent";
 import { and, eq } from "drizzle-orm";
-import { isFeatureEnabled, FeatureSwitchKey } from "@okouai/core";
 
 import { env } from "../../lib/env";
 import { db$ } from "../external/db";
@@ -48,54 +47,37 @@ function buildSlackInstallUrl(args: {
   readonly orgId: string;
   readonly userId: string;
   readonly reinstall: boolean;
-  readonly connectorOAuth: boolean;
   readonly workspaceId?: string;
 }): string | null {
   const clientId = env("SLACK_OAUTH_CLIENT_ID");
   if (!clientId) {
     return null;
   }
-  if (args.connectorOAuth) {
-    return buildSlackConnectorOAuthStartUrl(args.apiOrigin, {
-      flow: "install",
-      orgId: args.orgId,
-      userId: args.userId,
-      reinstall: args.reinstall,
-      workspaceId: args.workspaceId,
-    });
-  }
-  const url = new URL("/api/slack/oauth/install", args.apiOrigin);
-  url.searchParams.set("orgId", args.orgId);
-  url.searchParams.set("userId", args.userId);
-  if (args.reinstall) {
-    url.searchParams.set("reinstall", "1");
-  }
-  return url.toString();
+  return buildSlackConnectorOAuthStartUrl(args.apiOrigin, {
+    flow: "install",
+    orgId: args.orgId,
+    userId: args.userId,
+    reinstall: args.reinstall,
+    workspaceId: args.workspaceId,
+  });
 }
 
 function buildSlackConnectUrl(args: {
   readonly apiOrigin: string;
   readonly orgId: string;
   readonly userId: string;
-  readonly connectorOAuth: boolean;
   readonly workspaceId: string;
 }): string | null {
   const clientId = env("SLACK_OAUTH_CLIENT_ID");
   if (!clientId) {
     return null;
   }
-  if (args.connectorOAuth) {
-    return buildSlackConnectorOAuthStartUrl(args.apiOrigin, {
-      flow: "connect",
-      orgId: args.orgId,
-      userId: args.userId,
-      workspaceId: args.workspaceId,
-    });
-  }
-  const url = new URL("/api/slack/oauth/connect", args.apiOrigin);
-  url.searchParams.set("orgId", args.orgId);
-  url.searchParams.set("userId", args.userId);
-  return url.toString();
+  return buildSlackConnectorOAuthStartUrl(args.apiOrigin, {
+    flow: "connect",
+    orgId: args.orgId,
+    userId: args.userId,
+    workspaceId: args.workspaceId,
+  });
 }
 
 interface SlackOrgStatusResult {
@@ -126,10 +108,6 @@ export function slackOrgStatus(args: {
       .limit(1);
 
     const isAdmin = args.orgRole === "admin";
-    const connectorOAuth = isFeatureEnabled(
-      FeatureSwitchKey.SlackOAuthConnector,
-      await get(userFeatureSwitchContext(args.orgId, args.userId)),
-    );
     let defaultAgentName: string | null = null;
 
     if (installation) {
@@ -165,7 +143,6 @@ export function slackOrgStatus(args: {
             orgId: args.orgId,
             userId: args.userId,
             reinstall: true,
-            connectorOAuth,
             workspaceId: installationRow.slackWorkspaceId,
           })
         : null;
@@ -179,7 +156,6 @@ export function slackOrgStatus(args: {
             orgId: args.orgId,
             userId: args.userId,
             reinstall: false,
-            connectorOAuth,
           })
         : null;
       return {
@@ -215,7 +191,6 @@ export function slackOrgStatus(args: {
         apiOrigin: args.apiOrigin,
         orgId: args.orgId,
         userId: args.userId,
-        connectorOAuth,
         workspaceId: installation.slackWorkspaceId,
       });
 

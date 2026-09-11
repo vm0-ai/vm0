@@ -2,7 +2,6 @@ import { randomBytes } from "node:crypto";
 
 import { command } from "ccstate";
 import { and, eq, isNull, or } from "drizzle-orm";
-import { isFeatureEnabled, FeatureSwitchKey } from "@okouai/core";
 import {
   isStaticConfidentialConnectorAuthClient,
   resolveConnectorAuthClient,
@@ -94,7 +93,7 @@ const resolveSlackOAuthMethod$ = command(
 
 export const startSlackConnectorOAuth$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly flow: "install" | "connect";
       readonly connectorState: string;
@@ -107,15 +106,6 @@ export const startSlackConnectorOAuth$ = command(
       return failed(
         "This Slack connection link is invalid or expired. Please start again.",
       );
-    }
-    const featureContext = await get(
-      userFeatureSwitchContext(context.orgId, context.userId),
-    );
-    signal.throwIfAborted();
-    if (
-      !isFeatureEnabled(FeatureSwitchKey.SlackOAuthConnector, featureContext)
-    ) {
-      return failed("Please start a new Slack connection from Settings.");
     }
     const member = await set(
       getMemberRoleAndUpdateCache$,

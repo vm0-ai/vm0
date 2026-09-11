@@ -1,6 +1,5 @@
 import { command, computed } from "ccstate";
 import { slackConnectContract } from "@okouai/api-contracts/contracts/slack-connect";
-import { isFeatureEnabled, FeatureSwitchKey } from "@okouai/core";
 import { slackOrgInstallations } from "@okouai/db/schema/slack-org-installation";
 import { eq } from "drizzle-orm";
 
@@ -10,7 +9,6 @@ import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { db$ } from "../external/db";
 import { getOAuthApiOrigin } from "../../lib/oauth-origin";
-import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { buildSlackConnectorOAuthStartUrl } from "../services/slack-connector-oauth-state";
 import { waitUntil } from "../context/wait-until";
 import { logger } from "../../lib/log";
@@ -109,13 +107,7 @@ const connectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const body = bodyResult.data;
 
   if (body.requestUserScopes) {
-    const features = await get(
-      userFeatureSwitchContext(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    if (isFeatureEnabled(FeatureSwitchKey.SlackOAuthConnector, features)) {
-      return await set(startConnectorOAuth$, body, signal);
-    }
+    return await set(startConnectorOAuth$, body, signal);
   }
 
   const result = await set(
