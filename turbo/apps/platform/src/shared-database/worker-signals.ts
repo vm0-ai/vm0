@@ -142,47 +142,15 @@ const catchUpChatEvent$ = command(({ get, set }): Promise<void> => {
   return set(get(catchUpChatEventThrottle$), get(rootSignal$));
 });
 
-interface WorkerChatThreadIndicatorsCache {
-  source: Promise<ChatThreadIndicators> | null;
-  result: Promise<ChatThreadIndicators> | null;
-}
-
-const workerChatThreadIndicatorsCache$ = computed(
-  (get): WorkerChatThreadIndicatorsCache => {
-    get(rootVersion$);
-    return { source: null, result: null };
-  },
-);
-
-const loadWorkerChatThreadIndicators$ = command(
-  async (
-    { set },
-    source: Promise<ChatThreadIndicators>,
-    signal: AbortSignal,
-  ): Promise<ChatThreadIndicators> => {
-    const indicators = await source;
-    signal.throwIfAborted();
-    await set(catchUpChatEvent$);
-    signal.throwIfAborted();
-    return indicators;
-  },
-);
-
+/**
+ * Indicators carry no ChatEvent data, and every thread reader already falls
+ * back to its own catch-up, so warming is a head start rather than a data
+ * dependency. A tab reading indicators therefore waits only for their fetch:
+ * neither the warming throttle nor a warming failure belongs to this read.
+ */
 const readWorkerChatThreadIndicators$ = command(
-  ({ get, set }): Promise<ChatThreadIndicators> => {
-    const source = get(chatThreadIndicators$);
-    const cache = get(workerChatThreadIndicatorsCache$);
-    if (cache.source === source && cache.result) {
-      return cache.result;
-    }
-    const result = set(
-      loadWorkerChatThreadIndicators$,
-      source,
-      get(rootSignal$),
-    );
-    cache.source = source;
-    cache.result = result;
-    return result;
+  ({ get }): Promise<ChatThreadIndicators> => {
+    return get(chatThreadIndicators$);
   },
 );
 
@@ -338,6 +306,11 @@ const refreshWorkerChatIndicators$ = command(
     signal.throwIfAborted();
     set(reloadWorkerComputed$, "chat-thread-indicators");
     await set(readWorkerChatThreadIndicators$);
+    signal.throwIfAborted();
+    // Warming belongs to the refresh that observed the change. The
+    // `threadListChanged` subscription primes this loop on connect, so the
+    // first warming still runs before any realtime event arrives.
+    await set(catchUpChatEvent$);
     signal.throwIfAborted();
   },
 );
