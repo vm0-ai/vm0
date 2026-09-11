@@ -4137,9 +4137,15 @@ function ChatThreadComposer({ thread }: { thread: ChatPanelSignals }) {
       }}
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-[21px] bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
+      {/* `overflow-y-auto` clips at this element's padding box, and the
+          composer's focus veil is a 48px blur offset 10px down: at the 8px gap
+          the footer leaves, the veil is still painting and gets sliced off in a
+          hard line across the card's full width. Pad out to the veil's reach and
+          take the same amount back with a negative margin, so the veil fades out
+          instead of ending in a seam while the footer keeps its height. */}
       <div
         className={cn(
-          "overflow-y-auto [scrollbar-gutter:stable] pb-2 pl-4 pr-4 pt-3 sm:pl-6 sm:pr-6",
+          "-mb-8 overflow-y-auto [scrollbar-gutter:stable] pb-10 pl-4 pr-4 pt-3 sm:pl-6 sm:pr-6",
           standalonePwa && "overscroll-contain",
         )}
       >
