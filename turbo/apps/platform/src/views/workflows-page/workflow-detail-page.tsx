@@ -1705,7 +1705,7 @@ function OfficialWorkflowReconfigureDialog({
             disabled={reconfiguring}
           />
         ) : null}
-        {reconfigureLoadable.state === "hasError" ? (
+        {activeForm?.submitted && reconfigureLoadable.state === "hasError" ? (
           <Alert variant="destructive">
             <AlertTitle>
               {i18n.t(($) => {
