@@ -208,8 +208,15 @@
     {
       "idx": 1107,
       "version": "7",
-      "when": 1789093787653,
-      "tag": "1107_privacy_choices",
+      "when": 1789092446889,
+      "tag": "1107_drop_computer_use_host_client_product",
+      "breakpoints": true
+    },
+    {
+      "idx": 1108,
+      "version": "7",
+      "when": 1789095971802,
+      "tag": "1108_privacy_choices",
       "breakpoints": true
     }
   ]

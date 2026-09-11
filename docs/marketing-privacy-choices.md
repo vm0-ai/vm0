@@ -92,7 +92,7 @@ processing remain essential operations outside these optional purposes.
 
 ## Rollout compatibility
 
-Migration `1107_privacy_choices` adds two tables; it does not backfill historical
+Migration `1108_privacy_choices` adds two tables; it does not backfill historical
 consent or change existing attribution schemas. Ship it before the API code.
 Old API/clients do not access the new tables and remain compatible. New clients
 receiving a missing/unavailable API must allow no optional tracking.

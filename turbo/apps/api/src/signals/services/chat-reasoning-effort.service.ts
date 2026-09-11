@@ -45,18 +45,28 @@ export function resolveChatReasoningEffort(args: {
 }
 
 /**
- * PR 2 of #32903 prepares native consumers while dispatch stays closed.
- * PR 3 may open admission after those consumers are deployed and older runners
- * have stopped claiming new jobs. Rollbacks must preserve that reader boundary.
- * Feature switches accept user overrides, so the rollout flag alone cannot
- * prevent a requested setting from being silently ignored by older runtimes.
+ * Native admission requires #32999 deployed and incompatible old runners drained.
+ * Keep unsupported routes and modes closed even under a user flag override.
  */
 export function validateReasoningEffortDispatch(
   effort: ReasoningEffort | null | undefined,
+  piExecution: boolean,
 ) {
-  return effort === null || effort === undefined
-    ? undefined
-    : badRequestMessage(
-        "Reasoning effort execution is not available yet. Restore the model default to run this message.",
-      );
+  if (effort === null || effort === undefined) {
+    return undefined;
+  }
+  if (piExecution) {
+    return badRequestMessage(
+      "Reasoning effort selection is not supported by this execution route. Restore the model default to run this message.",
+    );
+  }
+  // Claude Code accepts --effort ultracode but silently uses ordinary xhigh
+  // when workflow orchestration is unavailable. Keep admission closed until the
+  // runtime can establish mode availability for the actual provider/session.
+  if (effort === "ultracode") {
+    return badRequestMessage(
+      "Ultracode execution is not available yet. Choose another effort level or restore the model default.",
+    );
+  }
+  return undefined;
 }
