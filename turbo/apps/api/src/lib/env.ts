@@ -79,6 +79,7 @@ const SCHEMA = {
     .email()
     .optional(),
   CRON_SECRET: z.string().min(1),
+  MARKETING_ATTRIBUTION_API_SECRET: z.string().min(32).optional(),
   MARKETING_PRIVACY_API_SECRET: z.string().min(32).optional(),
   R2_ACCESS_KEY_ID: z.string().min(1),
   R2_ACCOUNT_ID: z.string().min(1),

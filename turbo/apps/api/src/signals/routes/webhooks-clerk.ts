@@ -1,3 +1,8 @@
+import {
+  clerkAttributionObservation,
+  importClerkAttribution,
+  deleteImportedAttribution,
+} from "@okouai/db/operations/user-attribution-import";
 import { webhookClerkContract } from "@okouai/api-contracts/contracts/webhooks";
 import { orgCache } from "@okouai/db/schema/org-cache";
 import { command } from "ccstate";
@@ -477,6 +482,18 @@ const enrollMorningBriefMembership$ = command(
   },
 );
 
+const importUserAttribution$ = command(
+  async ({ set }, data: unknown, signal: AbortSignal) => {
+    await importClerkAttribution(
+      set(writeDb$),
+      clerkAttributionObservation(data),
+      "webhook",
+      signal,
+    );
+    signal.throwIfAborted();
+  },
+);
+
 const postClerkWebhook$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const event = await verifiedClerkWebhook(get(request$).raw);
@@ -485,6 +502,23 @@ const postClerkWebhook$ = command(
       return jsonError("Invalid webhook signature", 401);
     }
     L.debug("clerk webhook received", { type: event.type });
+
+    if (event.type === "user.created" || event.type === "user.updated") {
+      // Await the transaction: a non-2xx response lets Clerk retry delivery.
+      const imported = await settle(
+        set(importUserAttribution$, event.data, signal),
+        signal,
+      );
+      if (!imported.ok) {
+        L.error("Clerk attribution import failed", {
+          eventType: event.type,
+          errorName:
+            imported.error instanceof Error ? imported.error.name : "unknown",
+        });
+        return jsonError("Clerk attribution import failed", 503);
+      }
+      return new Response("OK", { status: 200 });
+    }
 
     if (event.type === "organization.created") {
       return await set(handleOrganizationCreatedWebhook$, event.data, signal);
@@ -536,6 +570,7 @@ const postClerkWebhook$ = command(
         return new Response("OK", { status: 200 });
       }
 
+      await deleteImportedAttribution(set(writeDb$), userId, signal);
       waitUntil(
         tapError(set(cleanupClerkDeletedUser$, userId, signal), (error) => {
           L.error("user.deleted cleanup failed", { userId, error });

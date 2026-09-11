@@ -190,6 +190,7 @@ import { imageReferencesRoutes } from "./routes/image-references";
 import { usageMembersRoutes } from "./routes/usage-members";
 import { usageRecordRoutes } from "./routes/usage-record";
 import { userPreferencesRoutes } from "./routes/user-preferences";
+import { marketingAttributionImportRoutes } from "./routes/marketing-attribution-import";
 import { marketingPrivacyRoutes } from "./routes/marketing-privacy";
 import { privacyChoicesRoutes } from "./routes/privacy-choices";
 import { userPermissionGrantsRoutes } from "./routes/user-permission-grants";
@@ -359,6 +360,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...userPreferencesRoutes,
   ...privacyChoicesRoutes,
   ...marketingPrivacyRoutes,
+  ...marketingAttributionImportRoutes,
   ...userModelPreferenceRoutes,
   ...morningBriefPreferenceRoutes,
   ...emailSubscriptionRoutes,
