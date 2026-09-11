@@ -5332,6 +5332,7 @@ function AssistantErrorFallback({ error }: { error: string }) {
     <div className="flex items-start gap-0 text-destructive">
       <AssistantErrorLeadingIcon />
       <Markdown
+        className="!text-muted-foreground/80"
         source={error}
         style={{ fontSize: "inherit", lineHeight: "inherit" }}
       />
