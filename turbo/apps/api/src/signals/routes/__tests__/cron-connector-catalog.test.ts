@@ -2406,6 +2406,22 @@ describe("connector catalog valid lifecycle", () => {
       routes: featureSwitchesRoutes,
     })(featureSwitchesContract);
 
+    const released = await accept(catalogClient.list({ headers }), [200]);
+    expect(
+      released.body.connectors[0]?.authMethods.map((method) => {
+        return method.id;
+      }),
+    ).toStrictEqual(["api-token", "cli"]);
+
+    await accept(
+      featureClient.update({
+        headers,
+        body: {
+          switches: { [FeatureSwitchKey.CalComConnector]: false },
+        },
+      }),
+      [200],
+    );
     const disabled = await accept(catalogClient.list({ headers }), [200]);
     expect(disabled.body.connectors[0]?.authMethods).toStrictEqual([
       {

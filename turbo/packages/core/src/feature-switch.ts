@@ -109,7 +109,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.CalComConnector]: {
     maintainer: "yuma@okou.ai",
     description: "Enable the Cal.com scheduling connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.CopperConnector]: {
     maintainer: "yuma@okou.ai",
