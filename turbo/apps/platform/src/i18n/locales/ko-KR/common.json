@@ -468,7 +468,7 @@
       "notePlaceholder": "무엇을 바꿀까요?",
       "open": "주석",
       "redo": "다시 실행",
-      "removeMark": "마크 삭제",
+      "removeMark": "표시 삭제",
       "subtitle_other": "표시 {{count}}개",
       "textPlaceholder": "여기에 입력",
       "tools": {
