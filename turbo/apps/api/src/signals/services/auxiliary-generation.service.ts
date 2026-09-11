@@ -39,31 +39,6 @@ type Reason =
 type AuxiliaryFailureLevel = "warn" | "error";
 
 /**
- * Reasons that name a defect somebody can act on: the provider rejected the
- * request on its credentials or on its shape. Both are ours to fix.
- *
- * Two absences are deliberate, because each is a bucket rather than a cause:
- *
- * - `invalid_output` folds a genuine envelope contract violation together with
- *   a completion that returned no content and one stopped by a content filter.
- *   The last two are omissions of the same kind as an empty interpreted
- *   result.
- * - `unknown` is what the classifier returns for everything its status and
- *   envelope tables miss, which is dominated by provider-side unavailability
- *   such as a plain HTTP 500 or an unrecognized timeout. Its enumerated
- *   siblings are already treated as degraded and reported to nobody.
- *
- * Raising either would reintroduce, at a higher severity, exactly the
- * unactionable report this boundary removes. Both stay visible as a counted
- * `auxiliary_generation_result` reason, which is where a classifier gap shows
- * up without an error log. Narrowing those buckets belongs to the provider
- * classification, not to a caller's severity choice.
- */
-function isActionableFailure(reason: Reason): boolean {
-  return reason === "auth" || reason === "invalid_request";
-}
-
-/**
  * Provider-outcome detail the generation closure observes and the boundary
  * cannot infer from the returned value. Token counts are integers, so they
  * carry no payload risk while showing how much of the shared thinking-plus-
@@ -228,14 +203,11 @@ export async function generateAuxiliary<T>(
   signal?: AbortSignal,
 ): Promise<T | undefined> {
   const startedAt = now();
-  // A caller only raises the severity of the failures that name a defect.
-  // Everything else keeps the shared level, so a caller cannot escalate an
-  // outcome the boundary itself treats as unactionable.
-  const levelFor = (reason: Reason): AuxiliaryFailureLevel => {
-    return args.failureLevel !== undefined && isActionableFailure(reason)
-      ? args.failureLevel
-      : "warn";
-  };
+  // The caller's level applies to whatever this boundary already classifies as
+  // an error. It cannot reach an outcome that is counted silently: transient
+  // provider failures, truncation, an unexpected tool call, a cancellation and
+  // a caller's expected empty result never get here.
+  const failureLevel = args.failureLevel ?? "warn";
   const runId = args.diagnosticContext?.runId;
   let detail: AuxiliaryGenerationDetail | undefined;
   const result = await settle(
@@ -279,10 +251,7 @@ export async function generateAuxiliary<T>(
             "unusable_output",
             undefined,
             args.diagnosticContext,
-            // Reached only by a caller that has not declared this outcome
-            // expected, and an output the feature cannot interpret names no
-            // defect, so it stays at the shared level for every caller.
-            "warn",
+            failureLevel,
           );
         }
         recordResult({
@@ -317,7 +286,7 @@ export async function generateAuxiliary<T>(
             reason,
             error,
             args.diagnosticContext,
-            levelFor(reason),
+            failureLevel,
           );
         }
         const retryAfterMs = retryAfterMilliseconds(error);

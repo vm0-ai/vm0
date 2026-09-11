@@ -1550,27 +1550,51 @@ describe("CHAT-02: completed chat callback", () => {
   });
 
   it.each([
-    { name: "an empty suggestion array", text: "[]" },
+    // The provider reports usage even when the generated text interprets to
+    // nothing, and an expected omission keeps that detail on its counted
+    // event.
+    {
+      name: "an empty suggestion array",
+      response: () => {
+        return HttpResponse.json({
+          choices: [{ finish_reason: "stop", message: { content: "[]" } }],
+          usage: {
+            completion_tokens: 63,
+            completion_tokens_details: { reasoning_tokens: 0 },
+          },
+        });
+      },
+      tokens: { completion_tokens: 63, reasoning_tokens: 0 },
+    },
     {
       name: "generated text that is not JSON",
-      text: "I have no useful follow-ups for this conversation.",
+      response: () => {
+        return "I have no useful follow-ups for this conversation.";
+      },
+      tokens: {},
     },
     {
       name: "generated JSON that is not an array",
-      text: JSON.stringify({
-        followups: [{ prompt: "Run the failing case again", kind: "talk" }],
-      }),
+      response: () => {
+        return JSON.stringify({
+          followups: [{ prompt: "Run the failing case again", kind: "talk" }],
+        });
+      },
+      tokens: {},
     },
     {
       name: "an array whose every item fails validation",
-      text: JSON.stringify([
-        { prompt: "Run the failing case again", kind: "chat" },
-        { text: "Try the other branch", kind: "talk" },
-      ]),
+      response: () => {
+        return JSON.stringify([
+          { prompt: "Run the failing case again", kind: "chat" },
+          { text: "Try the other branch", kind: "talk" },
+        ]);
+      },
+      tokens: {},
     },
   ])(
     "omits recommended follow-ups with no diagnostic at any level for $name",
-    async ({ text }) => {
+    async ({ response, tokens }) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
       chatCallbacks.mockOpenRouterCompletions((body) => {
@@ -1580,7 +1604,7 @@ describe("CHAT-02: completed chat callback", () => {
             "You generate recommended follow-up messages for a chat.",
           )
         ) {
-          return text;
+          return response();
         }
         // A sibling whose interpreted output is empty in the same run proves
         // the silence is scoped to this caller rather than shared.
@@ -1620,6 +1644,7 @@ describe("CHAT-02: completed chat callback", () => {
         expect.objectContaining({
           outcome: "degraded",
           reason: "unusable_output",
+          ...tokens,
         }),
       ]);
       expect(
@@ -1707,70 +1732,105 @@ describe("CHAT-02: completed chat callback", () => {
 
   it.each([
     {
-      name: "a completion that produced no content",
-      // Stopping with nothing to interpret is another way to get no
-      // suggestions, not a defect this caller can act on.
+      // The generated text is well formed for the provider; it is the response
+      // envelope around it that breaks its contract.
+      name: "a response body that is not JSON",
       response: () => {
-        return HttpResponse.json({
-          choices: [{ finish_reason: "stop", message: { content: "" } }],
+        return new HttpResponse("<html>gateway</html>", {
+          headers: { "content-type": "application/json" },
         });
       },
       reason: "invalid_output",
     },
     {
-      name: "a provider failure nothing classified",
-      // The reason the classifier's status table misses, which in practice is
-      // provider-side unavailability rather than a defect of ours.
+      name: "a response carrying no choices",
       response: () => {
-        return new HttpResponse("Internal Server Error", { status: 500 });
+        return HttpResponse.json({ id: "gen-1" });
+      },
+      reason: "invalid_output",
+    },
+    {
+      name: "a choice whose content is not a string",
+      response: () => {
+        return HttpResponse.json({
+          choices: [{ finish_reason: "stop", message: { content: 42 } }],
+        });
+      },
+      reason: "invalid_output",
+    },
+    {
+      // Nothing annotates this, so the reason stays literally unknown rather
+      // than being presented as a specific cause.
+      name: "a response body that fails while streaming",
+      response: () => {
+        return new HttpResponse(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new TypeError("terminated"));
+            },
+          }),
+          { headers: { "content-type": "application/json" } },
+        );
       },
       reason: "unknown",
     },
-  ])("does not raise the severity of $name", async ({ response, reason }) => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
-    chatCallbacks.mockOpenRouterCompletions((body) => {
-      const system = body.messages[0]?.content ?? "";
-      if (
-        system.includes(
-          "You generate recommended follow-up messages for a chat.",
-        )
-      ) {
-        return response();
-      }
-      return "Generated summary";
-    });
+  ])(
+    "reports $name for recommended follow-ups exactly once at error level",
+    async ({ response, reason }) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+      chatCallbacks.mockOpenRouterCompletions((body) => {
+        const system = body.messages[0]?.content ?? "";
+        if (
+          system.includes(
+            "You generate recommended follow-up messages for a chat.",
+          )
+        ) {
+          return response();
+        }
+        return "Generated summary";
+      });
 
-    const run = await startChatRun(actor, {
-      agentId,
-      prompt: "Keep the main answer",
-    });
-    await flushWaitUntilForTest();
-    await chatCallbacks.registerPushSubscription(actor);
-    chatCallbacks.enableVapid();
-    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
-    chatCallbacks.mockChatOutputEvents([
-      assistantEvent(0, "The main answer survives"),
-    ]);
-    await completeChatRunOk(run.runId, sandboxHeaders, {
-      lastEventSequence: 0,
-    });
-    await flushWaitUntilForTest();
+      const run = await startChatRun(actor, {
+        agentId,
+        prompt: "Keep the main answer",
+      });
+      await flushWaitUntilForTest();
+      await chatCallbacks.registerPushSubscription(actor);
+      chatCallbacks.enableVapid();
+      const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+      chatCallbacks.mockChatOutputEvents([
+        assistantEvent(0, "The main answer survives"),
+      ]);
+      await completeChatRunOk(run.runId, sandboxHeaders, {
+        lastEventSequence: 0,
+      });
+      await flushWaitUntilForTest();
 
-    const events = await chat.listThreadEvents(actor, run.threadId);
-    expect(events.events).toContainEqual(
-      expect.objectContaining({ content: "The main answer survives" }),
-    );
-    expect(auxiliaryResults(context, "recommended_followups")).toStrictEqual([
-      expect.objectContaining({ outcome: "error", reason }),
-    ]);
-    // The caller's raised severity covers only the reasons that name a defect,
-    // so these keep the shared level instead of being escalated.
-    expect(
-      auxiliaryDiagnostics(context, "recommended_followups"),
-    ).toStrictEqual([expect.objectContaining({ level: "warn", reason })]);
-    expect(context.mocks.axiomLogging.error.mock.calls).toStrictEqual([]);
-  });
+      const events = await chat.listThreadEvents(actor, run.threadId);
+      expect(events.events).toContainEqual(
+        expect.objectContaining({ content: "The main answer survives" }),
+      );
+      expect(
+        events.events.some((event) => {
+          return event.eventType === "output.followups";
+        }),
+      ).toBeFalsy();
+      expect(auxiliaryResults(context, "recommended_followups")).toStrictEqual([
+        expect.objectContaining({ outcome: "error", reason }),
+      ]);
+      // A response that broke its contract, and an exception nothing
+      // classified, are failures rather than omissions: one error record, and
+      // no warning copy of it.
+      expect(
+        auxiliaryDiagnostics(context, "recommended_followups"),
+      ).toStrictEqual([expect.objectContaining({ level: "error", reason })]);
+      expect(auxiliaryWarnings(context)).toStrictEqual([]);
+      expect(JSON.stringify(auxiliaryDiagnostics(context))).not.toContain(
+        "gateway",
+      );
+    },
+  );
 
   it("keeps title and summary storage failures observable after successful generation", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();

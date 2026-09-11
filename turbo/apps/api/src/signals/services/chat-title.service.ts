@@ -619,14 +619,14 @@ export async function generateChatThreadRecommendedFollowupsFromContext(
         // result untouched. Count it and say nothing. The generated text is
         // never inspected here, so the empty result cannot name a defect.
         unusableOutput: "expected",
-        // Rejected credentials and a rejected request shape are defects rather
-        // than omissions, so this caller reports those at error. The boundary
-        // holds every other reason at the shared level, which matters here: a
-        // completion that returned no content, one stopped by a content
-        // filter, and an unclassified provider failure are all further ways to
-        // end up with no suggestions rather than things to escalate. Scoped to
-        // this caller; the shared default is unchanged for features whose own
-        // outcomes have not been characterized.
+        // Whatever still reaches the diagnostic after that is a failure rather
+        // than an omission: rejected credentials, a rejected request, a
+        // response that broke its contract, or an exception nothing
+        // classified. Those are reported at error. The reason stays whatever
+        // the provider classification decided, including `unknown`, which is
+        // left unknown rather than presented as a specific cause. Scoped to
+        // this caller through the option; the shared default is unchanged for
+        // features whose own outcomes have not been characterized.
         failureLevel: "error",
         diagnosticContext: args.threadId
           ? { threadId: args.threadId }
