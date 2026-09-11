@@ -1409,6 +1409,32 @@ function renderBuiltinList({
   });
 }
 
+/**
+ * Which list the page body shows. The directory has two scopes and the tabs it
+ * replaces have two of their own, so the choice lives here rather than as three
+ * nested conditionals inside the page.
+ */
+function ConnectorsPagePanels({
+  shelfEnabled,
+  scope,
+  activeTab,
+  builtinPanel,
+  minePanel,
+  directoryPanel,
+}: {
+  readonly shelfEnabled: boolean;
+  readonly scope: ConnectorsScope;
+  readonly activeTab: "builtin" | "custom";
+  readonly builtinPanel: ReactNode;
+  readonly minePanel: ReactNode;
+  readonly directoryPanel: ReactNode;
+}) {
+  if (!shelfEnabled) {
+    return activeTab === "custom" ? <CustomConnectorsPanel /> : builtinPanel;
+  }
+  return scope === "mine" ? minePanel : directoryPanel;
+}
+
 /** The card grid before the catalog answers. */
 function ConnectorCardSkeletons() {
   return (
@@ -2054,39 +2080,41 @@ export function ConnectorsPage() {
               </div>
             )}
 
-            {shelfEnabled && scope === "mine" ? (
-              <ConnectorsMinePanel
-                connected={browse.connected}
-                ready={browse.ready}
-                connectionFilter={connectionFilter}
-                renderCard={renderCard}
-              />
-            ) : shelfEnabled ? (
-              <ConnectorsDirectoryContent
-                builtin={builtinPanel}
-                builtinState={filteredCatalogItemsLoadable.state}
-                builtinCount={filteredConnectors.length}
-                remote={
-                  <>
-                    <SshDirectoryLoadError />
-                    <SshShelfCategory
-                      enabled
-                      groups={grouped}
-                      renderCard={renderPresentationCard}
-                    />
-                  </>
-                }
-                remoteState={filteredSshSummary.state}
-                remoteCount={Number(
-                  Boolean(sshSummaryData(filteredSshSummary)),
-                )}
-              />
-            ) : (
-              <>
-                {activeTab === "builtin" && builtinPanel}
-                {activeTab === "custom" && <CustomConnectorsPanel />}
-              </>
-            )}
+            <ConnectorsPagePanels
+              shelfEnabled={shelfEnabled}
+              scope={scope}
+              activeTab={activeTab}
+              builtinPanel={builtinPanel}
+              minePanel={
+                <ConnectorsMinePanel
+                  connected={browse.connected}
+                  ready={browse.ready}
+                  connectionFilter={connectionFilter}
+                  renderCard={renderCard}
+                />
+              }
+              directoryPanel={
+                <ConnectorsDirectoryContent
+                  builtin={builtinPanel}
+                  builtinState={filteredCatalogItemsLoadable.state}
+                  builtinCount={filteredConnectors.length}
+                  remote={
+                    <>
+                      <SshDirectoryLoadError />
+                      <SshShelfCategory
+                        enabled
+                        groups={grouped}
+                        renderCard={renderPresentationCard}
+                      />
+                    </>
+                  }
+                  remoteState={filteredSshSummary.state}
+                  remoteCount={Number(
+                    Boolean(sshSummaryData(filteredSshSummary)),
+                  )}
+                />
+              }
+            />
           </div>
         </div>
       </main>
