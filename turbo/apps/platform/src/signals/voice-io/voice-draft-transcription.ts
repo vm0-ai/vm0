@@ -294,7 +294,11 @@ export function createVoiceDraftTranscriptionSignals(
     if (previous) {
       const [outcome] = await previous;
       signal.throwIfAborted();
-      if (outcome?.status === "rejected" || !outcome?.value) {
+      if (
+        outcome?.status === "rejected" ||
+        !outcome?.value ||
+        outcome.value.kind === "unavailable"
+      ) {
         await set(retry$, signal);
         await set(append$, true, signal);
       }
@@ -307,8 +311,10 @@ export function createVoiceDraftTranscriptionSignals(
       }
       return;
     }
-    set(refreshAudioInputQuota$);
-    return result.text;
+    if (result.kind === "transcribed") {
+      set(refreshAudioInputQuota$);
+    }
+    return result;
   });
 
   const cancel$ = command(async ({ get, set }, signal: AbortSignal) => {
@@ -334,9 +340,9 @@ export function createVoiceDraftTranscriptionSignals(
           const [outcome] = await Promise.allSettled([get(result$)]);
           loopSignal.throwIfAborted();
           if (outcome?.status === "fulfilled") {
-            if (outcome.value) {
+            if (outcome.value?.kind === "transcribed") {
               set(refreshAudioInputQuota$);
-            } else {
+            } else if (!outcome.value) {
               await set(openAudioInputQuotaRecovery$, loopSignal);
             }
           }
