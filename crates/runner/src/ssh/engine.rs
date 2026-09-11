@@ -175,7 +175,7 @@ impl Execution {
         }
         .await;
         // russh's handle does not abort its spawned I/O task on Drop. Closing
-        // the exact connected socket wakes it; its stream retains our lease
+        // the exact connected socket wakes it; its socket retains our lease
         // until the library really releases the connection, even on cancellation.
         drop(socket_guard);
         let _ = scope.wait(session).await;

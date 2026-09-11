@@ -110,15 +110,22 @@ impl sandbox::GuestRpcAcceptor for Acceptor {
 
 struct ReservedStream {
     stream: DuplexStream,
+    operation: sandbox::GuestRpcOperation,
+}
+struct Reservation {
     observed: Arc<Observed>,
     _reservation: guest_control_client::ExternalOperationReservation,
 }
-impl Drop for ReservedStream {
+impl Drop for Reservation {
     fn drop(&mut self) {
         self.observed.reservations.fetch_sub(1, Ordering::SeqCst);
     }
 }
-impl sandbox::GuestRpcStream for ReservedStream {}
+impl sandbox::GuestRpcStream for ReservedStream {
+    fn retain_operation(&self) -> sandbox::GuestRpcOperation {
+        self.operation.clone()
+    }
+}
 impl tokio::io::AsyncRead for ReservedStream {
     fn poll_read(
         self: std::pin::Pin<&mut Self>,
@@ -297,8 +304,10 @@ impl Harness {
                 sandbox_id: "sandbox-authoritative".into(),
                 stream: Box::new(ReservedStream {
                     stream,
-                    observed: Arc::clone(&self.observed),
-                    _reservation: self.control.reserve_external_operation().unwrap(),
+                    operation: sandbox::GuestRpcOperation::new(Reservation {
+                        observed: Arc::clone(&self.observed),
+                        _reservation: self.control.reserve_external_operation().unwrap(),
+                    }),
                 }),
                 cancelled: self.lifecycle.clone(),
             })

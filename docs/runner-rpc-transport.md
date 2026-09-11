@@ -118,9 +118,13 @@ Runner ship together; no fallback or protocol negotiation is added.
 
 `Sandbox::guest_rpc(expected_run_id)` returns an assignment-bound
 `GuestRpcAcceptor`. `AcceptedGuestRpc` supplies a host-derived sandbox ID,
-an inseparable `GuestRpcStream`/normal-operation reservation, and lifecycle
-cancellation. Retain the stream through all handler work, even after terminal
-bytes and while awaiting non-I/O work.
+a `GuestRpcStream` owning a normal-operation reservation, and lifecycle
+cancellation. `GuestRpcStream::retain_operation()` shares that same reservation
+with handler work through a clonable `GuestRpcOperation`. Retain the stream or
+an operation guard through all handler work, even after terminal bytes and while
+awaiting non-I/O work. The stream can close independently; only the last owner
+releases the reservation. Retaining a guard does not admit new work or extend
+the assignment, and handlers must still observe lifecycle cancellation.
 
 Admission checks Running/Open/current assignment and acquires the SAME
 `GuestControlClient` tracker reservation at the admission linearization point, with no

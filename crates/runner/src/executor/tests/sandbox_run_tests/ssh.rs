@@ -10,8 +10,12 @@ use std::{
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, DuplexStream, ReadBuf};
 use tokio_util::sync::CancellationToken;
 
-struct RpcStream(DuplexStream);
-impl sandbox::GuestRpcStream for RpcStream {}
+struct RpcStream(DuplexStream, sandbox::GuestRpcOperation);
+impl sandbox::GuestRpcStream for RpcStream {
+    fn retain_operation(&self) -> sandbox::GuestRpcOperation {
+        self.1.clone()
+    }
+}
 impl AsyncRead for RpcStream {
     fn poll_read(
         self: Pin<&mut Self>,
@@ -175,7 +179,7 @@ impl Sandbox for RpcSandbox {
             self.pending
                 .send(sandbox::AcceptedGuestRpc {
                     sandbox_id: self.id().into(),
-                    stream: Box::new(RpcStream(stream)),
+                    stream: Box::new(RpcStream(stream, sandbox::GuestRpcOperation::new(()))),
                     cancelled: CancellationToken::new(),
                 })
                 .await
@@ -229,7 +233,7 @@ async fn fresh_and_reused_runs_install_before_agent_work_and_cancel_before_clean
                 pending
                     .send(sandbox::AcceptedGuestRpc {
                         sandbox_id: inner.id().into(),
-                        stream: Box::new(RpcStream(stream)),
+                        stream: Box::new(RpcStream(stream, sandbox::GuestRpcOperation::new(()))),
                         cancelled: CancellationToken::new(),
                     })
                     .await

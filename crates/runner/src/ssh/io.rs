@@ -1,10 +1,10 @@
-//! Shared ownership preserves the provider's reservation during blocking work.
+//! Work retains provider admission and capacity independently of guest I/O.
 
-use sandbox::GuestRpcStream;
+use sandbox::{GuestRpcOperation, GuestRpcStream};
 use std::{
     io,
     pin::Pin,
-    sync::{Arc, Mutex},
+    sync::Arc,
     task::{Context, Poll},
 };
 use tokio::{
@@ -13,77 +13,25 @@ use tokio::{
 };
 
 pub(super) struct Lease {
-    stream: Mutex<Box<dyn GuestRpcStream>>,
+    _operation: GuestRpcOperation,
     _sandbox: OwnedSemaphorePermit,
     _runner: OwnedSemaphorePermit,
 }
 impl Lease {
     pub(super) fn new(
-        stream: Box<dyn GuestRpcStream>,
+        operation: GuestRpcOperation,
         sandbox: OwnedSemaphorePermit,
         runner: OwnedSemaphorePermit,
     ) -> Self {
         Self {
-            stream: Mutex::new(stream),
+            _operation: operation,
             _sandbox: sandbox,
             _runner: runner,
         }
     }
 }
 
-pub(super) struct GuestIo(pub(super) Arc<Lease>);
-impl AsyncRead for GuestIo {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
-        Pin::new(
-            &mut *self
-                .0
-                .stream
-                .lock()
-                .map_err(|_| io::Error::other("SSH stream unavailable"))?,
-        )
-        .poll_read(cx, buf)
-    }
-}
-impl AsyncWrite for GuestIo {
-    fn poll_write(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        bytes: &[u8],
-    ) -> Poll<io::Result<usize>> {
-        Pin::new(
-            &mut *self
-                .0
-                .stream
-                .lock()
-                .map_err(|_| io::Error::other("SSH stream unavailable"))?,
-        )
-        .poll_write(cx, bytes)
-    }
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Pin::new(
-            &mut *self
-                .0
-                .stream
-                .lock()
-                .map_err(|_| io::Error::other("SSH stream unavailable"))?,
-        )
-        .poll_flush(cx)
-    }
-    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Pin::new(
-            &mut *self
-                .0
-                .stream
-                .lock()
-                .map_err(|_| io::Error::other("SSH stream unavailable"))?,
-        )
-        .poll_shutdown(cx)
-    }
-}
+pub(super) type GuestIo = Box<dyn GuestRpcStream>;
 
 pub(super) struct SshSocket {
     stream: tokio::net::TcpStream,
