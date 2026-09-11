@@ -2926,7 +2926,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
     await api.requestCancelRun(actor, rotatedRun.runId, [200]);
 
-    const capabilityIdentityEnvName = "CALCOM_OAUTH_CLIENT_ID";
+    const capabilityIdentityEnvName = "CAL_COM_OAUTH_CLIENT_ID";
     const capabilityIdentityEnvValue = "api-test-calcom-oauth-client-id";
     mockOptionalEnv(capabilityIdentityEnvName, undefined);
     await installApiTestConnectorCatalog({
@@ -3223,7 +3223,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     );
     await api.requestCancelRun(actor, resetRun.runId, [200]);
 
-    mockOptionalEnv("CALCOM_OAUTH_CLIENT_ID", undefined);
+    mockOptionalEnv("CAL_COM_OAUTH_CLIENT_ID", undefined);
     await installApiTestConnectorCatalog({
       catalogVersion: rotatedVersion,
       runtimeProjection: true,
