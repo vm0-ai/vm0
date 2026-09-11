@@ -1542,7 +1542,7 @@ describe("okou workflow automation commands", () => {
       expect(logCalls).toContain("Webhook");
       expect(logCalls).toContain(webhookAutomation.webhookUrl);
       expect(logCalls).toContain(webhookAutomation.webhookSecret);
-      expect(logCalls).toContain("X-VM0-Signature");
+      expect(logCalls).toContain("X-Okou-Signature");
     });
 
     it.each([

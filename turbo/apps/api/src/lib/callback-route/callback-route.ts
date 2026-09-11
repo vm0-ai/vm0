@@ -9,10 +9,6 @@ import { db$ } from "../../signals/external/db";
 import { decryptPersistentSecretValue } from "../../signals/services/crypto.utils";
 import { userFeatureSwitchContext } from "../../signals/services/feature-switches.service";
 import { safeJsonParse } from "../../signals/utils";
-import {
-  readSignatureHeaders,
-  reportLegacySignatureHeaderUse,
-} from "../event-consumer/signature-headers";
 import { verifyCallbackRequest } from "../event-consumer/verify-signature";
 
 /**
@@ -138,23 +134,17 @@ export function callbackRoute<T>(
       );
       signal.throwIfAborted();
 
-      const signatureHeaders = readSignatureHeaders((name) => {
-        return req.header(name) ?? null;
-      });
       const verification = verifyCallbackRequest(
         rawBody,
         secret,
-        signatureHeaders.signature,
-        signatureHeaders.timestamp,
+        req.header("X-Okou-Signature") ?? null,
+        req.header("X-Okou-Timestamp") ?? null,
       );
       if (!verification.valid) {
         return {
           status: 401,
           body: { error: verification.error ?? "Invalid signature" },
         };
-      }
-      if (signatureHeaders.legacy) {
-        reportLegacySignatureHeaderUse("callback-route");
       }
 
       set(callbackPayloadState$, {

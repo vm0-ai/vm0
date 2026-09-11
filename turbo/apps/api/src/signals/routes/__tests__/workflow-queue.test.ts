@@ -226,8 +226,8 @@ async function postWorkflowWebhook(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-VM0-Timestamp": String(timestamp),
-        "X-VM0-Signature": computeHmacSignature(
+        "X-Okou-Timestamp": String(timestamp),
+        "X-Okou-Signature": computeHmacSignature(
           rawBody,
           automation.secret,
           timestamp,
