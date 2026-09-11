@@ -104,6 +104,8 @@ function selected(
 function args(
   baseUrl: string,
   overrides: Partial<PiMemoryPhase2LocalConsolidationArgs> = {},
+  /** Written into the literal below so the dialect arm stays discriminated. */
+  catalogModel = "gpt-5.6-terra",
 ): PiMemoryPhase2LocalConsolidationArgs {
   return {
     memoryStorageId: "storage-phase2",
@@ -121,7 +123,7 @@ function args(
       baseUrl,
       apiKey: "PROVIDER_KEY_SECRET_31243",
       model: "MODEL_ALIAS_SECRET_31243",
-      catalogModel: "gpt-5.6-terra",
+      catalogModel,
       dialect: "openai-responses",
       transport: "sse",
       thinkingLevel: "max",
@@ -1262,7 +1264,7 @@ describe("Pi memory Phase 2 consolidation engine", () => {
 
   async function maintenanceRequestBudget(
     priorContextTokens: number,
-    modelOverrides: Partial<PiMemoryPhase2LocalConsolidationArgs["model"]> = {},
+    catalogModel?: string,
   ): Promise<number> {
     const provider = await startProvider([
       {
@@ -1276,9 +1278,8 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       },
       { type: "text", text: "consolidated" },
     ]);
-    const input = args(provider.baseUrl);
     const result = await runPiMemoryPhase2LocalConsolidation(
-      { ...input, model: { ...input.model, ...modelOverrides } },
+      args(provider.baseUrl, {}, catalogModel),
       new AbortController().signal,
     );
     expect(result.status).toBe("prepared");
@@ -1317,15 +1318,14 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     // window. If the catalog is corrected upstream this fails deliberately, so
     // the scope of the local correction is re-decided rather than drifting.
     expect(
-      resolvePiAgentModel({ ...config, catalogModel: "gpt-5.6-sol" })
-        ?.contextWindow,
+      resolvePiAgentModel(
+        args("http://127.0.0.1:1/v1", {}, "gpt-5.6-sol").model,
+      )?.contextWindow,
     ).toBe(272_000);
     // The correction cannot lift a different catalog model on the same provider
     // and dialect, so its derived ceiling stays below the corrected one.
     const corrected = await maintenanceRequestBudget(270_000);
-    const untouched = await maintenanceRequestBudget(270_000, {
-      catalogModel: "gpt-5.6-sol",
-    });
+    const untouched = await maintenanceRequestBudget(270_000, "gpt-5.6-sol");
     expect(corrected).toBe(128_000);
     expect(untouched).toBeLessThan(corrected);
     const after = resolvePiAgentModel(config);
