@@ -139,6 +139,12 @@ const imageAnnotationMarkSchema = z.discriminatedUnion("shape", [
     at: annotationPointSchema,
     text: z.string(),
     ink: annotationInkSchema,
+    /**
+     * Type size as a multiple of the base label size, set by dragging a corner
+     * of the label. Absent means 1: a mark placed before the handles existed,
+     * or one nobody resized.
+     */
+    scale: z.number().min(0.5).max(4).optional(),
   }),
   // Highlight and redact carry no ink: a highlight is always the one yellow
   // wash, and a redaction is an opaque neutral block — colouring either would

@@ -375,6 +375,111 @@ test("A note can be written over more than one line", async () => {
   ).toBe("Align the total with the heading\nand drop the divider");
 });
 
+/** One text mark with words in it, for the tests that resize or delete one. */
+function labelAttachment(filename: string, id: string) {
+  return draftAttachment(filename, {
+    annotatedFileId: `draft-${id}-annotated`,
+    annotations: {
+      marks: [
+        {
+          id,
+          ordinal: 1,
+          shape: "text" as const,
+          at: { x: 0.2, y: 0.3 },
+          text: "Raise this",
+          ink: "#5E6AD2" as const,
+        },
+      ],
+    },
+  });
+}
+
+/**
+ * A label is resized by its corners — Tong: *"text 也应该有四角拖动的标记吧？拖四角
+ * 可以放大缩小文字"*. The corner opposite the one in hand stays put, so dragging
+ * the bottom-right grip away from the words enlarges them without moving where
+ * the label starts.
+ */
+test("Dragging a label's corner resizes its type", async () => {
+  const image = labelAttachment("resizable-label.png", "sized-label");
+  mockAttachmentChat(context, { draft: draftForAttachment(image, "") });
+
+  await setupPage({
+    context,
+    path: `/chats/${ATTACHMENT_THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerImageAnnotation]: true },
+  });
+
+  const surface = await openAnnotationEditor("resizable-label.png");
+  fireEvent.click(screen.getByTestId("annotation-mark-1"));
+
+  const field = await screen.findByTestId("annotation-inline-editor");
+  const before = field.style.fontSize;
+  vi.spyOn(field, "getBoundingClientRect").mockReturnValue({
+    x: 160,
+    y: 150,
+    top: 150,
+    left: 160,
+    right: 260,
+    bottom: 175,
+    width: 100,
+    height: 25,
+    toJSON: () => {
+      return {};
+    },
+  });
+
+  fireEvent.pointerDown(screen.getByTestId("annotation-label-handle-br"), {
+    clientX: 260,
+    clientY: 175,
+    pointerId: 11,
+  });
+  fireEvent.pointerMove(surface, { clientX: 420, clientY: 250, pointerId: 11 });
+  fireEvent.pointerUp(surface, { clientX: 420, clientY: 250, pointerId: 11 });
+
+  await waitFor(() => {
+    expect(
+      Number.parseFloat(
+        screen.getByTestId("annotation-inline-editor").style.fontSize,
+      ),
+    ).toBeGreaterThan(Number.parseFloat(before || "14"));
+  });
+  // The grabbed corner moved; the opposite one is what the label grew from.
+  expect(screen.getByTestId("annotation-inline-editor").style.left).toBe("20%");
+});
+
+/**
+ * There is no bin any more — Tong: *"所有text 都不需要加delete button，让用户直接
+ * 退回删除或者全选text删除就成"*. Emptying the field and pressing backspace once
+ * more is the delete path.
+ */
+test("Emptying a mark's words and backspacing again removes it", async () => {
+  const user = userEvent.setup();
+  const image = labelAttachment("deletable-label.png", "spare-label");
+  mockAttachmentChat(context, { draft: draftForAttachment(image, "") });
+
+  await setupPage({
+    context,
+    path: `/chats/${ATTACHMENT_THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerImageAnnotation]: true },
+  });
+
+  await openAnnotationEditor("deletable-label.png");
+  fireEvent.click(screen.getByTestId("annotation-mark-1"));
+  await screen.findByTestId("annotation-inline-editor");
+  expect(screen.queryByLabelText("Remove mark")).toBeNull();
+
+  const field = await screen.findByDisplayValue("Raise this");
+  await fill(field, "");
+  await user.keyboard("{Backspace}");
+
+  await waitFor(() => {
+    expect(screen.queryByTestId("annotation-inline-editor")).toBeNull();
+  });
+  expect(screen.queryByTestId("annotation-mark-1")).toBeNull();
+  expect(screen.getByText("0 marks")).toBeVisible();
+});
+
 test("A confirmed annotation blocks sending while its image uploads", async () => {
   const image = draftAttachment("billing-page.png");
   mockAttachmentChat(context, { draft: draftForAttachment(image, "") });

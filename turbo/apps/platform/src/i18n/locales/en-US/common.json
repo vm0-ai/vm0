@@ -468,7 +468,6 @@
       "notePlaceholder": "What should change?",
       "open": "Annotate",
       "redo": "Redo",
-      "removeMark": "Remove mark",
       "subtitle_one": "{{count}} mark",
       "subtitle_other": "{{count}} marks",
       "textPlaceholder": "Type here",

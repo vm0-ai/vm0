@@ -5,7 +5,9 @@ import type {
   ImageAnnotationMark,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import {
+  annotationTextBox,
   HIGHLIGHT_FILL,
+  LABEL_BASE_PX,
   markOrdinal,
   NOTE_GROUND,
   noteOnImage,
@@ -13,6 +15,7 @@ import {
   PIN_RADIUS_PX,
   REDACT_FILL,
   STROKE_HALO_INNER,
+  textScale,
 } from "../../signals/okou-page/image-annotation.ts";
 
 /**
@@ -231,11 +234,17 @@ export function MarkShape({
         style={{
           left: percent(mark.at.x),
           top: percent(mark.at.y),
+          // Wrapped at the same ceiling the field wrapped it at while it was
+          // being typed, and printed at the size its corners were dragged to.
+          maxWidth: percent(annotationTextBox(mark).maxWidth),
+          fontSize: `${LABEL_BASE_PX * textScale(mark)}px`,
           color: mark.ink,
           textShadow: `0 0 3px ${STROKE_HALO_INNER}, 0 0 3px ${STROKE_HALO_INNER}`,
         }}
       >
-        <span className="whitespace-pre text-sm font-bold">{mark.text}</span>
+        <span className="block whitespace-pre-wrap break-words px-0.5 font-bold leading-tight">
+          {mark.text}
+        </span>
       </span>
     );
   }

@@ -1,5 +1,12 @@
 import { createAttachmentResourceUrl$ } from "../attachment-resource-url.ts";
-import { command, computed, state, type Computed, type State } from "ccstate";
+import {
+  command,
+  computed,
+  state,
+  type Command,
+  type Computed,
+  type State,
+} from "ccstate";
 import { onRef } from "../utils.ts";
 import type {
   ImageAnnotation,
@@ -51,6 +58,9 @@ export const STROKE_HALO_INNER = "rgba(255, 255, 255, 0.90)";
  * UI, and a halo only separates a few pixels of each glyph.
  */
 export const NOTE_GROUND = "rgba(255, 255, 255, 0.94)";
+
+/** The type size a label is drawn at on screen before its corners are dragged. */
+export const LABEL_BASE_PX = 14;
 
 /** Radius of the disc a box's ordinal is printed in. */
 export const PIN_RADIUS_PX = 11;
@@ -214,7 +224,7 @@ export type AnnotationArrowEnd = "from" | "to";
  */
 export interface AnnotationDrag {
   readonly markId: string;
-  readonly mode: "move" | "resize" | "endpoint";
+  readonly mode: "move" | "resize" | "endpoint" | "scale";
   readonly corner?: AnnotationResizeEdge;
   readonly endpoint?: AnnotationArrowEnd;
   readonly origin: AnnotationPoint;
@@ -224,6 +234,25 @@ export interface AnnotationDrag {
     width: number;
     height: number;
   };
+  /**
+   * The type size a label was at when its corner was grabbed. A label has no
+   * rectangle of its own — its box is whatever the words happen to fill — so a
+   * scale drag is measured against this rather than against a stored size.
+   */
+  readonly startScale?: number;
+}
+
+/**
+ * How far a label can be taken from the base size. Below half it stops being
+ * legible on a screenshot, and above four times one word covers the region it
+ * is pointing at.
+ */
+export const MIN_TEXT_SCALE = 0.5;
+export const MAX_TEXT_SCALE = 4;
+
+/** The type size of a label, which marks placed before the handles lack. */
+export function textScale(mark: ImageAnnotationMark): number {
+  return mark.shape === "text" ? (mark.scale ?? 1) : 1;
 }
 
 /** A note narrower than this wraps every other word and reads as a column. */
@@ -868,6 +897,34 @@ function createAnnotationContentSignals(
   return { setAnnotationInk$, setAnnotationMarkNote$ };
 }
 
+/**
+ * Resizes a label by dragging one of its corners.
+ *
+ * Both the size and the anchor arrive together: the corner opposite the one
+ * being dragged stays where it is, so the label grows away from the hand rather
+ * than from wherever the text happens to start.
+ */
+function createScaleTextMark(
+  applyDragEdit$: Command<
+    void,
+    [(current: ImageAnnotation) => ImageAnnotation]
+  >,
+) {
+  return command(({ set }, id: string, scale: number, at: AnnotationPoint) => {
+    set(applyDragEdit$, (current) => {
+      return {
+        ...current,
+        marks: current.marks.map((mark) => {
+          if (mark.id !== id || mark.shape !== "text") {
+            return mark;
+          }
+          return { ...mark, at, scale };
+        }),
+      };
+    });
+  });
+}
+
 function createAnnotationGeometrySignals(
   session: AnnotationSessionSignals,
   history: AnnotationHistorySignals,
@@ -884,6 +941,7 @@ function createAnnotationGeometrySignals(
       set(history.pushAnnotation$, update);
     },
   );
+  const scaleAnnotationTextMark$ = createScaleTextMark(applyDragEdit$);
   const addAnnotationMark$ = command(({ set }, mark: ImageAnnotationMark) => {
     // Placing a second text mark leaves the first one, and an untyped one has
     // to go before its creation step stops being the last thing in history.
@@ -1008,6 +1066,7 @@ function createAnnotationGeometrySignals(
     removeSelectedAnnotationMark$,
     moveAnnotationMarkRect$,
     moveAnnotationArrowEnd$,
+    scaleAnnotationTextMark$,
     nudgeAnnotationMark$,
   };
 }

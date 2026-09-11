@@ -8,7 +8,6 @@ import {
   Plus,
   Redo2,
   Square,
-  Trash2,
   Type,
   Undo2,
   X,
@@ -27,11 +26,15 @@ import {
   ANNOTATION_INKS,
   ANNOTATION_RESIZE_EDGES,
   annotationTextBox,
+  LABEL_BASE_PX,
   markBounds,
+  MAX_TEXT_SCALE,
+  MIN_TEXT_SCALE,
   markOrdinal,
   nextMarkOrdinal,
   NOTE_GROUND,
   STROKE_HALO_INNER,
+  textScale,
   type AnnotationArrowEnd,
   type AnnotationDrag,
   type AnnotationInk,
@@ -425,6 +428,56 @@ function ToolPill({ signals }: { readonly signals: ImageAnnotationSignals }) {
 const LABEL_PAD = "px-0.5 py-0";
 const NOTE_PAD = "px-1.5 py-1";
 
+/** The four corners of a label, in the order a reader would name them. */
+const LABEL_CORNERS = ["tl", "tr", "bl", "br"] as const;
+
+type LabelCorner = (typeof LABEL_CORNERS)[number];
+
+/**
+ * The grips that resize a label.
+ *
+ * A label has no rectangle in the model — its box is whatever the words fill —
+ * so the handles hang off the field's own corners rather than off stored
+ * geometry, and the drag reads the rendered box when the grip is taken. Only
+ * labels get these: a note explains a shape that already has its own size, and
+ * Tong asked for them on text alone.
+ */
+function LabelScaleHandles({
+  onGrab,
+}: {
+  readonly onGrab: (
+    corner: LabelCorner,
+    event: ReactPointerEvent<HTMLElement>,
+  ) => void;
+}) {
+  return (
+    <>
+      {LABEL_CORNERS.map((corner) => {
+        const vertical = corner.startsWith("t") ? "-top-1.5" : "-bottom-1.5";
+        const horizontal = corner.endsWith("l") ? "-left-1.5" : "-right-1.5";
+        return (
+          <span
+            key={corner}
+            role="presentation"
+            onPointerDown={(event) => {
+              onGrab(corner, event);
+            }}
+            className={cn(
+              "absolute h-2.5 w-2.5 rounded-full border border-border bg-background shadow-sm",
+              corner === "tl" || corner === "br"
+                ? "cursor-nwse-resize"
+                : "cursor-nesw-resize",
+              vertical,
+              horizontal,
+            )}
+            data-testid={`annotation-label-handle-${corner}`}
+          />
+        );
+      })}
+    </>
+  );
+}
+
 /**
  * The one field both kinds of mark are written in, drawn on the image itself.
  *
@@ -438,9 +491,14 @@ const NOTE_PAD = "px-1.5 py-1";
  */
 function InlineMarkEditor({
   mark,
+  onGrabCorner,
   signals,
 }: {
   readonly mark: ImageAnnotationMark;
+  readonly onGrabCorner: (
+    corner: LabelCorner,
+    event: ReactPointerEvent<HTMLElement>,
+  ) => void;
   readonly signals: ImageAnnotationSignals;
 }) {
   const { t } = useTranslation();
@@ -479,7 +537,11 @@ function InlineMarkEditor({
         left: percent(box.x),
         top: percent(box.y),
         maxWidth: percent(box.maxWidth),
-        ...(isLabel ? {} : { background: NOTE_GROUND }),
+        // The size the corners set, on the field and on the copy that measures
+        // it alike, so resizing and typing agree about where the words wrap.
+        ...(isLabel
+          ? { fontSize: `${LABEL_BASE_PX * textScale(mark)}px` }
+          : { background: NOTE_GROUND }),
       }}
       // The field lives inside the drawing surface so it can sit on the mark,
       // which means a press on it would otherwise start a stroke underneath.
@@ -493,8 +555,11 @@ function InlineMarkEditor({
         // `select-none cursor-crosshair` being undone: a field that cannot be
         // selected in, under a crosshair, does not read as somewhere to type.
         "absolute z-30 grid select-text",
+        // `leading-tight` rather than the line height inside `text-sm`: the
+        // size is set inline by the corner handles, and a fixed 20px line box
+        // would keep the rows of a scaled-up label on top of each other.
         isLabel
-          ? "text-sm font-bold"
+          ? "font-bold leading-tight"
           : "rounded-md text-[11px] font-semibold leading-snug",
       )}
       data-testid="annotation-inline-editor"
@@ -551,15 +616,18 @@ function InlineMarkEditor({
             dismiss();
             return;
           }
-          // Backspace edits the text. Once the field is empty the next press
-          // dismisses it — deleting the mark from here would be a surprise, so
-          // that stays on the bin button alone.
+          // Backspace edits the text, and once the field is empty the next
+          // press takes the mark with it. That is the whole delete path now —
+          // Tong: *"所有text 都不需要加delete button，让用户直接退回删除或者全选
+          // text删除就成"* — so a mark can always be undone by emptying it,
+          // and Cmd+Z is there for a press too many.
           if (
             (event.key === "Backspace" || event.key === "Delete") &&
             value.length === 0
           ) {
             event.preventDefault();
-            dismiss();
+            removeMark(mark.id);
+            focusPanel();
           }
         }}
         className={cn(
@@ -567,24 +635,7 @@ function InlineMarkEditor({
           isLabel ? LABEL_PAD : NOTE_PAD,
         )}
       />
-      <Button
-        showTooltip
-        type="button"
-        variant="quiet"
-        size="icon-xs"
-        onClick={() => {
-          removeMark(mark.id);
-        }}
-        aria-label={t(($) => {
-          return $.artifacts.annotation.removeMark;
-        })}
-        // Outside the field rather than inside it: a control in the text flow
-        // would take room from the words on every mark, including the ones
-        // nobody is deleting.
-        className="absolute left-full top-0 ml-1 bg-background/95 text-muted-foreground shadow-sm"
-      >
-        <Trash2 size={14} />
-      </Button>
+      {isLabel && <LabelScaleHandles onGrab={onGrabCorner} />}
     </span>
   );
 }
@@ -1358,6 +1409,133 @@ function MarkLayer({
  */
 const STAGE_QUERY_CONTAINER = { containerType: "size" } as const;
 
+/**
+ * Where a label's corner drag is measured from, and what it lands on.
+ *
+ * The corner opposite the one in hand is pinned, so the label grows away from
+ * the pointer rather than from wherever the words start. Size comes from the
+ * ratio of the two distances to that pinned corner, in on-screen pixels —
+ * normalized units would stretch the gesture on a non-square image.
+ */
+function scaledLabel(
+  drag: AnnotationDrag,
+  point: AnnotationPoint,
+  aspect: number,
+): { scale: number; at: AnnotationPoint } | null {
+  const corner = drag.corner;
+  const startScale = drag.startScale;
+  if (!corner || startScale === undefined) {
+    return null;
+  }
+  const start = drag.startRect;
+  const pinned = {
+    x: corner.endsWith("l") ? start.x + start.width : start.x,
+    y: corner.startsWith("t") ? start.y + start.height : start.y,
+  };
+  const reach = (from: AnnotationPoint) => {
+    return Math.hypot((from.x - pinned.x) * aspect, from.y - pinned.y);
+  };
+  const before = reach(drag.origin);
+  if (before === 0) {
+    return null;
+  }
+  const scale = Math.min(
+    MAX_TEXT_SCALE,
+    Math.max(MIN_TEXT_SCALE, (startScale * reach(point)) / before),
+  );
+  const grown = scale / startScale;
+  const width = start.width * grown;
+  const height = start.height * grown;
+  return {
+    scale,
+    at: {
+      x: clamp01(corner.endsWith("l") ? pinned.x - width : pinned.x),
+      y: clamp01(corner.startsWith("t") ? pinned.y - height : pinned.y),
+    },
+  };
+}
+
+/** Starts a label resize from whichever corner was taken. */
+function useGrabLabelCorner(
+  signals: ImageAnnotationSignals,
+  mark: ImageAnnotationMark | undefined,
+): (corner: LabelCorner, event: ReactPointerEvent<HTMLElement>) => void {
+  const surface = useGet(signals.annotationSurface$);
+  const beginDrag = useSet(signals.setAnnotationDrag$);
+
+  return (corner, event) => {
+    // The grip sits on the field, which sits on the surface: without this the
+    // grab would put the caret in the words it is trying to resize.
+    event.stopPropagation();
+    event.preventDefault();
+    const field = event.currentTarget.parentElement;
+    const bounds = surface?.getBoundingClientRect();
+    if (
+      !mark ||
+      mark.shape !== "text" ||
+      !field ||
+      !bounds ||
+      bounds.width === 0
+    ) {
+      return;
+    }
+    const box = field.getBoundingClientRect();
+    captureOnSurface(surface, event);
+    beginDrag({
+      markId: mark.id,
+      mode: "scale",
+      corner,
+      origin: {
+        x: (event.clientX - bounds.left) / bounds.width,
+        y: (event.clientY - bounds.top) / bounds.height,
+      },
+      // The rendered box, not a stored one: a label is as big as its words.
+      startRect: {
+        x: (box.left - bounds.left) / bounds.width,
+        y: (box.top - bounds.top) / bounds.height,
+        width: box.width / bounds.width,
+        height: box.height / bounds.height,
+      },
+      startScale: textScale(mark),
+    });
+  };
+}
+
+/**
+ * What a drag in flight does to the mark it holds.
+ *
+ * A note is never dragged — it follows the mark it belongs to (see
+ * `NoteLayer`) — so every mode here edits a mark: its rectangle, an arrow's
+ * end, or a label's type size.
+ */
+function useApplyDrag(
+  signals: ImageAnnotationSignals,
+  aspect: number,
+): (
+  drag: AnnotationDrag,
+  rect: { x: number; y: number; width: number; height: number },
+  point: AnnotationPoint,
+) => void {
+  const moveRect = useSet(signals.moveAnnotationMarkRect$);
+  const moveArrowEnd = useSet(signals.moveAnnotationArrowEnd$);
+  const scaleLabel = useSet(signals.scaleAnnotationTextMark$);
+
+  return (drag, rect, point) => {
+    if (drag.mode === "endpoint" && drag.endpoint) {
+      moveArrowEnd(drag.markId, drag.endpoint, point);
+      return;
+    }
+    if (drag.mode === "scale") {
+      const scaled = scaledLabel(drag, point, aspect);
+      if (scaled) {
+        scaleLabel(drag.markId, scaled.scale, scaled.at);
+      }
+      return;
+    }
+    moveRect(drag.markId, rect);
+  };
+}
+
 function EditorStage({
   filename,
   signals,
@@ -1376,8 +1554,6 @@ function EditorStage({
   const openMarkId = useGet(signals.annotationOpenMarkId$);
   const selectMark = useSet(signals.selectAnnotationMark$);
   const bindSurface = useSet(signals.bindAnnotationSurface$);
-  const moveRect = useSet(signals.moveAnnotationMarkRect$);
-  const moveArrowEnd = useSet(signals.moveAnnotationArrowEnd$);
   const handlers = useStrokeHandlers(signals);
 
   const box = surface?.getBoundingClientRect();
@@ -1396,21 +1572,9 @@ function EditorStage({
     return mark.id === openMarkId;
   });
   const grabHandle = useGrabHandle(signals, selectedMark);
+  const grabLabelCorner = useGrabLabelCorner(signals, openMark);
+  const applyDrag = useApplyDrag(signals, aspect);
   const grabEndpoint = useGrabEndpoint(signals, selectedMark);
-
-  // A drag only ever moves, resizes or re-aims a MARK now; a note follows the
-  // mark it belongs to and is never dragged (see `NoteLayer`).
-  const applyDrag = (
-    drag: AnnotationDrag,
-    rect: { x: number; y: number; width: number; height: number },
-    point: AnnotationPoint,
-  ) => {
-    if (drag.mode === "endpoint" && drag.endpoint) {
-      moveArrowEnd(drag.markId, drag.endpoint, point);
-      return;
-    }
-    moveRect(drag.markId, rect);
-  };
 
   const grabMark = (
     mark: ImageAnnotationMark,
@@ -1481,7 +1645,13 @@ function EditorStage({
             onGrabEndpoint={grabEndpoint}
             onGrabHandle={grabHandle}
           />
-          {openMark && <InlineMarkEditor mark={openMark} signals={signals} />}
+          {openMark && (
+            <InlineMarkEditor
+              mark={openMark}
+              onGrabCorner={grabLabelCorner}
+              signals={signals}
+            />
+          )}
           {preview && (
             <MarkShape
               mark={preview}
