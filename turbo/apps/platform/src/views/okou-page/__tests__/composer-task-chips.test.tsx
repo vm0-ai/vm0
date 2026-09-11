@@ -283,6 +283,51 @@ test("Visualization preferences are interactive and are sent as agent-only conte
   });
 });
 
+test("Visualization preferences stay behind once another task is chosen", async () => {
+  const capture = mockTemplateChat();
+  const editor = await setupChips();
+  await fill(editor, "Explain the quarterly results");
+  const tasks = screen.getByRole("group", { name: "Choose a task" });
+  click(button("Visualization", tasks));
+  const panel = await screen.findByRole("region", {
+    name: "Visualization options",
+  });
+  click(
+    button(
+      "Report",
+      within(panel).getByRole("group", { name: "Output format" }),
+    ),
+  );
+  click(
+    button(
+      "Bar chart",
+      within(panel).getByRole("group", { name: "Preferred charts" }),
+    ),
+  );
+
+  click(button("Remove Visualization", selectedTask(editor, "Visualization")));
+  click(
+    button(
+      "Website",
+      await screen.findByRole("group", { name: "Choose a task" }),
+    ),
+  );
+  await screen.findByRole("group", { name: "Ideas to get started" });
+
+  click(button("Send"));
+  await waitFor(() => {
+    expect(capture.sentMessages).toHaveLength(1);
+  });
+  const parts = capture.sentMessages[0]?.parts ?? [];
+  expect(
+    parts.filter((part) => {
+      return (
+        part.type === "additional_info" && part.text.includes("# Visualization")
+      );
+    }),
+  ).toStrictEqual([]);
+});
+
 test.each([
   { task: "Image", mode: "image", instruction: "Create an image." },
   { task: "Video", mode: "video", instruction: "Create a video." },
