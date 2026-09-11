@@ -93,6 +93,12 @@ specific checks, including NBD COW tests, on matching metal. Jobs that need an
 actual host resolve the host subset inside the job instead of reading hosts from
 the matrix.
 
+Crates plans image validation with `validation-plan KEY` using the same
+deterministic host selection as `runner-build`. That job validates the entire
+selected architecture group; a parallel manifest matrix validates only the
+remaining groups. The full matrix still drives NBD COW and rootfs process tests.
+The CI gate requires both validation paths when applicable, including on reruns.
+
 Playwright uses the same metal inventory to bootstrap the runner exercised by
 the deployed product chat flow. Architecture-specific runner behavior remains
 in the host-bound crates checks instead of being duplicated in product E2E.
