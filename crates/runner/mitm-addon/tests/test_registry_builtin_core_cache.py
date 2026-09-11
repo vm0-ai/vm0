@@ -1,6 +1,7 @@
 """Tests for compiled built-in registry core-cache behavior and lifecycle."""
 
 import os
+from unittest.mock import patch
 
 import pytest
 
@@ -455,7 +456,7 @@ class TestRegistryBuiltinCoreCache:
             context = registry.get_sandbox_context("10.200.0.1", str(path))
             assert context is not None
             assert len(registry._registry_state.builtin_firewall_core_cache) == 1
-            retained_catalog = builtin_firewall_cache._cache_state.catalog
+            retained_catalog = builtin_firewall_cache.load_catalog_snapshot(str(cache_path)).catalog
             assert retained_catalog is not None
 
             path.write_text("{ broken")
@@ -464,7 +465,9 @@ class TestRegistryBuiltinCoreCache:
         assert isinstance(unavailable, registry.RegistryUnavailable)
         assert unavailable.reason == "parse_failed"
         assert registry._registry_state.builtin_firewall_core_cache == {}
-        assert builtin_firewall_cache._cache_state.catalog is retained_catalog
+        with patch.object(os, "read", side_effect=AssertionError("unexpected catalog reread")):
+            cached = builtin_firewall_cache.load_catalog_snapshot(str(cache_path))
+        assert cached.catalog is retained_catalog
 
     def test_registry_dropping_builtin_entries_retains_shared_catalog(self, tmp_path, mitm_ctx):
         path = tmp_path / "registry.json"
@@ -486,7 +489,7 @@ class TestRegistryBuiltinCoreCache:
         ):
             context = registry.get_sandbox_context("10.200.0.1", str(path))
             assert context is not None
-            retained_catalog = builtin_firewall_cache._cache_state.catalog
+            retained_catalog = builtin_firewall_cache.load_catalog_snapshot(str(cache_path)).catalog
             assert retained_catalog is not None
 
             write_multi_sandbox_registry(path, {"10.200.0.1": inline_sandbox("run-inline")})
@@ -494,7 +497,9 @@ class TestRegistryBuiltinCoreCache:
             inline_context = registry.get_sandbox_context("10.200.0.1", str(path))
 
         assert inline_context is not None
-        assert builtin_firewall_cache._cache_state.catalog is retained_catalog
+        with patch.object(os, "read", side_effect=AssertionError("unexpected catalog reread")):
+            cached = builtin_firewall_cache.load_catalog_snapshot(str(cache_path))
+        assert cached.catalog is retained_catalog
 
     def test_no_builtin_registry_fast_path_retains_shared_catalog(self, tmp_path, mitm_ctx):
         path = tmp_path / "registry.json"
@@ -513,7 +518,6 @@ class TestRegistryBuiltinCoreCache:
         ):
             first_context = registry.get_sandbox_context("10.200.0.1", str(path))
             assert first_context is not None
-            assert builtin_firewall_cache._cache_state.catalog is None
 
             snapshot = registry_firewalls.load_catalog_snapshot(str(cache_path))
             assert snapshot.catalog is not None
@@ -522,10 +526,10 @@ class TestRegistryBuiltinCoreCache:
             assert snapshot.catalog.identity.source == "cache"
             assert snapshot.catalog.identity.catalog_version == "catalog-a"
             assert snapshot.catalog.identity.file_key == snapshot.dependency_file_key
-            retained_catalog = builtin_firewall_cache._cache_state.catalog
-            assert retained_catalog is snapshot.catalog
 
             second_context = registry.get_sandbox_context("10.200.0.1", str(path))
 
         assert second_context is not None
-        assert builtin_firewall_cache._cache_state.catalog is retained_catalog
+        with patch.object(os, "read", side_effect=AssertionError("unexpected catalog reread")):
+            cached = builtin_firewall_cache.load_catalog_snapshot(str(cache_path))
+        assert cached.catalog is snapshot.catalog
