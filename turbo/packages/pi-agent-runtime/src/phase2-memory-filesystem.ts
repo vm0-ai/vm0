@@ -321,25 +321,10 @@ function snapshotSelected(
 function snapshotModel(
   model: PiMemoryPhase2LocalConsolidationArgs["model"],
 ): Readonly<PiMemoryPhase2LocalConsolidationArgs["model"]> {
-  return Object.freeze({
-    provider: model.provider,
-    baseUrl: model.baseUrl,
-    apiKey: model.apiKey,
-    model: model.model,
-    dialect: model.dialect,
-    ...(model.catalogModel === undefined
-      ? {}
-      : { catalogModel: model.catalogModel }),
-    ...(model.requestHeaders === undefined
-      ? {}
-      : { requestHeaders: Object.freeze({ ...model.requestHeaders }) }),
-    ...(model.thinkingLevel === undefined
-      ? {}
-      : { thinkingLevel: model.thinkingLevel }),
-    ...(model.serviceTier === undefined
-      ? {}
-      : { serviceTier: model.serviceTier }),
-  });
+  const snapshot = structuredClone(model);
+  if (snapshot.requestHeaders) Object.freeze(snapshot.requestHeaders);
+  if (snapshot.bedrockAuth) Object.freeze(snapshot.bedrockAuth);
+  return Object.freeze(snapshot);
 }
 
 export function snapshotPiMemoryPhase2Input(

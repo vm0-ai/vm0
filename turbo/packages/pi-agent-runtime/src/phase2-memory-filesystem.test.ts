@@ -115,6 +115,7 @@ function consolidationArgs(
       apiKey: "unused-test-key",
       model: "gpt-5.6-terra",
       dialect: "openai-responses",
+      transport: "sse",
     },
   };
 }

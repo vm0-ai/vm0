@@ -160,6 +160,7 @@ describe("Pi agent credential resolution", () => {
         model: "gpt-5.6-terra",
         dialect: "openai-responses",
         apiKey: "legacy-key",
+        transport: "sse",
       });
     },
   );
