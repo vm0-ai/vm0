@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.7.0](https://github.com/vm0-ai/vm0/compare/app-worker-v1.6.21...app-worker-v1.7.0) (2026-09-11)
+
+
+### Features
+
+* **app-worker:** serve static posthog oauth client metadata ([#33481](https://github.com/vm0-ai/vm0/issues/33481)) ([324a367](https://github.com/vm0-ai/vm0/commit/324a367f792198a97a044d7386f87668cf51ebe9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.653.0
+
 ## [1.6.21](https://github.com/vm0-ai/vm0/compare/app-worker-v1.6.20...app-worker-v1.6.21) (2026-09-11)
 
 

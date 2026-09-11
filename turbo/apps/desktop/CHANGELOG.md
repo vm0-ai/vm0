@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.48.34](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.33...desktop-v0.48.34) (2026-09-11)
+
+
+### Refactoring
+
+* **desktop:** rename renderer-local bridge globals to okou prefix ([#33484](https://github.com/vm0-ai/vm0/issues/33484)) ([e75ee4c](https://github.com/vm0-ai/vm0/commit/e75ee4cd5e77d48e09d6775de28c95de39b660b7)), closes [#33476](https://github.com/vm0-ai/vm0/issues/33476)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.428.1
+
 ## [0.48.33](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.32...desktop-v0.48.33) (2026-09-11)
 
 
