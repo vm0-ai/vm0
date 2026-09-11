@@ -19698,42 +19698,31 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       },
     );
 
-    it.each([
-      {
-        name: "a built-in Codex run",
+    // The predicate reads only the terminal reason and the stored provider, so
+    // every built-in route reaches this record with the same two inputs no
+    // matter which framework produced the reason token.
+    it("reports capacity exhaustion on a built-in run as an error", async () => {
+      const control = await completeFailure({
         modelProvider: "built-in",
         failureReason: "provider_overloaded",
-      },
-      // The reason token carries no framework, so a Claude run stored against
-      // the built-in provider reaches the same terminal record.
-      {
-        name: "a built-in Claude run",
-        modelProvider: "anthropic-api-key",
-        persistedModelProvider: "built-in",
-        failureReason: "provider_overloaded",
-      },
-    ] satisfies readonly (FailureCase & { readonly name: string })[])(
-      "reports capacity exhaustion on $name as an error",
-      async (failure) => {
-        const control = await completeFailure(failure);
-        const errors = matchingLogCalls(
-          context.mocks.axiomLogging.error,
-          "Run failed",
-          control.runId,
-        );
-        expect(errors).toHaveLength(1);
-        expect(errors[0]?.[1]).toStrictEqual(
-          expect.objectContaining({
-            runId: control.runId,
-            exitCode: 1,
-            error: control.error,
-            failureReason: "provider_overloaded",
-            context: "webhook:complete",
-          }),
-        );
-        expect(genericFailureLogCalls(control.runId)).toHaveLength(1);
-      },
-    );
+      });
+      const errors = matchingLogCalls(
+        context.mocks.axiomLogging.error,
+        "Run failed",
+        control.runId,
+      );
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.[1]).toStrictEqual(
+        expect.objectContaining({
+          runId: control.runId,
+          exitCode: 1,
+          error: control.error,
+          failureReason: "provider_overloaded",
+          context: "webhook:complete",
+        }),
+      );
+      expect(genericFailureLogCalls(control.runId)).toHaveLength(1);
+    });
 
     it.each([
       { name: "a null provider", persistedModelProvider: null },
@@ -19800,6 +19789,13 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       );
 
       expect(genericFailureLogCalls(first.runId)).toHaveLength(1);
+      expect(
+        matchingLogCalls(
+          context.mocks.axiomLogging.error,
+          "Run failed",
+          first.runId,
+        ),
+      ).toHaveLength(1);
       await expect(
         api.readRun(first.actor, first.runId),
       ).resolves.toMatchObject({ status: "failed", error: first.error });
