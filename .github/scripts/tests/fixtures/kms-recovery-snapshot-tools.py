@@ -128,9 +128,26 @@ if path == "/endpoints" and method == "GET":
             "type": "read_write",
         }
     ]
-    if state.get("endpointCreated") and not state.get("deleted"):
+    if (
+        state.get("endpointCreated")
+        and not state.get("deleted")
+        and scenario != "endpoint-absent-from-project-list"
+    ):
         endpoints.append(endpoint)
     respond({"endpoints": endpoints})
+if path == "/branches/br-preview/endpoints" and method == "GET":
+    endpoints = [endpoint] if state.get("endpointCreated") else []
+    if scenario == "ambiguous-preview-endpoints":
+        endpoints = [endpoint, {**endpoint, "id": "ep-second"}]
+    respond({"endpoints": endpoints})
+if path == "/endpoints/ep-preview" and method == "GET":
+    assert state.get("endpointCreated")
+    current = (
+        {**endpoint, "branch_id": "br-production"}
+        if scenario == "endpoint-readback-production"
+        else endpoint
+    )
+    respond({"endpoint": current})
 if path == "/snapshots/snapshot-manual/restore" and method == "POST":
     assert body == {"name": name, "finalize_restore": False}
     state["restored"] = True
