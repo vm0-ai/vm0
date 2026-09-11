@@ -3130,16 +3130,19 @@
         "connected": "연결된 커넥터가 없습니다",
         "matching": "\"{{search}}\"와(과) 일치하는 {{message}}",
         "notConnected": "연결할 커넥터가 남아 있지 않습니다",
-        "search": "\"{{search}}\"와(과) 일치하는 커넥터가 없습니다"
+        "search": "\"{{search}}\"와(과) 일치하는 커넥터가 없습니다",
+        "unshared": "모든 커넥터가 에이전트와 공유되어 있습니다"
       },
       "filterCategory": "카테고리",
       "filters": {
         "agents": "에이전트",
         "all": "전체",
+        "allAgents": "모든 에이전트",
         "aria": "커넥터 필터",
         "connected": "연결됨",
         "notConnected": "연결 안 됨",
-        "status": "상태"
+        "status": "상태",
+        "unshared": "어떤 에이전트와도 공유되지 않음"
       },
       "filterWith": "필터: {{category}}",
       "iconUnavailable": "커넥터 아이콘을 사용할 수 없습니다",
@@ -3147,14 +3150,20 @@
       "noConnectorsAlt": "커넥터 없음",
       "otherCategory": "기타",
       "remoteAccess": "원격 액세스",
+      "scope": {
+        "aria": "커넥터 범위",
+        "attention": "확인이 필요함",
+        "discover": "둘러보기",
+        "mine": "내 커넥터",
+        "searchMine": "내 커넥터 찾기"
+      },
       "search": "커넥터 찾기",
       "shelf": {
         "moreCategories": "다른 카테고리",
         "popular": "인기",
         "seeMore_one": "{{names}} 외 {{count}}개 보기",
         "seeMore_other": "{{names}} 외 {{count}}개 보기",
-        "top": "인기 커넥터",
-        "yours": "내 커넥터"
+        "top": "인기 커넥터"
       },
       "tabs": {
         "builtin": "내장",

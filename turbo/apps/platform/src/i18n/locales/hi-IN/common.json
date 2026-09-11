@@ -3142,16 +3142,19 @@
         "connected": "कोई कनेक्टेड कनेक्टर नहीं",
         "matching": "{{message}} मिलान \"{{search}}\"",
         "notConnected": "कनेक्ट करने के लिए कोई कनेक्टर नहीं बचा",
-        "search": "\"{{search}}\" से मेल खाने वाला कोई कनेक्टर नहीं"
+        "search": "\"{{search}}\" से मेल खाने वाला कोई कनेक्टर नहीं",
+        "unshared": "हर कनेक्टर किसी एजेंट के साथ साझा है"
       },
       "filterCategory": "श्रेणी",
       "filters": {
         "agents": "एजेंटों",
         "all": "सभी",
+        "allAgents": "सभी एजेंट",
         "aria": "फ़िल्टर कनेक्टर्स",
         "connected": "जुड़े हुए",
         "notConnected": "जुड़े नहीं हैं",
-        "status": "स्थिति"
+        "status": "स्थिति",
+        "unshared": "किसी एजेंट के साथ साझा नहीं"
       },
       "filterWith": "फ़िल्टर: {{category}}",
       "iconUnavailable": "कनेक्टर आइकन अनुपलब्ध",
@@ -3159,14 +3162,20 @@
       "noConnectorsAlt": "कोई कनेक्टर नहीं",
       "otherCategory": "अन्य",
       "remoteAccess": "रिमोट एक्सेस",
+      "scope": {
+        "aria": "कनेक्टर दायरा",
+        "attention": "ध्यान देने की आवश्यकता",
+        "discover": "खोजें",
+        "mine": "आपके कनेक्टर",
+        "searchMine": "अपने कनेक्टर खोजें"
+      },
       "search": "कनेक्टर खोजें",
       "shelf": {
         "moreCategories": "और श्रेणियाँ",
         "popular": "लोकप्रिय",
         "seeMore_one": "{{names}} और {{count}} अन्य देखें",
         "seeMore_other": "{{names}} और {{count}} अन्य देखें",
-        "top": "शीर्ष कनेक्टर",
-        "yours": "आपके कनेक्टर"
+        "top": "शीर्ष कनेक्टर"
       },
       "tabs": {
         "builtin": "बिल्ट-इन",
