@@ -28,11 +28,6 @@ export function localizedSshError(code: string): string | undefined {
         return $.ssh.errors.hostUnavailable;
       });
     }
-    case SSH_ERROR_CODES.ENDPOINT_CONFLICT: {
-      return i18n.t(($) => {
-        return $.ssh.errors.duplicateEndpoint;
-      });
-    }
     case SSH_ERROR_CODES.GENERATION_CONFLICT: {
       return i18n.t(($) => {
         return $.ssh.errors.configurationChanged;

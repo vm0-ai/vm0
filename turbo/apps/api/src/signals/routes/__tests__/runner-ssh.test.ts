@@ -407,6 +407,123 @@ describe("SSH connection observations", () => {
     ).body.observations;
   }
 
+  it.each(["deploy", "ubuntu"])(
+    "isolates credentials, trust and observations for a shared endpoint with sibling username %s",
+    async (username) => {
+      const f = await fixture();
+      const additional = await accept(
+        config().create({
+          headers: sessionHeaders,
+          body: {
+            displayName: "Independent login",
+            host: "SSH.example.com.",
+            username,
+            privateKey: "sibling-private-key",
+            passphrase: "sibling-passphrase",
+          },
+        }),
+        [201],
+      );
+      const sibling = { ...f, connectionId: additional.body.id };
+      expect(sibling.connectionId).not.toBe(f.connectionId);
+      const siblingCredential = await resolve(sibling);
+      expect(siblingCredential).toMatchObject({
+        outcome: "resolved",
+        host: "ssh.example.com",
+        port: 22,
+        username,
+        privateKey: "sibling-private-key",
+        passphrase: "sibling-passphrase",
+        generation: 1,
+        learnedHostKey: null,
+      });
+      await expect(resolve(f)).resolves.toMatchObject({
+        outcome: "resolved",
+        username: "deploy",
+        privateKey,
+        passphrase,
+      });
+
+      const observedAt = nowDate().toISOString();
+      await expect(observe(f, { observedAt })).resolves.toStrictEqual({
+        outcome: "recorded",
+      });
+      await expect(observe(sibling, { observedAt })).resolves.toStrictEqual({
+        outcome: "recorded",
+      });
+      await expect(observations(f)).resolves.toHaveLength(2);
+      await expect(pin(f)).resolves.toStrictEqual({
+        outcome: "pinned",
+        generation: 2,
+      });
+      await expect(resolve(sibling)).resolves.toStrictEqual(siblingCredential);
+      const siblingObservations = [
+        {
+          connectionId: sibling.connectionId,
+          generation: 1,
+          observedAt,
+          failureReason: "authentication_failed",
+        },
+      ];
+      await expect(observations(f)).resolves.toStrictEqual(siblingObservations);
+
+      await accept(
+        config().update({
+          headers: sessionHeaders,
+          params: { connectionId: f.connectionId },
+          body: {
+            expectedGeneration: 2,
+            username: "rotated-login",
+            credentials: {
+              privateKey: "rotated-private-key",
+              passphrase: "rotated-passphrase",
+            },
+          },
+        }),
+        [200],
+      );
+      await expect(resolve(f)).resolves.toMatchObject({
+        outcome: "resolved",
+        username: "rotated-login",
+        privateKey: "rotated-private-key",
+        passphrase: "rotated-passphrase",
+        learnedHostKey: hostKey,
+        generation: 3,
+      });
+      await expect(resolve(sibling)).resolves.toStrictEqual(siblingCredential);
+      await expect(observations(f)).resolves.toStrictEqual(siblingObservations);
+
+      await accept(
+        config().resetHostKey({
+          headers: sessionHeaders,
+          params: { connectionId: f.connectionId },
+          body: { expectedGeneration: 3 },
+        }),
+        [200],
+      );
+      await expect(resolve(f)).resolves.toMatchObject({
+        outcome: "resolved",
+        learnedHostKey: null,
+        generation: 4,
+      });
+      await expect(resolve(sibling)).resolves.toStrictEqual(siblingCredential);
+
+      await accept(
+        config().delete({
+          headers: sessionHeaders,
+          params: { connectionId: f.connectionId },
+        }),
+        [204],
+      );
+      await expect(resolve(f)).resolves.toStrictEqual({
+        outcome: "unavailable",
+      });
+      await expect(resolve(sibling)).resolves.toStrictEqual(siblingCredential);
+      await expect(observations(f)).resolves.toStrictEqual(siblingObservations);
+      await expect(list(f)).resolves.toStrictEqual([additional.body]);
+    },
+  );
+
   it("records bounded owner-only failures and recovery without changing configuration or invalidating credentials", async () => {
     const f = await fixture();
     const original = await list(f);

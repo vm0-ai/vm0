@@ -6,7 +6,6 @@ import {
   pgTable,
   text,
   timestamp,
-  uniqueIndex,
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
@@ -33,12 +32,6 @@ export const sshConnections = pgTable(
   },
   (table) => {
     return [
-      uniqueIndex("idx_ssh_connections_owner_host_port").on(
-        table.orgId,
-        table.userId,
-        table.host,
-        table.port,
-      ),
       index("idx_ssh_connections_owner_created").on(
         table.orgId,
         table.userId,

@@ -1,0 +1,1 @@
+DROP INDEX "idx_ssh_connections_owner_host_port";

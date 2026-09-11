@@ -6039,7 +6039,6 @@
     "errors": {
       "agentUnavailable": "Agen ini tidak lagi tersedia. Pilih Agen lain.",
       "configurationChanged": "Host ini berubah saat Anda mengeditnya. Daftar telah diperbarui. Buka kembali host dan tinjau pengaturan saat ini sebelum menyimpan.",
-      "duplicateEndpoint": "Host SSH dengan alamat dan port ini sudah ada. Edit host yang ada atau gunakan alamat atau port lain.",
       "failed": "Tidak dapat menyimpan perubahan SSH. Coba lagi.",
       "hostUnavailable": "Host SSH ini tidak lagi tersedia. Kembali ke daftar host dan pilih host yang ada.",
       "invalidHost": "Masukkan nama host atau alamat IP tanpa skema URL, jalur, atau spasi.",

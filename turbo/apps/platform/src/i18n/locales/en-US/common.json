@@ -6045,7 +6045,6 @@
     "errors": {
       "agentUnavailable": "This Agent is no longer available. Choose another Agent.",
       "configurationChanged": "This host changed while you were editing it. The list has been updated. Reopen the host and review its current settings before saving.",
-      "duplicateEndpoint": "An SSH host with this address and port already exists. Edit the existing host or use a different address or port.",
       "failed": "Could not save the SSH change. Try again.",
       "hostUnavailable": "This SSH host is no longer available. Return to the host list and choose an existing host.",
       "invalidHost": "Enter a hostname or IP address without a URL scheme, path or spaces.",
