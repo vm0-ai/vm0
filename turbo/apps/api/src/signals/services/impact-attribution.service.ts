@@ -1,3 +1,4 @@
+import { IMPACT_PRIVACY_RECEIPT_KEY } from "@okouai/api-contracts/contracts/marketing-privacy";
 import { command } from "ccstate";
 import { eq, isNull, lt, or, sql } from "drizzle-orm";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
@@ -116,7 +117,20 @@ export const impactStripeMetadata$ = command(
     if (impact) {
       await set(persistOrgImpactAttribution$, orgId, impact, signal);
     }
-    return readOrgImpactMetadata(set(writeDb$), orgId, signal);
+    const metadata = await readOrgImpactMetadata(set(writeDb$), orgId, signal);
+    const receipt = user?.privateMetadata?.[IMPACT_PRIVACY_RECEIPT_KEY];
+    return {
+      ...metadata,
+      ...(impact &&
+      metadata.impact_click_id === impact.clickId &&
+      metadata.impact_click_at === impact.capturedAt &&
+      typeof receipt === "string"
+        ? {
+            impact_privacy_receipt: receipt,
+            impact_privacy_user_id: auth.userId,
+          }
+        : {}),
+    };
   },
 );
 
@@ -211,7 +225,20 @@ export const syncImpactStripeCustomer$ = command(
       signal.throwIfAborted();
       if (row?.stripeCustomerId) {
         const current = await readOrgImpactMetadata(tx, orgId, signal);
-        await updateImpactCustomer(row.stripeCustomerId, current, signal);
+        await updateImpactCustomer(
+          row.stripeCustomerId,
+          {
+            ...current,
+            ...(current.impact_click_id === metadata.impact_click_id &&
+            current.impact_click_at === metadata.impact_click_at
+              ? {
+                  impact_privacy_receipt: metadata.impact_privacy_receipt ?? "",
+                  impact_privacy_user_id: metadata.impact_privacy_user_id ?? "",
+                }
+              : {}),
+          },
+          signal,
+        );
       }
     });
     signal.throwIfAborted();

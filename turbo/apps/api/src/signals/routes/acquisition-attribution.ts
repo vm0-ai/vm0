@@ -1,4 +1,10 @@
 import {
+  MARKETING_PRIVACY_RECEIPT_KEY,
+  IMPACT_PRIVACY_RECEIPT_KEY,
+  type PrivacyCaptureContext,
+} from "@okouai/api-contracts/contracts/marketing-privacy";
+import { captureMarketingPrivacy$ } from "../services/marketing-privacy.service";
+import {
   legacyGoogleAdsAttribution,
   normalizeGoogleAdsAttribution,
 } from "@okouai/core/google-ads-attribution";
@@ -85,6 +91,81 @@ const googleAdsMilestonesInner$ = command(
   },
 );
 
+const recordSignupImpact$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly impactAttribution: unknown;
+      readonly privacyContext?: PrivacyCaptureContext;
+      readonly privateMetadata: Record<string, unknown>;
+    },
+    signal: AbortSignal,
+  ) => {
+    const auth = get(authContext$);
+    const clerk = get(clerk$);
+    const privateMetadata = { ...args.privateMetadata };
+    const impact = parseImpactAttribution(
+      args.impactAttribution,
+      nowDate().getTime(),
+    );
+    const previousImpact = parseImpactAttribution(
+      privateMetadata[IMPACT_ATTRIBUTION_METADATA_KEY],
+      nowDate().getTime(),
+    );
+    if (
+      impact &&
+      (!previousImpact || impact.capturedAt > previousImpact.capturedAt)
+    ) {
+      const impactReceipt =
+        args.privacyContext &&
+        new Date(impact.capturedAt) >= new Date(args.privacyContext.capturedAt)
+          ? await set(
+              captureMarketingPrivacy$,
+              {
+                userId: auth.userId,
+                context: args.privacyContext,
+              },
+              signal,
+            )
+          : null;
+      signal.throwIfAborted();
+      await clerk.users.updateUserMetadata(auth.userId, {
+        privateMetadata: {
+          [IMPACT_ATTRIBUTION_METADATA_KEY]: impact,
+          ...(impactReceipt || privateMetadata[IMPACT_PRIVACY_RECEIPT_KEY]
+            ? { [IMPACT_PRIVACY_RECEIPT_KEY]: impactReceipt }
+            : {}),
+        },
+      });
+      signal.throwIfAborted();
+      privateMetadata[IMPACT_ATTRIBUTION_METADATA_KEY] = impact;
+      privateMetadata[IMPACT_PRIVACY_RECEIPT_KEY] = impactReceipt;
+    }
+    const currentImpact = parseImpactAttribution(
+      privateMetadata[IMPACT_ATTRIBUTION_METADATA_KEY],
+      nowDate().getTime(),
+    );
+    if (impact && currentImpact) {
+      await set(
+        syncImpactStripeCustomer$,
+        {
+          impact_click_id: currentImpact.clickId,
+          impact_click_at: currentImpact.capturedAt,
+          ...(typeof privateMetadata[IMPACT_PRIVACY_RECEIPT_KEY] === "string"
+            ? {
+                impact_privacy_receipt:
+                  privateMetadata[IMPACT_PRIVACY_RECEIPT_KEY],
+                impact_privacy_user_id: auth.userId,
+              }
+            : {}),
+        },
+        signal,
+      );
+    }
+    return privateMetadata;
+  },
+);
+
 const recordSignupInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(authContext$);
@@ -111,44 +192,22 @@ const recordSignupInner$ = command(
     const privateMetadata = isRecord(user.privateMetadata)
       ? user.privateMetadata
       : {};
-    const impact = parseImpactAttribution(
-      bodyResult.data.impactAttribution,
-      nowDate().getTime(),
+    const enrichedMetadata = await set(
+      recordSignupImpact$,
+      {
+        impactAttribution: bodyResult.data.impactAttribution,
+        privacyContext: bodyResult.data.privacyContext,
+        privateMetadata,
+      },
+      signal,
     );
-    const previousImpact = parseImpactAttribution(
-      privateMetadata[IMPACT_ATTRIBUTION_METADATA_KEY],
-      nowDate().getTime(),
-    );
-    if (
-      impact &&
-      (!previousImpact || impact.capturedAt > previousImpact.capturedAt)
-    ) {
-      await clerk.users.updateUserMetadata(auth.userId, {
-        privateMetadata: { [IMPACT_ATTRIBUTION_METADATA_KEY]: impact },
-      });
-      signal.throwIfAborted();
-      privateMetadata[IMPACT_ATTRIBUTION_METADATA_KEY] = impact;
-    }
-    const currentImpact = parseImpactAttribution(
-      privateMetadata[IMPACT_ATTRIBUTION_METADATA_KEY],
-      nowDate().getTime(),
-    );
-    if (impact && currentImpact) {
-      await set(
-        syncImpactStripeCustomer$,
-        {
-          impact_click_id: currentImpact.clickId,
-          impact_click_at: currentImpact.capturedAt,
-        },
-        signal,
-      );
-    }
+    signal.throwIfAborted();
     const existingAttribution = parseStoredSignupAttribution(
-      privateMetadata[SIGNUP_ATTRIBUTION_KEY],
+      enrichedMetadata[SIGNUP_ATTRIBUTION_KEY],
     );
     if (
       Object.prototype.hasOwnProperty.call(
-        privateMetadata,
+        enrichedMetadata,
         SIGNUP_ATTRIBUTION_KEY,
       )
     ) {
@@ -181,9 +240,18 @@ const recordSignupInner$ = command(
         body: { recorded: false, googleAdsAccountId: null },
       };
     }
+    const privacyReceipt = await set(
+      captureMarketingPrivacy$,
+      { userId: auth.userId, context: bodyResult.data.privacyContext },
+      signal,
+    );
+    signal.throwIfAborted();
     await clerk.users.updateUserMetadata(auth.userId, {
       privateMetadata: {
-        ...privateMetadata,
+        ...enrichedMetadata,
+        ...(privacyReceipt
+          ? { [MARKETING_PRIVACY_RECEIPT_KEY]: privacyReceipt }
+          : {}),
         [SIGNUP_ATTRIBUTION_KEY]: {
           ...legacyGoogleAdsAttribution(attribution),
           recorded_at: nowDate().toISOString(),
@@ -204,6 +272,7 @@ const recordSignupInner$ = command(
       status: 200 as const,
       body: {
         recorded: true,
+        ...(bodyResult.data.privacyContext ? { privacyReceipt } : {}),
         googleAdsAccountId: googleAdsAccountForAttribution(attribution),
       },
     };

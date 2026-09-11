@@ -2,9 +2,9 @@
 
 The canonical API stores anonymous and personal privacy choices separately from
 signup attribution. An advertising identifier, existing account, Stripe metadata,
-or old frontend payload never establishes consent. This is the state/API
-foundation for [#33275](https://github.com/vm0-ai/vm0/issues/33275); marketing
-clients and delivery guards must be connected before the new choice is launched.
+or old frontend payload never establishes consent. The state/API and delivery-receipt
+contracts support [#33275](https://github.com/vm0-ai/vm0/issues/33275). Deploy the
+canonical API and companion delivery guards before launching the browser choice.
 
 ## API contract
 
@@ -123,3 +123,92 @@ or proof of consent behavior. Direct Termly resource inspection was unavailable
 in this runtime. Retain published CMP configuration, screenshots, sanitized
 network evidence, and server suppression receipts during final deployment
 verification; the source inventory alone does not certify compliance.
+
+## Server delivery receipts (Task 5)
+
+The API now issues a separate marketing capture receipt. The anonymous privacy
+bearer token is never sent to a marketing provider or stored with attribution.
+After associating the browser and reading the person's canonical state, a client
+can include this sibling field in `POST /api/attribution/signup`:
+
+```json
+{
+  "attribution": { "gclid": "newly-collected-click" },
+  "privacyContext": {
+    "subjectId": "<personal subject UUID>",
+    "revision": "<current revision UUID>",
+    "capturedAt": "<ISO time the permitted attribution was captured>"
+  }
+}
+```
+
+The authenticated person must own the subject; the revision must still be current
+and the observation cannot precede that choice or be in the future. Capture and
+choice reads are serialized on the subject row. The API stores its own capture
+time, the revision, policy, and the permitted purposes in
+`marketing_privacy_receipts`. The returned `privacyReceipt` is an opaque reference,
+not a bearer credential or an assertion that any arbitrary event was permitted.
+A context with no allowed purpose receives no receipt.
+
+Only a new first-touch record can persist `marketing_privacy_receipt` alongside
+Clerk's `signup_attribution`. Existing first touches are never recertified or
+backfilled after opt-in. Impact's newer, separately timestamped last-touch record
+uses `impact_privacy_receipt`; a click captured before the supplied consent context
+cannot receive that receipt. Checkout carries the matching receipt and authenticated
+person in `marketing_privacy_user_id` or `impact_privacy_user_id`. Organization
+attribution and other members' choices cannot establish the purchaser's consent.
+
+Trusted senders call `POST /api/internal/marketing/privacy/authorize` with a
+`receiptId`, actual `userId`, ISO `eventTime`, and `purpose` (`advertising` or
+`marketingAnalytics`). The endpoint requires a separate service bearer secret and
+returns uncached `{ "allowed": true, "reason": null }` only if all evidence is
+valid. It reads the primary database on every attempt. Capture must precede the
+event, and the event must not be in the future. Personal account deletion cascades
+to delivery receipts. Missing receipts, unsupported policy, mismatched people,
+unavailable reads, and denied purposes never authorize delivery.
+
+Each purpose has an independent epoch. Database trigger
+`marketing_privacy_withdrawal` rotates the affected epoch on denial, unknown state,
+GPC, or policy change, including writes from older API versions. A receipt retains
+its original epochs. Equality proves permission remained uninterrupted from
+capture through the event and current send; withdrawal invalidates old receipts
+permanently even after a later opt-in. Withdrawing advertising alone does not
+invalidate independently permitted marketing analytics. Sale/sharing withdrawal
+invalidates both. A newer receipt cannot certify an earlier event.
+
+The companion vm0-marketing change checks Google Data Manager advertising before
+OAuth and each ingest attempt, GA4 and marketing PostHog against marketing
+analytics immediately before capture, and Impact advertising before each sale.
+Acquisition cron/backfills and Stripe events use the same guarded senders. Consent
+results are never cached in Clerk, Stripe, the masked database, or the retry loop.
+Delivery records retain sanitized privacy reasons and the original receipt.
+Existing Impact payout corrections may reverse an already submitted sale after
+withdrawal; a suppressed sale is not created just to reverse it. These corrections
+contain existing order references and amounts, with no new click/customer payload.
+
+### Deployment order and configuration
+
+1. Apply generated migration `1109_marketing_privacy_receipts` and custom migration
+   `1110_invalidate_marketing_privacy_epochs` before deploying the API. The trigger
+   protects receipts even if a preference write reaches an older API instance.
+2. Configure a dedicated random `MARKETING_PRIVACY_API_SECRET` of at least 32
+   characters on the canonical API. Keep production and staging secrets separate.
+3. Deploy the companion marketing guards with the matching service secret and an
+   explicit `MARKETING_PRIVACY_API_ORIGIN`: `https://api.vm0.ai` in production and
+   `https://staging-api.vm6.ai` in staging. Its workflow maps GitHub secrets
+   `MARKETING_PRIVACY_API_SECRET_PRODUCTION` and
+   `MARKETING_PRIVACY_API_SECRET_STAGING` to the corresponding Worker binding.
+   Protected staging also uses the existing backend bypass secret.
+4. Verify allowed and suppressed delivery against the deployed pair before
+   publishing the browser/CMP choice. No live secrets or CMP settings are changed
+   by these PRs.
+
+Missing configuration, an old API without the endpoint, or a disabled
+`PrivacyChoices` switch suppresses optional delivery. Older clients remain
+accepted but provide no receipt; attribution without verified context is not sent.
+Even valid new capture cannot authorize events that predate the server receipt
+(for example, account creation before post-login attribution capture). Reduced
+reporting is intentional. Do not roll back marketing guards once relying on the
+privacy choice; API rollback remains fail closed only while guarded senders stay
+installed. Browser storage, tag gates, Termly configuration, footer/notices, and
+deployed browser/network verification remain separate tasks of #33275.
