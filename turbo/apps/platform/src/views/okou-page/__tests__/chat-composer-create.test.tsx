@@ -566,15 +566,16 @@ test("Multiple templates keep a generic toolbar label and all references survive
       }
     },
   });
-  const editor = await setupComposer();
+  await setupComposer();
   const user = userEvent.setup({ delay: null });
   const [first, second] = PRESENTATION_TEMPLATE_PICKER_ITEMS;
   if (!first || !second) {
     throw new Error("Expected two presentation templates");
   }
-  await selectTemplate(user, first);
-  await selectTemplate(user, second);
-  await user.click(editor);
+  await selectTemplate(first);
+  await selectTemplate(second);
+  // Page bootstrap can remount the editor while the template dialogs are open.
+  await user.click(await findComposerEditor());
   await user.paste(" /create presentation");
   const menu = await screen.findByTestId("slash-workflow-menu");
   click(button("Create presentation", menu));
@@ -605,7 +606,7 @@ test("Presentation adds another template when the draft already has one", async 
   if (!first || !second) {
     throw new Error("Expected two presentation templates");
   }
-  await selectTemplate(user, first);
+  await selectTemplate(first);
   await user.click(editor);
   await user.paste(" /create presentation");
   const menu = await screen.findByTestId("slash-workflow-menu");
@@ -671,7 +672,7 @@ test("Canceling and switching Create preserve slash text and template references
   if (!template) {
     throw new Error("Expected a presentation template");
   }
-  await selectTemplate(user, template);
+  await selectTemplate(template);
   await user.click(editor);
   await user.paste("Our launch /create");
   const menu = await screen.findByTestId("slash-workflow-menu");

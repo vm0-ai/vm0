@@ -2352,80 +2352,83 @@ test("Recognize and pin sidebar conversation states", async () => {
   expect(menuItemByText("Delete chat")).toBeInTheDocument();
 });
 
-test("Refresh agent and thread unread indicators", async () => {
-  mockMobileLayout();
-  prepareAgents();
-  mockSidebarThreadStory([
-    createThread(EXISTING_THREAD_ID, "Remote unread conversation"),
-  ]);
-  let hasUnread = false;
-  let unreadIndicatorsLoaded = false;
-  const unreadCatchUpReturned = context.mocks.deferred<void>();
-  context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
-    unreadIndicatorsLoaded = hasUnread;
-    return respond(200, {
-      agents: hasUnread ? { [AGENT_ID]: "unread" } : {},
-      threads: hasUnread ? { [EXISTING_THREAD_ID]: "unread" } : {},
+test.each(["agent", "thread"] as const)(
+  "Refresh the %s unread indicator",
+  async (indicator) => {
+    mockMobileLayout();
+    prepareAgents();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Remote unread conversation"),
+    ]);
+    let hasUnread = false;
+    let unreadIndicatorsLoaded = false;
+    const unreadCatchUpReturned = context.mocks.deferred<void>();
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      unreadIndicatorsLoaded = hasUnread;
+      return respond(200, {
+        agents: hasUnread ? { [AGENT_ID]: "unread" } : {},
+        threads: hasUnread ? { [EXISTING_THREAD_ID]: "unread" } : {},
+      });
     });
-  });
-  context.mocks.api(chatThreadEventsContract.catchUp, ({ body, respond }) => {
-    const response = respond(200, {
-      events: Object.fromEntries(
-        body.map(([threadId]) => {
-          return [threadId, []];
-        }),
-      ),
-      notFoundThreads: [],
+    context.mocks.api(chatThreadEventsContract.catchUp, ({ body, respond }) => {
+      const response = respond(200, {
+        events: Object.fromEntries(
+          body.map(([threadId]) => {
+            return [threadId, []];
+          }),
+        ),
+        notFoundThreads: [],
+      });
+      if (unreadIndicatorsLoaded && !unreadCatchUpReturned.settled()) {
+        unreadCatchUpReturned.resolve(undefined);
+      }
+      return response;
     });
-    if (unreadIndicatorsLoaded && !unreadCatchUpReturned.settled()) {
-      unreadCatchUpReturned.resolve(undefined);
-    }
-    return response;
-  });
-  context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
-    return respond(200, {
-      unreads: hasUnread
-        ? [
-            {
-              threadId: EXISTING_THREAD_ID,
-              unreadAt: "2026-03-10T00:05:00Z",
-            },
-          ]
-        : [],
+    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+      return respond(200, {
+        unreads: hasUnread
+          ? [
+              {
+                threadId: EXISTING_THREAD_ID,
+                unreadAt: "2026-03-10T00:05:00Z",
+              },
+            ]
+          : [],
+      });
     });
-  });
 
-  await setupSidebarPage({
-    context,
-    path: `/agents/${AGENT_ID}/chat`,
-    sharedWorkerTestTransport: "message-port",
-  });
+    await setupSidebarPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      sharedWorkerTestTransport: "message-port",
+    });
 
-  const nav = await waitFor(() => {
-    const current = mobileSidebar();
-    expect(within(current).getByText("Nova")).toBeInTheDocument();
-    return current;
-  });
-  const agentRow = agentRowByName(nav, "Nova");
-  const threadRow = await waitFor(() => {
-    return threadRowByTitle("Remote unread conversation", nav);
-  });
-  await waitFor(() => {
-    expect(within(agentRow).queryByLabelText("Unread")).toBeNull();
-    expect(within(threadRow).queryByLabelText("Unread")).toBeNull();
-  });
+    const nav = await waitFor(() => {
+      const current = mobileSidebar();
+      expect(within(current).getByText("Nova")).toBeInTheDocument();
+      return current;
+    });
+    const row =
+      indicator === "agent"
+        ? agentRowByName(nav, "Nova")
+        : await waitFor(() => {
+            return threadRowByTitle("Remote unread conversation", nav);
+          });
+    await waitFor(() => {
+      expect(within(row).queryByLabelText("Unread")).toBeNull();
+    });
 
-  hasUnread = true;
-  changeChatThreadList();
+    hasUnread = true;
+    changeChatThreadList();
 
-  // Indicator delivery follows the throttled batch, which may start after a
-  // trailing bootstrap request. Observe that response before checking the UI.
-  await unreadCatchUpReturned.promise;
-  await waitFor(() => {
-    expect(within(agentRow).getByLabelText("Unread")).toBeInTheDocument();
-    expect(within(threadRow).getByLabelText("Unread")).toBeInTheDocument();
-  });
-});
+    // Indicator delivery follows the throttled batch, which may start after a
+    // trailing bootstrap request. Observe that response before checking the UI.
+    await unreadCatchUpReturned.promise;
+    await waitFor(() => {
+      expect(within(row).getByLabelText("Unread")).toBeInTheDocument();
+    });
+  },
+);
 
 test("Rename a conversation from the sidebar", async () => {
   prepareDefaultAgent();
