@@ -439,7 +439,6 @@ describe("Pi memory Phase 2 filesystem", () => {
 
   it.each([
     ["summary_header", "V1\nPRIVATE_SUMMARY_SENTINEL"],
-    ["summary_tokens", `v1\n${" token".repeat(2605)}`],
     ["summary_bytes", `v1\n${" ".repeat(PI_MEMORY_SUMMARY_MAX_BYTES - 2)}`],
   ])(
     "classifies %s without exposing generated content",
@@ -457,14 +456,6 @@ describe("Pi memory Phase 2 filesystem", () => {
             fileClass: "summary",
           },
         });
-        if (reason === "summary_tokens") {
-          expect(Buffer.byteLength(content)).toBeLessThan(
-            PI_MEMORY_SUMMARY_MAX_BYTES,
-          );
-          expect(error).toMatchObject({
-            diagnostic: { actual: encode(content).length, limit: 2500 },
-          });
-        }
         if (reason === "summary_bytes")
           expect(error).toMatchObject({
             diagnostic: { actual: 65537, limit: 65536 },
@@ -474,16 +465,51 @@ describe("Pi memory Phase 2 filesystem", () => {
     },
   );
 
-  it("keeps inclusive summary token and byte boundaries", async () => {
+  it("keeps the inclusive summary byte boundary", async () => {
     const workspace = await freshWorkspace(VALID_BASE);
-    const tokenBoundary = `v1\n${" token".repeat(2497)}`;
-    expect(encode(tokenBoundary).length).toBe(2500);
-    for (const content of [tokenBoundary, `v1\n${" ".repeat(65533)}`]) {
-      await put(workspace, "memory_summary.md", content);
-      await expect(
-        validatePiMemoryPhase2Output(workspace, "storage-phase2"),
-      ).resolves.toBeDefined();
-    }
+    await put(workspace, "memory_summary.md", `v1\n${" ".repeat(65533)}`);
+    await expect(
+      validatePiMemoryPhase2Output(workspace, "storage-phase2"),
+    ).resolves.toBeDefined();
+  });
+
+  it("publishes a summary above the prompt injection budget in full", async () => {
+    const workspace = await freshWorkspace(VALID_BASE);
+    // The production failures reported exactly 2943 source tokens; the prompt
+    // budget belongs to the injected excerpt, not to the stored artifact.
+    const summary = `v1\n${" token".repeat(2940)}`;
+    expect(encode(summary).length).toBe(2943);
+    expect(Buffer.byteLength(summary)).toBeLessThanOrEqual(
+      PI_MEMORY_SUMMARY_MAX_BYTES,
+    );
+    await put(workspace, "memory_summary.md", summary);
+    await put(workspace, "MEMORY.md", "# Task Group: larger consolidation\n");
+    const baseFiles = await snapshotMountedPiMemoryPhase2Base(
+      workspace.memoryRoot,
+    );
+
+    const prepared = await validatePiMemoryPhase2Output(
+      workspace,
+      "storage-phase2",
+    );
+    const published = prepared.files.find((file) => {
+      return file.path === "memory_summary.md";
+    });
+    expect(published?.size).toBe(Buffer.byteLength(summary));
+    expect(published?.bytes).toEqual(Buffer.from(summary, "utf8"));
+
+    await applyValidatedPiMemoryPhase2Result({
+      memoryRoot: workspace.memoryRoot,
+      memoryStorageId: "storage-phase2",
+      baseFiles,
+      ...prepared,
+    });
+    expect(
+      await readFile(join(workspace.memoryRoot, "memory_summary.md"), "utf8"),
+    ).toBe(summary);
+    expect(
+      await readFile(join(workspace.memoryRoot, "MEMORY.md"), "utf8"),
+    ).toBe("# Task Group: larger consolidation\n");
   });
 
   it("pins every frozen size and count boundary", () => {
@@ -876,13 +902,6 @@ describe("Pi memory Phase 2 filesystem", () => {
           "memory_summary.md",
           `v1\n${"s".repeat(PI_MEMORY_SUMMARY_MAX_BYTES)}`,
         );
-      },
-      async (workspace) => {
-        const tooManyTokens = `v1\n${" token".repeat(PI_MEMORY_SUMMARY_MAX_TOKENS + 100)}`;
-        expect(encode(tooManyTokens).length).toBeGreaterThan(
-          PI_MEMORY_SUMMARY_MAX_TOKENS,
-        );
-        await put(workspace, "memory_summary.md", tooManyTokens);
       },
       async (workspace) => {
         await put(workspace, "skills/missing-manifest/reference.md", "x");

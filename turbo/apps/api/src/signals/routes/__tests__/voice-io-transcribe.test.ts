@@ -1311,7 +1311,10 @@ describe("POST /api/voice-io/transcribe/segment", () => {
     expect(response.body.error.code).toBe("VOICE_TRANSCRIPTION_FAILED");
   });
 
-  it("counts one free-tier recording only after finalization, including a failed final attempt", async () => {
+  it.each([
+    "unfinished segments",
+    "a failed final attempt followed by a successful retry",
+  ])("counts free-tier recordings correctly for %s", async (phase) => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     const actor = await enabledActor();
     if (!actor.orgId) {
@@ -1362,24 +1365,30 @@ describe("POST /api/voice-io/transcribe/segment", () => {
         });
       }),
     );
-    await accept(
-      client().segment({
-        headers,
-        body: segmentForm([audioFile(1, 60)], "", false, 60),
-      }),
-      [200],
-    );
-    await accept(
-      client().segment({
-        headers,
-        body: segmentForm([audioFile(2, 60)], "First part.", false, 120),
-      }),
-      [200],
-    );
-    await expect(readQuota()).resolves.toMatchObject({
-      allowed: true,
-      count: 0,
-    });
+    if (phase === "unfinished segments") {
+      await accept(
+        client().segment({
+          headers,
+          body: segmentForm([audioFile(1, 60)], "", false, 60),
+        }),
+        [200],
+      );
+      await accept(
+        client().segment({
+          headers,
+          body: segmentForm([audioFile(2, 60)], "First part.", false, 120),
+        }),
+        [200],
+      );
+      await expect(readQuota()).resolves.toMatchObject({
+        allowed: true,
+        count: 0,
+      });
+      return;
+    }
+
+    // Finalization receives the accumulated transcript from the client; it
+    // does not depend on server-owned state from the earlier segment requests.
     await accept(
       client().segment({
         headers,

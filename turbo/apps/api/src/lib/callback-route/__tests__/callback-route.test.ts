@@ -37,6 +37,8 @@ interface SignedHeaderOptions {
   readonly skipSignature?: boolean;
   readonly skipTimestamp?: boolean;
   readonly staleTimestamp?: boolean;
+  /** Sign under the pre-rename header names a draining sender still emits. */
+  readonly legacyHeaderNames?: boolean;
 }
 
 interface SeedCallbackOptions {
@@ -53,16 +55,38 @@ function signedHeaders(
   const ts = options.staleTimestamp
     ? Math.floor(now() / 1000) - 1000
     : Math.floor(now() / 1000);
+  const signatureHeader = options.legacyHeaderNames
+    ? "X-VM0-Signature"
+    : "X-Okou-Signature";
+  const timestampHeader = options.legacyHeaderNames
+    ? "X-VM0-Timestamp"
+    : "X-Okou-Timestamp";
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
   if (!options.skipSignature) {
-    headers["X-VM0-Signature"] = computeHmacSignature(rawBody, secret, ts);
+    headers[signatureHeader] = computeHmacSignature(rawBody, secret, ts);
   }
   if (!options.skipTimestamp) {
-    headers["X-VM0-Timestamp"] = String(ts);
+    headers[timestampHeader] = String(ts);
   }
   return headers;
+}
+
+function legacySignatureHeaderSurfaces(): unknown[] {
+  return context.mocks.axiomLogging.warn.mock.calls.flatMap((call) => {
+    const fields = call[1];
+    if (
+      typeof fields !== "object" ||
+      fields === null ||
+      !("type" in fields) ||
+      fields.type !== "legacy_signature_header_use" ||
+      !("surface" in fields)
+    ) {
+      return [];
+    }
+    return [fields.surface];
+  });
 }
 
 async function seedCallback(options: SeedCallbackOptions = {}): Promise<{
@@ -258,7 +282,7 @@ describe("callbackRoute$ primitive", () => {
     });
   });
 
-  it("returns 401 on missing X-VM0-Signature header", async () => {
+  it("returns 401 on missing X-Okou-Signature header", async () => {
     const { runId } = await seedCallback();
     const app = createAppWithRoutes({
       signal: context.signal,
@@ -276,11 +300,11 @@ describe("callbackRoute$ primitive", () => {
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toStrictEqual({
-      error: "Missing X-VM0-Signature header",
+      error: "Missing X-Okou-Signature header",
     });
   });
 
-  it("returns 401 on missing X-VM0-Timestamp header", async () => {
+  it("returns 401 on missing X-Okou-Timestamp header", async () => {
     const { runId } = await seedCallback();
     const app = createAppWithRoutes({
       signal: context.signal,
@@ -298,7 +322,7 @@ describe("callbackRoute$ primitive", () => {
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toStrictEqual({
-      error: "Missing X-VM0-Timestamp header",
+      error: "Missing X-Okou-Timestamp header",
     });
   });
 
@@ -345,5 +369,32 @@ describe("callbackRoute$ primitive", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toStrictEqual({ ok: true, runId });
+    expect(legacySignatureHeaderSurfaces()).toStrictEqual([]);
+  });
+
+  it("accepts a callback signed under the legacy header names", async () => {
+    const { runId, callbackId } = await seedCallback();
+    const app = createAppWithRoutes({
+      signal: context.signal,
+      routes: [probeRoute],
+    });
+    const rawBody = JSON.stringify({
+      callbackId,
+      runId,
+      status: "completed",
+      payload: { hello: "world" },
+    });
+
+    const response = await app.request(PATH, {
+      method: "POST",
+      headers: signedHeaders(rawBody, TEST_CALLBACK_SECRET, {
+        legacyHeaderNames: true,
+      }),
+      body: rawBody,
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ ok: true, runId });
+    expect(legacySignatureHeaderSurfaces()).toStrictEqual(["callback-route"]);
   });
 });

@@ -2,16 +2,12 @@ import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { dirname, isAbsolute, join, posix } from "node:path";
 
-import {
-  PI_MEMORY_SUMMARY_MAX_BYTES,
-  PI_MEMORY_SUMMARY_MAX_TOKENS,
-} from "@okouai/api-contracts/contracts/runners";
+import { PI_MEMORY_SUMMARY_MAX_BYTES } from "@okouai/api-contracts/contracts/runners";
 import {
   MAX_FILE_SIZE_BYTES,
   STORAGE_MANIFEST_MAX_FILES,
   STORAGE_MANIFEST_MAX_PATH_BYTES,
 } from "@okouai/api-contracts/contracts/storages";
-import { encode } from "gpt-tokenizer/encoding/o200k_base";
 import { parse as parseYaml } from "yaml";
 
 import { piMemoryPhase2SelectionDigest } from "./phase2-memory-selection";
@@ -678,14 +674,9 @@ function summaryFailure(content: Buffer) {
       limit: PI_MEMORY_SUMMARY_MAX_BYTES,
     });
   }
-  const tokens = encode(decoded).length;
-  if (tokens > PI_MEMORY_SUMMARY_MAX_TOKENS) {
-    return new Phase2OutputInvalidError("summary_tokens", {
-      ...details,
-      actual: tokens,
-      limit: PI_MEMORY_SUMMARY_MAX_TOKENS,
-    });
-  }
+  // The exact o200k budget belongs to the summary excerpt injected into a
+  // prompt, not to the stored source. A valid source within the byte ceiling
+  // publishes in full and the shared recall renderer bounds what is injected.
   return undefined;
 }
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.48.35](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.34...desktop-v0.48.35) (2026-09-11)
+
+
+### Refactoring
+
+* **desktop:** retire cua and keep the okou driver ([#33505](https://github.com/vm0-ai/vm0/issues/33505)) ([eda8d63](https://github.com/vm0-ai/vm0/commit/eda8d63859204120e1611896192f6c7891c9b644))
+
 ## [0.48.34](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.33...desktop-v0.48.34) (2026-09-11)
 
 

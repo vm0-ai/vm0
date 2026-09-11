@@ -6,6 +6,10 @@ import {
   createAgentSessionFromServices,
   createAgentSessionServices,
   createBashTool,
+  createBashToolDefinition,
+  createEditToolDefinition,
+  createReadToolDefinition,
+  createWriteToolDefinition,
   ModelRuntime,
   SettingsManager,
   type CreateAgentSessionFromServicesOptions,
@@ -25,10 +29,14 @@ import {
 import { createPiMemoryTools } from "./memory-tools-node";
 import { resolvePiAgentModel } from "./model";
 import {
+  buildOkouHarnessSystemPrompt,
+  type OkouHarnessToolPrompt,
+} from "./okou-harness-prompt";
+import { piPreheatedResourceLoaderOptions } from "./resources";
+import {
   initializePiSessionResourceRegistry,
   registeredModelConfig,
 } from "./session-model";
-import { piPreheatedResourceLoaderOptions } from "./resources";
 import type { PiAgentModelConfig } from "./types";
 
 const PI_INTERMEDIATE_COMMENTARY_PROMPT = `## Intermediate commentary
@@ -38,6 +46,37 @@ As you work, provide brief intermediate text messages to the user. These message
 If the user's request requires calling tools, start with a brief intermediate message before the first tool call. During longer work, provide additional updates at meaningful points.
 
 Do not put a final response, such as a blocking or clarifying question, in an intermediate message. Intermediate messages are only for partial updates, partial results, or non-blocking context that can provide value while you continue working. An intermediate update does not end the task; continue working when more work remains. The final answer must always be fully self-contained.`;
+
+/**
+ * Shell options for the loop's Bash tool.
+ *
+ * `exposeSessionEnvironment` stays off so the child shell inherits no `PI_*`
+ * session variables and the tool contributes no guideline pointing at them.
+ * The guest injects its own run identifiers separately.
+ */
+const PI_BASH_TOOL_OPTIONS = {
+  shellPath: "/usr/local/bin/guest-tool-exec",
+  exposeSessionEnvironment: false,
+} as const;
+
+/**
+ * Tools the official session activates by default. Custom tools stay out of
+ * the base prompt's tool sections because they carry no prompt snippet.
+ */
+function okouHarnessToolPrompts(cwd: string): OkouHarnessToolPrompt[] {
+  return [
+    createReadToolDefinition(cwd),
+    createBashToolDefinition(cwd, PI_BASH_TOOL_OPTIONS),
+    createEditToolDefinition(cwd),
+    createWriteToolDefinition(cwd),
+  ].map((definition) => {
+    return {
+      name: definition.name,
+      snippet: definition.promptSnippet,
+      guidelines: definition.promptGuidelines,
+    };
+  });
+}
 
 function configuredThinkingLevel(
   sessionManager: SessionManager,
@@ -109,14 +148,18 @@ export async function createPiAgentSessionForRuntime(args: {
     ...(args.appendSystemPrompt === null ? [] : [args.appendSystemPrompt]),
     ...(memoryRecall.block === null ? [] : [memoryRecall.block]),
   ];
+  const systemPrompt = buildOkouHarnessSystemPrompt(
+    okouHarnessToolPrompts(args.cwd),
+  );
   const sandboxResourceLoaderOptions =
     args.appendSystemPrompt === null && memoryRecall.block === null
       ? {
+          systemPrompt,
           appendSystemPromptOverride(base: string[]) {
             return [PI_INTERMEDIATE_COMMENTARY_PROMPT, ...base];
           },
         }
-      : { appendSystemPrompt };
+      : { systemPrompt, appendSystemPrompt };
   const model = resolvePiAgentModel(args.model);
   if (!model) {
     throw new Error(
@@ -155,6 +198,7 @@ export async function createPiAgentSessionForRuntime(args: {
       ? piPreheatedResourceLoaderOptions({
           snapshot: args.resourceSnapshot,
           appendSystemPrompt,
+          systemPrompt,
         })
       : sandboxResourceLoaderOptions,
   });
@@ -168,9 +212,7 @@ export async function createPiAgentSessionForRuntime(args: {
       args.model.thinkingLevel,
     ),
     customTools: [
-      createBashTool(args.cwd, {
-        shellPath: "/usr/local/bin/guest-tool-exec",
-      }),
+      createBashTool(args.cwd, PI_BASH_TOOL_OPTIONS),
       ...memoryTools,
     ],
   });
