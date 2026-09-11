@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.190.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.190.1...runner-rs-v0.190.2) (2026-09-11)
+
+
+### Bug Fixes
+
+* **runner:** preserve connector diagnostic base specificity ([#33394](https://github.com/vm0-ai/vm0/issues/33394)) ([5074692](https://github.com/vm0-ai/vm0/commit/5074692946531bc240499a7c5f908c1de0607ade))
+
 ## [0.190.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.190.0...runner-rs-v0.190.1) (2026-09-10)
 
 ## [0.190.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.189.7...runner-rs-v0.190.0) (2026-09-10)
