@@ -26,6 +26,10 @@ const SCHEMA = {
   OFFICIAL_RUNNER_SECRET: z.string().length(64),
   OPENAI_API_KEY: z.string().min(1),
   FAL_KEY: z.string().min(1).optional(),
+  // Validated together at the Google LLM operation boundary.
+  GCP_LLM_PROJECT_ID: z.string().optional(),
+  GCP_LLM_WORKLOAD_IDENTITY_PROVIDER: z.string().optional(),
+  GCP_LLM_SERVICE_ACCOUNT_EMAIL: z.string().optional(),
   JOGGAI_API_KEY: z.string().min(1).optional(),
   JOGGAI_WEBHOOK_SECRET: z.string().min(1).optional(),
   HEYGEN_API_KEY: z.string().min(1).optional(),

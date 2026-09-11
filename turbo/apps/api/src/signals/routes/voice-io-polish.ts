@@ -13,19 +13,16 @@ import { polishVoiceTranscript$ } from "../services/voice-io-polish.service";
 
 const voiceIoPolishBody$ = bodyResultOf(voiceIoPolishContract.post);
 
-const voiceIoPolishEnabled$ = computed(async (get) => {
+const voiceIoPolishFeatureContext$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
-  const context = await loadUserFeatureSwitchContext(
-    get(db$),
-    auth.orgId,
-    auth.userId,
-  );
-  return isFeatureEnabled(FeatureSwitchKey.VoiceInputV2, context);
+  return await loadUserFeatureSwitchContext(get(db$), auth.orgId, auth.userId);
 });
 
 const postVoiceIoPolish$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (!(await get(voiceIoPolishEnabled$))) {
+    const featureContext = await get(voiceIoPolishFeatureContext$);
+    signal.throwIfAborted();
+    if (!isFeatureEnabled(FeatureSwitchKey.VoiceInputV2, featureContext)) {
       return {
         status: 403 as const,
         body: {
@@ -42,7 +39,12 @@ const postVoiceIoPolish$ = command(
     if (!bodyResult.ok) {
       return bodyResult.response;
     }
-    return await set(polishVoiceTranscript$, bodyResult.data, signal);
+    return await set(
+      polishVoiceTranscript$,
+      bodyResult.data,
+      isFeatureEnabled(FeatureSwitchKey.VoiceGoogleCloud, featureContext),
+      signal,
+    );
   },
 );
 
