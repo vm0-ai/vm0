@@ -1623,13 +1623,6 @@ details > summary {
   overflow: hidden;
 }
 
-.owf-diagram-okou-icon img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
 .owf-diagram-node-source {
   top: 34px;
   left: 94px;

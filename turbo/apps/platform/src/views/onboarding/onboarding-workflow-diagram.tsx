@@ -363,7 +363,13 @@ export function WorkflowPreviewDiagram({
           iconClassName="owf-diagram-avatar"
         >
           <span className="owf-diagram-okou-icon" aria-hidden="true">
-            <img src={OKOU_AVATAR_IMG} alt="" aria-hidden />
+            <img
+              data-slot="onboarding-okou-avatar"
+              className="block size-full object-contain"
+              src={OKOU_AVATAR_IMG}
+              alt=""
+              aria-hidden
+            />
           </span>
         </WorkflowDiagramNode>
         {diagram.destinationConnectorSlug ? (

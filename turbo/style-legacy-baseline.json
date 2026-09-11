@@ -2745,62 +2745,6 @@
       },
       {
         "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "position",
-        "value": "absolute",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "top",
-        "value": "-9.73px",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "left",
-        "value": "-6.4px",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "display",
-        "value": "block",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "width",
-        "value": "76.8px",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "height",
-        "value": "76.8px",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "max-width",
-        "value": "none",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "object-fit",
-        "value": "fill",
-        "important": false
-      },
-      {
-        "atRules": [],
         "selector": ".owf-diagram-node-source",
         "property": "top",
         "value": "34px",
@@ -3933,7 +3877,6 @@
     "apps/platform/src/views/okou-page/settings-tab.tsx": {
       "okou-chat-bubble-assistant": 1
     },
-    "apps/platform/src/views/okou-page/sidebar-account.tsx": {},
     "apps/platform/src/views/okou-page/sidebar-dialogs.tsx": {
       "okou-app": 2
     },
