@@ -44,6 +44,28 @@ record already embedded in a malformed line or serialize independently
 interleaved short-write sequences. The existing Runner uploader continues to
 skip malformed physical lines and upload independently parseable records.
 
+## Model-provider failure reporting shutdown
+
+Failure reports are best-effort diagnostics with four reporter-owned daemon
+workers and at most 16 admitted reports. Shutdown closes admission, cancels
+queued reports, and gives running deliveries one shared 10-second drain window.
+Unlike standard thread-pool workers, these workers are not registered for an
+interpreter-exit join. A stalled DNS lookup or network operation can therefore
+leave a report undelivered without keeping the process alive after the drain.
+
+Running calls are not forcibly interrupted: if the process remains alive, they
+retain their worker and admission slot until completion. Normal completion and
+queued cancellation keep the same callback-owned cleanup. All workers start
+before any report payload is admitted, and failed startup joins the empty
+candidate workers. Usage webhook and SigV4 workers retain their independent
+joined-shutdown contracts.
+
+`test_model_provider_failure_shutdown.py` exercises the real addon response and
+shutdown hooks in a fresh interpreter. It requires successful process exit
+while DNS remains blocked, with the production drain budget unchanged. Old
+runners retain their previous shutdown behavior until updated; no reporting
+API or persisted format changes.
+
 ## Managed credential method boundary
 
 Firewall permissions authorize the request's actual HTTP method. Requests with
