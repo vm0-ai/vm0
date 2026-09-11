@@ -36,7 +36,7 @@ function hintKeys(container: ParentNode): string[] {
     });
 }
 
-test.each([
+const NUMBER_SHORTCUT_PLATFORMS = [
   {
     platform: "Mac Chrome",
     userAgent:
@@ -76,57 +76,63 @@ test.each([
     releaseModifiers: "{/Control}",
     label: "Ctrl+",
   },
-])(
-  "Reveal the first nine thread shortcuts after holding the modifier for 500 ms on $platform",
-  async ({
-    userAgent,
-    maxTouchPoints,
-    modifier,
-    additionalModifier,
-    releaseModifiers,
-    label,
-  }) => {
-    context.mocks.browser.userAgent(userAgent);
-    context.mocks.browser.maxTouchPoints(maxTouchPoints);
-    context.mocks.browser.matchMedia((query) => {
-      return (
-        query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
-      );
+] as const;
+
+async function openNumberShortcutPage(
+  { userAgent, maxTouchPoints }: (typeof NUMBER_SHORTCUT_PLATFORMS)[number],
+  initialChat: "new" | "ninth",
+) {
+  context.mocks.browser.userAgent(userAgent);
+  context.mocks.browser.maxTouchPoints(maxTouchPoints);
+  context.mocks.browser.matchMedia((query) => {
+    return (
+      query === "(display-mode: standalone)" || query === "(min-width: 48rem)"
+    );
+  });
+  const threads = Array.from({ length: 11 }, (_, index) => {
+    return chatListThread(index + 1, `Thread ${index + 1}`, {
+      pinnedAt: index < 2 ? `2026-08-01T00:5${2 - index}:00.000Z` : null,
     });
-    const threads = Array.from({ length: 11 }, (_, index) => {
-      return chatListThread(index + 1, `Thread ${index + 1}`, {
-        pinnedAt: index < 2 ? `2026-08-01T00:5${2 - index}:00.000Z` : null,
-      });
-    });
-    const remoteChatList = context.mocks.deferred<void>();
-    const workspace = installContinuityWorkspace(context, {
-      caseId: 40,
-      threads,
-      chatListRemoteGate: remoteChatList.promise,
-    });
-    await setupPage({
-      context,
-      path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
-      ...workspace.pageOptions,
-      featureSwitches,
-    });
-    await waitFor(() => {
-      expect(sidebarThreadTitles()).toStrictEqual([
-        "Thread 1",
-        "Thread 2",
-        "Thread 11",
-        "Thread 10",
-        "Thread 9",
-        "Thread 8",
-        "Thread 7",
-        "Thread 6",
-        "Thread 5",
-        "Thread 4",
-        "Thread 3",
-      ]);
-    });
-    expect(remoteChatList.settled()).toBeFalsy();
-    const list = screen.getByTestId("chat-list-column");
+  });
+  const remoteChatList = context.mocks.deferred<void>();
+  const workspace = installContinuityWorkspace(context, {
+    caseId: 40,
+    threads,
+    chatListRemoteGate: remoteChatList.promise,
+  });
+  await setupPage({
+    context,
+    path:
+      initialChat === "ninth"
+        ? `/chats/${threads[4]!.id}`
+        : `/agents/${CHAT_LIST_AGENT_ID}/chat`,
+    ...workspace.pageOptions,
+    featureSwitches,
+  });
+  await waitFor(() => {
+    expect(sidebarThreadTitles()).toStrictEqual([
+      "Thread 1",
+      "Thread 2",
+      "Thread 11",
+      "Thread 10",
+      "Thread 9",
+      "Thread 8",
+      "Thread 7",
+      "Thread 6",
+      "Thread 5",
+      "Thread 4",
+      "Thread 3",
+    ]);
+  });
+  expect(remoteChatList.settled()).toBeFalsy();
+  return { threads, list: screen.getByTestId("chat-list-column") };
+}
+
+test.each(NUMBER_SHORTCUT_PLATFORMS)(
+  "Reveal the first nine hints after a 500 ms hold and open the ninth chat on $platform",
+  async (platform) => {
+    const { modifier, additionalModifier, releaseModifiers, label } = platform;
+    const { threads, list } = await openNumberShortcutPage(platform, "new");
     const user = userEvent.setup();
     await user.hover(sidebarThreadLinks()[0]!);
     expect(hintKeys(list)).toStrictEqual([]);
@@ -151,14 +157,24 @@ test.each([
       expect(pathname()).toBe(`/chats/${threads[4]!.id}`);
     });
     expect(hintKeys(list)).toStrictEqual([]);
+  },
+);
 
-    // A known shortcut can be used immediately, without waiting for its hint.
+test.each(NUMBER_SHORTCUT_PLATFORMS)(
+  "Open the first chat immediately from the ninth chat without waiting for hints on $platform",
+  async (platform) => {
+    const { modifier, additionalModifier, releaseModifiers } = platform;
+    const { threads, list } = await openNumberShortcutPage(platform, "ninth");
+    const user = userEvent.setup();
+    expect(pathname()).toBe(`/chats/${threads[4]!.id}`);
+    expect(hintKeys(list)).toStrictEqual([]);
     await user.keyboard(
       `{${modifier}>}${additionalModifier}1${releaseModifiers}`,
     );
     await waitFor(() => {
       expect(pathname()).toBe(`/chats/${threads[0]!.id}`);
     });
+    expect(hintKeys(list)).toStrictEqual([]);
   },
 );
 
