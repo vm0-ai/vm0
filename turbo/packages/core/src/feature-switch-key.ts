@@ -4,7 +4,6 @@
  * Defines all available feature switch identifiers.
  */
 export enum FeatureSwitchKey {
-  PrivacyChoices = "privacyChoices",
   WelcomeThread = "welcomeThread",
   ThreadActivitySummary = "threadActivitySummary",
   Dummy = "_dummy",
