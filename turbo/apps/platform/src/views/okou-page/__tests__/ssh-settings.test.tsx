@@ -129,9 +129,7 @@ test("Password credentials preserve whitespace, clear mode-switched secrets, and
     return respond(201, { ...credential, authMethod: "password", hosts: [] });
   });
   await page();
-  await userEvent.click(
-    await screen.findByRole("radio", { name: "Credentials" }),
-  );
+  click(getAction("radio", "Credentials"));
   click(
     await waitFor(() => {
       return getAction("button", "Add credential");
@@ -151,19 +149,13 @@ test("Password credentials preserve whitespace, clear mode-switched secrets, and
     file,
   );
   await within(dialog).findByText("Reading private key file…");
-  await userEvent.click(
-    within(dialog).getByRole("radio", { name: "Password" }),
-  );
+  click(getAction("radio", "Password", dialog));
   await fill(within(dialog).getByLabelText("Password"), "discarded-password");
-  await userEvent.click(
-    within(dialog).getByRole("radio", { name: "Private key" }),
-  );
+  click(getAction("radio", "Private key", dialog));
   pending.resolve("late-key-canary");
   await pending.promise;
   expect(within(dialog).getByLabelText("Private key")).toHaveValue("");
-  await userEvent.click(
-    within(dialog).getByRole("radio", { name: "Password" }),
-  );
+  click(getAction("radio", "Password", dialog));
   expect(within(dialog).getByLabelText("Password")).toHaveValue("");
   await fill(within(dialog).getByLabelText("Password"), "  password-canary  ");
   click(getAction("button", "Save", dialog));
@@ -218,7 +210,7 @@ test.each(["host", "credential"])(
         },
       );
       await page();
-      click(screen.getByText("Credentials", { selector: '[role="radio"]' }));
+      click(getAction("radio", "Credentials"));
       click(
         await waitFor(() => {
           return getAction("button", "Add credential");
@@ -238,7 +230,7 @@ test.each(["host", "credential"])(
       "Password login",
     );
     await fill(within(dialog).getByLabelText("SSH username"), "deploy");
-    click(within(dialog).getByText("Password", { selector: '[role="radio"]' }));
+    click(getAction("radio", "Password", dialog));
     await fill(
       within(dialog).getByLabelText("Password"),
       "  retry-password-canary  ",
@@ -253,9 +245,7 @@ test.each(["host", "credential"])(
     expect(within(dialog).getByLabelText("Password")).toBeDisabled();
     expect(within(dialog).getByLabelText("SSH username")).toBeDisabled();
     expect(getAction("button", "Cancel", dialog)).toBeDisabled();
-    const privateKeyChoice = within(dialog).getByText("Private key", {
-      selector: '[role="radio"]',
-    });
+    const privateKeyChoice = getAction("radio", "Private key", dialog);
     expect(privateKeyChoice).toHaveAttribute("aria-disabled", "true");
     ready.resolve();
     await waitFor(() => {
@@ -294,9 +284,7 @@ test.each(["host", "credential"])(
     expect(requests).toStrictEqual([expected, expected]);
     click(getAction("button", kind === "host" ? "Add host" : "Add credential"));
     const reopened = await screen.findByRole("dialog");
-    click(
-      within(reopened).getByText("Password", { selector: '[role="radio"]' }),
-    );
+    click(getAction("radio", "Password", reopened));
     expect(within(reopened).getByLabelText("Password")).toHaveValue("");
   },
 );
@@ -330,9 +318,7 @@ test("Shared credential editing explains its impact and conflicts do not retry o
     });
   });
   await page();
-  await userEvent.click(
-    await screen.findByRole("radio", { name: "Credentials" }),
-  );
+  click(getAction("radio", "Credentials"));
   await screen.findByText("Login changes apply to all 2 hosts:");
   expect(getAction("button", "Delete credential")).toBeDisabled();
   click(getAction("button", "Edit credential"));
@@ -368,9 +354,7 @@ test("An unused credential can be deleted with confirmation and the rendered rev
     },
   );
   await page();
-  await userEvent.click(
-    await screen.findByRole("radio", { name: "Credentials" }),
-  );
+  click(getAction("radio", "Credentials"));
   click(
     await waitFor(() => {
       return getAction("button", "Delete credential");
@@ -381,13 +365,12 @@ test("An unused credential can be deleted with confirmation and the rendered rev
     within(dialog).getByText(/Its stored secret cannot be recovered/u),
   ).toBeVisible();
   expect(getAction("button", "Delete credential", dialog)).toBeEnabled();
-  await userEvent.click(getAction("button", "Delete credential", dialog));
-  await waitFor(() => {
-    return expect(credentials).toStrictEqual([]);
-  });
+  click(getAction("button", "Delete credential", dialog));
   await screen.findByText(
     "No SSH credentials yet. Add a private key or password to reuse across hosts.",
   );
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(queryAction("button", "Delete credential")).toBeNull();
 });
 
 test("SSH recovers after first opening Connectors during a workspace refresh", async () => {
@@ -1186,9 +1169,7 @@ test("Credential replacement retains input during saving and clears secrets on c
     },
   );
   await page();
-  await userEvent.click(
-    await screen.findByRole("radio", { name: "Credentials" }),
-  );
+  click(getAction("radio", "Credentials"));
   click(
     await waitFor(() => {
       return getAction("button", "Edit credential");

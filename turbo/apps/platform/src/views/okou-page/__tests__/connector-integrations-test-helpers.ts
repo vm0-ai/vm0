@@ -20,7 +20,7 @@ import {
 import type { TestContext } from "../../../signals/__tests__/test-helpers.ts";
 
 export function queryAction(
-  role: "button" | "link",
+  role: "button" | "link" | "radio",
   name: string,
   container: ParentNode = document.body,
 ): HTMLElement | null {
@@ -35,7 +35,7 @@ export function queryAction(
 }
 
 export function getAction(
-  role: "button" | "link",
+  role: "button" | "link" | "radio",
   name: string,
   container: ParentNode = document.body,
 ): HTMLElement {
