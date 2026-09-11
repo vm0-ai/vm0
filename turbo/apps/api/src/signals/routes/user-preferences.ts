@@ -38,7 +38,7 @@ async function observeMorningBriefProvisioning(
     L.warn("Morning Brief timezone provisioning outcome", details);
     return;
   }
-  L.debug("Morning Brief timezone provisioning outcome", details);
+  L.info("Morning Brief timezone provisioning outcome", details);
 }
 
 function enqueueMorningBriefProvisioning(
@@ -167,7 +167,7 @@ const initializeUserPreferencesInner$ = command(
     if (!enrollment.ok || enrollment.value.outcome === "failed") {
       L.warn("Morning Brief initialization deferred", details);
     } else {
-      L.debug("Morning Brief initialization outcome", details);
+      L.info("Morning Brief initialization outcome", details);
     }
     await publishMorningBriefChangedSafely({
       orgId: auth.orgId,
