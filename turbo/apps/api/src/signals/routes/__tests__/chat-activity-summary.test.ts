@@ -1153,20 +1153,36 @@ describe("thread activity summary", () => {
   it("bounds the absorbed cooldown between the floor and the ceiling", async () => {
     const f = await fixture();
     const diagnostics = captureDiagnostics();
-    const headers: (Record<string, string> | undefined)[] = [
-      undefined,
-      { "Retry-After": "not-a-number" },
-      { "Retry-After": "30" },
-      { "Retry-After": "120" },
-      { "Retry-After": "600" },
-      { "Retry-After": new Date(now() + 120_000).toUTCString() },
+    // Resolved per response, because the parser reads a date header against the
+    // same process clock. Building it up front would spend the encoded delay on
+    // this test's own runtime instead of measuring the header.
+    const retryAfter: (() => string | undefined)[] = [
+      () => {
+        return undefined;
+      },
+      () => {
+        return "not-a-number";
+      },
+      () => {
+        return "30";
+      },
+      () => {
+        return "120";
+      },
+      () => {
+        return "600";
+      },
+      () => {
+        return new Date(now() + 120_000).toUTCString();
+      },
     ];
     const inputs = provider((_input, index) => {
+      const value = retryAfter[index - 1]?.();
       return HttpResponse.json(
         { error: { code: 429, message: "PRIVATE_PROVIDER_BODY" } },
         {
           status: 429,
-          ...(headers[index - 1] ? { headers: headers[index - 1] } : {}),
+          ...(value === undefined ? {} : { headers: { "Retry-After": value } }),
         },
       );
     });
