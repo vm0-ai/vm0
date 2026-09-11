@@ -96,6 +96,9 @@ export function ChatAssistantMessageBody({
       data-chat-selection-source
       className={cn(
         "okou-chat-bubble-assistant p-0 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]",
+        // Match the 24px inset of icon-row labels while keeping native markers
+        // and Markdown's indentation for nested lists.
+        "[&_[data-slot=markdown]>ul]:pl-6!",
         className,
       )}
       {...props}

@@ -17,6 +17,7 @@ export function MarkdownFrame({
 
   return (
     <div
+      data-slot="markdown"
       data-color-mode={theme}
       className={cn(
         "wmde-markdown wmde-markdown-color",
