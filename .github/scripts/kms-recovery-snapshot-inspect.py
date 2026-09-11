@@ -11,6 +11,12 @@ import subprocess
 import time
 import urllib.parse
 
+from kms_recovery_verify import (
+    RecoveryVerificationError,
+    target_session,
+    verify_database,
+)
+
 PROJECT = "hidden-lab-39609750"
 BASE = f"https://console.neon.tech/api/v2/projects/{PROJECT}"
 WORKFLOW = (
@@ -206,7 +212,7 @@ def validate_preview(branch, name, snapshot_id, existing_ids):
     return branch_id
 
 
-def inspect_database(database, endpoint, branch_id):
+def inspect_database(database, endpoint, branch_id, target_environment=None):
     name, owner = database.get("name"), database.get("owner_name")
     require(database.get("branch_id") == branch_id, "database_branch_mismatch")
     require(
@@ -238,7 +244,7 @@ def inspect_database(database, endpoint, branch_id):
         "isolated_connection_identity_mismatch",
     )
     environment = {
-        k: v for k, v in os.environ.items() if not k.startswith(("PG", "NEON_"))
+        k: v for k, v in os.environ.items() if k in {"PATH", "HOME", "LANG", "LC_ALL"}
     }
     environment.update(
         {
@@ -299,7 +305,12 @@ def inspect_database(database, endpoint, branch_id):
             require(type(value) is int and value >= 0, "invalid_scan_counter")
             item[field] = value
         safe.append(item)
-    return {"databaseNameSha256": digest(name), "readOnly": True, "records": safe}
+    scanned = {"databaseNameSha256": digest(name), "readOnly": True, "records": safe}
+    if target_environment is not None:
+        scanned["targetVerification"] = verify_database(
+            parsed, target_environment, DEADLINE
+        )
+    return scanned
 
 
 def main():
@@ -333,6 +344,7 @@ def main():
     before_snapshots = None
     existing_ids = set()
     snapshot_id = None
+    target_environment = None
     checkpoint()
     try:
         require(
@@ -342,6 +354,10 @@ def main():
             and os.environ.get("GITHUB_WORKFLOW_REF") == WORKFLOW,
             "unprotected_invocation",
         )
+        verification = os.environ.get("VERIFY_TARGET_CIPHERTEXT", "false")
+        require(verification in {"true", "false"}, "invalid_target_verification_option")
+        if verification == "true":
+            DEADLINE = time.monotonic() + 90 * 60
         require(
             os.environ.get("NEON_PROJECT_ID") == PROJECT
             and os.environ.get("NEON_API_KEY"),
@@ -384,6 +400,9 @@ def main():
             "snapshot_identity_mismatch",
         )
         snapshot_id = snapshot["id"]
+        if verification == "true":
+            target_environment, report["targetSession"] = target_session()
+            checkpoint()
         report.update(
             {
                 "snapshotIdSha256": expected_hash,
@@ -468,11 +487,27 @@ def main():
             "invalid_database_listing",
         )
         for database in databases:
-            report["databases"].append(inspect_database(database, endpoint, preview_id))
+            if target_environment is not None:
+                if report["kmsCallsMade"] is False:
+                    report["kmsCallsMade"] = None
+                report["targetVerificationStarted"] = True
+                checkpoint()
+            report["databases"].append(
+                inspect_database(database, endpoint, preview_id, target_environment)
+            )
+            if target_environment is not None:
+                report["kmsCallsMade"] = any(
+                    item["targetVerification"]["totals"]["verified"] > 0
+                    for item in report["databases"]
+                )
             checkpoint()
+        if target_environment is not None:
+            report["cryptographicVerification"] = True
+            report["nestedPayloadInspection"] = True
         report["collectionComplete"] = True
     except (
         InspectionError,
+        RecoveryVerificationError,
         KeyError,
         ValueError,
         TypeError,
@@ -480,10 +515,12 @@ def main():
         subprocess.TimeoutExpired,
     ) as error:
         report["failure"] = (
-            str(error) if isinstance(error, InspectionError) else "inspection_failed"
+            str(error)
+            if isinstance(error, (InspectionError, RecoveryVerificationError))
+            else "inspection_failed"
         )
     finally:
-        # Reserve cleanup and preservation read-back time inside the 30-minute job.
+        # Reserve cleanup and preservation read-back time inside the job budget.
         DEADLINE = time.monotonic() + 5 * 60
         if preview_id is not None:
             try:
