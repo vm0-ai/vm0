@@ -20,6 +20,10 @@ export {
 } from "./components/ui/card";
 export { Badge, type BadgeProps } from "./components/ui/badge";
 export { IconButton, type IconButtonProps } from "./components/ui/icon-button";
+export {
+  NeutralControl,
+  type NeutralControlProps,
+} from "./components/ui/neutral-control";
 export { Checkbox } from "./components/ui/checkbox";
 export {
   ToggleButton,
@@ -135,7 +139,6 @@ export {
 
 // Utilities
 export { cn } from "./lib/utils";
-export { neutralControlClassName } from "./lib/neutral-control";
 export {
   BrandGithub,
   BrandGoogleDrive,

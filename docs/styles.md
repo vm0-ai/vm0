@@ -180,14 +180,15 @@ since keyframes are not class selectors.
 ### Neutral control surface
 
 Use `Button variant="neutral"` for neutral actions and
-`SelectTrigger variant="neutral"` for neutral select controls. Their shared
-`neutralControlClassName` from `@okouai/ui` owns the border, opaque control fill,
-foreground, and hover overlay. Links and native triggers compose this same
-definition through `cn()` on their existing element, retaining their navigation,
-keyboard, and composition semantics without adding a wrapper.
+`SelectTrigger variant="neutral"` for neutral select controls. Each component
+owns its utilities; their public API does not export class strings.
+`NeutralControl` from `@okouai/ui` preserves the neutral surface on native links
+and triggers. It renders a button by default; use `render={<Link ... />}` to
+retain a link's navigation semantics. It forwards refs and event handlers to
+that element without adding a wrapper.
 
-The shared definition composes `border border-control-border bg-control-surface
-text-foreground [&:hover]:bg-state-hover-overlay`. This is the treatment the
+The components compose `border border-control-border bg-control-surface
+text-foreground [&:hover]:bg-state-hover-overlay` internally. This is the treatment the
 settings-select batch established, extended with the border and foreground the
 retired `okou-btn-morandi` selector owned. Language, timezone, and voice-input
 settings all use the select variant. Dimensions, padding, and radius remain
@@ -196,8 +197,8 @@ layout on links or select triggers.
 
 The neutral button adds the existing outline interaction fills
 (`hover:bg-state-hover active:bg-state-pressed`) to the shared surface, keeping
-the hover overlay above those fills. Select triggers and native elements use
-only the shared surface and retain their own interaction behavior.
+the hover overlay above those fills. Select triggers and `NeutralControl` use
+the opaque surface and hover overlay without adding button interaction fills.
 
 Preserve consumer-specific interaction colors when extracting shared styles.
 The official workflow Configure button, for example, retains its existing

@@ -44,7 +44,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  neutralControlClassName,
+  NeutralControl,
 } from "@okouai/ui";
 import { InstructionsTab } from "../okou-page/instructions-tab.tsx";
 import { SettingsTab } from "../okou-page/settings-tab.tsx";
@@ -223,17 +223,14 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
                 )}
               </p>
             </div>
-            <Link
-              pathname="/agents"
-              className={cn(
-                neutralControlClassName,
-                "inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium no-underline text-inherit",
-              )}
+            <NeutralControl
+              render={<Link pathname="/agents" />}
+              className="inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium no-underline text-inherit"
             >
               {t(($) => {
                 return $.detail.notFound.back;
               })}
-            </Link>
+            </NeutralControl>
           </div>
         </main>
       </DetailPageShell>
@@ -248,18 +245,19 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
           <Card className={surfaceVariants()}>
             <CardContent className="px-6 py-6 text-center space-y-3">
               <p className="text-sm text-destructive">{error}</p>
-              <Link
-                pathname="/agents/:agentId"
-                options={{ pathParams: { agentId: agentId } }}
-                className={cn(
-                  neutralControlClassName,
-                  "inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium no-underline text-inherit",
-                )}
+              <NeutralControl
+                render={
+                  <Link
+                    pathname="/agents/:agentId"
+                    options={{ pathParams: { agentId: agentId } }}
+                  />
+                }
+                className="inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium no-underline text-inherit"
               >
                 {t(($) => {
                   return $.actions.retry;
                 })}
-              </Link>
+              </NeutralControl>
             </CardContent>
           </Card>
         </div>

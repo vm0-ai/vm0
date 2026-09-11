@@ -19,8 +19,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-  cn,
-  neutralControlClassName,
+  NeutralControl,
 } from "@okouai/ui";
 import { useTranslation } from "react-i18next";
 import {
@@ -270,17 +269,14 @@ function ActivityNotFound() {
             return $.activity.detail.notFound.description;
           })}
         </p>
-        <Link
-          pathname="/"
-          className={cn(
-            neutralControlClassName,
-            "mt-2 inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium no-underline text-inherit",
-          )}
+        <NeutralControl
+          render={<Link pathname="/" />}
+          className="mt-2 inline-flex items-center justify-center rounded-md px-3 py-1.5 text-sm font-medium no-underline text-inherit"
         >
           {t(($) => {
             return $.activity.detail.notFound.back;
           })}
-        </Link>
+        </NeutralControl>
       </div>
     </div>
   );

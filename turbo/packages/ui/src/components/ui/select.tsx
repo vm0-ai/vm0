@@ -6,7 +6,6 @@ import { Check, ChevronDown, ChevronUp } from "lucide-react";
 
 import { anchoredPopupTransitionClassName } from "./popup-motion";
 import { cn } from "../../lib/utils";
-import { neutralControlClassName } from "../../lib/neutral-control";
 
 interface InferredSelectItem<Value> {
   label: React.ReactNode;
@@ -155,7 +154,8 @@ const SelectTrigger = React.forwardRef<HTMLButtonElement, SelectTriggerProps>(
         data-slot="select-trigger"
         className={cn(
           "flex h-9 w-full items-center justify-start gap-2 rounded-lg border border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground outline-none disabled:cursor-not-allowed disabled:opacity-50",
-          variant === "neutral" && neutralControlClassName,
+          variant === "neutral" &&
+            "border border-control-border bg-control-surface text-foreground [&:hover]:bg-state-hover-overlay",
           className,
         )}
         {...props}
