@@ -1,5 +1,23 @@
 # Changelog
 
+## [9.323.15](https://github.com/vm0-ai/vm0/compare/cli-v9.323.14...cli-v9.323.15) (2026-09-11)
+
+
+### Refactoring
+
+* **api:** emit x-okou signature headers and drop the legacy names ([#33561](https://github.com/vm0-ai/vm0/issues/33561)) ([2cdbdcf](https://github.com/vm0-ai/vm0/commit/2cdbdcf65cba3504828108a675056b4963cbe3a5))
+* **pi:** canonicalize the internal execution route ([#33558](https://github.com/vm0-ai/vm0/issues/33558)) ([cc1178b](https://github.com/vm0-ai/vm0/commit/cc1178b92c62a403b6052768df40d7a04ea40933)), closes [#33556](https://github.com/vm0-ai/vm0/issues/33556)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.429.0
+    * @okouai/connectors bumped to 3.10.0
+    * @okouai/core bumped to 8.654.2
+    * @okouai/pi-agent-runtime bumped to 1.26.1
+
 ## [9.323.14](https://github.com/vm0-ai/vm0/compare/cli-v9.323.13...cli-v9.323.14) (2026-09-11)
 
 

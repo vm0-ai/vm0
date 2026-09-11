@@ -8,6 +8,37 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.586.0](https://github.com/vm0-ai/vm0/compare/api-v1.585.1...api-v1.586.0) (2026-09-11)
+
+
+### Features
+
+* **connectors:** support posthog cimd oauth and regional accounts ([#33490](https://github.com/vm0-ai/vm0/issues/33490)) ([37967c7](https://github.com/vm0-ai/vm0/commit/37967c79fbe0658e97adfa1c1d3c2138e2469099))
+* **ssh:** manage reusable key and password credentials ([#33553](https://github.com/vm0-ai/vm0/issues/33553)) ([c51d8ca](https://github.com/vm0-ai/vm0/commit/c51d8ca3cc39eb8aa1b82f3919fcc816846890c8))
+
+
+### Bug Fixes
+
+* **voice:** classify google failures and retain safe diagnostics ([#33566](https://github.com/vm0-ai/vm0/issues/33566)) ([dcf5447](https://github.com/vm0-ai/vm0/commit/dcf54470b4b4b2346faaaed1b0d040eaeacc7793))
+
+
+### Refactoring
+
+* **api:** emit x-okou signature headers and drop the legacy names ([#33561](https://github.com/vm0-ai/vm0/issues/33561)) ([2cdbdcf](https://github.com/vm0-ai/vm0/commit/2cdbdcf65cba3504828108a675056b4963cbe3a5))
+* **api:** make pi api-first transitions explicit ([#33580](https://github.com/vm0-ai/vm0/issues/33580)) ([de15084](https://github.com/vm0-ai/vm0/commit/de15084436e6936d2a7338cd75d916f11cdd81e7))
+* **pi:** canonicalize the internal execution route ([#33558](https://github.com/vm0-ai/vm0/issues/33558)) ([cc1178b](https://github.com/vm0-ai/vm0/commit/cc1178b92c62a403b6052768df40d7a04ea40933)), closes [#33556](https://github.com/vm0-ai/vm0/issues/33556)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.429.0
+    * @okouai/connectors bumped to 3.10.0
+    * @okouai/core bumped to 8.654.2
+    * @okouai/db bumped to 1.253.0
+    * @okouai/pi-agent-runtime bumped to 1.26.1
+
 ## [1.585.1](https://github.com/vm0-ai/vm0/compare/api-v1.585.0...api-v1.585.1) (2026-09-11)
 
 

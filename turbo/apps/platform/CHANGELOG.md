@@ -11,6 +11,36 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.889.0](https://github.com/vm0-ai/vm0/compare/app-v0.888.0...app-v0.889.0) (2026-09-11)
+
+
+### Features
+
+* **ssh:** manage reusable key and password credentials ([#33553](https://github.com/vm0-ai/vm0/issues/33553)) ([c51d8ca](https://github.com/vm0-ai/vm0/commit/c51d8ca3cc39eb8aa1b82f3919fcc816846890c8))
+
+
+### Bug Fixes
+
+* **platform:** keep unread indicators readable when chat warming fails ([#33564](https://github.com/vm0-ai/vm0/issues/33564)) ([41842ae](https://github.com/vm0-ai/vm0/commit/41842ae3291ad9be710f540984a0f2cd53bcb88f))
+* **platform:** let each chat thread list catch-up own its lifetime ([#33557](https://github.com/vm0-ai/vm0/issues/33557)) ([85b31f1](https://github.com/vm0-ai/vm0/commit/85b31f126553f3590e075ddef42d1f729ddd57a5))
+
+
+### Refactoring
+
+* **api:** emit x-okou signature headers and drop the legacy names ([#33561](https://github.com/vm0-ai/vm0/issues/33561)) ([2cdbdcf](https://github.com/vm0-ai/vm0/commit/2cdbdcf65cba3504828108a675056b4963cbe3a5))
+* make activity summary polling thread-owned ([#33574](https://github.com/vm0-ai/vm0/issues/33574)) ([d568c0d](https://github.com/vm0-ai/vm0/commit/d568c0d26533336da14795d781490125da9f70bb))
+* **platform:** stabilize oauth and prohibit child abort controllers ([#33573](https://github.com/vm0-ai/vm0/issues/33573)) ([ba5f919](https://github.com/vm0-ai/vm0/commit/ba5f919bcfd0c124a5633a17b8cee8cc35a86c1c))
+* **platform:** stabilize workflow realtime handler ([#33333](https://github.com/vm0-ai/vm0/issues/33333)) ([65da1fc](https://github.com/vm0-ai/vm0/commit/65da1fcc06a0b2a2738cb164ce099c6a6a89a89c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.429.0
+    * @okouai/connectors bumped to 3.10.0
+    * @okouai/core bumped to 8.654.2
+
 ## [0.888.0](https://github.com/vm0-ai/vm0/compare/app-v0.887.1...app-v0.888.0) (2026-09-11)
 
 

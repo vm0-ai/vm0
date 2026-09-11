@@ -1,6 +1,6 @@
 {
   "name": "@okouai/desktop",
-  "version": "0.48.36",
+  "version": "0.48.37",
   "private": true,
   "description": "Computer Use desktop shell",
   "main": "dist/bootstrap.js",
