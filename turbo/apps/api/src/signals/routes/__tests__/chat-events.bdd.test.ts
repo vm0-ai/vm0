@@ -3867,8 +3867,9 @@ describe("CHAT-02: interrupting active chat runs", () => {
 });
 
 describe("CHAT effort: thread configuration", () => {
-  it("keeps requested and saved effort closed until native rollout is complete", async () => {
-    const { actor, agentId, providerId } = await entitledChatActor();
+  it("applies requested and saved native effort through the existing claim protocol", async () => {
+    const { actor, agentId, providerId, runnerGroup } =
+      await entitledChatActor();
     await api.updateOrgModelPolicies(
       actor,
       (["claude-sonnet-5", "claude-opus-4-8"] as const).map((model) => {
@@ -3891,30 +3892,32 @@ describe("CHAT effort: thread configuration", () => {
     await chat.updateThreadModelSelection(actor, thread.id, "claude-sonnet-5", {
       reasoningEffort: "high",
     });
-    const saved = await chat.requestSendEvent(
-      actor,
-      { agentId, threadId: thread.id, prompt: "Use saved effort" },
-      [400],
-    );
-    expect(saved.body).toMatchObject({
-      error: {
-        message:
-          "Reasoning effort execution is not available yet. Restore the model default to run this message.",
-      },
+    const saved = await sendChatRun(actor, {
+      agentId,
+      threadId: thread.id,
+      prompt: "Use saved effort",
     });
-    const explicit = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        prompt: "New explicit effort",
-        runOptions: { reasoningEffort: "low" },
-      },
-      [400],
+    const savedClaim = await claimChatRun(runnerGroup, saved.runId);
+    expect(savedClaim.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
+      "high",
     );
-    expect(explicit.body).toMatchObject({ error: { code: "BAD_REQUEST" } });
-    expect(
-      (await chat.listThreadEvents(actor, thread.id)).events,
-    ).toStrictEqual([]);
+    await cancelChatRun(actor, saved.runId, savedClaim.sandboxHeaders);
+
+    const explicit = await sendChatRun(actor, {
+      agentId,
+      prompt: "New explicit effort",
+      runOptions: { reasoningEffort: "extra" },
+    });
+    const explicitClaim = await claimChatRun(runnerGroup, explicit.runId);
+    // Storage and dispatch retain the user's Claude name. The guest maps it.
+    expect(explicitClaim.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
+      "extra",
+    );
+    await expect(
+      chat.readThreadMetadata(actor, explicit.threadId),
+    ).resolves.toMatchObject({ reasoningEffort: "extra" });
+    await cancelChatRun(actor, explicit.runId, explicitClaim.sandboxHeaders);
+
     const reset = await sendChatRun(actor, {
       agentId,
       threadId: thread.id,
@@ -3922,26 +3925,43 @@ describe("CHAT effort: thread configuration", () => {
       model: "claude-opus-4-8",
       runOptions: { reasoningEffort: null },
     });
+    const resetClaim = await claimChatRun(runnerGroup, reset.runId);
+    expect(resetClaim.claim.platformEnvironment).not.toHaveProperty(
+      "OKOU_REASONING_EFFORT",
+    );
     expect(
       (await chat.readThreadMetadata(actor, thread.id)).reasoningEffort ?? null,
     ).toBeNull();
     await expect(
       chat.readThreadMetadata(actor, thread.id),
     ).resolves.toMatchObject({ selectedModel: "claude-opus-4-8" });
-    await cancelChatRun(actor, reset.runId);
+    await cancelChatRun(actor, reset.runId, resetClaim.sandboxHeaders);
   }, 90_000);
 
   it.each([
-    { model: "gpt-5.6-sol", providerType: "openai-api-key" },
-    { model: "claude-sonnet-5", providerType: "anthropic-api-key" },
+    {
+      model: "gpt-5.6-sol",
+      effort: "high",
+      pi: true,
+      providerType: "openai-api-key",
+      error:
+        "Reasoning effort selection is not supported by this execution route. Restore the model default to run this message.",
+    },
+    {
+      model: "claude-sonnet-5",
+      effort: "ultracode",
+      pi: false,
+      providerType: "anthropic-api-key",
+      error:
+        "Ultracode execution is not available yet. Choose another effort level or restore the model default.",
+    },
   ] as const)(
-    "keeps queued $model effort closed even when the feature switch is enabled",
-    async ({ model, providerType }) => {
+    "rejects unavailable $model $effort before queue admission",
+    async ({ model, effort, pi, providerType, error }) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
-      chatCallbacks.failIfChatCallbackRouteIsFetched();
       const { providerId } = await upsertOrgModelProvider(actor, {
         type: providerType,
-        secret: "test-staged-effort-key",
+        secret: "test-native-effort-key",
       });
       await api.updateOrgModelPolicies(actor, [
         {
@@ -3954,28 +3974,65 @@ describe("CHAT effort: thread configuration", () => {
       ]);
       await authDeviceSupport.updateFeatureSwitches(actor, {
         [FeatureSwitchKey.ChatReasoningEffort]: true,
+        [FeatureSwitchKey.PiLoop]: pi,
+      });
+      const thread = await chat.createThread(actor, {
+        agentId,
+        title: "Unsupported effort route",
+        model,
+      });
+      for (const saved of [false, true]) {
+        if (saved) {
+          await chat.updateThreadModelSelection(actor, thread.id, model, {
+            reasoningEffort: effort,
+          });
+        }
+        const result = await chat.requestSendEvent(
+          actor,
+          {
+            agentId,
+            threadId: thread.id,
+            prompt: "Do not silently ignore effort",
+            ...(saved ? {} : { runOptions: { reasoningEffort: effort } }),
+          },
+          [400],
+        );
+        expect(result.body).toMatchObject({ error: { message: error } });
+        expect(
+          (await chat.listThreadEvents(actor, thread.id)).events,
+        ).toStrictEqual([]);
+      }
+      // A queued input must re-check the current route and effort, too.
+      await authDeviceSupport.updateFeatureSwitches(actor, {
         [FeatureSwitchKey.PiLoop]: false,
+      });
+      await chat.updateThreadModelSelection(actor, thread.id, model, {
+        reasoningEffort: null,
       });
       const active = await sendChatRun(actor, {
         agentId,
-        prompt: "Default effort remains executable during rollout",
+        threadId: thread.id,
+        prompt: "Hold the queue before changing effort",
       });
       const activeClaim = await claimChatRun(runnerGroup, active.runId);
       const clientEventId = randomUUID();
-      const prompt = "Do not launch explicit effort before native rollout";
+      const queuedPrompt = "Reject unsupported effort at queued launch";
       const queued = await chat.requestSendEvent(
         actor,
-        { agentId, threadId: active.threadId, prompt, clientEventId },
+        { agentId, threadId: thread.id, clientEventId, prompt: queuedPrompt },
         [201],
       );
       expect(queued.body).toMatchObject({ runId: null });
-      await chat.updateThreadModelSelection(actor, active.threadId, model, {
-        reasoningEffort: "high",
+      await chat.updateThreadModelSelection(actor, thread.id, model, {
+        reasoningEffort: effort,
+      });
+      await authDeviceSupport.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.PiLoop]: pi,
       });
       await cancelChatRun(actor, active.runId, activeClaim.sandboxHeaders);
       const terminal = await waitForThreadMessages(
         actor,
-        active.threadId,
+        thread.id,
         (events) => {
           return userMessages(events).some((event) => {
             return (
@@ -3994,106 +4051,110 @@ describe("CHAT effort: thread configuration", () => {
       );
       expect(
         (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
-          return run.prompt === prompt;
+          return run.prompt === queuedPrompt;
         }),
       ).toHaveLength(0);
-      await expect(
-        chat.readThreadMetadata(actor, active.threadId),
-      ).resolves.toMatchObject({ reasoningEffort: "high" });
     },
     90_000,
   );
 
-  it("uses current thread settings and rollout state when a queued message starts", async () => {
-    const { actor, agentId, providerId, runnerGroup } =
-      await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-    await authDeviceSupport.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ChatReasoningEffort]: true,
-    });
-    await api.updateOrgModelPolicies(
-      actor,
-      (["claude-sonnet-5", "claude-opus-4-8"] as const).map((model) => {
-        return {
-          model,
-          isDefault: model === "claude-sonnet-5",
-          defaultProviderType: "anthropic-api-key",
-          credentialScope: "org",
-          modelProviderId: providerId,
-        };
-      }),
-    );
-    const active = await sendChatRun(actor, { agentId, prompt: "Active task" });
-    const activeClaim = await claimChatRun(runnerGroup, active.runId);
-    const clientEventId = randomUUID();
-    const queued = await chat.requestSendEvent(
-      actor,
-      {
+  it.each([true, false])(
+    "uses current thread settings when a queued message starts with rollout %s",
+    async (enabled) => {
+      const { actor, agentId, providerId, runnerGroup } =
+        await entitledChatActor();
+      chatCallbacks.failIfChatCallbackRouteIsFetched();
+      await authDeviceSupport.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.ChatReasoningEffort]: true,
+      });
+      await api.updateOrgModelPolicies(
+        actor,
+        (["claude-sonnet-5", "claude-opus-4-8"] as const).map((model) => {
+          return {
+            model,
+            isDefault: model === "claude-sonnet-5",
+            defaultProviderType: "anthropic-api-key",
+            credentialScope: "org",
+            modelProviderId: providerId,
+          };
+        }),
+      );
+      const active = await sendChatRun(actor, {
         agentId,
-        threadId: active.threadId,
-        prompt: "Read the current thread settings at launch",
-        clientEventId,
-        runOptions: { reasoningEffort: null },
-      },
-      [201],
-    );
-    expect(queued.body).toMatchObject({ runId: null });
-    await chat.updateThreadModelSelection(
-      actor,
-      active.threadId,
-      "claude-opus-4-8",
-      { reasoningEffort: "high" },
-    );
-    const retry = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        threadId: active.threadId,
-        prompt: "Read the current thread settings at launch",
-        clientEventId,
-        runOptions: { reasoningEffort: "high" },
-      },
-      [201],
-    );
-    expect(retry.body).toStrictEqual(queued.body);
-    await authDeviceSupport.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ChatReasoningEffort]: false,
-    });
-    await cancelChatRun(actor, active.runId, activeClaim.sandboxHeaders);
-    const messages = await waitForThreadMessages(
-      actor,
-      active.threadId,
-      (items) => {
-        return userMessages(items).some((message) => {
-          return (
-            message.revokesEventId === clientEventId &&
-            typeof message.runId === "string"
-          );
-        });
-      },
-    );
-    const promoted = userMessages(messages.events).find((message) => {
-      return message.revokesEventId === clientEventId;
-    });
-    if (!promoted?.runId || promoted.eventType !== "input.prompt") {
-      throw new Error("Expected queued input to launch");
-    }
-    expect(promoted.userMessage.parts).toContainEqual({
-      type: "model",
-      selectedModel: "claude-opus-4-8",
-    });
-    const claimed = await claimChatRun(runnerGroup, promoted.runId);
-    expect(claimed.claim.platformEnvironment).not.toHaveProperty(
-      "OKOU_REASONING_EFFORT",
-    );
-    await expect(
-      chat.readThreadMetadata(actor, active.threadId),
-    ).resolves.toMatchObject({
-      selectedModel: "claude-opus-4-8",
-      reasoningEffort: "high",
-    });
-    await cancelChatRun(actor, promoted.runId, claimed.sandboxHeaders);
-  }, 90_000);
+        prompt: "Active task",
+      });
+      const activeClaim = await claimChatRun(runnerGroup, active.runId);
+      const clientEventId = randomUUID();
+      const queued = await chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: active.threadId,
+          prompt: "Read the current thread settings at launch",
+          clientEventId,
+          runOptions: { reasoningEffort: null },
+        },
+        [201],
+      );
+      expect(queued.body).toMatchObject({ runId: null });
+      await chat.updateThreadModelSelection(
+        actor,
+        active.threadId,
+        "claude-opus-4-8",
+        { reasoningEffort: "high" },
+      );
+      const retry = await chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: active.threadId,
+          prompt: "Read the current thread settings at launch",
+          clientEventId,
+          runOptions: { reasoningEffort: "high" },
+        },
+        [201],
+      );
+      expect(retry.body).toStrictEqual(queued.body);
+      await authDeviceSupport.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.ChatReasoningEffort]: enabled,
+      });
+      await cancelChatRun(actor, active.runId, activeClaim.sandboxHeaders);
+      const messages = await waitForThreadMessages(
+        actor,
+        active.threadId,
+        (items) => {
+          return userMessages(items).some((message) => {
+            return (
+              message.revokesEventId === clientEventId &&
+              typeof message.runId === "string"
+            );
+          });
+        },
+      );
+      const promoted = userMessages(messages.events).find((message) => {
+        return message.revokesEventId === clientEventId;
+      });
+      if (!promoted?.runId || promoted.eventType !== "input.prompt") {
+        throw new Error("Expected queued input to launch");
+      }
+      expect(promoted.userMessage.parts).toContainEqual({
+        type: "model",
+        selectedModel: "claude-opus-4-8",
+      });
+      const claimed = await claimChatRun(runnerGroup, promoted.runId);
+      expect(claimed.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
+        enabled ? "high" : undefined,
+      );
+      await expect(
+        chat.readThreadMetadata(actor, active.threadId),
+      ).resolves.toMatchObject({
+        selectedModel: "claude-opus-4-8",
+        reasoningEffort: "high",
+      });
+      await cancelChatRun(actor, promoted.runId, claimed.sandboxHeaders);
+    },
+    90_000,
+  );
 
   it("ignores saved effort while disabled without erasing it on normal or explicit-model sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -4142,20 +4203,19 @@ describe("CHAT effort: thread configuration", () => {
     await authDeviceSupport.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.ChatReasoningEffort]: true,
     });
-    const enabled = await chat.requestSendEvent(
-      actor,
-      { agentId, threadId: thread.id, prompt: "Saved effort is active again" },
-      [400],
-    );
-    expect(enabled.body).toMatchObject({
-      error: {
-        message:
-          "Reasoning effort execution is not available yet. Restore the model default to run this message.",
-      },
+    const enabled = await sendChatRun(actor, {
+      agentId,
+      threadId: thread.id,
+      prompt: "Saved effort is active again",
     });
+    const enabledClaim = await claimChatRun(runnerGroup, enabled.runId);
+    expect(enabledClaim.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
+      "high",
+    );
+    await cancelChatRun(actor, enabled.runId, enabledClaim.sandboxHeaders);
   }, 90_000);
 
-  it("preserves Fast while effort execution remains closed", async () => {
+  it("preserves Fast when resetting effort and sending an Ultra override", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await authDeviceSupport.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.ChatReasoningEffort]: true,
@@ -4205,25 +4265,177 @@ describe("CHAT effort: thread configuration", () => {
       "OKOU_REASONING_EFFORT",
     );
     await cancelChatRun(actor, sent.runId, claimed.sandboxHeaders);
-    const explicit = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        threadId: thread.id,
-        prompt: "Keep explicit effort closed during native rollout",
-        runOptions: { reasoningEffort: "low" },
-      },
-      [400],
-    );
-    expect(explicit.body).toMatchObject({
-      error: {
-        message:
-          "Reasoning effort execution is not available yet. Restore the model default to run this message.",
-      },
+    const explicit = await sendChatRun(actor, {
+      agentId,
+      threadId: thread.id,
+      prompt: "Change effort and retain Fast",
+      runOptions: { reasoningEffort: "ultra" },
     });
-    const metadata = await chat.readThreadMetadata(actor, thread.id);
-    expect(metadata.reasoningEffort ?? null).toBeNull();
-    expect(metadata.serviceTier).toBe("priority");
+    const explicitClaim = await claimChatRun(runnerGroup, explicit.runId);
+    expect(explicitClaim.claim.platformEnvironment).toMatchObject({
+      OKOU_CODEX_SERVICE_TIER: "fast",
+      OKOU_REASONING_EFFORT: "ultra",
+    });
+    await expect(
+      chat.readThreadMetadata(actor, thread.id),
+    ).resolves.toMatchObject({
+      reasoningEffort: "ultra",
+      serviceTier: "priority",
+    });
+    await cancelChatRun(actor, explicit.runId, explicitClaim.sandboxHeaders);
+  }, 90_000);
+});
+
+describe("CHAT effort: automation launches", () => {
+  async function startAutomation() {
+    const scenario = await entitledChatActor({}, "pro");
+    const { actor, agentId, runnerGroup } = scenario;
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ChatReasoningEffort]: true,
+      [FeatureSwitchKey.PiLoop]: false,
+    });
+    const workflowId = await createWorkflowsBddApi(context).createWorkflow(
+      actor,
+      { agentId, name: "native-effort" },
+    );
+    const created = await accept(
+      threadPiAutomationsClient().create({
+        headers: sessionHeaders(actor),
+        params: { workflowId },
+        body: { schedule: { type: "loop", intervalSeconds: 3600 } },
+      }),
+      [201],
+    );
+    const started = await accept(
+      threadPiAutomationsClient().run({
+        headers: sessionHeaders(actor),
+        params: { id: created.body.id },
+      }),
+      [201],
+    );
+    const threadId = started.body.chatThreadId;
+    const runId = await lastThreadPiAutomationRun(actor, threadId);
+    const claimed = await claimChatRun(runnerGroup, runId);
+    expect(claimed.claim.platformEnvironment).not.toHaveProperty(
+      "OKOU_REASONING_EFFORT",
+    );
+    return {
+      ...scenario,
+      threadId,
+      runId,
+      claimed,
+      automationId: created.body.id,
+    };
+  }
+
+  it.each([true, false])(
+    "uses the latest thread effort and rollout state for a queued automation (enabled=%s)",
+    async (enabled) => {
+      const { actor, runnerGroup, threadId, runId, claimed, automationId } =
+        await startAutomation();
+      await chat.updateThreadModelSelection(
+        actor,
+        threadId,
+        "claude-sonnet-5",
+        {
+          reasoningEffort: "extra",
+        },
+      );
+      const queued = await accept(
+        threadPiAutomationsClient().run({
+          headers: sessionHeaders(actor),
+          params: { id: automationId },
+        }),
+        [201],
+      );
+      expect(queued.body.runId).toBeNull();
+      await chat.updateThreadModelSelection(
+        actor,
+        threadId,
+        "claude-sonnet-5",
+        {
+          reasoningEffort: "high",
+        },
+      );
+      await authDeviceSupport.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.ChatReasoningEffort]: enabled,
+      });
+      await completeChatRunOk(runId, claimed.sandboxHeaders, {
+        cliAgentType: "claude-code",
+      });
+      await flushWaitUntilForTest();
+      const nextRunId = await lastThreadPiAutomationRun(actor, threadId);
+      expect(nextRunId).not.toBe(runId);
+      const next = await claimChatRun(runnerGroup, nextRunId);
+      expect(next.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
+        enabled ? "high" : undefined,
+      );
+      await expect(
+        chat.readThreadMetadata(actor, threadId),
+      ).resolves.toMatchObject({
+        reasoningEffort: "high",
+      });
+      await cancelChatRun(actor, nextRunId, next.sandboxHeaders);
+    },
+    90_000,
+  );
+
+  it("rejects unsupported effort at the automation launch entry point", async () => {
+    const { actor, threadId, runId, claimed, automationId } =
+      await startAutomation();
+    await completeChatRunOk(runId, claimed.sandboxHeaders, {
+      cliAgentType: "claude-code",
+    });
+    await flushWaitUntilForTest();
+    for (const route of [
+      {
+        model: "claude-sonnet-5",
+        effort: "ultracode",
+        pi: false,
+        providerType: "anthropic-api-key",
+        error:
+          "Ultracode execution is not available yet. Choose another effort level or restore the model default.",
+      },
+      {
+        model: "gpt-5.6-sol",
+        effort: "high",
+        pi: true,
+        providerType: "openai-api-key",
+        error:
+          "Reasoning effort selection is not supported by this execution route. Restore the model default to run this message.",
+      },
+    ] as const) {
+      const { providerId } = await upsertOrgModelProvider(actor, {
+        type: route.providerType,
+        secret: "test-workflow-effort-key",
+      });
+      await api.updateOrgModelPolicies(actor, [
+        {
+          model: route.model,
+          isDefault: true,
+          defaultProviderType: route.providerType,
+          credentialScope: "org",
+          modelProviderId: providerId,
+        },
+      ]);
+      await authDeviceSupport.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.PiLoop]: route.pi,
+      });
+      await chat.updateThreadModelSelection(actor, threadId, route.model, {
+        reasoningEffort: route.effort,
+      });
+      const rejected = await accept(
+        threadPiAutomationsClient().run({
+          headers: sessionHeaders(actor),
+          params: { id: automationId },
+        }),
+        [400],
+      );
+      expect(rejected.body).toMatchObject({ error: { message: route.error } });
+      await expect(lastThreadPiAutomationRun(actor, threadId)).resolves.toBe(
+        runId,
+      );
+    }
   }, 90_000);
 });
 

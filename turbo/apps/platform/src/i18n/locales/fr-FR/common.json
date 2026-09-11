@@ -5542,6 +5542,9 @@
         "categoryImage": "Image",
         "categoryVideo": "Vidéo",
         "chatModels": "Modèles de chat",
+        "effort": "Effort de raisonnement",
+        "effortReset": "Rétablir la valeur par défaut",
+        "effortUnavailable": "L’effort n’est pas disponible pour cette connexion au modèle. Rétablissez la valeur par défaut pour continuer.",
         "fast": "Rapide",
         "fastImpact": "Vitesse du modèle 1,5× · consommation de crédits 2,5×",
         "generationPriceTiers": {

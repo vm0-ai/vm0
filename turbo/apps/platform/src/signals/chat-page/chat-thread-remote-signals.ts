@@ -15,6 +15,7 @@ import type { VideoModel } from "@okouai/core/video-model-catalog";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { apiClient$ } from "../api-client.ts";
+import { chatReasoningEffortEnabled$ } from "../external/feature-switch.ts";
 import { threadCodexServiceTierFromSelection } from "./model-selection-request.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { createDeferredPromise } from "../utils.ts";
@@ -112,6 +113,11 @@ export const patchChatThreadModelSelection$ = command(
     { threadId, modelSelection }: PatchModelSelectionArgs,
     signal: AbortSignal,
   ) => {
+    const reasoningEffort = get(chatReasoningEffortEnabled$)
+      ? modelSelection?.reasoningEffort
+      : undefined;
+    const effortUpdate =
+      reasoningEffort === undefined ? {} : { reasoningEffort };
     const modelSelectionEventId = crypto.randomUUID();
     const serviceTierEventId = crypto.randomUUID();
     const threadMeta = get(chatThreadMetaMap$).get(threadId);
@@ -123,6 +129,7 @@ export const patchChatThreadModelSelection$ = command(
         chatThreadId: threadId,
         agentId: threadMeta.agentId,
         selectedModel: modelSelection?.selectedModel ?? null,
+        ...effortUpdate,
         createdAt,
       });
       set(registerOptimisticChatThreadEvent$, {
@@ -142,6 +149,7 @@ export const patchChatThreadModelSelection$ = command(
         params: { id: threadId },
         body: {
           model: modelSelection?.selectedModel ?? null,
+          ...effortUpdate,
           codexServiceTier: threadCodexServiceTierFromSelection(modelSelection),
           eventId: modelSelectionEventId,
           serviceTierEventId,

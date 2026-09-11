@@ -5473,6 +5473,9 @@
         "categoryImage": "画像",
         "categoryVideo": "動画",
         "chatModels": "チャットモデル",
+        "effort": "推論の強度",
+        "effortReset": "モデルのデフォルトに戻す",
+        "effortUnavailable": "このモデル接続では推論の強度を変更できません。続けるにはデフォルトに戻してください。",
         "fast": "速い",
         "fastImpact": "モデル速度 1.5× · クレジット消費 2.5×",
         "generationPriceTiers": {

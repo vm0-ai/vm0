@@ -1,3 +1,4 @@
+import type { ReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
 import { command, computed } from "ccstate";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { ImageModel } from "@okouai/core/image-model-catalog";
@@ -239,7 +240,7 @@ function resolveNewThreadModelSelection(
         selectedModel: modelSelection.selectedModel,
         codexFastModeEnabled: args.codexFastModeEnabled,
       })
-      ? { selectedModel: modelSelection.selectedModel }
+      ? { ...modelSelection, codexServiceTier: undefined }
       : modelSelection;
   }
   return resolveModelFirstUserDefaultSelection({
@@ -343,6 +344,7 @@ const mintOptimisticThreadWithEvent$ = command(
       readonly agentId: string;
       readonly selectedModel: string | null;
       readonly serviceTier: "priority" | null;
+      readonly reasoningEffort?: ReasoningEffort | null;
       readonly computerUseHostId: string | null;
       readonly cloudBrowserEnabled: boolean;
       readonly selectedImageModel: ImageModel | null;
@@ -362,6 +364,9 @@ const mintOptimisticThreadWithEvent$ = command(
       agentId: args.agentId,
       selectedModel: args.selectedModel,
       serviceTier: args.serviceTier,
+      ...(args.reasoningEffort === undefined
+        ? {}
+        : { reasoningEffort: args.reasoningEffort }),
       computerUseHostId: args.computerUseHostId,
       cloudBrowserEnabled: args.cloudBrowserEnabled,
       selectedVideoModel: args.selectedVideoModel,
@@ -406,7 +411,10 @@ async function createChatThread(
     [201],
   );
   signal.throwIfAborted();
-  if (args.modelSelection.codexServiceTier === "fast") {
+  if (
+    args.modelSelection.codexServiceTier === "fast" ||
+    args.modelSelection.reasoningEffort !== undefined
+  ) {
     const modelSelectionClient = args.createClient(
       chatThreadModelSelectionContract,
     );
@@ -415,7 +423,12 @@ async function createChatThread(
         params: { id: args.clientThreadId },
         body: {
           model: args.modelSelection.selectedModel,
-          codexServiceTier: "fast",
+          ...(args.modelSelection.codexServiceTier === "fast"
+            ? { codexServiceTier: "fast" as const }
+            : {}),
+          ...(args.modelSelection.reasoningEffort === undefined
+            ? {}
+            : { reasoningEffort: args.modelSelection.reasoningEffort }),
           eventId: crypto.randomUUID(),
         },
         fetchOptions: { signal },
@@ -584,6 +597,7 @@ const sendNewThreadMessage$ = command(
         eventId: chatThreadEventId,
         agentId,
         selectedModel: resolvedModelSelection.selectedModel,
+        reasoningEffort: resolvedModelSelection.reasoningEffort,
         serviceTier:
           resolvedModelSelection.codexServiceTier === "fast"
             ? "priority"
