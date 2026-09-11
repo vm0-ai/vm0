@@ -47,6 +47,14 @@ Use a least-privilege remote SSH user for the Agent's intended work.
 The form clears credentials on submission, close and navigation; unsuccessful
 submissions require entering them again.
 
+Each saved configuration has its own connection ID. Multiple configurations may
+use the same hostname and port, including the same SSH username with different
+keys. Use distinct display names to identify their purpose. Credentials,
+configuration generations, learned host keys and recent connection observations
+belong to each ID independently; editing, rotating, resetting or deleting one
+configuration does not change another at the same endpoint. The configured count
+counts saved configurations, not unique servers.
+
 Saving a host is not a connectivity test. Configuration does not establish an
 SSH session. Use **Replace credentials** to rotate a key or passphrase; ordinary
 metadata edits leave credentials unchanged. Host/port changes clear the learned
@@ -88,7 +96,7 @@ Changing owner discards that retained display, and each composer selects only
 its own Agent's grant.
 
 Owner API business errors use stable `SSH_*` codes. Platform translates them,
-including recovery guidance for invalid input, duplicate endpoints, stale
+including recovery guidance for invalid input, stale
 generations and unavailable hosts/Agents. A failed read shows a localized load
 error with **Retry**, distinct from feature unavailability. There is no persistent
 Refresh button and background failures do not show raw server-message toasts.
@@ -192,3 +200,20 @@ See [Runner authority](runner-ssh-authority.md) for authorization and cache
 semantics, [SSH execution](runner-ssh-execution.md) for supported keys, network
 policy and resource limits, and [RPC transport](runner-rpc-transport.md) for
 packaged-helper framing, deadlines and deployment constraints.
+
+## Multiple-configuration deployment
+
+The migration removes the owner/host/port unique index without changing stored
+rows, columns or the SSH RPC protocol. It must complete before the new API is
+promoted. The owner lookup index and per-connection credential and observation
+relationships remain in place.
+
+An outgoing or rolled-back API still rejects creates or edits at an occupied
+endpoint, including edits to duplicate configurations saved by the new API.
+Its listing, exact-ID execution and deletion paths remain usable. SSH is still
+default-off/staff-only, so the retired endpoint-conflict client handling is
+removed with the producer under the [non-GA fallback policy](fallback.md#2-features-behind-a-feature-switch-need-no-fallback).
+
+Rolling back the API does not restore the unique index. Restoring uniqueness
+would require an explicit decision about every duplicate configuration and its
+credentials; do not delete configurations or recreate that index automatically.

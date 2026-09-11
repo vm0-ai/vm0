@@ -6114,7 +6114,6 @@
     "errors": {
       "agentUnavailable": "Este agente não está mais disponível. Escolha outro agente.",
       "configurationChanged": "Este host mudou durante a edição. A lista foi atualizada. Abra o host novamente e revise as configurações atuais antes de salvar.",
-      "duplicateEndpoint": "Já existe um host SSH com este endereço e esta porta. Edite o host existente ou use outro endereço ou outra porta.",
       "failed": "Não foi possível salvar a alteração SSH. Tente novamente.",
       "hostUnavailable": "Este host SSH não está mais disponível. Volte à lista e escolha um host existente.",
       "invalidHost": "Insira um nome de host ou endereço IP sem esquema de URL, caminho ou espaços.",

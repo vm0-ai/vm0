@@ -401,14 +401,14 @@ test("A localized load error is retryable and distinct from feature unavailabili
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
-test("A duplicate endpoint is translated by Platform, with a useful recovery action", async () => {
+test("An invalid host is translated by Platform and clears submitted credentials", async () => {
   context.mocks.api(sshConnectionsContract.list, ({ respond }) => {
     return respond(200, { connections: [] });
   });
   context.mocks.api(sshConnectionsContract.create, ({ respond }) => {
-    return respond(409, {
+    return respond(400, {
       error: {
-        code: "SSH_ENDPOINT_CONFLICT",
+        code: "SSH_INVALID_HOST",
         message: "server diagnostic must not be UI copy",
       },
     });
@@ -418,13 +418,13 @@ test("A duplicate endpoint is translated by Platform, with a useful recovery act
   await fill(within(dialog).getByLabelText("Display name"), "Deployment");
   await fill(
     within(dialog).getByLabelText("Public hostname or IP address"),
-    "ssh.example.com",
+    "https://ssh.example.com",
   );
   await fill(within(dialog).getByLabelText("SSH username"), "deploy");
   await fill(within(dialog).getByLabelText("Private key"), "not-a-real-key");
   click(getAction("button", "Save", dialog));
   await screen.findByText(
-    "An SSH host with this address and port already exists. Edit the existing host or use a different address or port.",
+    "Enter a hostname or IP address without a URL scheme, path or spaces.",
   );
   expect(document.body.textContent).not.toContain(
     "server diagnostic must not be UI copy",

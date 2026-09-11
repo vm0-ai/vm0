@@ -7,6 +7,7 @@ import {
   type RunnerSshObservationRequest,
 } from "@okouai/api-contracts/contracts/runner-ssh";
 import { sshConnectionsContract } from "@okouai/api-contracts/contracts/ssh-connections";
+import { sshHostsContract } from "@okouai/api-contracts/contracts/ssh-access";
 import {
   testSshConnectionStateContract,
   type TestSshConnectionStateActionBody,
@@ -19,7 +20,9 @@ import { setupApp, setupRawAppRequest } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { now, nowDate } from "../../../lib/time";
 import { createDeferredPromise, onRejection } from "../../utils";
+import { signSandboxJwtForTests } from "../../auth/tokens";
 import { runnerSshRoutes } from "../runner-ssh";
+import { sshAccessRoutes } from "../ssh-access";
 import { sshConnectionsRoutes } from "../ssh-connections";
 import { testSshConnectionStateRoutes } from "../test-ssh-connection-state";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
@@ -371,6 +374,36 @@ async function list(f: Fixture) {
     .connections;
 }
 
+async function inventory(f: Fixture) {
+  context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+    data: [
+      {
+        role: "org:member",
+        organization: { id: f.orgId },
+        publicUserData: { userId: f.userId },
+      },
+    ],
+  });
+  const seconds = Math.floor(now() / 1000);
+  const token = signSandboxJwtForTests({
+    scope: "okou",
+    userId: f.userId,
+    orgId: f.orgId,
+    runId: f.runId,
+    capabilities: ["ssh:read"],
+    iat: seconds,
+    exp: seconds + 3600,
+  });
+  return (
+    await accept(
+      setupApp({ context, routes: sshAccessRoutes })(sshHostsContract).list({
+        headers: { authorization: `Bearer ${token}` },
+      }),
+      [200],
+    )
+  ).body.hosts;
+}
+
 beforeEach(() => {
   mockEnv("OFFICIAL_RUNNER_SECRET", runnerSecret);
   useSecretKmsProbe();
@@ -406,6 +439,199 @@ describe("SSH connection observations", () => {
       await accept(config().observations({ headers: sessionHeaders }), [200])
     ).body.observations;
   }
+
+  it.each(["ubuntu", "deploy"])(
+    "isolates credentials, trust and lifecycle at a shared endpoint with a second %s login",
+    async (username) => {
+      const owner = {
+        orgId: `org_ssh_shared_${randomUUID()}`,
+        userId: `user_ssh_shared_${randomUUID()}`,
+      };
+      await updateFeatureSwitchesForUser(context, owner, {
+        [FeatureSwitchKey.SshAccess]: true,
+      });
+      // Infrastructure supplies the winning Runner; configuration and trust
+      // changes use the production owner and Runner endpoints below.
+      const runtime = await createRuntime(owner);
+      authenticate(owner);
+      const [primary, created] = await Promise.all([
+        accept(
+          config().create({
+            headers: sessionHeaders,
+            body: {
+              displayName: "Primary SSH configuration",
+              host: "ssh.example.com",
+              username: "deploy",
+              privateKey,
+              passphrase,
+            },
+          }),
+          [201],
+        ),
+        accept(
+          config().create({
+            headers: sessionHeaders,
+            body: {
+              displayName: "Independent SSH configuration",
+              host: "SSH.example.com.",
+              username,
+              privateKey: "independent-private-key",
+              passphrase: "independent-passphrase",
+            },
+          }),
+          [201],
+        ),
+      ]);
+      const f = { ...owner, ...runtime, connectionId: primary.body.id };
+      const sibling = { ...f, connectionId: created.body.id };
+      expect(sibling.connectionId).not.toBe(f.connectionId);
+      const hosts = await inventory(f);
+      expect(hosts).toHaveLength(2);
+      expect(hosts).toStrictEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: f.connectionId,
+            host: "ssh.example.com",
+            port: 22,
+            username: "deploy",
+          }),
+          expect.objectContaining({
+            id: sibling.connectionId,
+            host: "ssh.example.com",
+            port: 22,
+            username,
+          }),
+        ]),
+      );
+      await expect(resolve(f)).resolves.toMatchObject({
+        outcome: "resolved",
+        username: "deploy",
+        privateKey,
+        passphrase,
+      });
+      const siblingCredential = {
+        outcome: "resolved",
+        host: "ssh.example.com",
+        port: 22,
+        username,
+        privateKey: "independent-private-key",
+        passphrase: "independent-passphrase",
+      };
+      await expect(pin(f)).resolves.toStrictEqual({
+        outcome: "pinned",
+        generation: 2,
+      });
+      await expect(resolve(sibling)).resolves.toStrictEqual({
+        ...siblingCredential,
+        generation: 1,
+        learnedHostKey: null,
+      });
+      await expect(pin(sibling, 1, otherHostKey)).resolves.toStrictEqual({
+        outcome: "pinned",
+        generation: 2,
+      });
+      await expect(resolve(f)).resolves.toMatchObject({
+        generation: 2,
+        learnedHostKey: hostKey,
+      });
+      const observedAt = nowDate().toISOString();
+      await expect(
+        observe(f, { expectedGeneration: 2, observedAt }),
+      ).resolves.toStrictEqual({ outcome: "recorded" });
+      const failedObservation = {
+        connectionId: f.connectionId,
+        generation: 2,
+        observedAt,
+        failureReason: "authentication_failed",
+      };
+      await expect(observations(f)).resolves.toStrictEqual([failedObservation]);
+      await expect(
+        observe(sibling, {
+          expectedGeneration: 2,
+          observedAt,
+          failureReason: null,
+        }),
+      ).resolves.toStrictEqual({ outcome: "recorded" });
+      const healthyObservation = {
+        ...failedObservation,
+        connectionId: sibling.connectionId,
+        failureReason: null,
+      };
+      await expect(observations(f)).resolves.toStrictEqual(
+        expect.arrayContaining([failedObservation, healthyObservation]),
+      );
+
+      const rotated = await accept(
+        config().update({
+          headers: sessionHeaders,
+          params: { connectionId: f.connectionId },
+          body: {
+            expectedGeneration: 2,
+            credentials: { privateKey: "rotated-key", passphrase: null },
+          },
+        }),
+        [200],
+      );
+      expect(rotated.body.generation).toBe(3);
+      await expect(resolve(f)).resolves.toMatchObject({
+        generation: 3,
+        privateKey: "rotated-key",
+        passphrase: null,
+        learnedHostKey: hostKey,
+      });
+      const unchangedSibling = {
+        ...siblingCredential,
+        generation: 2,
+        learnedHostKey: otherHostKey,
+      };
+      await expect(resolve(sibling)).resolves.toStrictEqual(unchangedSibling);
+      await expect(observations(f)).resolves.toStrictEqual([
+        healthyObservation,
+      ]);
+
+      await accept(
+        config().resetHostKey({
+          headers: sessionHeaders,
+          params: { connectionId: f.connectionId },
+          body: { expectedGeneration: 3 },
+        }),
+        [200],
+      );
+      await expect(resolve(f)).resolves.toMatchObject({
+        generation: 4,
+        learnedHostKey: null,
+      });
+      await expect(resolve(sibling)).resolves.toStrictEqual(unchangedSibling);
+      await expect(observations(f)).resolves.toStrictEqual([
+        healthyObservation,
+      ]);
+
+      await accept(
+        config().delete({
+          headers: sessionHeaders,
+          params: { connectionId: f.connectionId },
+        }),
+        [204],
+      );
+      await expect(resolve(f)).resolves.toStrictEqual({
+        outcome: "unavailable",
+      });
+      await expect(resolve(sibling)).resolves.toStrictEqual(unchangedSibling);
+      await expect(observations(f)).resolves.toStrictEqual([
+        healthyObservation,
+      ]);
+      await expect(inventory(f)).resolves.toStrictEqual([
+        {
+          id: sibling.connectionId,
+          displayName: created.body.displayName,
+          host: created.body.host,
+          port: created.body.port,
+          username,
+          learnedHostKey: otherHostKey,
+        },
+      ]);
+    },
+  );
 
   it("records bounded owner-only failures and recovery without changing configuration or invalidating credentials", async () => {
     const f = await fixture();

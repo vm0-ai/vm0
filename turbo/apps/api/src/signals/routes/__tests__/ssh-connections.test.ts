@@ -113,7 +113,11 @@ describe("SSH connection routes", () => {
     useSecretKmsProbe();
     const owner = actor("browser-notice");
     await enableSsh(owner);
-    for (const host of ["first.example.com", "second.example.com"]) {
+    for (const host of [
+      "first.example.com",
+      "second.example.com",
+      "FIRST.example.com.",
+    ]) {
       context.mocks.ably.publish.mockClear();
       context.mocks.ably.channelGet.mockClear();
       await accept(
@@ -128,14 +132,14 @@ describe("SSH connection routes", () => {
       ]);
     }
     context.mocks.ably.publish.mockClear();
-    const duplicate = await accept(
+    const invalid = await accept(
       client().create({
         headers: authHeaders(),
-        body: createBody("first.example.com"),
+        body: createBody("https://first.example.com"),
       }),
-      [409],
+      [400],
     );
-    expect(duplicate.body.error.code).toBe("SSH_ENDPOINT_CONFLICT");
+    expect(invalid.body.error.code).toBe("SSH_INVALID_HOST");
     expect(context.mocks.ably.publish.mock.calls).toStrictEqual([]);
   });
   it("requires an organization session and the feature flag before parsing input", async () => {
@@ -418,7 +422,7 @@ describe("SSH connection routes", () => {
     expect(afterDelete.body.error).toBe("Connection not found");
   });
 
-  it("rejects invalid and duplicate endpoints before KMS work", async () => {
+  it("validates hosts while allowing independent configurations at normalized endpoints", async () => {
     const kms = useSecretKmsProbe();
     const owner = actor("validation");
     await enableSsh(owner);
@@ -452,15 +456,20 @@ describe("SSH connection routes", () => {
     expect(created.body.host).toBe("example.com");
     expect(kms.generateDataKeyCalls).toBe(1);
 
-    const duplicate = await accept(
+    const otherLogin = await accept(
       client().create({
         headers: authHeaders(),
-        body: createBody("example.COM"),
+        body: createBody("example.COM", { username: "ubuntu" }),
       }),
-      [409],
+      [201],
     );
-    expect(duplicate.body.error.message).toContain("already exists");
-    expect(kms.generateDataKeyCalls).toBe(1);
+    expect(otherLogin.body.id).not.toBe(created.body.id);
+    expect(otherLogin.body).toMatchObject({
+      host: "example.com",
+      port: 22,
+      username: "ubuntu",
+    });
+    expect(kms.generateDataKeyCalls).toBe(2);
 
     const other = await accept(
       client().create({
@@ -469,16 +478,31 @@ describe("SSH connection routes", () => {
       }),
       [201],
     );
-    const endpointCollision = await accept(
+    const moved = await accept(
       client().update({
         headers: authHeaders(),
         params: { connectionId: other.body.id },
         body: { expectedGeneration: 1, host: "EXAMPLE.com." },
       }),
-      [409],
+      [200],
     );
-    expect(endpointCollision.body.error.message).toContain("already exists");
-    expect(kms.generateDataKeyCalls).toBe(2);
+    expect(moved.body).toMatchObject({
+      id: other.body.id,
+      host: "example.com",
+      port: 22,
+      username: "deploy",
+      generation: 2,
+    });
+    const listed = await accept(
+      client().list({ headers: authHeaders() }),
+      [200],
+    );
+    expect(listed.body.connections).toStrictEqual([
+      created.body,
+      otherLogin.body,
+      moved.body,
+    ]);
+    expect(kms.generateDataKeyCalls).toBe(3);
 
     const rawRequest = setupRawAppRequest({
       context,
@@ -543,7 +567,7 @@ describe("SSH connection routes", () => {
       },
     );
     expect(invalidGeneration.status).toBe(400);
-    expect(kms.generateDataKeyCalls).toBe(2);
+    expect(kms.generateDataKeyCalls).toBe(3);
   });
 
   it("fails closed across owners without invoking KMS", async () => {
@@ -582,27 +606,49 @@ describe("SSH connection routes", () => {
     expect(otherList.body.connections).toStrictEqual([]);
   });
 
-  it("serializes duplicate creates", async () => {
+  it("preserves concurrent configurations for the same endpoint and username", async () => {
     useSecretKmsProbe();
-    const duplicateOwner = actor("concurrent-duplicate");
-    await enableSsh(duplicateOwner);
-    const duplicateResults = await Promise.all([
-      client().create({
-        headers: authHeaders(),
-        body: createBody("RACE.example.com"),
-      }),
-      client().create({
-        headers: authHeaders(),
-        body: createBody("race.example.com."),
-      }),
+    const owner = actor("concurrent-configurations");
+    await enableSsh(owner);
+    const [first, second] = await Promise.all([
+      accept(
+        client().create({
+          headers: authHeaders(),
+          body: createBody("RACE.example.com", {
+            displayName: "Primary key",
+            privateKey: "primary-key",
+          }),
+        }),
+        [201],
+      ),
+      accept(
+        client().create({
+          headers: authHeaders(),
+          body: createBody("race.example.com.", {
+            displayName: "Secondary key",
+            privateKey: "secondary-key",
+          }),
+        }),
+        [201],
+      ),
     ]);
-    expect(
-      duplicateResults
-        .map((result) => {
-          return result.status;
-        })
-        .sort(),
-    ).toStrictEqual([201, 409]);
+    expect(first.body.id).not.toBe(second.body.id);
+    for (const connection of [first.body, second.body]) {
+      expect(connection).toMatchObject({
+        host: "race.example.com",
+        port: 22,
+        username: "deploy",
+        generation: 1,
+      });
+    }
+    const listed = await accept(
+      client().list({ headers: authHeaders() }),
+      [200],
+    );
+    expect(listed.body.connections).toHaveLength(2);
+    expect(listed.body.connections).toStrictEqual(
+      expect.arrayContaining([first.body, second.body]),
+    );
   });
 
   it("allows concurrent creates beyond 64 configured hosts", async () => {
