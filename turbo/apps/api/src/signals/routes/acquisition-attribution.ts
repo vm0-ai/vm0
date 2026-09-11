@@ -29,6 +29,7 @@ import { userPrivacyChoice$ } from "../services/privacy-choices.service";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { clerk$ } from "../external/clerk";
+import { clerkAttributionDisabled } from "../../lib/clerk-attribution";
 import { nowDate } from "../../lib/time";
 import {
   googleAdsAccountForUser$,
@@ -180,6 +181,13 @@ const recordSignupInner$ = command(
     if (get(request$).header("Sec-GPC") === "1") {
       await set(userPrivacyChoice$, { userId: auth.userId, gpc: true }, signal);
       signal.throwIfAborted();
+    }
+
+    if (clerkAttributionDisabled()) {
+      return {
+        status: 200 as const,
+        body: { recorded: false, googleAdsAccountId: null },
+      };
     }
 
     const clerk = get(clerk$);

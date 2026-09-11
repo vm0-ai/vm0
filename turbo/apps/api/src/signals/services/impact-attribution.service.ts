@@ -15,6 +15,7 @@ import {
 } from "../external/stripe-client";
 import { writeDb$, type ReadonlyDb } from "../external/db";
 import { optionalEnv } from "../../lib/env";
+import { clerkAttributionDisabled } from "../../lib/clerk-attribution";
 import { authContext$ } from "../auth/auth-context";
 import { clerk$ } from "../external/clerk";
 import { nowDate } from "../../lib/time";
@@ -90,6 +91,9 @@ export const impactStripeMetadata$ = command(
   ): Promise<Record<string, string>> => {
     const auth = get(authContext$);
     if (auth.orgId !== orgId || auth.orgRole !== "admin") {
+      return {};
+    }
+    if (clerkAttributionDisabled()) {
       return {};
     }
     const result = await settle(

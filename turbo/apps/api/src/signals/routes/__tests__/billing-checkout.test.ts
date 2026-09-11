@@ -1031,6 +1031,91 @@ describe("POST /api/billing/checkout", () => {
     });
   });
 
+  it.each(["plan", "usage pack"] as const)(
+    "keeps %s checkout available without Clerk attribution in CI previews",
+    async (kind) => {
+      mockEnv("ENV", "preview");
+      mockOptionalEnv("OKOU_PREVIEW_JOB_REF", "pr-123");
+      setUsagePackPrices();
+      mockUsagePackCatalog();
+      const fixture = createOrgFixture();
+      authenticateOrg(fixture);
+      context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+        {
+          data: [
+            {
+              role: "org:admin",
+              publicUserData: { userId: fixture.userId },
+              createdAt: now(),
+            },
+          ],
+        },
+      );
+      context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+        { data: [] },
+      );
+      context.mocks.clerk.users.getUserList.mockRejectedValue(
+        new ClerkApiResponseTestError(1),
+      );
+      context.mocks.stripe.customers.create.mockResolvedValue({
+        id: `cus_${randomUUID()}`,
+      });
+      context.mocks.stripe.checkout.sessions.create.mockImplementation(
+        (input) => {
+          const subscriptionId =
+            stripeInputMetadata(input).usagePackSubscriptionId;
+          if (subscriptionId) {
+            onTestFinished(async () => {
+              await usagePackStateAction({
+                action: "cleanup",
+                orgId: fixture.orgId,
+                usagePackSubscriptionId: subscriptionId,
+                deleteGrants: false,
+                deleteOrgMetadata: true,
+              });
+            });
+          }
+          return Promise.resolve({
+            id: `cs_${randomUUID()}`,
+            url: "https://checkout.stripe.com/session/ci",
+          });
+        },
+      );
+      const api = setupApp({ context, routes: billingCheckoutRoutes });
+      const body = {
+        ...usagePackCheckoutBody(fixture.userId),
+        adAttribution: { gclid: "ci-click", okou_campaign_id: "24220469665" },
+      };
+      const response = await (kind === "usage pack"
+        ? accept(
+            api(billingUsagePackCheckoutContract).create({
+              headers: { authorization: "Bearer clerk-session" },
+              body,
+            }),
+            [200],
+          )
+        : accept(
+            api(billingCheckoutContract).create({
+              headers: { authorization: "Bearer clerk-session" },
+              body: {
+                tier: body.tier,
+                successUrl: body.successUrl,
+                cancelUrl: body.cancelUrl,
+                adAttribution: body.adAttribution,
+              },
+            }),
+            [200],
+          ));
+      expect(response.body).toStrictEqual({
+        url: "https://checkout.stripe.com/session/ci",
+      });
+      expect(context.mocks.clerk.users.getUserList).not.toHaveBeenCalled();
+      expect(
+        context.mocks.clerk.users.updateUserMetadata,
+      ).not.toHaveBeenCalled();
+    },
+  );
+
   it("returns checkout URL on success", async () => {
     const okouPricePro = "price_okou_pro";
     mockEnv("OKOU_PRICE_PRO", okouPricePro);
