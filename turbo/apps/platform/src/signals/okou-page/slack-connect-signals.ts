@@ -65,6 +65,9 @@ export const connectSlackAccount$ = command(
     const channelId = params.get("c");
     const threadTs = params.get("t");
 
+    // New App -> old API: an App containing #33421 can briefly reach an API
+    // that still returns 200. Remove this response after that API is outside
+    // the supported rollback window; tracked by #33474.
     const result = await accept(
       client.connect({
         body: {

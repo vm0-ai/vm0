@@ -110,6 +110,9 @@ const connectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return await set(startConnectorOAuth$, body, signal);
   }
 
+  // Old App -> new API: pre-#33421 App builds omit requestUserScopes. Remove
+  // this direct-connect path after the replacement App is live and the App
+  // client-version floor excludes those builds; tracked by #33474.
   const result = await set(
     connectSlackWorkspace$,
     {
