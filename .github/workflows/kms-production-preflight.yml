@@ -6,9 +6,17 @@ env:
 on:
   workflow_dispatch:
     inputs:
-      expected_deployment_id:
-        description: "Current production API deployment ID, recorded before approval"
+      operation:
+        description: "Full production verification or read-only old-key CloudTrail audit"
         required: true
+        default: verify
+        type: choice
+        options:
+          - verify
+          - source-audit
+      expected_deployment_id:
+        description: "Required for verify: current production API deployment ID, recorded before approval"
+        required: false
         type: string
 
 concurrency:
@@ -32,18 +40,21 @@ jobs:
         with:
           persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        if: inputs.operation != 'source-audit'
         with:
           node-version: 22
       - name: Install migration dependencies
+        if: inputs.operation != 'source-audit'
         working-directory: turbo
         run: |
           corepack enable pnpm
           pnpm install --frozen-lockfile --ignore-scripts --filter @okouai/db...
           command -v aws
       - name: Verify target runtime, rollback reads, and all production ciphertext
+        if: inputs.operation != 'source-audit'
         working-directory: turbo/packages/db
         env:
-          KMS_OPERATION: verify
+          KMS_OPERATION: ${{ inputs.operation }}
           EXPECTED_BACKUP_SHA256: 60d1500d90c83a8b40996c3e9e6fbb9453ffbf598a9ae1c670d38f60b340e9f8
           EXPECTED_DEPLOYMENT_ID: ${{ inputs.expected_deployment_id }}
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -56,6 +67,14 @@ jobs:
           NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: python3 ../../../.github/scripts/kms-production-migration.py
+      - name: Read source-key CloudTrail history without KMS calls
+        if: inputs.operation == 'source-audit'
+        env:
+          KMS_OPERATION: source-audit
+          SOURCE_AUDIT_WINDOW_START: "2026-09-10T07:38:23.484Z"
+          EXPECTED_BACKUP_SHA256: 60d1500d90c83a8b40996c3e9e6fbb9453ffbf598a9ae1c670d38f60b340e9f8
+          DOPPLER_SERVICE_IDENTITY_ID: ${{ vars.DOPPLER_SERVICE_IDENTITY_ID }}
+        run: python3 .github/scripts/kms-production-migration.py
       - name: Retain sanitized verification and operation checkpoint
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
