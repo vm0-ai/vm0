@@ -1,0 +1,48 @@
+name: KMS Recovery Snapshot Inspect
+
+on:
+  workflow_dispatch:
+    inputs:
+      snapshot_sha256:
+        description: "Snapshot ID hash from the reviewed recovery inventory"
+        required: true
+        type: string
+        default: "02762df9fab6d6f04a398d5ff4e1afd10bf5fa0a6e270855fff4e7df2bbcbe37"
+      expected_created_at:
+        description: "Exact snapshot creation time from the reviewed inventory"
+        required: true
+        type: string
+        default: "2026-02-16T05:57:00Z"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kms-production-operation-32264
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Restore an isolated preview, inspect aggregate markers, and remove the preview
+        env:
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          SNAPSHOT_SHA256: ${{ inputs.snapshot_sha256 }}
+          EXPECTED_CREATED_AT: ${{ inputs.expected_created_at }}
+        run: python3 .github/scripts/kms-recovery-snapshot-inspect.py
+      - name: Retain sanitized recovery evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: kms-recovery-snapshot-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/kms-recovery-snapshot.json
+          if-no-files-found: error
+          retention-days: 30
