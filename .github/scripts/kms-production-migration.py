@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import urllib.parse
 
 
@@ -143,6 +144,7 @@ def aws(arguments, environment, payload=None):
     operation = {
         ("sts", "get-caller-identity"): "sts:GetCallerIdentity",
         ("sts", "assume-role-with-web-identity"): "sts:AssumeRoleWithWebIdentity",
+        ("cloudtrail", "lookup-events"): "cloudtrail:LookupEvents",
     }[tuple(arguments[:2])]
     with ExitStack() as resources:
         descriptors = ()
@@ -407,13 +409,259 @@ def read_verification(path):
     return report
 
 
+def source_audit():
+    """Read source-key event history without generating KMS canary calls."""
+    output = Path(required_env("RUNNER_TEMP")) / "kms-production-reports"
+    output.mkdir(mode=0o700)
+    now = datetime.datetime.now(datetime.timezone.utc)
+    start = datetime.datetime.fromisoformat(
+        required_env("SOURCE_AUDIT_WINDOW_START").replace("Z", "+00:00")
+    )
+    end = now - datetime.timedelta(minutes=15)
+    report = {
+        "version": 1,
+        "operation": "source-audit",
+        "runId": required_env("GITHUB_RUN_ID"),
+        "commit": required_env("GITHUB_SHA"),
+        "startedAt": now.isoformat(),
+        "sourceKeyArn": SOURCE,
+        "account": "072707626411",
+        "region": "us-west-2",
+        "windowStart": start.isoformat(),
+        "windowEnd": end.isoformat(),
+        "visibilityBufferSeconds": 900,
+        "lateArrivalExcluded": False,
+        "backupSnapshotSha256": required_env("EXPECTED_BACKUP_SHA256"),
+        "result": "running",
+        "collectionComplete": False,
+        "retirementCleared": False,
+        "productionConfigurationChanged": False,
+        "staticCredentialsCreated": False,
+        "kmsCallsMade": False,
+        "queries": [],
+        "events": [],
+    }
+    try:
+        require(
+            start.utcoffset() == datetime.timedelta(0) and start < end < now,
+            "invalid_audit_window",
+        )
+        # LookupEvents retains only 90 days. Never report a complete historical
+        # window after its beginning falls outside that service boundary.
+        require(now - start < datetime.timedelta(days=90), "audit_window_expired")
+        environment = runtime_environment(backup_configuration())
+        identity = aws(["sts", "get-caller-identity"], environment)
+        require(
+            identity.get("Account") == "072707626411"
+            and identity.get("Arn") == "arn:aws:iam::072707626411:user/vm0-kms-prod",
+            "source_audit_principal_mismatch",
+        )
+        report["sourcePrincipalVerified"] = True
+        crypto = {
+            "Decrypt",
+            "Encrypt",
+            "ReEncrypt",
+            "GenerateDataKey",
+            "GenerateDataKeyWithoutPlaintext",
+            "GenerateDataKeyPair",
+            "GenerateDataKeyPairWithoutPlaintext",
+            "Sign",
+            "Verify",
+            "GenerateMac",
+            "VerifyMac",
+            "DeriveSharedSecret",
+        }
+        management = {
+            "DescribeKey",
+            "GetKeyPolicy",
+            "GetKeyRotationStatus",
+            "ListGrants",
+            "ListKeyPolicies",
+            "ListResourceTags",
+            "CreateGrant",
+            "RevokeGrant",
+            "RetireGrant",
+            "PutKeyPolicy",
+            "EnableKey",
+            "DisableKey",
+            "ScheduleKeyDeletion",
+            "CancelKeyDeletion",
+            "EnableKeyRotation",
+            "DisableKeyRotation",
+            "TagResource",
+            "UntagResource",
+            "UpdateKeyDescription",
+            "RotateKeyOnDemand",
+            "ListKeyRotations",
+        }
+        seen = {}
+        for resource in [SOURCE, SOURCE.rsplit("/", 1)[1]]:
+            query = {
+                "resourceForm": "arn" if resource == SOURCE else "key-id",
+                "pages": 0,
+                "returnedEvents": 0,
+                "complete": False,
+            }
+            report["queries"].append(query)
+            tokens = set()
+            token = None
+            for _ in range(100):
+                # CloudTrail permits two LookupEvents requests per second.
+                time.sleep(0.6)
+                payload = {
+                    "LookupAttributes": [
+                        {"AttributeKey": "ResourceName", "AttributeValue": resource}
+                    ],
+                    "StartTime": start.isoformat(),
+                    "EndTime": end.isoformat(),
+                    "MaxResults": 50,
+                }
+                if token is not None:
+                    payload["NextToken"] = token
+                page = aws(
+                    ["cloudtrail", "lookup-events", "--no-paginate"],
+                    environment,
+                    payload,
+                )
+                require(isinstance(page, dict), "invalid_audit_page")
+                events = page.get("Events")
+                require(
+                    isinstance(events, list) and len(events) <= 50,
+                    "invalid_audit_events",
+                )
+                query["pages"] += 1
+                query["returnedEvents"] += len(events)
+                for event in events:
+                    require(isinstance(event, dict), "invalid_audit_event")
+                    event_id = event.get("EventId", "")
+                    require(
+                        isinstance(event_id, str)
+                        and re.fullmatch(
+                            r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", event_id
+                        ),
+                        "invalid_audit_event_id",
+                    )
+                    raw = json.loads(event["CloudTrailEvent"])
+                    require(
+                        isinstance(raw, dict)
+                        and raw.get("eventID") == event_id
+                        and raw.get("eventSource") == "kms.amazonaws.com"
+                        and raw.get("awsRegion") == "us-west-2"
+                        and raw.get("recipientAccountId") == "072707626411",
+                        "audit_event_scope_mismatch",
+                    )
+                    occurred = datetime.datetime.fromisoformat(
+                        raw["eventTime"].replace("Z", "+00:00")
+                    )
+                    require(
+                        occurred.utcoffset() == datetime.timedelta(0)
+                        and start <= occurred <= end,
+                        "audit_event_time_mismatch",
+                    )
+                    resources = event.get("Resources")
+                    require(
+                        isinstance(resources, list)
+                        and any(
+                            isinstance(value, dict)
+                            and value.get("ResourceName")
+                            in {SOURCE, SOURCE.rsplit("/", 1)[1]}
+                            for value in resources
+                        ),
+                        "audit_resource_mismatch",
+                    )
+                    name = raw.get("eventName")
+                    require(
+                        isinstance(name, str) and name == event.get("EventName"),
+                        "audit_event_name_mismatch",
+                    )
+                    principal = raw.get("userIdentity")
+                    require(isinstance(principal, dict), "invalid_audit_identity")
+                    digest = hashlib.sha256(
+                        json.dumps(raw, sort_keys=True).encode()
+                    ).hexdigest()
+                    if event_id in seen:
+                        require(seen[event_id] == digest, "audit_duplicate_changed")
+                        continue
+                    seen[event_id] = digest
+                    report["events"].append(
+                        {
+                            "eventTime": occurred.isoformat(),
+                            "eventName": name
+                            if name in crypto | management
+                            else "other_kms_event",
+                            "cryptographicOperation": name in crypto,
+                            "unclassifiedOperation": name not in crypto | management,
+                            "reportedError": bool(
+                                raw.get("errorCode") or raw.get("errorMessage")
+                            ),
+                            "matchesRetainedSourceCredential": (
+                                principal["accessKeyId"]
+                                == environment["AWS_ACCESS_KEY_ID"]
+                                if "accessKeyId" in principal
+                                else None
+                            ),
+                            "principalSha256": hashlib.sha256(
+                                json.dumps(
+                                    {
+                                        key: principal.get(key)
+                                        for key in ["type", "arn", "principalId"]
+                                    },
+                                    sort_keys=True,
+                                ).encode()
+                            ).hexdigest(),
+                        }
+                    )
+                token = page.get("NextToken")
+                if token is None:
+                    query["complete"] = True
+                    break
+                require(
+                    isinstance(token, str)
+                    and 0 < len(token) <= 16384
+                    and token not in tokens,
+                    "invalid_audit_pagination",
+                )
+                tokens.add(token)
+            require(query["complete"], "audit_page_limit_reached")
+        report["events"].sort(
+            key=lambda event: (event["eventTime"], event["eventName"])
+        )
+        report["totals"] = {
+            "uniqueEvents": len(report["events"]),
+            "cryptographicOperations": sum(
+                event["cryptographicOperation"] for event in report["events"]
+            ),
+            "unclassifiedOperations": sum(
+                event["unclassifiedOperation"] for event in report["events"]
+            ),
+            "reportedErrors": sum(event["reportedError"] for event in report["events"]),
+        }
+        report["collectionComplete"] = True
+        report["result"] = "collected"
+    except BaseException as error:
+        report["result"] = "failed"
+        report["failure"] = (
+            str(error) if isinstance(error, MigrationError) else "unexpected_error"
+        )
+        if isinstance(error, AwsOperationError):
+            report["awsFailure"] = error.details
+        raise
+    finally:
+        report["finishedAt"] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        (output / "source-audit.json").write_text(json.dumps(report, indent=2) + "\n")
+
+
 def main():
     mode = required_env("KMS_OPERATION")
-    require(mode in {"verify", "verify-business", "migrate"}, "invalid_operation")
+    require(
+        mode in {"verify", "verify-business", "migrate", "source-audit"},
+        "invalid_operation",
+    )
     workflow = {
         "verify": "kms-production-preflight.yml",
         "verify-business": "kms-production-business-verify.yml",
         "migrate": "kms-production-migrate.yml",
+        "source-audit": "kms-production-preflight.yml",
     }[mode]
     require(
         required_env("GITHUB_REPOSITORY") == "vm0-ai/vm0"
@@ -435,6 +683,9 @@ def main():
         re.fullmatch(r"[0-9a-f]{64}", required_env("EXPECTED_BACKUP_SHA256")),
         "invalid_backup_digest",
     )
+    if mode == "source-audit":
+        source_audit()
+        return
     expected = required_env("EXPECTED_DEPLOYMENT_ID")
     require(re.fullmatch(r"dpl_[A-Za-z0-9]+", expected), "invalid_expected_deployment")
     cursor = os.environ.get("CURSOR", "")

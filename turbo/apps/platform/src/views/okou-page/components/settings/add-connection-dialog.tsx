@@ -1578,8 +1578,8 @@ export function ConnectModal({
         </DialogHeader>
 
         {item.connected && !accountMode && (
-          <p className="flex items-center gap-2 text-sm text-muted-foreground">
-            <span>{connectedStatusText(item)}</span>
+          <p className="wrap-anywhere text-sm text-muted-foreground">
+            {connectedStatusText(item)}
           </p>
         )}
 

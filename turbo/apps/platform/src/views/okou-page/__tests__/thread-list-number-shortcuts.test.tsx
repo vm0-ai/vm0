@@ -129,10 +129,10 @@ async function openNumberShortcutPage(
 }
 
 test.each(NUMBER_SHORTCUT_PLATFORMS)(
-  "Reveal the first nine hints after a 500 ms hold and open the ninth chat on $platform",
+  "Reveal only the first nine hints after a 500 ms hold on $platform",
   async (platform) => {
     const { modifier, additionalModifier, releaseModifiers, label } = platform;
-    const { threads, list } = await openNumberShortcutPage(platform, "new");
+    const { list } = await openNumberShortcutPage(platform, "new");
     const user = userEvent.setup();
     await user.hover(sidebarThreadLinks()[0]!);
     expect(hintKeys(list)).toStrictEqual([]);
@@ -152,6 +152,24 @@ test.each(NUMBER_SHORTCUT_PLATFORMS)(
       await user.keyboard(additionalModifier);
     }
     expect(hintKeys(list)).toHaveLength(9);
+    await user.keyboard(releaseModifiers);
+    expect(hintKeys(list)).toStrictEqual([]);
+  },
+);
+
+test.each(NUMBER_SHORTCUT_PLATFORMS)(
+  "Open the ninth chat using its visible hint on $platform",
+  async (platform) => {
+    const { modifier, additionalModifier, releaseModifiers } = platform;
+    const { threads, list } = await openNumberShortcutPage(platform, "new");
+    const user = userEvent.setup();
+    await user.keyboard(`{${modifier}>}`);
+    await waitFor(() => {
+      expect(hintKeys(list)).toHaveLength(9);
+    });
+    if (additionalModifier) {
+      await user.keyboard(additionalModifier);
+    }
     await user.keyboard(`9${releaseModifiers}`);
     await waitFor(() => {
       expect(pathname()).toBe(`/chats/${threads[4]!.id}`);

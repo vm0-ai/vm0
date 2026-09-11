@@ -3112,6 +3112,19 @@
       "categoriesAria": "커넥터 카테고리",
       "description": "에이전트가 사용할 수 있도록 타사 서비스를 연결하세요.",
       "descriptionWithCount": "에이전트가 사용할 수 있도록 {{value}}개의 서비스를 연결하세요.",
+      "directory": {
+        "browse": "둘러보기",
+        "builtin": "기본 제공 커넥터",
+        "builtinLoadFailed": "기본 제공 커넥터를 불러올 수 없습니다.",
+        "custom": "사용자 지정",
+        "customLoadFailed": "사용자 지정 커넥터를 불러올 수 없습니다.",
+        "emptyCustom": "조직에서 사용할 HTTP API 또는 MCP 서버를 추가하세요.",
+        "loading": "커넥터 불러오는 중…",
+        "noCategoryMatches": "이 카테고리에 일치하는 커넥터가 없습니다.",
+        "noCustomMatches": "검색과 일치하는 사용자 지정 커넥터가 없습니다.",
+        "retry": "다시 시도",
+        "searchAll": "모든 커넥터 검색"
+      },
       "empty": {
         "agent": "이 에이전트에 연결된 커넥터가 없습니다",
         "connected": "연결된 커넥터가 없습니다",

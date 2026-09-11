@@ -16,8 +16,8 @@ use async_trait::async_trait;
 use guest_contracts::session_history_identity::{
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
     SESSION_HISTORY_SIDECAR_EXPORT_EXIT_WRITE_FAILURE, SessionHistorySidecarExportFailure,
-    SessionHistorySidecarExportMetadata, SessionHistorySidecarIoErrorClass,
-    SessionHistorySidecarRepresentation,
+    SessionHistorySidecarExportMetadata, SessionHistorySidecarExportTimings,
+    SessionHistorySidecarIoErrorClass, SessionHistorySidecarRepresentation,
 };
 use sandbox::{
     CopyFileOptions, CopyFileResult, ExecRequest, ExecResult, GuestAgentProcessHandle,
@@ -353,6 +353,13 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
     assert!(fixture.promotion.restored_session_identity().is_some());
     let sandbox = sandbox_mock::MockSandbox::new(fixture.sandbox_id.to_string());
     let export_metadata = SessionHistorySidecarExportMetadata {
+        timings: SessionHistorySidecarExportTimings {
+            metadata_us: 101,
+            resolve_us: 202,
+            read_verify_us: 303,
+            write_us: 404,
+            total_us: 1010,
+        },
         representation: SessionHistorySidecarRepresentation::Raw,
         encoded_size: history.len() as u64,
     };
@@ -373,6 +380,25 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
     .await;
 
     assert!(promoted);
+    let export_event = captured_event(
+        &events,
+        "workspace image cache session history sidecar export completed",
+    );
+    assert_eq!(export_event.level, Level::INFO);
+    for (field, expected) in [
+        ("helper_metadata_us", 101),
+        ("helper_resolve_us", 202),
+        ("helper_read_verify_us", 303),
+        ("helper_write_us", 404),
+        ("helper_total_us", 1010),
+        ("history_size_bytes", history.len() as u64),
+        ("encoded_size", history.len() as u64),
+    ] {
+        assert_eq!(export_event.fields[field].parse::<u64>().unwrap(), expected);
+    }
+    for field in ["export_admission_ms", "export_exec_ms"] {
+        export_event.fields[field].parse::<u64>().unwrap();
+    }
     let promotion_event = captured_event(&events, "workspace image cache promoted");
     assert_eq!(
         promotion_event
@@ -425,6 +451,9 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
             .collect::<Vec<_>>();
         panic!("missing sidecar metadata; entries={entries:?}; events={events:#?}");
     }
+    let persisted: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(sidecar_metadata_path).unwrap()).unwrap();
+    assert!(persisted.get("timings").is_none());
 
     let lease = fixture
         .cache
@@ -449,6 +478,56 @@ async fn active_workspace_promotion_exports_session_history_sidecar() {
 }
 
 #[tokio::test]
+async fn successful_slow_sidecar_export_reports_timings_at_warn() {
+    for (guest_duration_ms, expected_level) in [(4999, Level::INFO), (5000, Level::WARN)] {
+        let history = b"cached history";
+        let restored_identity = test_restored_session_identity("sess-export-timing", history);
+        let fixture = WorkspacePromotionFixture::new_with_restored_session_identity(
+            "thread:export-timing",
+            Some(&restored_identity),
+        )
+        .await;
+        let sandbox = MockSandbox::new(fixture.sandbox_id.to_string());
+        let metadata = SessionHistorySidecarExportMetadata {
+            representation: SessionHistorySidecarRepresentation::Raw,
+            encoded_size: history.len() as u64,
+            timings: SessionHistorySidecarExportTimings {
+                metadata_us: 100,
+                resolve_us: 200,
+                read_verify_us: 3_000_000,
+                write_us: 1_000_000,
+                total_us: 4_000_300,
+            },
+        };
+        let mut result = ExecResult::new(0, serde_json::to_vec(&metadata).unwrap(), Vec::new());
+        result.guest_duration_ms = Some(guest_duration_ms);
+        sandbox.push_exec_result(Ok(result));
+        sandbox.push_copy_file_result(Ok(history.to_vec()));
+
+        let (promoted, events) = capture_promotion_events(prepare_and_publish_workspace_image(
+            &sandbox,
+            fixture.promotion,
+        ))
+        .await;
+
+        assert!(promoted, "slow success must still publish the sidecar");
+        let event = captured_event(
+            &events,
+            "workspace image cache session history sidecar export completed",
+        );
+        assert_eq!(event.level, expected_level);
+        assert_eq!(
+            event.fields["guest_duration_ms"],
+            guest_duration_ms.to_string()
+        );
+        assert_eq!(event.fields["helper_read_verify_us"], "3000000");
+        assert_eq!(event.fields["helper_write_us"], "1000000");
+        assert_eq!(event.fields["helper_total_us"], "4000300");
+        assert_eq!(sandbox.copy_file_calls().len(), 1);
+    }
+}
+
+#[tokio::test]
 async fn session_history_sidecar_export_admission_queues_before_guest_exec() {
     let history = br#"{"type":"message","content":"bounded export"}"#;
     let first_identity = test_restored_session_identity("sess-export-first", history);
@@ -468,6 +547,7 @@ async fn session_history_sidecar_export_admission_queues_before_guest_exec() {
     )
     .await;
     let export_metadata = SessionHistorySidecarExportMetadata {
+        timings: Default::default(),
         representation: SessionHistorySidecarRepresentation::Raw,
         encoded_size: history.len() as u64,
     };
@@ -553,6 +633,7 @@ async fn session_history_sidecar_export_admission_releases_before_host_copy() {
     )
     .await;
     let export_metadata = SessionHistorySidecarExportMetadata {
+        timings: Default::default(),
         representation: SessionHistorySidecarRepresentation::Raw,
         encoded_size: history.len() as u64,
     };
@@ -657,6 +738,7 @@ async fn session_history_sidecar_export_admission_releases_after_panic() {
 
     let second_sandbox = MockSandbox::new(second_fixture.sandbox_id.to_string());
     let export_metadata = SessionHistorySidecarExportMetadata {
+        timings: Default::default(),
         representation: SessionHistorySidecarRepresentation::Raw,
         encoded_size: history.len() as u64,
     };
@@ -688,6 +770,7 @@ async fn active_workspace_promotion_rejects_invalid_sidecar_metadata() {
         (
             "zero-size",
             serde_json::to_vec(&SessionHistorySidecarExportMetadata {
+                timings: Default::default(),
                 representation: SessionHistorySidecarRepresentation::Raw,
                 encoded_size: 0,
             })
@@ -696,6 +779,7 @@ async fn active_workspace_promotion_rejects_invalid_sidecar_metadata() {
         (
             "over-max",
             serde_json::to_vec(&SessionHistorySidecarExportMetadata {
+                timings: Default::default(),
                 representation: SessionHistorySidecarRepresentation::Raw,
                 encoded_size: RESUME_SESSION_HISTORY_MAX_BYTES + 1,
             })
@@ -765,6 +849,7 @@ async fn active_workspace_promotion_discards_sidecar_source_on_copy_error() {
     let cache = fixture.cache.clone();
     let sandbox = MockSandbox::new(fixture.sandbox_id.to_string());
     let export_metadata = SessionHistorySidecarExportMetadata {
+        timings: Default::default(),
         representation: SessionHistorySidecarRepresentation::Raw,
         encoded_size: history.len() as u64,
     };
@@ -817,6 +902,7 @@ async fn cancelled_workspace_promotion_preserves_session_history_sidecar() {
     sandbox.push_exec_result(Ok(ExecResult::new(
         0,
         serde_json::to_vec(&SessionHistorySidecarExportMetadata {
+            timings: Default::default(),
             representation: SessionHistorySidecarRepresentation::Raw,
             encoded_size: history.len() as u64,
         })
@@ -907,6 +993,7 @@ async fn workspace_promotion_classifies_cancelled_sidecar_admission_rejections()
             sandbox.push_exec_result(Ok(ExecResult::new(
                 0,
                 serde_json::to_vec(&SessionHistorySidecarExportMetadata {
+                    timings: Default::default(),
                     representation: SessionHistorySidecarRepresentation::Raw,
                     encoded_size: history.len() as u64,
                 })
@@ -967,6 +1054,7 @@ async fn active_workspace_promotion_discards_sidecar_source_on_copy_size_mismatc
     let cache = fixture.cache.clone();
     let sandbox = MockSandbox::new(fixture.sandbox_id.to_string());
     let export_metadata = SessionHistorySidecarExportMetadata {
+        timings: Default::default(),
         representation: SessionHistorySidecarRepresentation::Raw,
         encoded_size: history.len() as u64 + 1,
     };
@@ -990,6 +1078,16 @@ async fn active_workspace_promotion_discards_sidecar_source_on_copy_size_mismatc
     let event = captured_event(
         &events,
         "workspace image cache session history sidecar copy size mismatch",
+    );
+    assert_eq!(event.level, Level::WARN);
+    assert_eq!(
+        captured_event(
+            &events,
+            "workspace image cache session history sidecar export completed",
+        )
+        .level,
+        Level::INFO,
+        "successful export timing must not hide subsequent copy failure"
     );
     let copied_bytes = history.len().to_string();
     let encoded_size = (history.len() as u64 + 1).to_string();
@@ -1184,6 +1282,7 @@ async fn session_history_sidecar_staging_is_protected_from_gc() {
     let cache = fixture.cache.clone();
     let sandbox = PostCopyGateSandbox::new(fixture.sandbox_id.to_string());
     let export_metadata = SessionHistorySidecarExportMetadata {
+        timings: Default::default(),
         representation: SessionHistorySidecarRepresentation::Raw,
         encoded_size: history.len() as u64,
     };
@@ -1257,6 +1356,7 @@ async fn session_history_sidecar_staging_cleans_source_and_unlocks_when_cancelle
     let cache = fixture.cache.clone();
     let sandbox = Arc::new(PostCopyGateSandbox::new(fixture.sandbox_id.to_string()));
     let export_metadata = SessionHistorySidecarExportMetadata {
+        timings: Default::default(),
         representation: SessionHistorySidecarRepresentation::Raw,
         encoded_size: history.len() as u64,
     };
@@ -1325,6 +1425,7 @@ async fn session_history_sidecar_staging_cleans_source_and_unlocks_after_freeze_
     let sandbox =
         MockSandbox::with_overrides(fixture.sandbox_id.to_string(), Arc::clone(&overrides));
     let export_metadata = SessionHistorySidecarExportMetadata {
+        timings: Default::default(),
         representation: SessionHistorySidecarRepresentation::Raw,
         encoded_size: history.len() as u64,
     };

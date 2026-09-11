@@ -64,7 +64,7 @@ function getLinkByName(
   return link;
 }
 
-test("Code-copy confirmations belong to the selected block", async () => {
+async function openCodeCopyBlocks() {
   const chat = createMarkdownChatFixture(context);
   const source = [
     "```typescript",
@@ -107,15 +107,34 @@ test("Code-copy confirmations belong to the selected block", async () => {
   });
   const firstCopy = getButtonByName("Copy to clipboard", firstBlock);
   const secondCopy = getButtonByName("Copy to clipboard", secondBlock);
+  return { firstCopy, secondCopy, clipboard };
+}
 
+test.each(["first", "second"])(
+  "Copying the %s code block confirms only that block",
+  async (selected) => {
+    const { firstCopy, secondCopy, clipboard } = await openCodeCopyBlocks();
+    const [copy, other] =
+      selected === "first" ? [firstCopy, secondCopy] : [secondCopy, firstCopy];
+    click(copy);
+    await waitFor(() => {
+      expect(copy).toHaveAttribute("aria-label", "Copied");
+    });
+    expect(other).toHaveAttribute("aria-label", "Copy to clipboard");
+    expect(clipboard.writes).toStrictEqual([
+      selected === "first"
+        ? 'const first = "alpha";\n'
+        : 'const second = "beta";\n',
+    ]);
+  },
+);
+
+test("Copied code blocks reset their confirmations after returning to the chat", async () => {
+  const { firstCopy, secondCopy, clipboard } = await openCodeCopyBlocks();
   click(firstCopy);
-
   await waitFor(() => {
-    expect(firstCopy).toHaveAttribute("aria-label", "Copied");
+    return expect(firstCopy).toHaveAttribute("aria-label", "Copied");
   });
-  expect(secondCopy).toHaveAttribute("aria-label", "Copy to clipboard");
-  expect(clipboard.writes).toStrictEqual(['const first = "alpha";\n']);
-
   click(secondCopy);
 
   await waitFor(() => {

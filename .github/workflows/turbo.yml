@@ -1038,6 +1038,9 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          # Native model contexts must pin the CLI built from this API source.
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       - uses: ./.github/actions/toolchain-init
 
       - name: Fetch development Doppler OAuth config

@@ -64,6 +64,10 @@ import {
   openCustomAccountManager$,
 } from "../../../../signals/okou-page/settings/connector-account-dialogs.ts";
 import { connectorConnectionPending$ } from "../../../../signals/connector-connection-progress.ts";
+import {
+  connectorDirectoryEnabled$,
+  focusCreatedDirectoryConnector$,
+} from "../../../../signals/okou-page/settings/connector-directory-route.ts";
 
 function connectsDirectlyWithAuthorization(
   connector: CustomConnectorResponse,
@@ -328,6 +332,8 @@ function CustomConnectorRow({
   accountSummaryStatus,
   onManageAccounts,
 }: CustomConnectorRowProps) {
+  const focusCreated = useSet(focusCreatedDirectoryConnector$);
+  const directoryEnabled = useGet(connectorDirectoryEnabled$);
   const connecting = useGet(connectorConnectionPending$);
   const adminCanDelete = isAdmin;
   const mcpActionsEnabled = connector.kind === "http" || mcpEnabled;
@@ -352,7 +358,12 @@ function CustomConnectorRow({
   );
 
   return (
-    <div className="relative">
+    <div
+      className="relative"
+      data-custom-connector-id={directoryEnabled ? connector.id : undefined}
+      ref={directoryEnabled ? focusCreated : undefined}
+      tabIndex={directoryEnabled ? -1 : undefined}
+    >
       <CustomConnectorActivationCard
         connectorLabel={connector.displayName}
         canActivate={canActivate}
@@ -375,8 +386,10 @@ function CustomConnectorRow({
 
 function CustomConnectorDialogs({
   mcpEnabled,
+  onCreated,
 }: {
   readonly mcpEnabled: boolean;
+  readonly onCreated?: (connector: CustomConnectorResponse) => void;
 }) {
   const dialog = useGet(customConnectorDialog$);
   const closeDialog = useSet(closeCustomConnectorDialog$);
@@ -394,7 +407,9 @@ function CustomConnectorDialogs({
     (accessAccountSummary?.accountCount ?? 0) > 0;
   return (
     <>
-      {dialog.kind === "create" && <CustomConnectorCreateDialog />}
+      {dialog.kind === "create" && (
+        <CustomConnectorCreateDialog onCreated={onCreated} />
+      )}
       {dialog.kind === "edit" && (
         <CustomConnectorCreateDialog connector={dialog.connector} />
       )}
@@ -443,7 +458,7 @@ function CustomConnectorEmptyState({ isAdmin }: { readonly isAdmin: boolean }) {
   );
 }
 
-function CustomConnectorGrid({
+export function CustomConnectorGrid({
   connectors,
   isAdmin,
   mcpEnabled,
@@ -666,5 +681,19 @@ export function CustomConnectorsPanel() {
       <CustomConnectorDialogs mcpEnabled={mcpEnabled} />
       <CustomAccountDialogs mcpEnabled={mcpEnabled} />
     </section>
+  );
+}
+
+export function CustomConnectorDirectoryDialogs({
+  onCreated,
+}: {
+  readonly onCreated: (connector: CustomConnectorResponse) => void;
+}) {
+  const mcpEnabled = useGet(customConnectorMcpEnabled$);
+  return (
+    <>
+      <CustomConnectorDialogs mcpEnabled={mcpEnabled} onCreated={onCreated} />
+      <CustomAccountDialogs mcpEnabled={mcpEnabled} />
+    </>
   );
 }

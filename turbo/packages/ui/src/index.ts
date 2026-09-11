@@ -19,6 +19,7 @@ export {
   cardClassName,
 } from "./components/ui/card";
 export { Badge, type BadgeProps } from "./components/ui/badge";
+export { IconButton, type IconButtonProps } from "./components/ui/icon-button";
 export { Checkbox } from "./components/ui/checkbox";
 export {
   ToggleButton,

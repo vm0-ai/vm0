@@ -29,6 +29,23 @@ type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 const SESSION_HISTORY_HELPER_TIMEOUT: Duration = Duration::from_secs(10);
 
+fn assert_export_timings(output: &Output, metadata: &SessionHistorySidecarExportMetadata) {
+    let timings = &metadata.timings;
+    let stages_us =
+        timings.metadata_us + timings.resolve_us + timings.read_verify_us + timings.write_us;
+    // Four adjacent intervals lose at most three microseconds to rounding.
+    assert!(timings.total_us >= stages_us);
+    assert!(timings.total_us - stages_us <= 3);
+    assert!(
+        output.stdout.len() < 1024,
+        "helper result must remain bounded"
+    );
+    assert!(
+        output.stderr.is_empty(),
+        "timings must not add stderr output"
+    );
+}
+
 fn claude_history_fixture(
     root: &Path,
     session_id: &str,
@@ -314,6 +331,7 @@ async fn export_session_history_sidecar_reads_raw_source_once() -> TestResult {
         SessionHistorySidecarRepresentation::Raw
     );
     assert_eq!(export_metadata.encoded_size, history.len() as u64);
+    assert_export_timings(&output, &export_metadata);
     assert_eq!(std::fs::read(export_path)?, history);
     Ok(())
 }
@@ -449,6 +467,7 @@ async fn export_session_history_sidecar_reads_native_codex_zstd_once() -> TestRe
         SessionHistorySidecarRepresentation::CodexZstd
     );
     assert_eq!(export_metadata.encoded_size, encoded.len() as u64);
+    assert_export_timings(&output, &export_metadata);
     assert_eq!(std::fs::read(export_path)?, encoded);
     Ok(())
 }

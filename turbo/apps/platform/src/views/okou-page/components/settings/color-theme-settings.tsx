@@ -129,10 +129,11 @@ export function ColorThemeSettings() {
                   : "border-border hover:border-[hsl(var(--gray-500))] hover:bg-accent",
               )}
             >
+              {/* Resolve each palette on its own preview, independently of the selected theme. */}
               <span
                 aria-hidden="true"
                 data-color-theme={value}
-                className="okou-color-theme-swatch h-8 w-8 shrink-0 rounded-full border border-black/5 bg-origin-border"
+                className="bg-palette-anchor bg-palette-gradient h-8 w-8 shrink-0 rounded-full border border-black/5 bg-origin-border"
               />
               <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
                 {label}

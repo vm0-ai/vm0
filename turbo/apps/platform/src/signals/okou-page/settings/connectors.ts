@@ -60,6 +60,11 @@ import { IN_VITEST } from "../../../env.ts";
 import { connectorRedirectingPath } from "../../connectors-page/connector-redirecting.ts";
 import { isConnectorChangedPayloadFor } from "../../connector-change.ts";
 import { i18n } from "../../../i18n/index.ts";
+import {
+  connectorDirectoryEnabled$,
+  connectorDirectoryCustomScope$,
+  openConnectorDirectoryScope$,
+} from "./connector-directory-route.ts";
 import type {
   PlatformConnector,
   PlatformConnectorAccountMutationIntent,
@@ -452,6 +457,9 @@ export type ConnectorsConnectionFilter =
 
 export const connectorsConnectionFilter$ = computed(
   (get): ConnectorsConnectionFilter => {
+    if (get(connectorDirectoryEnabled$)) {
+      return { kind: "all" };
+    }
     const raw = get(searchParams$).get(CONNECTORS_CONNECTION_FILTER_PARAM);
     if (raw === "connected") {
       return { kind: "connected" };
@@ -479,11 +487,21 @@ export const connectorsSearch$ = computed((get) => {
  * next to the search keyword rather than in component state.
  */
 export const connectorsCategoryFilter$ = computed((get): string | null => {
+  if (get(connectorDirectoryCustomScope$)) {
+    return null;
+  }
   return get(searchParams$).get(CONNECTORS_CATEGORY_PARAM) ?? null;
 });
 
 export const setConnectorsCategoryFilter$ = command(
   ({ get, set }, value: string | null) => {
+    if (get(connectorDirectoryEnabled$)) {
+      set(
+        openConnectorDirectoryScope$,
+        value ? { kind: "category", category: value } : { kind: "all" },
+      );
+      return;
+    }
     const params = new URLSearchParams(get(searchParams$));
     if (value) {
       params.set(CONNECTORS_CATEGORY_PARAM, value);

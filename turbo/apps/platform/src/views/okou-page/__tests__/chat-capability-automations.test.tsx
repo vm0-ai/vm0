@@ -61,7 +61,7 @@ function automationControl(
   return control;
 }
 
-test("Browse workflow automations and their available controls", async () => {
+async function openAutomationBrowser(): Promise<void> {
   const automations = [
     {
       id: ACTIVE_SCHEDULE_ID,
@@ -161,7 +161,10 @@ test("Browse workflow automations and their available controls", async () => {
     name: "Automations",
   });
   expect(automationSidebar).toBeVisible();
+}
 
+test("Browse an active scheduled workflow and its available controls", async () => {
+  await openAutomationBrowser();
   const activeSchedule = automationPanel("Active release schedule");
   expect(within(activeSchedule).getByText("Active")).toBeVisible();
   expect(within(activeSchedule).getByText("Every 2 hours")).toBeVisible();
@@ -170,7 +173,10 @@ test("Browse workflow automations and their available controls", async () => {
   expect(automationControl(activeSchedule, "link", "View")).toBeVisible();
   expect(automationControl(activeSchedule, "button", "Run now")).toBeVisible();
   expect(automationControl(activeSchedule, "button", "Edit")).toBeVisible();
+});
 
+test("Browse a webhook workflow without offering schedule editing", async () => {
+  await openAutomationBrowser();
   const webhook = automationPanel("Release webhook");
   expect(automationControl(webhook, "link", "View")).toBeVisible();
   expect(automationControl(webhook, "button", "Run now")).toBeVisible();
@@ -179,7 +185,10 @@ test("Browse workflow automations and their available controls", async () => {
       return button.textContent?.trim() === "Edit";
     }),
   ).toBeFalsy();
+});
 
+test("Browse a paused scheduled workflow without an inline switch", async () => {
+  await openAutomationBrowser();
   const disabledSchedule = automationPanel("Paused digest schedule");
   expect(within(disabledSchedule).getByText("Disabled")).toBeVisible();
   expect(

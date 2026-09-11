@@ -890,7 +890,10 @@ describe("POST /api/voice-io/transcribe/segment", () => {
     expect(response.body.error.code).toBe("VOICE_TRANSCRIPTION_FAILED");
   });
 
-  it("counts one free-tier recording only after finalization, including a failed final attempt", async () => {
+  it.each([
+    "unfinished segments",
+    "failed final attempt followed by a successful retry",
+  ])("counts free-tier recordings correctly for %s", async (phase) => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     const actor = await enabledActor();
     if (!actor.orgId) {
@@ -949,33 +952,36 @@ describe("POST /api/voice-io/transcribe/segment", () => {
       }),
       [200],
     );
-    await expect(readQuota()).resolves.toMatchObject({
-      allowed: true,
-      count: 0,
-    });
-    await accept(
-      client().segment({
-        headers,
-        body: segmentForm([], "First part. Second part.", true, 120),
-      }),
-      [503],
-    );
-    await expect(readQuota()).resolves.toMatchObject({
-      allowed: true,
-      count: 0,
-    });
-    failFinal = false;
-    await accept(
-      client().segment({
-        headers,
-        body: segmentForm([], "First part. Second part.", true, 120),
-      }),
-      [200],
-    );
-    await expect(readQuota()).resolves.toMatchObject({
-      allowed: true,
-      count: 1,
-    });
+    if (phase === "unfinished segments") {
+      await expect(readQuota()).resolves.toMatchObject({
+        allowed: true,
+        count: 0,
+      });
+    } else {
+      await accept(
+        client().segment({
+          headers,
+          body: segmentForm([], "First part. Second part.", true, 120),
+        }),
+        [503],
+      );
+      await expect(readQuota()).resolves.toMatchObject({
+        allowed: true,
+        count: 0,
+      });
+      failFinal = false;
+      await accept(
+        client().segment({
+          headers,
+          body: segmentForm([], "First part. Second part.", true, 120),
+        }),
+        [200],
+      );
+      await expect(readQuota()).resolves.toMatchObject({
+        allowed: true,
+        count: 1,
+      });
+    }
   });
 
   it("meters unique recording time without charging the boundary overlap twice", async () => {

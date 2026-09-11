@@ -912,7 +912,7 @@ function createTemplateAttachmentNodeView(
   const typeText = document.createElement("span");
   typeText.className = "shrink-0 text-[11px] font-medium text-muted-foreground";
   const divider = document.createElement("span");
-  divider.className = "h-3.5 w-px shrink-0 bg-border/70";
+  divider.className = "h-3.5 w-px shrink-0 bg-divider/70";
   const titleText = document.createElement("span");
   titleText.className = "min-w-0 truncate text-xs font-medium";
   openButton.append(iconContainer, typeText, divider, titleText);

@@ -3,10 +3,8 @@
   "legacyClassTokens": [
     "animate-in",
     "copied",
-    "dialog-scrollable",
     "ease",
     "fade-in",
-    "icon-button",
     "icon-tooltip-trigger",
     "language-mermaid",
     "lucide",
@@ -29,7 +27,6 @@
     "okou-chat-card",
     "okou-chat-frame",
     "okou-chat-skeleton-reveal",
-    "okou-color-theme-swatch",
     "okou-composer",
     "okou-desktop-no-drag",
     "okou-desktop-titlebar-drag-region",
@@ -540,20 +537,6 @@
         "selector": ".okou-blocks span:nth-child(3)",
         "property": "animation",
         "value": "okou-block-pop 1.4s ease-in-out 0.4s infinite",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-color-theme-swatch",
-        "property": "background-color",
-        "value": "var(--okou-color-theme-anchor)",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-color-theme-swatch",
-        "property": "background-image",
-        "value": "linear-gradient(135deg,var(--okou-color-theme-anchor) 0%,color-mix(in srgb,var(--okou-color-theme-anchor),var(--okou-color-theme-companion)) 52%,var(--okou-color-theme-companion) 100%)",
         "important": false
       },
       {
@@ -2742,62 +2725,6 @@
       },
       {
         "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "position",
-        "value": "absolute",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "top",
-        "value": "-9.73px",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "left",
-        "value": "-6.4px",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "display",
-        "value": "block",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "width",
-        "value": "76.8px",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "height",
-        "value": "76.8px",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "max-width",
-        "value": "none",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".owf-diagram-okou-icon img",
-        "property": "object-fit",
-        "value": "fill",
-        "important": false
-      },
-      {
-        "atRules": [],
         "selector": ".owf-diagram-node-source",
         "property": "top",
         "value": "34px",
@@ -3427,71 +3354,7 @@
         "important": false
       }
     ],
-    "packages/ui/src/styles/globals.css": [
-      {
-        "atRules": ["@layer components"],
-        "selector": ".icon-button",
-        "property": "@apply",
-        "value": "flex items-center justify-center size-9 hover:bg-muted rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".dialog-scrollable",
-        "property": "scrollbar-width",
-        "value": "thin",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".dialog-scrollable",
-        "property": "scrollbar-color",
-        "value": "rgba(128,128,128,0.3) transparent",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".dialog-scrollable::-webkit-scrollbar",
-        "property": "width",
-        "value": "6px",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".dialog-scrollable::-webkit-scrollbar-track",
-        "property": "background",
-        "value": "transparent",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".dialog-scrollable::-webkit-scrollbar-track",
-        "property": "margin",
-        "value": "4px 0",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".dialog-scrollable::-webkit-scrollbar-thumb",
-        "property": "background-color",
-        "value": "rgba(128,128,128,0.3)",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".dialog-scrollable::-webkit-scrollbar-thumb",
-        "property": "border-radius",
-        "value": "3px",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".dialog-scrollable::-webkit-scrollbar-thumb:hover",
-        "property": "background-color",
-        "value": "rgba(128,128,128,0.5)",
-        "important": false
-      }
-    ]
+    "packages/ui/src/styles/globals.css": []
   },
   "classUsages": {
     "apps/platform/src/views/agents-page/agents-page-tabs.tsx": {
@@ -3606,7 +3469,6 @@
       "okou-btn-morandi": 1
     },
     "apps/platform/src/views/okou-page/components/org-manage/org-billing-tab.tsx": {
-      "dialog-scrollable": 1,
       "okou-app": 1,
       "okou-border": 3,
       "okou-border-t": 7
@@ -3628,10 +3490,6 @@
       "okou-border": 3,
       "okou-border-t": 1
     },
-    "apps/platform/src/views/okou-page/components/org-manage/usage-pack-pricing-page.tsx": {
-      "dialog-scrollable": 2,
-      "icon-button": 1
-    },
     "apps/platform/src/views/okou-page/components/preferences/personal-providers-tab.tsx": {
       "okou-btn-morandi": 2
     },
@@ -3648,8 +3506,7 @@
       "okou-border": 1
     },
     "apps/platform/src/views/okou-page/components/settings/color-theme-settings.tsx": {
-      "okou-border": 1,
-      "okou-color-theme-swatch": 1
+      "okou-border": 1
     },
     "apps/platform/src/views/okou-page/components/settings/connection-diagnostics-block.tsx": {
       "okou-border": 1
@@ -3828,18 +3685,11 @@
     "apps/platform/src/views/workflows-page/workflows-page.tsx": {
       "okou-btn-morandi": 4
     },
-    "packages/ui/src/components/ui/dialog.tsx": {
-      "dialog-scrollable": 1,
-      "icon-button": 1
-    },
     "packages/ui/src/components/ui/dropdown-menu.tsx": {
       "okou-border-t": 1
     },
     "packages/ui/src/components/ui/select.tsx": {
       "okou-border-t": 1
-    },
-    "packages/ui/src/components/ui/sheet.tsx": {
-      "icon-button": 1
     },
     "packages/ui/src/components/ui/sonner.tsx": {
       "toaster": 1

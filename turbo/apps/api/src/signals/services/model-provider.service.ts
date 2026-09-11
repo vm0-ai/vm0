@@ -812,9 +812,14 @@ async function persistMultiAuthModelProvider(
     );
 
     // Atomic model provider upsert; metadata-aware conflict set clears stale flags.
+    const selectedModel =
+      args.selectedModel ??
+      (args.type === "azure-foundry" || args.type === "aws-bedrock"
+        ? (existingProvider?.selectedModel ?? undefined)
+        : undefined);
     const conflictSet = buildMultiAuthConflictSet(
       args.authMethod,
-      args.selectedModel,
+      selectedModel,
       args.metadata,
     );
     const insertValues = buildMultiAuthInsertValues({

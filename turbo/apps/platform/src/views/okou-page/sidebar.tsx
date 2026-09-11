@@ -442,7 +442,7 @@ function ExpandedFooter() {
             );
           },
         )}
-        <div className="h-px bg-border/30 mx-1 my-1" />
+        <div className="h-px bg-divider/30 mx-1 my-1" />
         {/* The always-mounted rail owns the shared reset dialog controller. */}
         <AccountDropdownContainer renderCodexResetDialog={false} />
       </div>

@@ -274,6 +274,51 @@ No expected image, mask or threshold changed. This is bounded Chromium
 acceptance; explicit sidebar readiness remains necessary before using the
 runner as an unattended gate.
 
+## Color theme preview swatches
+
+`swatch-cases.json` runs the actual Preference dialog with the gradient theme
+capability explicitly enabled and disabled. Use `pnpm style:migration:swatch`
+from `e2e` with the standard deployed App/API, source/build, storage-state,
+output and baseline arguments, plus `--feature-fixture` pointing to the frozen
+TEST account's feature-switch response (no credentials). The runner records
+that fixture's hash and applies it to both API requests and inert document
+bootstrap responses. Only preferences and feature switches are controlled.
+
+Before editing swatch styles, capture and upload BEFORE plus unchanged-code
+A/A using this exact runner. In Light, Dark and narrow DPR 2, the cases cover
+all eight previews, inactive hover, keyboard focus and Space selection, every
+selected palette, and reload. After every selection, wait for the matching
+preferences GET that follows the POST and Clerk token refresh before taking the
+next action; an optimistic pressed state does not prove that save completed.
+Every capture observes both native controls and
+their preview spans, including background image and geometry. Distinct gradients
+must survive changes to the root palette. The disabled capability remains hidden.
+Real API persistence is a separate preview check; controlled responses certify
+client rendering and interaction only. Existing browser and rounding limits
+apply unchanged, and failures are retained.
+
+### Color swatch acceptance (#33063)
+
+[BEFORE/A/A](https://a.okou.io/tfbcvgmfih.zip) uses the unmigrated App build
+`440d64b6dfffeba66d643e35fee9685ad90df335` and frozen runner source
+`68ba2c0000bbebf2f088625e20b9ae10e6788082`. The
+[AFTER archive](https://a.okou.io/ibwjj8txei.zip) uses App/API build
+`094ffe1c195a4b4680a696273ebb08f4047ca2a8` from source
+`00f85fa8dd75772a7c274c4ca846f9ee65fbd042`, including main's shared button migration.
+All 40 states have zero changed pixels and identical native-control/swatch
+observations. The [comparison](https://a.okou.io/767nwsbdl5.png) is a quick view;
+the archive retains full images and raw diffs. Live API save, reload and
+restoration of Blue horizon passed separately. Current implementation-head CI,
+App/E2E types, style checks and 11 preference tests passed.
+
+The [earlier calibration](https://a.okou.io/w9gttm8nol.zip) retains a completed
+capture's command termination and a Light reload that stayed at the startup
+spinner. Their triggers remain unconfirmed. Before business-style edits, the
+runner gained failure diagnostics and began waiting for the post-save GET,
+then a fresh BEFORE/A/A pair passed. No pixel or timeout limits changed.
+This is bounded Chromium acceptance; broader browser/native and unattended
+coverage remain outside this batch.
+
 ## Chat emoji font batch
 
 `chat-emoji-cases.json` and `run-chat-emoji.ts` cover the real chat icon trigger,

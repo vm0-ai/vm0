@@ -2889,7 +2889,7 @@ function ChatThreadArea({
       {leftPane && <ChatThreadPane isMain pane={leftPane} />}
       {rightPane && (
         <>
-          <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
+          <div className="w-px shrink-0 bg-divider/60" aria-hidden="true" />
           <ChatThreadPane pane={rightPane} />
         </>
       )}
@@ -3444,7 +3444,7 @@ function RunSectionDivider({
       >
         {label}
       </p>
-      <div role="separator" className="h-px flex-1 bg-border/40" />
+      <div role="separator" className="h-px flex-1 bg-divider/40" />
     </div>
   );
 }
