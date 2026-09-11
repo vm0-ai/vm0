@@ -113,6 +113,21 @@ test("The slash panel previews the highlighted type's covers", async () => {
   expect(within(pane).getByText(first.title)).toBeInTheDocument();
 });
 
+test("The pane carries more than one row of covers, so later templates are reachable", async () => {
+  await openSlashMenu(true);
+  const pane = detailPane();
+  if (!pane) {
+    throw new Error("Expected the detail pane");
+  }
+  // A template past the first row proves the pane scrolls its covers rather
+  // than showing the single row a fixed-height pane could hold.
+  const later = PRESENTATION_TEMPLATE_PICKER_ITEMS[7];
+  if (!later) {
+    throw new Error("Expected an eighth presentation template");
+  }
+  expect(within(pane).getByText(later.title)).toBeInTheDocument();
+});
+
 test("Highlighting a website row swaps the pane to the website catalog", async () => {
   const user = userEvent.setup();
   await openSlashMenu(true);

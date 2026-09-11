@@ -121,11 +121,16 @@ export function isSlashTemplatePreviewCategory(
   });
 }
 
-/** Covers render two across a 400px pane, so they are requested at 2x that. */
-const SLASH_TEMPLATE_COVER_SIZE = { width: 360, height: 202 } as const;
+/** Covers render two across a 320px pane, so they are requested at 2x that. */
+const SLASH_TEMPLATE_COVER_SIZE = { width: 280, height: 158 } as const;
 
-/** The pane shows one screen of covers; the rest live in the picker dialog. */
-const SLASH_TEMPLATE_PREVIEW_COUNT = 4;
+/**
+ * The pane scrolls, so it carries several screens of covers rather than the one
+ * row a fixed pane could hold. This is catalog order, which is the same
+ * curated order the picker dialog leads with; the client has no usage signal to
+ * rank by. The remainder still lives behind "Browse all templates".
+ */
+const SLASH_TEMPLATE_PREVIEW_COUNT = 12;
 
 export interface SlashTemplatePreview {
   readonly slug: string;
