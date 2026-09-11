@@ -56,6 +56,8 @@ const BANKING_GRANT_DURATIONS: readonly BankingGrantDuration[] = [
   "30d",
 ];
 
+const BANKING_COMPACT_CARD_HEIGHT_CLASS = "h-[136px] @[900px]:h-[88px]";
+
 interface BankingCardController {
   readonly status: BankingAccessRequestStatusResponse;
   readonly activeGrant: BankingGrant | null;
@@ -343,7 +345,10 @@ function BankingActionCardLoading() {
   return (
     <div
       data-testid="banking-action-card-loading"
-      className="okou-chat-card flex min-h-[88px] w-full items-center justify-center p-3"
+      className={cn(
+        "okou-chat-card flex w-full items-center justify-center p-3",
+        BANKING_COMPACT_CARD_HEIGHT_CLASS,
+      )}
     >
       <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
     </div>
@@ -356,10 +361,13 @@ function BankingActionCardError({ signals }: { signals: BankingSignals }) {
   return (
     <div
       data-testid="banking-action-card-error"
-      className="okou-chat-card flex min-h-[88px] w-full items-center gap-3 p-3"
+      className={cn(
+        "okou-chat-card flex w-full items-center gap-3 p-3",
+        BANKING_COMPACT_CARD_HEIGHT_CLASS,
+      )}
     >
       <AlertCircle className="h-5 w-5 shrink-0 text-destructive" />
-      <div className="min-w-0 flex-1 text-sm text-muted-foreground">
+      <div className="min-w-0 flex-1 line-clamp-3 text-sm leading-5 text-muted-foreground">
         {t(($) => {
           return $.chat.banking.loadFailed;
         })}
@@ -390,7 +398,10 @@ function LoadedBankingActionCard({
       className={cn(
         "okou-chat-card w-full p-3 text-left",
         compact &&
-          "flex min-h-[88px] flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",
+          cn(
+            "flex flex-col justify-between gap-3 overflow-hidden @[900px]:flex-row @[900px]:items-center",
+            BANKING_COMPACT_CARD_HEIGHT_CLASS,
+          ),
       )}
     >
       {controller.pending ? (
@@ -399,6 +410,7 @@ function LoadedBankingActionCard({
       <BankingCardHeader
         agentName={status.agent.name}
         reason={signals.reason}
+        compact={compact}
       />
       <BankingCardErrorMessage message={controller.ui.localError} />
       <BankingCardContent controller={controller} compact={compact} />
@@ -409,9 +421,11 @@ function LoadedBankingActionCard({
 function BankingCardHeader({
   agentName,
   reason,
+  compact,
 }: {
   readonly agentName: string;
   readonly reason: string;
+  readonly compact: boolean;
 }) {
   const { t } = useTranslation();
   return (
@@ -419,22 +433,29 @@ function BankingCardHeader({
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
         <Landmark className="h-5 w-5 text-foreground" />
       </div>
-      <div className="min-w-0">
-        <div className="truncate text-[0.9375rem] font-medium text-foreground">
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[0.9375rem] font-medium leading-5 text-foreground">
           {t(($) => {
             return $.chat.banking.title;
           })}
         </div>
-        <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
+        <div
+          className={cn(
+            "mt-0.5 text-sm leading-5 text-muted-foreground",
+            compact ? "truncate" : "line-clamp-2",
+          )}
+        >
           <span className="font-medium text-foreground/80">{agentName}</span>
           <span aria-hidden="true"> · </span>
           <span>{reason}</span>
         </div>
-        <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-          <ShieldCheck className="h-3.5 w-3.5" />
-          {t(($) => {
-            return $.chat.banking.readOnly;
-          })}
+        <div className="mt-1 flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground">
+          <ShieldCheck className="h-3.5 w-3.5 shrink-0" />
+          <span className={cn("min-w-0 flex-1", compact && "truncate")}>
+            {t(($) => {
+              return $.chat.banking.readOnly;
+            })}
+          </span>
         </div>
       </div>
     </div>
@@ -506,12 +527,12 @@ function BankingPendingNotice({
   return (
     <div
       className={cn(
-        "flex w-full shrink-0 items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-sm text-muted-foreground sm:w-auto",
-        !compact && "mt-4",
+        "flex w-full shrink-0 items-center gap-2 rounded-md bg-muted/50 px-3 text-sm text-muted-foreground @[900px]:w-auto",
+        compact ? "h-9 @[900px]:h-auto @[900px]:py-2" : "mt-4 py-2",
       )}
     >
-      <Loader2 className="h-4 w-4 animate-spin" />
-      <span className="min-w-0 flex-1">
+      <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+      <span className="min-w-0 flex-1 truncate">
         {t(($) => {
           return $.chat.banking.waiting;
         })}
@@ -520,7 +541,7 @@ function BankingPendingNotice({
         <Button
           size="sm"
           variant="outline"
-          className="h-9"
+          className="h-9 shrink-0"
           disabled={controller.ui.busy !== null}
           onClick={() => {
             controller.openConnect(
@@ -553,14 +574,14 @@ function ConnectBankButton({
   return (
     <div
       className={cn(
-        "flex w-full shrink-0 justify-end sm:w-auto",
+        "flex w-full shrink-0 justify-end @[900px]:w-auto",
         !compact && "mt-4",
       )}
     >
       <Button
         size="sm"
         variant="outline"
-        className="h-9 w-full sm:w-auto"
+        className="h-9 w-full @[900px]:w-auto"
         disabled={busy}
         onClick={() => {
           openConnect("connect");
