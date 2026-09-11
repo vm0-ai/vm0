@@ -80,6 +80,30 @@ async function closePreview() {
   });
 }
 
+test("production thread thumbnails use a.okou.io and open the same original", async () => {
+  mockPrivateImage();
+  await setupPage({
+    context,
+    path: `/chats/${ATTACHMENT_THREAD_ID}`,
+    host: "app.okou.ai",
+  });
+  const image = await screen.findByAltText("photo.png");
+  await waitFor(() => {
+    expect(image).toHaveAttribute(
+      "src",
+      THUMBNAIL_URL.replace("https://cdn.vm7.io/", "https://a.okou.io/"),
+    );
+  });
+  fireEvent.load(image);
+  click(image);
+  await waitFor(() => {
+    expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+      "src",
+      FIRST_URL,
+    );
+  });
+});
+
 test("opening and reopening an image uses the same presign as its thread thumbnail", async () => {
   mockPrivateImage();
   const image = await openChat();

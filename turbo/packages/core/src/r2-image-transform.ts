@@ -9,6 +9,8 @@ const R2_IMAGE_TRANSFORM_HOSTS = new Set([
   "static.okou.io",
 ]);
 const R2_IMAGE_TRANSFORM_PREFIX = "/cdn-cgi/image/";
+const R2_IMAGE_TRANSFORM_INPUT_PATH =
+  /\.(?:avif|gif|heic|jpe?g|png|svg|webp)$/iu;
 
 // Output quality for Cloudflare Image Resizing. Tuned to stay crisp on
 // text-heavy presentation thumbnails while still shrinking payloads.
@@ -71,7 +73,9 @@ export function r2ImageTransformUrl(
   remoteImageOrigin?: string,
 ): string {
   const parsed = parseAbsoluteUrl(url);
-  if (parsed === null) {
+  // Unsupported or unknown input formats keep their original URL. A browser
+  // can display formats such as BMP that Cloudflare cannot transform.
+  if (parsed === null || !R2_IMAGE_TRANSFORM_INPUT_PATH.test(parsed.pathname)) {
     return url;
   }
 

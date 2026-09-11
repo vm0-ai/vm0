@@ -26,6 +26,20 @@ describe("r2ImageTransformUrl", () => {
     );
   });
 
+  it.each([
+    `https://${"a".repeat(32)}.r2.cloudflarestorage.com/private/photo.BMP?X-Amz-Signature=signature#preview`,
+    "https://a.okou.io/0123456789.bmp?download=1#preview",
+    `https://${"a".repeat(32)}.r2.cloudflarestorage.com/private/photo.tiff?X-Amz-Signature=signature`,
+    `https://${"a".repeat(32)}.r2.cloudflarestorage.com/private/image?X-Amz-Signature=signature`,
+  ])(
+    "keeps unsupported or unknown image inputs on their original URL: %s",
+    (url) => {
+      expect(
+        r2ImageTransformUrl(url, { width: 800 }, "https://cdn.vm7.io"),
+      ).toBe(url);
+    },
+  );
+
   it("keeps public shares on their policy-checked URL", () => {
     const url = `https://a.okou.io/${"a".repeat(24)}.png?download=1#preview`;
     expect(r2ImageTransformUrl(url, { width: 400, height: 300 })).toBe(url);
