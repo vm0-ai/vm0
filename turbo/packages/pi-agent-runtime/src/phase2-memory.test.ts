@@ -9,6 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { encode } from "gpt-tokenizer/encoding/o200k_base";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { PiMemoryPhase2Diagnostic } from "./phase2-memory-diagnostics";
@@ -922,7 +923,7 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     const input = args(provider.baseUrl, {
       baseFiles: [
         baseFile("MEMORY.md", "# Memory\n"),
-        baseFile("memory_summary.md", `v1\n${" token".repeat(2605)}`),
+        baseFile("memory_summary.md", `v1\n${" ".repeat(64 * 1024)}`),
       ],
       selected: [],
       onLifecycle(event) {
@@ -936,10 +937,10 @@ describe("Pi memory Phase 2 consolidation engine", () => {
       errorClass: "agent_output_invalid",
       diagnostic: {
         stage: "output_validation",
-        reason: "summary_tokens",
+        reason: "summary_bytes",
         fileClass: "summary",
-        actual: 2608,
-        limit: 2500,
+        actual: 65_539,
+        limit: 65_536,
       },
     });
   });
@@ -1061,6 +1062,51 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     expect(files.get("MEMORY.md")).toBe("# Task Group: silent completion\n");
     expect(files.get("memory_summary.md")).toBe(
       "v1\n## User Profile\n- silent completion\n",
+    );
+  });
+
+  it("publishes a summary above the injection budget with its numeric feedback", async () => {
+    // The production failures reported exactly 2943 exact o200k source tokens.
+    const summary = `v1\n## User Profile\n${" token".repeat(2936)}`;
+    expect(encode(summary).length).toBe(2943);
+    const summaryBytes = Buffer.byteLength(summary);
+    expect(summaryBytes).toBeLessThanOrEqual(64 * 1024);
+    const provider = await startProvider([
+      {
+        type: "tool",
+        name: "phase2_write",
+        arguments: {
+          path: "memory/MEMORY.md",
+          content: "# Task Group: larger consolidation\n",
+        },
+      },
+      {
+        type: "tool",
+        name: "phase2_write",
+        arguments: { path: "memory/memory_summary.md", content: summary },
+      },
+      { type: "text", text: "done" },
+    ]);
+
+    const result = await runPiMemoryPhase2Consolidation(
+      args(provider.baseUrl),
+      new AbortController().signal,
+    );
+
+    expect(result.status).toBe("prepared");
+    if (result.status !== "prepared") return;
+    const published = result.files.find((file) => {
+      return file.path === "memory_summary.md";
+    });
+    expect(published?.size).toBe(summaryBytes);
+    expect(
+      Buffer.from(published?.contentBase64 ?? "", "base64").toString("utf8"),
+    ).toBe(summary);
+
+    // The write feedback the model actually observed describes the whole
+    // resulting summary, without ever repeating its content.
+    expect(JSON.stringify(provider.requests.at(-1)?.body ?? {})).toContain(
+      `written summary_bytes=${summaryBytes.toString()} summary_byte_limit=65536 summary_tokens=2943 summary_injection_target=2500`,
     );
   });
 
