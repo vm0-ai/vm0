@@ -7122,14 +7122,14 @@ async function expectPiApiFirstTurnTerminalWithoutOutput(
   actor: ApiTestUser,
   run: { readonly runId: string; readonly threadId: string },
   status: "failed" | "cancelled",
+  failureMessage = "[PI_API_MODEL_OUTPUT_INCOMPLETE] Pi API first-turn model output is incomplete",
 ): Promise<void> {
   const terminal = await api.readRun(actor, run.runId);
   expect(terminal).toMatchObject({
     status,
     ...(status === "failed"
       ? {
-          error:
-            "[PI_API_MODEL_OUTPUT_INCOMPLETE] Pi API first-turn model output is incomplete",
+          error: failureMessage,
         }
       : {}),
   });
@@ -7160,6 +7160,9 @@ function uploadedPiS3Object(objectKey: string): Buffer | undefined {
       candidate.constructor?.name === "PutObjectCommand" &&
       piS3ObjectKey(candidate) === objectKey
     ) {
+      if (typeof candidate.input?.Body === "string") {
+        return Buffer.from(candidate.input.Body, "utf8");
+      }
       if (!(candidate.input?.Body instanceof Uint8Array)) {
         throw new Error(
           `Expected uploaded Pi S3 object bytes for ${objectKey}`,
@@ -15016,6 +15019,57 @@ describe("CHAT-02: model-first provider policies", () => {
     });
   }, 90_000);
 
+  it("keeps a raw API usage failure terminal before aborting its private attempt", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockPiResourceArchiveDownloads();
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.openai.com/v1/responses", () => {
+        modelCalls += 1;
+        return nativeCodexSseResponse(
+          piResponsesTextSse(
+            "invalid usage must not authorize H0 replay",
+            modelCalls,
+            {
+              input_tokens: 1.5,
+              output_tokens: 3,
+              total_tokens: 4.5,
+            },
+          ),
+        );
+      }),
+    );
+    const objects = mockPiCheckpointObjectStore();
+    const { anchor, anchorClaim, run, usagePricingResolution } =
+      await queueCapabilityProvenPiRun({
+        actor,
+        agentId,
+        runnerGroup,
+        prompt: "reject invalid provider usage without retrying the prompt",
+      });
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
+      usagePricingResolution,
+    });
+    await waitForRunStatus(actor, run.runId, "failed");
+    await flushWaitUntilForTest();
+    expect(modelCalls).toBe(1);
+    expectNoPiApiFirstTurnArtifacts(run.runId, objects);
+    await expectPiApiFirstTurnTerminalWithoutOutput(
+      actor,
+      run,
+      "failed",
+      "[PI_API_MODEL_FAILED] Pi API first turn failed",
+    );
+    await expectNoBuiltInModelUsage(run.runId);
+    expect(context.mocks.axiomLogging.info).not.toHaveBeenCalledWith(
+      "Pi API first-turn outcome",
+      expect.objectContaining({
+        runId: run.runId,
+        outcome: "sandbox_retry_started",
+      }),
+    );
+  }, 90_000);
+
   it.each(["H1 commit", "H1 deadline", "handoff publication"] as const)(
     "keeps a genuine %s failure terminal without replaying H0",
     async (stage) => {
@@ -15284,9 +15338,14 @@ describe("CHAT-02: model-first provider policies", () => {
     90_000,
   );
 
-  it.each(["identity", "gzip", "zstd"] as const)(
-    "saves large Pi %s history and transfers the next turn without API history or resource IO",
-    async (encoding) => {
+  it.each([
+    { encoding: "identity", responseLost: false },
+    { encoding: "gzip", responseLost: false },
+    { encoding: "zstd", responseLost: false },
+    { encoding: "identity", responseLost: true },
+  ] as const)(
+    "saves large Pi $encoding history without API history or resource IO (publication response lost: $responseLost)",
+    async ({ encoding, responseLost }) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const checkpointObjects = mockPiCheckpointObjectStore();
       let modelCalls = 0;
@@ -15449,6 +15508,44 @@ describe("CHAT-02: model-first provider policies", () => {
       await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
         status: "completed",
       });
+      if (responseLost) {
+        const deadline = new AbortController();
+        onTestFinished(() => {
+          deadline.abort();
+        });
+        // An object-store response can be lost after the manifest is visible.
+        // Expire the real attempt signal exactly at that external boundary.
+        context.mocks.abortSignal.timeout.mockImplementation((milliseconds) => {
+          return milliseconds > API_FIRST_TURN_OWNERSHIP_BUDGET_MS - 1000 &&
+            milliseconds <= API_FIRST_TURN_OWNERSHIP_BUDGET_MS
+            ? deadline.signal
+            : undefined;
+        });
+        const send = context.mocks.s3.send.getMockImplementation();
+        if (!send) {
+          throw new Error("Expected the checkpoint object store");
+        }
+        context.mocks.s3.send.mockImplementation(async (command: unknown) => {
+          const candidate = command as PiCheckpointS3Command;
+          const stored = await send(command);
+          if (
+            candidate.constructor?.name === "PutObjectCommand" &&
+            piS3ObjectKey(candidate)?.endsWith("/manifest.json")
+          ) {
+            expect(
+              checkpointObjects.has(piS3ObjectKey(candidate) ?? ""),
+            ).toBeTruthy();
+            deadline.abort(
+              new DOMException(
+                "Manifest response lost at ownership deadline",
+                "TimeoutError",
+              ),
+            );
+            throw deadline.signal.reason;
+          }
+          return stored;
+        });
+      }
       const callsBeforeResume = context.mocks.s3.send.mock.calls.length;
       const resumed = await sendChatRun(
         actor,
@@ -15462,10 +15559,14 @@ describe("CHAT-02: model-first provider policies", () => {
       );
       await flushWaitUntilForTest();
       const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${resumed.runId}/manifest.json`;
+      // Terminal cleanup removes the failed run's object. The captured write
+      // still proves that ownership publication happened before its response
+      // was lost; the normal transfer retains its currently readable object.
+      const publishedManifest = responseLost
+        ? uploadedPiS3Object(manifestKey)
+        : checkpointObjects.get(manifestKey);
       const manifest = piApiFirstTurnManifestSchema.parse(
-        JSON.parse(
-          checkpointObjects.get(manifestKey)?.toString("utf8") ?? "{}",
-        ),
+        JSON.parse(publishedManifest?.toString("utf8") ?? "{}"),
       );
       expect(manifest).toMatchObject({
         schemaVersion: 4,
@@ -15504,6 +15605,28 @@ describe("CHAT-02: model-first provider policies", () => {
           `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${resumed.runId}/session.jsonl`,
         ),
       ).toBeFalsy();
+      if (responseLost) {
+        await waitForRunStatus(actor, resumed.runId, "failed");
+        await expectPiApiFirstTurnTerminalWithoutOutput(
+          actor,
+          resumed,
+          "failed",
+          "[PI_API_FIRST_TURN_DEADLINE_EXCEEDED] Pi API first-turn deadline elapsed",
+        );
+        expect(
+          context.mocks.s3.send.mock.calls
+            .slice(callsBeforeResume)
+            .filter(([command]) => {
+              const candidate = command as PiCheckpointS3Command;
+              return (
+                candidate.constructor?.name === "PutObjectCommand" &&
+                piS3ObjectKey(candidate) === manifestKey
+              );
+            }),
+        ).toHaveLength(1);
+        await api.requestClaimRunnerJob(true, resumed.runId, [404]);
+        return;
+      }
       const resumedClaim = await claimChatRun(runnerGroup, resumed.runId);
       expect(resumedClaim.claim.resumeSession).toMatchObject({
         sessionId: run.threadId,

@@ -1,4 +1,5 @@
 import { zstdDecompressSync } from "node:zlib";
+import { readFileSync } from "node:fs";
 import { createServer, type ServerResponse } from "node:http";
 
 import { piModelConfigSchema } from "@okouai/api-contracts/contracts/runners";
@@ -26,6 +27,31 @@ import {
 import { projectPiApiAssistantMessage } from "./api-turn";
 import { resolvePiAgentModel } from "./model";
 import { MemoryPiSession } from "./session-memory";
+import type { PiApiAssistantMessage } from "./api-types";
+
+const publicEventFixture = JSON.parse(
+  readFileSync(
+    new URL("../../../../fixtures/pi-public-events.json", import.meta.url),
+    "utf8",
+  ),
+) as {
+  readonly cases: readonly {
+    readonly name: string;
+    readonly guestMessage: AssistantMessage;
+    readonly apiAssistant: PiApiAssistantMessage;
+  }[];
+};
+
+describe("Pi API input normalization fixtures", () => {
+  it.each(publicEventFixture.cases)(
+    "normalizes $name before API event projection",
+    (example) => {
+      expect(projectPiApiAssistantMessage(example.guestMessage)).toEqual(
+        example.apiAssistant,
+      );
+    },
+  );
+});
 
 const SESSION_ID = "00000000-0000-4000-8000-000000000123";
 const SESSION_TIMESTAMP = "2026-08-31T12:34:56.000Z";
