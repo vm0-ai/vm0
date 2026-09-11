@@ -76,6 +76,20 @@ Guest Agent places the CLI in `runtime` immediately before exec. Each managed
 tool authenticates separately and receives a fresh `tool-N` descriptor.
 Controlled processes deny process inspection across the boundary.
 
+Guest-init mounts cgroup v2 with `favordynmods` before creating the containment
+hierarchy. This guest-only policy reduces dynamic placement latency for CLI
+children and managed tools. Linux documents a trade-off: fork/exit hot paths
+can become more expensive. It does not change credentials, controller limits,
+placement capabilities, or the CLI's before-exec migration boundary. See the
+[kernel mount policy documentation](https://www.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html#mounting).
+
+The option is installed at boot, not toggled for individual runs or on the host.
+Guest-init binary content participates in the rootfs hash and the derived
+snapshot hash, so new artifacts build snapshots with this policy; draining old
+sandboxes retain their existing mount. Mount failure remains fatal before guest
+readiness. Reverting the policy requires a new image and sandbox lifetime, not
+an inverse remount of a running guest.
+
 ## Ownership and Reuse
 
 ### Direct cgroup creation
@@ -142,7 +156,7 @@ committed guest kernel is 6.18.44. Fixed process-group-only helpers and explicit
 local TestNoop backends still use standard process creation. Guest Agent's
 internal CLI launcher and the managed tool's migrate-self/exec boundary are
 unchanged. There is no persistent cgroup pool, resident launcher or cgroup
-mount-policy change.
+mount-policy change on the host; the guest mount policy is described above.
 
 ### Operation lifetime
 
