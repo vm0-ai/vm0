@@ -1221,6 +1221,143 @@ describe("thread activity summary", () => {
     expect(JSON.stringify(logs)).not.toContain("PRIVATE_PROVIDER_BODY");
   });
 
+  it("absorbs upstream unavailability and keeps the last known summary", async () => {
+    const f = await fixture();
+    const diagnostics = captureDiagnostics();
+    const inputs = provider((_input, index) => {
+      return index === 1
+        ? "Preparing the launch checklist"
+        : HttpResponse.json(
+            { error: { code: 503, message: "PRIVATE_PROVIDER_BODY" } },
+            { status: 503 },
+          );
+    });
+    const first = await summarize(f.actor, f.run);
+    await deliver(f, [tool(0)]);
+    await advanceRunActivityClockFixture(f.run.runId, 16_000);
+    const failed = await summarize(f.actor, f.run);
+    expect(failed.messages).toStrictEqual(first.messages);
+    expect(failed.summaryRevision).toBe(first.summaryRevision);
+    expect(failed.retryAfterMs).toBeGreaterThan(55_000);
+    expect(failed.retryAfterMs).toBeLessThanOrEqual(60_000);
+    // The charged cooldown still bounds the next provider call.
+    await summarize(f.actor, f.run);
+    expect(inputs).toHaveLength(2);
+    const logs = await diagnostics();
+    expect(providerFailureRecords(logs)).toStrictEqual([]);
+    expect(operatorRecords(logs)).toStrictEqual([]);
+    // The attempt is still counted; only the absorbed outcome is silent.
+    expect(
+      logs.filter((event) => {
+        return event.message === "Activity summary attempt";
+      }),
+    ).toHaveLength(2);
+    expect(JSON.stringify(logs)).not.toContain("PRIVATE_PROVIDER_BODY");
+  });
+
+  it("absorbs an envelope unavailability and an upstream timeout", async () => {
+    const f = await fixture();
+    const diagnostics = captureDiagnostics();
+    const inputs = provider((_input, index) => {
+      // A native unavailability arrives inside a successful envelope, which
+      // this client wraps as a synthetic 502; the reason decides, not the status.
+      return index === 1
+        ? HttpResponse.json({
+            choices: [
+              {
+                finish_reason: "error",
+                error: {
+                  code: "UNAVAILABLE",
+                  message: "PRIVATE_PROVIDER_BODY",
+                },
+              },
+            ],
+          })
+        : HttpResponse.json(
+            { error: { code: 504, message: "PRIVATE_PROVIDER_BODY" } },
+            { status: 504 },
+          );
+    });
+    const unavailable = await summarize(f.actor, f.run);
+    expect(unavailable.status).toBe("cooldown");
+    expect(unavailable.retryAfterMs).toBeGreaterThan(55_000);
+    expect(unavailable.retryAfterMs).toBeLessThanOrEqual(60_000);
+    await advanceRunActivityClockFixture(f.run.runId, 61_000);
+    const timedOut = await summarize(f.actor, f.run);
+    expect(timedOut.status).toBe("cooldown");
+    expect(inputs).toHaveLength(2);
+    const logs = await diagnostics();
+    expect(completionRecords(logs)).toStrictEqual([]);
+    expect(operatorRecords(logs)).toStrictEqual([]);
+    expect(
+      logs.filter((event) => {
+        return event.message === "Activity summary attempt";
+      }),
+    ).toHaveLength(2);
+    expect(JSON.stringify(logs)).not.toContain("PRIVATE_PROVIDER_BODY");
+  });
+
+  it("reports credential, contract and unplaced provider failures as errors", async () => {
+    const f = await fixture();
+    const diagnostics = captureDiagnostics();
+    const inputs = provider((_input, index) => {
+      if (index === 1) {
+        // A native credential defect inside a rate-limited wrapper: the native
+        // code decides the class, so this is not absorbed with the 429s.
+        return HttpResponse.json(
+          { error: { code: 401, message: "PRIVATE_PROVIDER_BODY" } },
+          { status: 429, headers: { "Retry-After": "120" } },
+        );
+      }
+      if (index === 2) {
+        return HttpResponse.json({
+          error: {
+            code: "INVALID_ARGUMENT",
+            message: "PRIVATE_PROVIDER_BODY",
+          },
+        });
+      }
+      return HttpResponse.json(
+        { error: { code: 500, message: "PRIVATE_PROVIDER_BODY" } },
+        { status: 500 },
+      );
+    });
+    const auth = await summarize(f.actor, f.run);
+    expect(auth.retryAfterMs).toBeGreaterThan(110_000);
+    expect(auth.retryAfterMs).toBeLessThanOrEqual(120_000);
+    await advanceRunActivityClockFixture(f.run.runId, 121_000);
+    await summarize(f.actor, f.run);
+    await advanceRunActivityClockFixture(f.run.runId, 61_000);
+    await summarize(f.actor, f.run);
+    expect(inputs).toHaveLength(3);
+    const logs = await diagnostics();
+    const expected = [
+      { reason: "auth", providerStatus: 429, cooldownMs: 120_000 },
+      { reason: "invalid_request", providerStatus: 502, cooldownMs: 60_000 },
+      // Not every 5xx is absorbed: an error the shared classifier cannot place
+      // stays reported as `unknown` and claims no cause.
+      { reason: "unknown", providerStatus: 500, cooldownMs: 60_000 },
+    ] as const;
+    for (const fields of expected) {
+      expect(logs).toContainEqual(
+        expect.objectContaining({
+          level: "error",
+          message: "Activity summary completion",
+          fields: {
+            context: "api:activity-summary",
+            runId: f.run.runId,
+            outcome: "provider_failure",
+            durationMs: expect.any(Number),
+            ...fields,
+          },
+        }),
+      );
+    }
+    expect(providerFailureRecords(logs)).toHaveLength(expected.length);
+    expect(operatorRecords(logs)).toHaveLength(expected.length);
+    expect(JSON.stringify(logs)).not.toContain("PRIVATE_PROVIDER_BODY");
+  });
+
   it("records a missed deadline as an accepted degradation, not a failure", async () => {
     const f = await fixture();
     const entered = createDeferredPromise<void>(context.signal);
