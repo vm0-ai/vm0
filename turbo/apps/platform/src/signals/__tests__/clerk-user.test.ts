@@ -98,6 +98,17 @@ test("A repeated emit for the same user keeps the settled promise identity", asy
   expect(context.store.get(clerkUser$)).toBe(first);
 });
 
+test("A read without an owner rejects while Clerk is mid-transition", async () => {
+  signIn("user-a");
+  context.mocks.clerk().loaded(true);
+  context.store.set(setRootSignal$, context.signal);
+  mockClerkSessionTransitioning(true);
+
+  await expect(context.store.get(clerkUser$)).rejects.toThrow(
+    "Clerk identity is in transition without an owner",
+  );
+});
+
 test("Aborting the owner releases the listener and falls back to a direct read", async () => {
   signIn("user-a");
 
@@ -107,6 +118,8 @@ test("Aborting the owner releases the listener and falls back to a direct read",
   controller.abort();
 
   mockClerkSessionTransitioning(true);
-  await expect(context.store.get(clerkUser$)).resolves.toBeNull();
+  await expect(context.store.get(clerkUser$)).rejects.toThrow(
+    "Clerk identity is in transition without an owner",
+  );
   await expect(settled).resolves.toMatchObject({ id: "user-a" });
 });

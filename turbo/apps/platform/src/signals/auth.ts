@@ -388,10 +388,16 @@ export const clerkUser$ = computed(
     if (published) {
       return await published;
     }
-    // Before `setupClerkUser$` owns a listener there is nothing to wait for, so
-    // fall back to the live value and keep a plain read's behavior.
+    // React renders before bootstrap starts `setupClerkUser$`, so the view layer
+    // legitimately reads this before a listener exists. Clerk has not run
+    // `setActive()` yet at that point, which makes the live value authoritative.
     const clerk = await get(clerk$);
-    return clerk.user ?? null;
+    if (clerk.user === undefined) {
+      // Transitive without an owner: nothing will ever publish the settled
+      // value, so fail loudly instead of reporting a signed-out user.
+      throw new Error("Clerk identity is in transition without an owner");
+    }
+    return clerk.user;
   },
 );
 
