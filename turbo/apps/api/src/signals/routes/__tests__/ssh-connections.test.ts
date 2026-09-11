@@ -455,16 +455,17 @@ describe("SSH connection routes", () => {
         "/api/ssh/connections",
         "POST",
         {
-          displayName: "Password",
-          host: "password.example.com",
-          username: "user",
+          ...createBody("password.example.com"),
           password: "password-canary",
         },
       ],
       [
         `/api/ssh/connections/${created.body.id}`,
         "PATCH",
-        { password: "password-canary" },
+        {
+          expectedGeneration: created.body.generation,
+          password: "password-canary",
+        },
       ],
     ] as const) {
       const response = await rawRequest(path, {
