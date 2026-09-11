@@ -66,6 +66,7 @@ import { CustomConnectorPermissionsDrawer } from "./custom-connector-permissions
 import { PermissionsDialog } from "./permissions-dialog.tsx";
 import { i18n } from "../../../../i18n/index.ts";
 import { IconTooltipButton } from "../../../components/icon-tooltip.tsx";
+import { MercuryDisclosure } from "./mercury-disclosure.tsx";
 
 interface ConnectorAccessManagementDialogProps {
   readonly connectorSlug: ConnectorSlug;
@@ -318,6 +319,7 @@ function ConnectorAccessDialog({
   onSearchChange,
   onToggle,
   onManage,
+  footer,
 }: {
   readonly onClose: () => void;
   readonly connectorLabel: string;
@@ -334,6 +336,7 @@ function ConnectorAccessDialog({
     authorized: boolean,
   ) => void;
   readonly onManage: (row: ConnectorAgentAccessRow) => void;
+  readonly footer?: ReactNode;
 }) {
   const { t } = useTranslation();
   return (
@@ -397,6 +400,7 @@ function ConnectorAccessDialog({
             <LoadingAgents />
           )}
         </div>
+        {footer}
       </DialogContent>
     </Dialog>
   );
@@ -541,6 +545,11 @@ export function ConnectorAccessManagementDialog({
         onManage={(row) => {
           setPermissionAgentId(row.agent.agentId);
         }}
+        footer={
+          connectorSlug === "mercury" ? (
+            <MercuryDisclosure className="shrink-0 border-t border-border/50 pt-3" />
+          ) : undefined
+        }
       />
       <AgentPermissionDialog
         row={selectedPermissionRow}

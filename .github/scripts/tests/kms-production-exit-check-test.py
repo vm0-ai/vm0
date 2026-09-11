@@ -141,7 +141,7 @@ print(json.dumps(data)+"\\n200", end="")
         (staging / "proxy-registry.json").write_text(SECRET)
         result = self.run_script("runner-local", str(runners))
         self.assertEqual(result.returncode, 0, result.stderr)
-        counts = json.loads(result.stdout)
+        counts = json.loads(result.stdout)["counts"]
         self.assertEqual(
             {
                 k: counts[k]
@@ -175,7 +175,38 @@ print(json.dumps(data)+"\\n200", end="")
         (runners / "v1.2.4" / "proxy-registry.json").symlink_to(outside)
         result = self.run_script("runner-local", str(runners))
         self.assertEqual(result.returncode, 0)
-        self.assertEqual(json.loads(result.stdout)["unreadable"], 2)
+        inventory = json.loads(result.stdout)
+        self.assertEqual(inventory["counts"]["unreadable"], 2)
+        self.assertEqual(
+            {f["runnerVersion"]: f["reason"] for f in inventory["failures"]},
+            {"v1.2.3": "missing_registry", "v1.2.4": "symlink_registry"},
+        )
+
+    def test_oversized_registry_reports_metadata_without_reading_its_contents(self):
+        release = self.root / "runners" / "v1.2.3"
+        release.mkdir(parents=True)
+        path = release / "proxy-registry.json"
+        size = 16 * 1024 * 1024 + 1
+        with path.open("wb") as stream:
+            stream.write(SECRET.encode())
+            stream.truncate(size)
+        before = path.stat()
+        result = self.run_script("runner-local", str(release.parent))
+        self.assertEqual(result.returncode, 0)
+        inventory = json.loads(result.stdout)
+        self.assertEqual(inventory["counts"]["unreadable"], 1)
+        self.assertEqual(
+            inventory["failures"],
+            [
+                {
+                    "runnerVersion": "v1.2.3",
+                    "reason": "registry_size_limit",
+                    "sizeBytes": size,
+                }
+            ],
+        )
+        self.assertEqual(path.stat().st_size, before.st_size)
+        self.assertEqual(path.stat().st_mtime_ns, before.st_mtime_ns)
 
     def test_duplicate_registry_keys_cannot_silently_hide_source_values(self):
         release = self.root / "runners" / "v1.2.3"
@@ -184,7 +215,9 @@ print(json.dumps(data)+"\\n200", end="")
             '{"sandboxes": {"x": {}}, "sandboxes": {}}'
         )
         result = self.run_script("runner-local", str(release.parent))
-        self.assertEqual(json.loads(result.stdout)["unreadable"], 1)
+        inventory = json.loads(result.stdout)
+        self.assertEqual(inventory["counts"]["unreadable"], 1)
+        self.assertEqual(inventory["failures"][0]["reason"], "duplicate_json_key")
 
     def test_paginated_metadata_keeps_all_snapshots_for_review(self):
         self.fake_neon()
@@ -237,6 +270,7 @@ print(json.dumps(data)+"\\n200", end="")
     def test_partial_fleet_failure_preserves_observed_source_dependency(self):
         release = self.root / "runners" / "v1.2.3"
         release.mkdir(parents=True)
+        (release.parent / "v1.2.4").mkdir()
         (release / "proxy-registry.json").write_text(
             json.dumps({"sandboxes": {"x": {"encryptedSecrets": envelope(SOURCE)}}})
         )
@@ -257,8 +291,37 @@ print(open(os.environ["HOST_REPORT_FIXTURE"]).read())
         self.assertEqual(self.run_script("runners").returncode, 1)
         report = json.loads((self.root / "kms-exit-runners.json").read_text())
         self.assertEqual(report["inventory"]["totals"]["source"], 1)
+        self.assertEqual(
+            report["inventory"]["hosts"][0]["registryFailures"],
+            [
+                {
+                    "runnerVersion": "v1.2.4",
+                    "reason": "missing_registry",
+                    "sizeBytes": None,
+                }
+            ],
+        )
         self.assertFalse(report["inventory"]["collectionComplete"])
         self.assertFalse(report["retirementCleared"])
+
+    def test_remote_failure_text_is_not_exported_as_a_diagnostic_reason(self):
+        release = self.root / "runners" / "v1.2.3"
+        release.mkdir(parents=True)
+        local = self.run_script("runner-local", str(release.parent))
+        inventory = json.loads(local.stdout)
+        inventory["failures"][0]["reason"] = SECRET
+        fixture = self.root / "host-report.json"
+        fixture.write_text(json.dumps(inventory))
+        self.env["HOST_REPORT_FIXTURE"] = str(fixture)
+        self.tool(
+            "ssh",
+            "import os,sys\nsys.stdin.read()\n"
+            "print(open(os.environ['HOST_REPORT_FIXTURE']).read())\n",
+        )
+        self.assertEqual(self.run_script("runners").returncode, 1)
+        report = json.loads((self.root / "kms-exit-runners.json").read_text())
+        self.assertFalse(report["inventory"]["collectionComplete"])
+        self.assertTrue(all("error" in h for h in report["inventory"]["hosts"]))
 
 
 if __name__ == "__main__":

@@ -77,9 +77,6 @@
     "owf-diagram-okou-icon",
     "owf-diagram-vertical-control",
     "owf-diagram-wrap",
-    "running-indicator",
-    "running-indicator-center",
-    "running-indicator-ripple",
     "slide-in-from-bottom-2",
     "table-wrapper",
     "toaster",
@@ -3478,216 +3475,6 @@
         "property": "background-color",
         "value": "rgba(128,128,128,0.5)",
         "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator",
-        "property": "position",
-        "value": "relative",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator",
-        "property": "display",
-        "value": "inline-flex",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator",
-        "property": "width",
-        "value": "0.86rem",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator",
-        "property": "height",
-        "value": "0.86rem",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator",
-        "property": "border-radius",
-        "value": "9999px",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator",
-        "property": "color",
-        "value": "var(--color-sky-600, #0284c7)",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-center",
-        "property": "position",
-        "value": "absolute",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-center",
-        "property": "top",
-        "value": "50%",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-center",
-        "property": "left",
-        "value": "50%",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-center",
-        "property": "width",
-        "value": "calc(100% - 5px)",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-center",
-        "property": "height",
-        "value": "calc(100% - 5px)",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-center",
-        "property": "border-radius",
-        "value": "inherit",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-center",
-        "property": "background",
-        "value": "currentColor",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-center",
-        "property": "transform",
-        "value": "translate(-50%,-50%) scale(0.64)",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-center",
-        "property": "transform-origin",
-        "value": "center",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-center",
-        "property": "opacity",
-        "value": "0.34",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-center",
-        "property": "animation",
-        "value": "running-indicator-center 2400ms cubic-bezier(0.33,0,0.66,1) infinite",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-center",
-        "property": "animation-delay",
-        "value": "var(--running-indicator-delay, 0ms)",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-ripple",
-        "property": "position",
-        "value": "absolute",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-ripple",
-        "property": "top",
-        "value": "50%",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-ripple",
-        "property": "left",
-        "value": "50%",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-ripple",
-        "property": "width",
-        "value": "calc(100% - 3px)",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-ripple",
-        "property": "height",
-        "value": "calc(100% - 3px)",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-ripple",
-        "property": "border-radius",
-        "value": "inherit",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-ripple",
-        "property": "border",
-        "value": "1px solid currentColor",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-ripple",
-        "property": "transform",
-        "value": "translate(-50%,-50%) scale(0.8)",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-ripple",
-        "property": "transform-origin",
-        "value": "center",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-ripple",
-        "property": "opacity",
-        "value": "0",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-ripple",
-        "property": "animation",
-        "value": "running-indicator-ripple 2400ms ease-out infinite",
-        "important": false
-      },
-      {
-        "atRules": ["@layer components"],
-        "selector": ".running-indicator-ripple",
-        "property": "animation-delay",
-        "value": "var(--running-indicator-delay, 0ms)",
-        "important": false
       }
     ]
   },
@@ -3917,7 +3704,6 @@
     "apps/platform/src/views/okou-page/settings-tab.tsx": {
       "okou-chat-bubble-assistant": 1
     },
-    "apps/platform/src/views/okou-page/sidebar-account.tsx": {},
     "apps/platform/src/views/okou-page/sidebar-dialogs.tsx": {
       "okou-app": 2
     },
@@ -4032,11 +3818,6 @@
     },
     "packages/ui/src/components/ui/dropdown-menu.tsx": {
       "okou-border-t": 1
-    },
-    "packages/ui/src/components/ui/running-indicator.tsx": {
-      "running-indicator": 1,
-      "running-indicator-center": 1,
-      "running-indicator-ripple": 1
     },
     "packages/ui/src/components/ui/select.tsx": {
       "okou-border-t": 1

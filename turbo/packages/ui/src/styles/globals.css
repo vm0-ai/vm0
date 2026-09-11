@@ -191,6 +191,15 @@
    * =================================== */
   --icon-stroke-width: 1.5;
 
+  /* Running indicator — the breathing dot's two animated layers. The keyframes
+     animate `transform`, so consumers must set `transform` rather than the
+     individual `translate`/`scale` properties, which would compose on top of
+     the animation instead of being replaced by it. */
+  --animate-running-indicator-center: running-indicator-center 2400ms
+    cubic-bezier(0.33, 0, 0.66, 1) infinite;
+  --animate-running-indicator-ripple: running-indicator-ripple 2400ms ease-out
+    infinite;
+
   /* ===================================
    * Input System
    * Design tokens for consistent input styles across the application
@@ -688,47 +697,6 @@
 
   .dialog-scrollable::-webkit-scrollbar-thumb:hover {
     background-color: rgba(128, 128, 128, 0.5);
-  }
-
-  /* Running indicator — breathing dot for "in progress" state. */
-  .running-indicator {
-    position: relative;
-    display: inline-flex;
-    width: 0.86rem;
-    height: 0.86rem;
-    border-radius: 9999px;
-    color: var(--color-sky-600, #0284c7);
-  }
-  /* Match the 0% keyframes when iOS WebKit has not started the animations
-     after the mobile sidebar changes from hidden to visible. */
-  .running-indicator-center {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: calc(100% - 5px);
-    height: calc(100% - 5px);
-    border-radius: inherit;
-    background: currentColor;
-    transform: translate(-50%, -50%) scale(0.64);
-    transform-origin: center;
-    opacity: 0.34;
-    animation: running-indicator-center 2400ms cubic-bezier(0.33, 0, 0.66, 1)
-      infinite;
-    animation-delay: var(--running-indicator-delay, 0ms);
-  }
-  .running-indicator-ripple {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: calc(100% - 3px);
-    height: calc(100% - 3px);
-    border-radius: inherit;
-    border: 1px solid currentColor;
-    transform: translate(-50%, -50%) scale(0.8);
-    transform-origin: center;
-    opacity: 0;
-    animation: running-indicator-ripple 2400ms ease-out infinite;
-    animation-delay: var(--running-indicator-delay, 0ms);
   }
 }
 

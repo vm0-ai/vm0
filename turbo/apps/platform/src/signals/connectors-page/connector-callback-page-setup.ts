@@ -55,7 +55,11 @@ function connectorLabel(connectorSlug: ConnectorCallbackSlug | null): string {
     ? i18n.t(($) => {
         return $.connectors.callback.githubLabel;
       })
-    : connectorSlug.toUpperCase();
+    : connectorSlug === "mercury"
+      ? i18n.t(($) => {
+          return $.connectors.callback.mercuryLabel;
+        })
+      : connectorSlug.toUpperCase();
 }
 
 function connectorCallbackDocumentTitle(label: string): string {
@@ -106,11 +110,13 @@ function resultFromPath(
 
 function callbackPageElement(
   connectorIcon: PublicConnectorCatalogIcon | undefined,
+  connectorSlug: ConnectorSlug | null,
   label: string,
   result: ConnectorCallbackPageResult,
 ): React.JSX.Element {
   return createElement(ConnectorCallbackPage, {
     connectorIcon,
+    connectorSlug,
     connectorLabel: label,
     status: result.status,
     username: result.status === "success" ? result.username : null,
@@ -202,7 +208,10 @@ export const setupConnectorCallbackPage$ = command(
           signal,
         );
       }
-      set(updatePage$, callbackPageElement(connectorIcon, label, pathResult));
+      set(
+        updatePage$,
+        callbackPageElement(connectorIcon, connectorSlug, label, pathResult),
+      );
       set(updateDocumentTitle$, connectorCallbackDocumentTitle(label));
       await set(hideAppSkeleton$, signal);
       return;
@@ -211,7 +220,7 @@ export const setupConnectorCallbackPage$ = command(
     if (!callbackConnectorSlug) {
       set(
         updatePage$,
-        callbackPageElement(connectorIcon, label, {
+        callbackPageElement(connectorIcon, connectorSlug, label, {
           status: "error",
           message: i18n.t(($) => {
             return $.connectors.callback.invalidUrl;
@@ -225,7 +234,9 @@ export const setupConnectorCallbackPage$ = command(
 
     set(
       updatePage$,
-      callbackPageElement(connectorIcon, label, { status: "loading" }),
+      callbackPageElement(connectorIcon, connectorSlug, label, {
+        status: "loading",
+      }),
     );
     set(updateDocumentTitle$, connectorCallbackDocumentTitle(label));
     await set(hideAppSkeleton$, signal);
@@ -250,7 +261,10 @@ export const setupConnectorCallbackPage$ = command(
     if (result.status === "success") {
       await settle(set(syncGoogleAdsConversionMilestones$, signal), signal);
     }
-    set(updatePage$, callbackPageElement(connectorIcon, label, result));
+    set(
+      updatePage$,
+      callbackPageElement(connectorIcon, connectorSlug, label, result),
+    );
 
     const resultSearchParams = new URLSearchParams();
     if (result.status === "success" && result.username) {

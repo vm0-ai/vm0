@@ -2954,11 +2954,11 @@
       "addAccount": "Tambah akun",
       "connected": "Terhubung",
       "default": "Default",
-      "deleteAccount": "Hapus akun",
-      "deleteDescription": "Thread yang menggunakan akun ini akan kembali ke pewarisan default.",
-      "deleteDescriptionWithCount": "{{value}} thread akan kembali ke pewarisan default.",
-      "deleteDescriptionWithCount_other": "",
-      "deleteTitle": "Hapus {{account}}?",
+      "disconnectAccount": "Putuskan akun",
+      "disconnectDescription": "Ini memutuskan akun dari Okou. Thread yang menggunakannya akan kembali ke pewarisan default. Akun di penyedia tidak akan dihapus.",
+      "disconnectDescriptionWithCount": "Ini memutuskan akun dari Okou. {{value}} thread akan kembali ke pewarisan default. Akun di penyedia tidak akan dihapus.",
+      "disconnectDescriptionWithCount_other": "",
+      "disconnectTitle": "Putuskan {{account}}?",
       "fallbackByMethod": {
         "api": "Kunci API",
         "api-token": "Token API",
@@ -3027,6 +3027,10 @@
       "genericLabel": "Konektor",
       "githubLabel": "GitHub",
       "invalidUrl": "URL callback konektor tidak valid.",
+      "mercuryAttribution": "Powered by Mercury",
+      "mercuryDisclosure": "Mercury is a fintech company, not an FDIC-insured bank. Banking services provided through Choice Financial Group and Column N.A., Members FDIC.",
+      "mercuryDisclosureLabel": "Mercury banking disclosure",
+      "mercuryLabel": "Mercury",
       "success": "Terhubung"
     },
     "card": {

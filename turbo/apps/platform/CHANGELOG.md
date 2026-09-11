@@ -11,6 +11,26 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.885.0](https://github.com/vm0-ai/vm0/compare/app-v0.884.5...app-v0.885.0) (2026-09-11)
+
+
+### Features
+
+* **chat:** add native reasoning effort controls ([#33016](https://github.com/vm0-ai/vm0/issues/33016)) ([f649925](https://github.com/vm0-ai/vm0/commit/f649925cbb81c11ee5b66d32bcc6072fc2fe80c2))
+
+
+### Bug Fixes
+
+* **platform:** align the flyout panel's bottom with the rail card ([#33386](https://github.com/vm0-ai/vm0/issues/33386)) ([8aa8510](https://github.com/vm0-ai/vm0/commit/8aa8510f58204106578be37c9310b151466f40d3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.427.0
+    * @okouai/core bumped to 8.652.0
+
 ## [0.884.5](https://github.com/vm0-ai/vm0/compare/app-v0.884.4...app-v0.884.5) (2026-09-10)
 
 

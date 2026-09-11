@@ -120,6 +120,31 @@ Line height belongs to the badge because a font-size utility with an arbitrary v
 
 The `okou-badge`, `okou-pill`, and `okou-border-r` selectors and their consumers have been removed. `okou-pill` was scoped to `.okou-app` and set the muted foreground; its only consumer now spells that foreground itself. `okou-border-r` was a single settings-dialog divider and became `border-r border-r-gray-300` on that nav, keeping its lighter Gray 300 stroke while its width joins the shared hairline token.
 
+### Animated layers
+
+`RunningIndicator` owns its Tailwind utilities directly in JSX. Reuse the
+component through its props; its internal class strings are not an exported
+styling API. Both animated layers set their resting offset through an arbitrary
+`[transform:translate(-50%,-50%)_scale(...)]` rather than Tailwind's
+`translate-*` and `scale-*` utilities.
+
+That is not a style preference. Those utilities set the individual `translate`
+and `scale` CSS properties, while the keyframes animate `transform`. The
+individual properties compose with an animated `transform` instead of being
+replaced by it, so the layer would carry the centring offset twice for the whole
+cycle. Measured, the naive form moves roughly 20,000 pixels of the indicator at
+every sampled phase.
+
+Register a keyframe animation as an `--animate-*` theme entry so consumers reach
+it through `animate-*` rather than an `animation` shorthand. A per-instance
+runtime value, such as the indicator's phase-anchoring
+`--running-indicator-delay`, stays a narrowly named custom property that the
+component sets, read through an arbitrary `[animation-delay:var(...)]`.
+
+The `running-indicator`, `running-indicator-center`, and
+`running-indicator-ripple` recipes have been removed; their keyframes remain,
+since keyframes are not class selectors.
+
 ## Exception boundary
 
 Only two exception kinds exist:

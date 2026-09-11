@@ -2954,11 +2954,11 @@
       "addAccount": "계정 추가",
       "connected": "연결됨",
       "default": "기본값",
-      "deleteAccount": "계정 삭제",
-      "deleteDescription": "이 계정을 사용하는 스레드는 기본 상속으로 돌아갑니다.",
-      "deleteDescriptionWithCount": "{{value}}개 스레드가 기본 상속으로 돌아갑니다.",
-      "deleteDescriptionWithCount_other": "",
-      "deleteTitle": "{{account}}을(를) 삭제할까요?",
+      "disconnectAccount": "계정 연결 해제",
+      "disconnectDescription": "이 계정과 Okou의 연결을 해제합니다. 이 계정을 사용하는 스레드는 기본 상속으로 돌아갑니다. 제공업체의 계정은 삭제되지 않습니다.",
+      "disconnectDescriptionWithCount": "이 계정과 Okou의 연결을 해제합니다. {{value}}개 스레드가 기본 상속으로 돌아갑니다. 제공업체의 계정은 삭제되지 않습니다.",
+      "disconnectDescriptionWithCount_other": "",
+      "disconnectTitle": "{{account}}의 연결을 해제할까요?",
       "fallbackByMethod": {
         "api": "API 키",
         "api-token": "API 토큰",
@@ -3027,6 +3027,10 @@
       "genericLabel": "커넥터",
       "githubLabel": "GitHub",
       "invalidUrl": "잘못된 커넥터 콜백 URL입니다.",
+      "mercuryAttribution": "Powered by Mercury",
+      "mercuryDisclosure": "Mercury is a fintech company, not an FDIC-insured bank. Banking services provided through Choice Financial Group and Column N.A., Members FDIC.",
+      "mercuryDisclosureLabel": "Mercury banking disclosure",
+      "mercuryLabel": "Mercury",
       "success": "연결됨"
     },
     "card": {
