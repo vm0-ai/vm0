@@ -2,53 +2,15 @@ import type { PiAgentModelConfig } from "./types";
 import type { PiApiModelFailureDiagnostic } from "./api-failure";
 import type { PiApiFirstTurnOwnership } from "./provider-ownership";
 import type { PiMemoryCitation } from "@okouai/api-contracts/contracts/pi-memory-citations";
+import type { PiResourceSnapshot } from "@okouai/api-contracts/contracts/runners";
 
-export interface PiPreheatedAgentsFile {
-  readonly path: string;
-  readonly content: string;
-}
-
-export interface PiPreheatedSkill {
-  readonly name: string;
-  readonly description: string;
-  readonly filePath: string;
-  readonly baseDir: string;
-  readonly scope: "user" | "project" | "temporary";
-  readonly disableModelInvocation: boolean;
-}
-
-export type PiMemoryRecallSelection =
-  | {
-      readonly status: "no-content";
-      readonly memoryStorageId: string;
-      readonly storageVersionId: string;
-    }
-  | {
-      readonly status: "ready";
-      readonly memoryStorageId: string;
-      readonly storageVersionId: string;
-      readonly content: string;
-      readonly sourceHash: string;
-      readonly sourceSize: number;
-      readonly tokenCount: number;
-    };
-
-export interface PiPreheatedResourceSnapshotV1 {
-  readonly schemaVersion: 1;
-  readonly agentsFiles: readonly PiPreheatedAgentsFile[];
-  readonly skills: readonly PiPreheatedSkill[];
-}
-
-export interface PiPreheatedResourceSnapshotV2 {
-  readonly schemaVersion: 2;
-  readonly agentsFiles: readonly PiPreheatedAgentsFile[];
-  readonly skills: readonly PiPreheatedSkill[];
-  readonly memoryRecall: PiMemoryRecallSelection;
-}
-
-export type PiPreheatedResourceSnapshot =
-  | PiPreheatedResourceSnapshotV1
-  | PiPreheatedResourceSnapshotV2;
+export type PiMemoryRecallSelection = Extract<
+  PiResourceSnapshot,
+  { readonly schemaVersion: 2 }
+>["memoryRecall"];
+export type PiPreheatedAgentsFile = PiResourceSnapshot["agentsFiles"][number];
+export type PiPreheatedSkill = PiResourceSnapshot["skills"][number];
+export type PiPreheatedResourceSnapshot = PiResourceSnapshot;
 
 export type PiMemoryRecallOutcomeStatus = "hit" | "miss" | "invalid" | "stale";
 

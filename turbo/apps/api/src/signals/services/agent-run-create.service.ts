@@ -1,7 +1,9 @@
 import { isCloudModelMappingValid } from "@okouai/api-contracts/contracts/cloud-model-mapping";
 import {
   assertPiNativeCredential,
-  materializePiAgentModelConfig,
+  materializePiExecutionRoute,
+  normalizePiExecutionRoute,
+  type PiExecutionRoute,
 } from "@okouai/pi-agent-runtime";
 import {
   PI_NATIVE_CREDENTIAL_PLACEHOLDER,
@@ -6692,15 +6694,22 @@ function assertNativeCredentialOverrides(
   }
 }
 
-function nativeCredentialEnvironment(
+function capturedPiExecutionRoute(
   provider: ResolvedModelProviderEnvironment | null,
+): PiExecutionRoute | undefined {
+  return provider?.piModelConfig
+    ? normalizePiExecutionRoute(provider.piModelConfig)
+    : undefined;
+}
+
+function nativeCredentialEnvironment(
+  route: PiExecutionRoute | undefined,
 ): Record<string, string> {
-  const nativeConfig = provider?.piModelConfig;
-  return nativeConfig &&
-    "schemaVersion" in nativeConfig &&
-    nativeConfig.schemaVersion === 4
+  return route &&
+    (route.dialect === "anthropic-messages" ||
+      route.dialect === "bedrock-converse-stream")
     ? Object.fromEntries(
-        nativeConfig.credentialBindings.map((binding) => {
+        route.credentialBindings.map((binding) => {
           return [binding.environment, PI_NATIVE_CREDENTIAL_PLACEHOLDER];
         }),
       )
@@ -6796,7 +6805,9 @@ async function buildStoredExecutionContextDraft(args: {
       connectorVars: args.connectorContext.vars,
     }),
   );
-  const nativeEnvironment = nativeCredentialEnvironment(args.modelProvider);
+  const nativeEnvironment = nativeCredentialEnvironment(
+    capturedPiExecutionRoute(args.modelProvider),
+  );
   const platformEnvironment = buildStoredPlatformEnvironment({
     platformEnvironment: { ...args.platformEnvironment, ...nativeEnvironment },
     canonicalOkouRuntime: args.includeOkouTokenSecret === true,
@@ -8930,8 +8941,9 @@ async function materializePreparedPiProvider(
     );
   }
   const secrets: Record<string, string> = {};
-  await materializePiAgentModelConfig({
-    config,
+  const route = normalizePiExecutionRoute(config);
+  await materializePiExecutionRoute({
+    route,
     target: "direct",
     resolveCredential(binding) {
       const value = provider.secrets[binding.secretName];
@@ -8955,11 +8967,7 @@ async function materializePreparedPiProvider(
   return {
     ...provider,
     piModelConfig: config,
-    environment: Object.fromEntries(
-      config.credentialBindings.map((binding) => {
-        return [binding.environment, PI_NATIVE_CREDENTIAL_PLACEHOLDER];
-      }),
-    ),
+    environment: nativeCredentialEnvironment(route),
     secrets,
     secretConnectorMap: undefined,
     secretConnectorMetadataMap: undefined,

@@ -241,6 +241,7 @@ describe("Pi API facade", () => {
           apiKey: "test-key",
           model: "gpt-5.6-terra",
           dialect: "openai-responses",
+          transport: "sse",
           thinkingLevel: "low",
         },
         resourceSnapshot: {
@@ -607,6 +608,7 @@ describe("Pi API facade", () => {
           apiKey: "test-key",
           model: "deepseek-v4-flash",
           dialect: "openai-responses",
+          transport: "sse",
         },
         resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
         ownership: createPiApiFirstTurnOwnership(),
@@ -702,6 +704,7 @@ describe("Pi API facade", () => {
               apiKey: "test-key",
               model: "openai/gpt-5.6-terra",
               dialect: "openai-responses",
+              transport: "sse",
               thinkingLevel: "low",
               serviceTier: "priority",
             },
@@ -864,6 +867,7 @@ describe("Pi API facade", () => {
           apiKey: "test-key",
           model: "openai/gpt-5.6-terra",
           dialect: "openai-responses",
+          transport: "sse",
           thinkingLevel: "low",
         },
         resourceSnapshot: { schemaVersion: 1, agentsFiles: [], skills: [] },
@@ -940,6 +944,7 @@ describe("Pi API facade", () => {
       apiKey: "test-key",
       model: "gpt-5.6-terra",
       dialect: "openai-responses",
+      transport: "sse",
     });
     if (!resolvedModel) {
       throw new Error("Expected pinned Pi to catalog Terra");
@@ -986,6 +991,7 @@ describe("Pi API facade", () => {
       apiKey: "test-key",
       model: "gpt-5.6-terra",
       dialect: "openai-responses" as const,
+      transport: "sse" as const,
       thinkingLevel: "low" as const,
     };
 

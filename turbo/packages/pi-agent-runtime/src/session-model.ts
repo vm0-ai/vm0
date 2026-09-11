@@ -1,7 +1,7 @@
 import { registerSessionResourceCleanup } from "@earendil-works/pi-ai";
 
 import { piAgentStreamForConfig, resolvePiAgentModel } from "./model";
-import type { PiAgentModelConfig } from "./types";
+import type { PiAgentStreamConfig } from "./types";
 
 export function initializePiSessionResourceRegistry(): void {
   // Vite's SSR bundle otherwise keeps Pi's registry behind only the lazy
@@ -17,17 +17,7 @@ export function initializePiSessionResourceRegistry(): void {
 export function registeredModelConfig(
   model: NonNullable<ReturnType<typeof resolvePiAgentModel>>,
   apiKey: string,
-  config: Pick<
-    PiAgentModelConfig,
-    | "accountId"
-    | "dialect"
-    | "requestHeaders"
-    | "serviceTier"
-    | "transport"
-    | "catalogModel"
-    | "region"
-    | "bedrockAuth"
-  >,
+  config: PiAgentStreamConfig,
 ) {
   return {
     name: model.provider,
