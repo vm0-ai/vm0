@@ -1,4 +1,7 @@
-import type { AgentResponse } from "@okouai/api-contracts/contracts/agents";
+import type {
+  AgentResponse,
+  AgentVisibility,
+} from "@okouai/api-contracts/contracts/agents";
 import {
   type ConnectorAccountConnection,
   connectorAccountsContract,
@@ -113,6 +116,7 @@ export function listAgent(
   agentId: string,
   displayName: string,
   avatarUrl: string | null = null,
+  visibility: AgentVisibility = "public",
 ): AgentResponse {
   return {
     isDefaultAgent: false,
@@ -125,7 +129,7 @@ export function listAgent(
     modelProviderId: null,
     selectedModel: null,
     preferPersonalProvider: false,
-    visibility: "public",
+    visibility,
   };
 }
 

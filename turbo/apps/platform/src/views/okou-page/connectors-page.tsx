@@ -29,7 +29,7 @@ import {
   openCustomConnectorCreateDialog$,
 } from "../../signals/okou-page/settings/custom-connectors.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
-import { agents$ } from "../../signals/agent.ts";
+import { sortedAgents$ } from "../../signals/agent.ts";
 import { CustomConnectorsPanel } from "./components/settings/custom-connectors-panel.tsx";
 import {
   connectorCatalogDiscovery$,
@@ -350,6 +350,97 @@ function ConnectorFilterOption({
   );
 }
 
+function ConnectorFilterAgentOptions({
+  agents,
+  value,
+  onChange,
+}: {
+  readonly agents: readonly AgentResponse[];
+  readonly value: ConnectorsConnectionFilter;
+  readonly onChange: (value: ConnectorsConnectionFilter) => void;
+}) {
+  return agents.map((agent) => {
+    return (
+      <ConnectorFilterOption
+        key={agent.agentId}
+        active={value.kind === "agent" && value.agentId === agent.agentId}
+        onSelect={() => {
+          onChange({ kind: "agent", agentId: agent.agentId });
+        }}
+      >
+        <AvatarFromUrl
+          avatarUrl={agent.avatarUrl}
+          alt={connectorAgentName(agent)}
+          size={16}
+          className="h-4 w-4 rounded-full object-cover"
+        />
+        <span className="truncate">{connectorAgentName(agent)}</span>
+      </ConnectorFilterOption>
+    );
+  });
+}
+
+/**
+ * Public agents are shared by the whole workspace and capped at a handful;
+ * private agents are personal and unlimited, so a filter list long enough to
+ * scroll is always a private tail. Splitting it costs nothing when both halves
+ * exist, and the group headings borrow the agents page's own words so the two
+ * surfaces name one classification the same way.
+ */
+function agentVisibilityGroups(agents: readonly AgentResponse[]): {
+  readonly publicAgents: readonly AgentResponse[];
+  readonly privateAgents: readonly AgentResponse[];
+} {
+  return {
+    publicAgents: agents.filter((agent) => {
+      return agent.visibility !== "private";
+    }),
+    privateAgents: agents.filter((agent) => {
+      return agent.visibility === "private";
+    }),
+  };
+}
+
+function ConnectorFilterAgentGroups({
+  publicAgents,
+  privateAgents,
+  value,
+  onChange,
+}: {
+  readonly publicAgents: readonly AgentResponse[];
+  readonly privateAgents: readonly AgentResponse[];
+  readonly value: ConnectorsConnectionFilter;
+  readonly onChange: (value: ConnectorsConnectionFilter) => void;
+}) {
+  const { t } = useTranslation("agents");
+
+  return (
+    <>
+      <ConnectorFilterSectionLabel>
+        {t(($) => {
+          return $.list.tabs.public;
+        })}
+      </ConnectorFilterSectionLabel>
+      <ConnectorFilterAgentOptions
+        agents={publicAgents}
+        value={value}
+        onChange={onChange}
+      />
+      <DropdownMenuSeparator />
+      <ConnectorFilterSectionLabel>
+        {t(($) => {
+          return $.list.tabs.private;
+        })}
+      </ConnectorFilterSectionLabel>
+      <ConnectorFilterAgentOptions
+        agents={privateAgents}
+        value={value}
+        onChange={onChange}
+      />
+    </>
+  );
+}
+
 function ConnectorFilterDropdown({
   value,
   agents,
@@ -360,6 +451,7 @@ function ConnectorFilterDropdown({
   readonly onChange: (value: ConnectorsConnectionFilter) => void;
 }) {
   const { t } = useTranslation();
+  const { publicAgents, privateAgents } = agentVisibilityGroups(agents);
   const activeAgent =
     value.kind === "agent"
       ? agents.find((agent) => {
@@ -448,32 +540,27 @@ function ConnectorFilterDropdown({
         {agents.length > 0 && (
           <>
             <DropdownMenuSeparator />
-            <ConnectorFilterSectionLabel>
-              {t(($) => {
-                return $.connectors.catalog.filters.agents;
-              })}
-            </ConnectorFilterSectionLabel>
-            {agents.map((agent) => {
-              return (
-                <ConnectorFilterOption
-                  key={agent.agentId}
-                  active={
-                    value.kind === "agent" && value.agentId === agent.agentId
-                  }
-                  onSelect={() => {
-                    onChange({ kind: "agent", agentId: agent.agentId });
-                  }}
-                >
-                  <AvatarFromUrl
-                    avatarUrl={agent.avatarUrl}
-                    alt={connectorAgentName(agent)}
-                    size={16}
-                    className="h-4 w-4 rounded-full object-cover"
-                  />
-                  <span className="truncate">{connectorAgentName(agent)}</span>
-                </ConnectorFilterOption>
-              );
-            })}
+            {publicAgents.length > 0 && privateAgents.length > 0 ? (
+              <ConnectorFilterAgentGroups
+                publicAgents={publicAgents}
+                privateAgents={privateAgents}
+                value={value}
+                onChange={onChange}
+              />
+            ) : (
+              <>
+                <ConnectorFilterSectionLabel>
+                  {t(($) => {
+                    return $.connectors.catalog.filters.agents;
+                  })}
+                </ConnectorFilterSectionLabel>
+                <ConnectorFilterAgentOptions
+                  agents={agents}
+                  value={value}
+                  onChange={onChange}
+                />
+              </>
+            )}
           </>
         )}
       </DropdownMenuContent>
@@ -1418,7 +1505,7 @@ export function ConnectorsPage() {
   const setConnectionFilter = useSet(setConnectorsConnectionFilter$);
   const categoryFilter = useGet(connectorsCategoryFilter$);
   const setCategoryFilter = useSet(setConnectorsCategoryFilter$);
-  const agentsLoadable = useLastLoadable(agents$);
+  const agentsLoadable = useLastLoadable(sortedAgents$);
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
 
   const filteredConnectors =
