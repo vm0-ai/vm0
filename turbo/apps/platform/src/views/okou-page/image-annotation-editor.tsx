@@ -618,8 +618,16 @@ function InlineMarkEditor({
         maxWidth: percent(box.maxWidth),
         // The size the corners set, on the field and on the copy that measures
         // it alike, so resizing and typing agree about where the words wrap.
+        // The outline is what says the label is the thing selected: a dashed
+        // frame in its own ink, held off the words far enough to sit inside the
+        // corner grips. `outline` rather than a border, because a border would
+        // take width from the text and move where it wraps.
         ...(isLabel
-          ? { fontSize: `${LABEL_BASE_PX * textScale(mark)}px` }
+          ? {
+              fontSize: `${LABEL_BASE_PX * textScale(mark)}px`,
+              outline: `1px dashed ${mark.ink}`,
+              outlineOffset: "3px",
+            }
           : { background: NOTE_GROUND }),
       }}
       // The field lives inside the drawing surface so it can sit on the mark,
@@ -663,8 +671,10 @@ function InlineMarkEditor({
         // Not the shared `Input`: this one is ink on a screenshot, so the
         // border, ground and ring that make a field legible in a form are
         // exactly what must not appear over the user's image.
+        // `bindAnnotationNoteField$` owns the caret: focus belongs in `onRef`
+        // (docs/effect.md), and a mount-time attribute cannot fire again when
+        // the field is reused for the next mark.
         ref={bindNoteField}
-        autoFocus
         rows={1}
         value={value}
         aria-label={fieldLabel}
@@ -915,10 +925,20 @@ function KeyboardShortcuts({
             return;
           }
           const bare = resolveBareKey(event);
-          if (bare) {
-            event.preventDefault();
-            runBareKey(bare);
+          if (!bare) {
+            return;
           }
+          // Switching tools throws the open mark away, so a tool letter only
+          // counts while nothing is open — Tong: *"我在输入文字的时候，如果按到
+          // 了快捷按钮，也不应该直接切换mark啊，只有为未选中任何mark的情况，按快
+          // 捷按钮才会切换功能项"*. The caret can also be a frame late, and a
+          // keystroke that lands in that gap must not cost the mark. The rest of
+          // the bare keys act *on* the open mark, so they stay.
+          if (bare.kind === "tool" && selectedId !== null) {
+            return;
+          }
+          event.preventDefault();
+          runBareKey(bare);
         };
         document.addEventListener("keydown", onKeyDown, true);
         cleanup = () => {

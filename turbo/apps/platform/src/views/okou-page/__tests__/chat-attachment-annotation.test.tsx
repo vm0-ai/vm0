@@ -521,6 +521,45 @@ test("The pill deletes the open mark and is dead until one is", async () => {
   expect(screen.getByText("0 marks")).toBeVisible();
 });
 
+/**
+ * Switching tools throws the open mark away, so a tool letter is only a tool
+ * letter while nothing is open — Tong: *"我在输入文字的时候，如果按到了快捷按钮，
+ * 也不应该直接切换mark啊，只有为未选中任何mark的情况，按快捷按钮才会切换功能项"*.
+ * The caret can be a frame late on the field, and a keystroke landing in that
+ * gap must not cost the mark.
+ */
+test("A tool letter is ignored while a mark is open", async () => {
+  const user = userEvent.setup();
+  const image = draftAttachment("busy-typing.png", {
+    annotatedFileId: "draft-busy-typing-annotated",
+    annotations: boxAnnotation([{ id: "typing-mark", ordinal: 1 }]),
+  });
+  mockAttachmentChat(context, { draft: draftForAttachment(image, "") });
+
+  await setupPage({
+    context,
+    path: `/chats/${ATTACHMENT_THREAD_ID}`,
+    featureSwitches: { [FeatureSwitchKey.ComposerImageAnnotation]: true },
+  });
+
+  const surface = await openAnnotationEditor("busy-typing.png");
+  fireEvent.click(screen.getByTestId("annotation-mark-1"));
+  const note = await screen.findByLabelText("What should change?");
+  await waitFor(() => {
+    expect(note).toHaveFocus();
+  });
+
+  // The keystroke that misses the field, because the caret has not landed yet.
+  note.blur();
+  await user.keyboard("t");
+
+  expect(screen.getByTestId("annotation-inline-editor")).toBeVisible();
+  // Still the box tool: a drag draws a second box, not a label.
+  drawBox(surface);
+  await expect(screen.findByTestId("annotation-mark-2")).resolves.toBeVisible();
+  expect(screen.getByTestId("annotation-mark-2")).toHaveStyle({ left: "5%" });
+});
+
 test("A confirmed annotation blocks sending while its image uploads", async () => {
   const image = draftAttachment("billing-page.png");
   mockAttachmentChat(context, { draft: draftForAttachment(image, "") });

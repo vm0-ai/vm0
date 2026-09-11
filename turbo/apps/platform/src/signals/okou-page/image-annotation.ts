@@ -498,16 +498,15 @@ function createAnnotationViewportSignals() {
    * Forcing a remount to re-fire one throws the live input away mid-edit.
    */
   const noteField$ = state<HTMLElement | null>(null);
-  const noteFocusPending$ = state(false);
   const bindAnnotationNoteField$ = onRef<HTMLElement>(
-    command(({ get, set }, element: HTMLElement, signal: AbortSignal) => {
+    command(({ set }, element: HTMLElement, signal: AbortSignal) => {
       set(noteField$, element);
-      // A click on a printed note asks for the caret before the popover it
-      // lives in has mounted, so the request waits here for its element.
-      if (get(noteFocusPending$)) {
-        set(noteFocusPending$, false);
-        element.focus();
-      }
+      // The field only exists while a mark is open, and the caret belongs in it
+      // the whole time. Focusing on mount closes the gap a mount-time attribute
+      // leaves, where a keystroke meant for the words reached the editor's
+      // shortcuts instead — and it covers the click on a printed note, which
+      // asks for the caret before this element exists.
+      element.focus();
       signal.addEventListener(
         "abort",
         () => {
@@ -517,13 +516,8 @@ function createAnnotationViewportSignals() {
       );
     }),
   );
-  const focusAnnotationNoteField$ = command(({ get, set }) => {
-    const element = get(noteField$);
-    if (element) {
-      element.focus();
-      return;
-    }
-    set(noteFocusPending$, true);
+  const focusAnnotationNoteField$ = command(({ get }) => {
+    get(noteField$)?.focus();
   });
   const bindAnnotationSurface$ = onRef<HTMLElement>(
     command(({ set }, element: HTMLElement, signal: AbortSignal) => {
