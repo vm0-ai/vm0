@@ -71,7 +71,7 @@ print("LoadState=not-found\\nActiveState=inactive\\nSubState=dead\\nUnitFileStat
         )
         self.tool(
             "ps",
-            "import sys\nassert sys.argv[1:]==['-C','runner','-o','args=','--ww']\nsys.exit(1)\n",
+            "import sys\nassert sys.argv[1:]==['-C','runner','-o','args=','-ww']\nsys.exit(1)\n",
         )
 
     def run_script(self, *args):
@@ -272,22 +272,18 @@ print(json.dumps(data)+"\\n200", end="")
         self.assertTrue(evidence["diagnostics"]["serviceStderrPresent"])
         self.assertEqual(evidence["diagnostics"]["serviceProperties"], {})
 
-    def test_not_found_service_exit_preserves_evidence_without_clearing_missing_registry(
-        self,
-    ):
+    def test_real_ps_accepts_wide_process_query(self):
         release = self.root / "runners" / "v1.2.3"
         release.mkdir(parents=True)
         (release / "runner.yaml").write_text(SECRET)
-        self.tool(
-            "systemctl",
-            'import sys\nprint("LoadState=not-found\\nActiveState=inactive\\nSubState=dead\\nUnitFileState=not-found\\nMainPID=0\\nControlPID=0")\nsys.exit(4)\n',
-        )
+        # Exercise the installed procps parser instead of teaching a fixture
+        # to accept the same invalid option as the production command.
+        (self.bin / "ps").unlink()
         result = self.run_script("runner-local", str(release.parent))
         inventory = json.loads(result.stdout)
         evidence = inventory["missingRegistryEvidence"][0]
         self.assertTrue(evidence["collectionComplete"])
         self.assertTrue(evidence["configFileOnly"])
-        self.assertEqual(evidence["service"]["LoadState"], "not-found")
         self.assertEqual(inventory["counts"]["unreadable"], 1)
 
     def test_invalid_service_values_preserve_directory_evidence_without_leaking(self):

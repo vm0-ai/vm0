@@ -178,7 +178,6 @@ SERVICE_STATES = {
     },
     "UnitFileState": {
         "",
-        "not-found",
         "enabled",
         "enabled-runtime",
         "linked",
@@ -244,7 +243,7 @@ def missing_registry_evidence(directory):
         # Command lines may contain credentials: keep them in host memory and
         # export only a count. This does not prove absence of all retained state.
         processes = subprocess.run(
-            ["ps", "-C", "runner", "-o", "args=", "--ww"],
+            ["ps", "-C", "runner", "-o", "args=", "-ww"],
             capture_output=True,
             text=True,
             timeout=15,
@@ -280,7 +279,7 @@ def missing_registry_evidence(directory):
             serviceReturnCode=child.returncode, serviceStderrPresent=bool(child.stderr)
         )
         require(
-            child.returncode in (0, 1, 4) and len(child.stdout) <= 4096,
+            child.returncode in (0, 1) and len(child.stdout) <= 4096,
             "service_state_unavailable",
         )
         diagnostics["stage"] = "service_properties"
