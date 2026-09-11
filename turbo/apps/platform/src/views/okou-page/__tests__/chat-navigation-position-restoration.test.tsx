@@ -31,7 +31,6 @@ const LINUX_CHROME_USER_AGENT =
 
 const KEYBOARD_PREVIOUS_THREAD_ID = "b0000000-0000-4000-a000-000000000801";
 const KEYBOARD_CURRENT_THREAD_ID = "b0000000-0000-4000-a000-000000000802";
-const KEYBOARD_NEXT_THREAD_ID = "b0000000-0000-4000-a000-000000000803";
 const SIDEBAR_OTHER_THREAD_ID = "b0000000-0000-4000-a000-000000000804";
 const SIDEBAR_CURRENT_THREAD_ID = "b0000000-0000-4000-a000-000000000805";
 const DEEP_LINK_THREAD_ID = "b0000000-0000-4000-a000-000000000806";
@@ -435,9 +434,10 @@ async function expectAtLatestActivity(
 test("Restore the reading position during keyboard thread navigation", async () => {
   context.mocks.browser.userAgent(LINUX_CHROME_USER_AGENT);
   const user = userEvent.setup({ delay: null });
-  // Three exchanges keep the reading anchor between the top and tail. The
-  // neighboring threads only need content that proves navigation completed.
-  const currentEvents = conversationEvents("keyboard-current", "Current", 3);
+  // Four message anchors in a shorter viewport keep message 2 away from both
+  // scroll boundaries without rendering an unrelated third exchange.
+  const viewportHeight = 240;
+  const currentEvents = conversationEvents("keyboard-current", "Current", 2);
   mockThreadStories(KEYBOARD_CURRENT_THREAD_ID, [
     {
       id: KEYBOARD_PREVIOUS_THREAD_ID,
@@ -448,11 +448,6 @@ test("Restore the reading position during keyboard thread navigation", async () 
       id: KEYBOARD_CURRENT_THREAD_ID,
       title: "Current keyboard thread",
       events: currentEvents,
-    },
-    {
-      id: KEYBOARD_NEXT_THREAD_ID,
-      title: "Next keyboard thread",
-      events: conversationEvents("keyboard-next", "Next", 1),
     },
   ]);
 
@@ -471,11 +466,13 @@ test("Restore the reading position during keyboard thread navigation", async () 
   const initialGeometry = installChatScrollGeometry(
     threadContainer(KEYBOARD_CURRENT_THREAD_ID),
   );
+  initialGeometry.setViewportHeight(viewportHeight);
   fireEvent.resize(window);
   await waitFor(() => {
     expect(initialGeometry.atBottom()).toBeTruthy();
   });
   await chooseReadingPosition(initialGeometry, targetText);
+  expect(initialGeometry.atBottom()).toBeFalsy();
 
   await user.click(threadSection(KEYBOARD_CURRENT_THREAD_ID));
   expect(threadSection(KEYBOARD_CURRENT_THREAD_ID)).toHaveFocus();
@@ -497,9 +494,11 @@ test("Restore the reading position during keyboard thread navigation", async () 
   const returnedGeometry = installChatScrollGeometry(
     threadContainer(KEYBOARD_CURRENT_THREAD_ID),
   );
+  returnedGeometry.setViewportHeight(viewportHeight);
   fireEvent.resize(window);
 
   await expectReadingPosition(returnedGeometry, targetText);
+  expect(returnedGeometry.atBottom()).toBeFalsy();
 });
 
 test("Restore the reading position after switching threads from the sidebar", async () => {
