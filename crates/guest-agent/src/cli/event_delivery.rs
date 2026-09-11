@@ -63,16 +63,48 @@ impl EventDeliverySender {
         self.try_send_prepared(sequence, serialized_event, private_citation)
     }
 
-    pub(super) fn max_serialized_event_bytes(&self) -> usize {
-        EVENT_DELIVERY_MAX_REQUEST_BYTES.saturating_sub(self.payload_envelope.singleton_bytes(0, 0))
-    }
-
-    pub(super) fn try_send_serialized(
+    pub(super) fn try_send_for_framework(
         &self,
         sequence: u32,
-        serialized_event: Vec<u8>,
+        mut event: serde_json::Value,
+        framework: crate::env::Framework,
     ) -> Result<(), AgentError> {
-        self.try_send_prepared(sequence, serialized_event, None)
+        let framework = match framework {
+            crate::env::Framework::ClaudeCode => return self.try_send(sequence, event),
+            crate::env::Framework::Pi => super::bounded_event_delivery::Framework::Pi,
+            crate::env::Framework::Codex => super::bounded_event_delivery::Framework::Codex,
+        };
+        let private_citation = self
+            .payload_envelope
+            .take_private_citation(sequence, &mut event)?;
+        let envelope_bytes = self
+            .payload_envelope
+            .singleton_bytes(0, private_citation.as_ref().map_or(0, Bytes::len));
+        let budget = EVENT_DELIVERY_MAX_REQUEST_BYTES.saturating_sub(envelope_bytes);
+        let prepared =
+            super::bounded_event_delivery::prepare_for_delivery(event, budget, framework)?;
+        self.try_send_prepared(sequence, prepared.serialized, private_citation)?;
+        if let Some(reduction) = prepared.reduction {
+            let framework = match framework {
+                super::bounded_event_delivery::Framework::Pi => "Pi",
+                super::bounded_event_delivery::Framework::Codex => "Codex",
+            };
+            log_info!(
+                LOG_TAG,
+                "{} event reduced for delivery: seq={} event_type={} item_type={} original_event_bytes={} delivered_event_bytes={} original_request_bytes={} delivered_request_bytes={} fields={} fallback={}",
+                framework,
+                sequence,
+                reduction.event_type,
+                reduction.item_type,
+                reduction.original_bytes,
+                reduction.delivered_bytes,
+                envelope_bytes.saturating_add(reduction.original_bytes),
+                envelope_bytes.saturating_add(reduction.delivered_bytes),
+                reduction.fields.join(","),
+                reduction.fallback,
+            );
+        }
+        Ok(())
     }
 
     fn try_send_prepared(
