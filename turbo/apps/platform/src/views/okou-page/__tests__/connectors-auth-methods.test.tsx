@@ -179,6 +179,49 @@ function manualMethod(args: {
   };
 }
 
+test("Show Mercury disclosures before connecting an account", async () => {
+  mockConnectors(context, []);
+  mockPublicConnectorStatus(context, [
+    publicStatusItem({
+      connectorSlug: "mercury",
+      label: "Mercury",
+      authMethods: [
+        oauthMethod(),
+        manualMethod({
+          id: "api-token",
+          label: "API token",
+          fieldId: "token",
+          fieldLabel: "API token",
+          placeholder: "Enter your Mercury API token",
+        }),
+      ],
+    }),
+  ]);
+  await setupPage({
+    context,
+    path: "/connectors?keywords=mercury",
+  });
+
+  const card = await waitFor(() => {
+    return getConnectorCard("Mercury");
+  });
+  expect(
+    getConnectorAction("link", "Powered by Mercury", card),
+  ).toHaveAttribute("href", "https://mercury.com");
+  expect(card).toHaveTextContent(
+    "Mercury is a fintech company, not an FDIC-insured bank. Banking services provided through Choice Financial Group and Column N.A., Members FDIC.",
+  );
+
+  click(getConnectorAction("button", "Connect Mercury", card));
+  const dialog = await screen.findByRole("dialog", { name: "Mercury" });
+  expect(
+    getConnectorAction("link", "Powered by Mercury", dialog),
+  ).toHaveAttribute("href", "https://mercury.com");
+  expect(dialog).toHaveTextContent(
+    "Mercury is a fintech company, not an FDIC-insured bank. Banking services provided through Choice Financial Group and Column N.A., Members FDIC.",
+  );
+});
+
 async function openAwsWithCode(code: string): Promise<{
   readonly dialog: HTMLElement;
   readonly complete: HTMLElement;

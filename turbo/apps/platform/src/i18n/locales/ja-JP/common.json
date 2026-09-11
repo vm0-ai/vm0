@@ -2954,11 +2954,11 @@
       "addAccount": "アカウントを追加",
       "connected": "接続済み",
       "default": "デフォルト",
-      "deleteAccount": "アカウントを削除",
-      "deleteDescription": "このアカウントを使用しているスレッドは、デフォルトの継承に戻ります。",
-      "deleteDescriptionWithCount": "{{value}} 件のスレッドがデフォルトの継承に戻ります。",
-      "deleteDescriptionWithCount_other": "",
-      "deleteTitle": "{{account}} を削除しますか？",
+      "disconnectAccount": "アカウントの接続を解除",
+      "disconnectDescription": "このアカウントを Okou から切断します。このアカウントを使用しているスレッドはデフォルトの継承に戻ります。プロバイダー側のアカウントは削除されません。",
+      "disconnectDescriptionWithCount": "このアカウントを Okou から切断します。{{value}} 件のスレッドがデフォルトの継承に戻ります。プロバイダー側のアカウントは削除されません。",
+      "disconnectDescriptionWithCount_other": "",
+      "disconnectTitle": "{{account}} の接続を解除しますか？",
       "fallbackByMethod": {
         "api": "API キー",
         "api-token": "API トークン",
@@ -3027,6 +3027,10 @@
       "genericLabel": "コネクタ",
       "githubLabel": "GitHub",
       "invalidUrl": "コネクタのコールバック URL が無効です。",
+      "mercuryAttribution": "Powered by Mercury",
+      "mercuryDisclosure": "Mercury is a fintech company, not an FDIC-insured bank. Banking services provided through Choice Financial Group and Column N.A., Members FDIC.",
+      "mercuryDisclosureLabel": "Mercury banking disclosure",
+      "mercuryLabel": "Mercury",
       "success": "接続済み"
     },
     "card": {
