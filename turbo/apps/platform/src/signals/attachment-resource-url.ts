@@ -147,11 +147,8 @@ export function createAttachmentPreviewSignals(inputUrl: string) {
     return presigned === null ? url : presigned.publicUrl;
   });
   const thumbnailUrl$ = computed(async (get) => {
-    const presigned = await get(presignedToken$);
-    const source =
-      presigned === null ? url : (presigned.publicUrl ?? presigned.token);
     return r2ImageTransformUrl(
-      source,
+      await get(resourceUrl$),
       { width: 800, height: 720 },
       resolveArtifactImageTransformOrigin(),
     );

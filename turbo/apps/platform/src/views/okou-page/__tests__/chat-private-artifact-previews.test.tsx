@@ -180,62 +180,65 @@ test("downloads obtain a fresh credential without replacing the open image", asy
   expect(image).toHaveAttribute("src", THUMBNAIL_URL);
 });
 
-test("uploaded images reuse their thread presign when opened in the lightbox", async () => {
-  const url = privateAttachmentUrl(FILE_ID);
-  mockAttachmentChat(context, {
-    artifacts: [
-      artifactFile("upload.png", {
-        id: FILE_ID,
-        contentType: "image/png",
-        url,
-      }),
-    ],
-    chatEvents: [
-      {
-        id: "uploaded-image-message",
-        role: "user",
-        content: null,
-        runId: ATTACHMENT_RUN_ID,
-        createdAt: "2026-09-09T00:00:00.000Z",
-        userMessage: {
-          version: 1,
-          parts: [
-            {
-              type: "file",
-              fileId: FILE_ID,
-              filenameSnapshot: "upload.png",
-              contentType: "image/png",
-            },
-          ],
+test.each([null, "https://a.okou.io/0123456789.png"])(
+  "uploaded images reuse their thread presign with publicUrl=%s",
+  async (publicUrl) => {
+    const url = privateAttachmentUrl(FILE_ID);
+    mockAttachmentChat(context, {
+      artifacts: [
+        artifactFile("upload.png", {
+          id: FILE_ID,
+          contentType: "image/png",
+          url,
+        }),
+      ],
+      chatEvents: [
+        {
+          id: "uploaded-image-message",
+          role: "user",
+          content: null,
+          runId: ATTACHMENT_RUN_ID,
+          createdAt: "2026-09-09T00:00:00.000Z",
+          userMessage: {
+            version: 1,
+            parts: [
+              {
+                type: "file",
+                fileId: FILE_ID,
+                filenameSnapshot: "upload.png",
+                contentType: "image/png",
+              },
+            ],
+          },
         },
-      },
-    ],
-  });
-  let responseUrl = FIRST_URL;
-  context.mocks.api(webFilesContract.fileUrl, ({ respond }) => {
-    const resolved = responseUrl;
-    responseUrl = NEXT_URL;
-    return respond(200, {
-      url: resolved,
-      expiresAt: "2026-09-13T00:00:00.000Z",
-      publicUrl: null,
+      ],
     });
-  });
-  await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
-  const image = await screen.findByAltText("upload.png");
-  await waitFor(() => {
+    let responseUrl = FIRST_URL;
+    context.mocks.api(webFilesContract.fileUrl, ({ respond }) => {
+      const resolved = responseUrl;
+      responseUrl = NEXT_URL;
+      return respond(200, {
+        url: resolved,
+        expiresAt: "2026-09-13T00:00:00.000Z",
+        publicUrl,
+      });
+    });
+    await setupPage({ context, path: `/chats/${ATTACHMENT_THREAD_ID}` });
+    const image = await screen.findByAltText("upload.png");
+    await waitFor(() => {
+      expect(image).toHaveAttribute("src", THUMBNAIL_URL);
+    });
+    expect(image.closest("a")).toHaveAttribute("href", FIRST_URL);
+    click(await findNamedLink("Preview upload.png"));
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "src",
+        FIRST_URL,
+      );
+    });
     expect(image).toHaveAttribute("src", THUMBNAIL_URL);
-  });
-  expect(image.closest("a")).toHaveAttribute("href", FIRST_URL);
-  click(await findNamedLink("Preview upload.png"));
-  await waitFor(() => {
-    expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
-      "src",
-      FIRST_URL,
-    );
-  });
-  expect(image).toHaveAttribute("src", THUMBNAIL_URL);
-});
+  },
+);
 
 test("promoting a thread image to split view keeps the same original credential", async () => {
   mockPrivateImage();

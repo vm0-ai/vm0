@@ -348,8 +348,9 @@ test("Preserve private and public attachments on tab return", async () => {
   const publicFileId = "f0000000-0000-4000-a000-000000000937";
   const publicFilename = "existing-image.png";
   const publicUrl = `https://cdn.vm7.io/artifacts/tests/${publicFilename}`;
-  const publicThumbnailUrl = `https://cdn.vm7.io/cdn-cgi/image/width=800,height=720,fit=scale-down,format=auto,quality=85,metadata=none/artifacts/tests/${publicFilename}`;
-  const firstPublicResourceUrl = `https://storage.example.test/${publicFilename}?signature=first`;
+  const storageOrigin = `https://${"a".repeat(32)}.r2.cloudflarestorage.com`;
+  const firstPublicResourceUrl = `${storageOrigin}/uploads/${publicFilename}?X-Amz-Signature=first`;
+  const publicThumbnailUrl = `https://a.okou.io/cdn-cgi/image/width=800,height=720,fit=scale-down,format=auto,quality=85,metadata=none/${firstPublicResourceUrl}`;
   let publicResourceUrl = firstPublicResourceUrl;
   let resourceUrl = firstUrl;
   const visibility = context.mocks.browser.visibilityState("visible");
@@ -399,7 +400,7 @@ test("Preserve private and public attachments on tab return", async () => {
     visibility.changeTo("hidden");
   });
   resourceUrl = refreshedUrl;
-  publicResourceUrl = `https://storage.example.test/${publicFilename}?signature=refreshed`;
+  publicResourceUrl = `${storageOrigin}/uploads/${publicFilename}?X-Amz-Signature=refreshed`;
   await act(() => {
     visibility.changeTo("visible");
   });
