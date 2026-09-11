@@ -8,6 +8,7 @@ import {
 
 import { HttpResponse } from "msw";
 import {
+  auxiliaryDiagnostics,
   auxiliaryResults,
   auxiliaryWarnings,
 } from "./helpers/auxiliary-generation";
@@ -1546,6 +1547,157 @@ describe("CHAT-02: completed chat callback", () => {
     ]);
     expect(context.mocks.axiomLogging.warn.mock.calls).toStrictEqual([]);
     expect(context.mocks.axiomLogging.error.mock.calls).toStrictEqual([]);
+  });
+
+  it.each([
+    { name: "an empty suggestion array", text: "[]" },
+    {
+      name: "generated text that is not JSON",
+      text: "I have no useful follow-ups for this conversation.",
+    },
+    {
+      name: "generated JSON that is not an array",
+      text: JSON.stringify({
+        followups: [{ prompt: "Run the failing case again", kind: "talk" }],
+      }),
+    },
+    {
+      name: "an array whose every item fails validation",
+      text: JSON.stringify([
+        { prompt: "Run the failing case again", kind: "chat" },
+        { text: "Try the other branch", kind: "talk" },
+      ]),
+    },
+  ])(
+    "omits recommended follow-ups with no diagnostic at any level for $name",
+    async ({ text }) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+      chatCallbacks.mockOpenRouterCompletions((body) => {
+        const system = body.messages[0]?.content ?? "";
+        if (
+          system.includes(
+            "You generate recommended follow-up messages for a chat.",
+          )
+        ) {
+          return text;
+        }
+        // A sibling whose interpreted output is empty in the same run proves
+        // the silence is scoped to this caller rather than shared.
+        if (system.includes("one short notification sentence")) {
+          return "---";
+        }
+        return "Generated summary";
+      });
+
+      const run = await startChatRun(actor, {
+        agentId,
+        prompt: "Keep the main answer",
+      });
+      await flushWaitUntilForTest();
+      await chatCallbacks.registerPushSubscription(actor);
+      chatCallbacks.enableVapid();
+      const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+      chatCallbacks.mockChatOutputEvents([
+        assistantEvent(0, "The main answer survives"),
+      ]);
+      await completeChatRunOk(run.runId, sandboxHeaders, {
+        lastEventSequence: 0,
+      });
+      await flushWaitUntilForTest();
+
+      const events = await chat.listThreadEvents(actor, run.threadId);
+      expect(events.events).toContainEqual(
+        expect.objectContaining({ content: "The main answer survives" }),
+      );
+      expect(
+        events.events.some((event) => {
+          return event.eventType === "output.followups";
+        }),
+      ).toBeFalsy();
+      // The omission stays counted, with its reason and token detail intact.
+      expect(auxiliaryResults(context, "recommended_followups")).toStrictEqual([
+        expect.objectContaining({
+          outcome: "degraded",
+          reason: "unusable_output",
+        }),
+      ]);
+      expect(
+        auxiliaryDiagnostics(context, "recommended_followups"),
+      ).toStrictEqual([]);
+      expect(
+        auxiliaryDiagnostics(context, "notification_summary"),
+      ).toStrictEqual([
+        expect.objectContaining({ level: "warn", reason: "unusable_output" }),
+      ]);
+      expect(
+        context.mocks.webpush.sendNotification.mock.calls.map(pushPayload),
+      ).toContainEqual(
+        expect.objectContaining({ body: "Your task is complete" }),
+      );
+      expect(JSON.stringify(auxiliaryDiagnostics(context))).not.toContain(text);
+    },
+  );
+
+  it("reports a genuine recommended follow-up failure exactly once at error level", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    const privateProviderDetail = "private-openrouter-credential-detail";
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const system = body.messages[0]?.content ?? "";
+      if (
+        system.includes(
+          "You generate recommended follow-up messages for a chat.",
+        )
+      ) {
+        return new HttpResponse(privateProviderDetail, { status: 401 });
+      }
+      return "Generated summary";
+    });
+
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "Keep the main answer",
+    });
+    await flushWaitUntilForTest();
+    await chatCallbacks.registerPushSubscription(actor);
+    chatCallbacks.enableVapid();
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "The main answer survives"),
+    ]);
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
+    const events = await chat.listThreadEvents(actor, run.threadId);
+    expect(events.events).toContainEqual(
+      expect.objectContaining({ content: "The main answer survives" }),
+    );
+    expect(
+      events.events.some((event) => {
+        return event.eventType === "output.followups";
+      }),
+    ).toBeFalsy();
+    expect(auxiliaryResults(context, "recommended_followups")).toStrictEqual([
+      expect.objectContaining({ outcome: "error", reason: "auth" }),
+    ]);
+    expect(
+      auxiliaryDiagnostics(context, "recommended_followups"),
+    ).toStrictEqual([
+      expect.objectContaining({
+        level: "error",
+        reason: "auth",
+        errorKind: "openrouter_request",
+        status: 401,
+      }),
+    ]);
+    // A real failure must not also reappear on the shared warning channel.
+    expect(auxiliaryWarnings(context)).toStrictEqual([]);
+    expect(JSON.stringify(auxiliaryDiagnostics(context))).not.toContain(
+      privateProviderDetail,
+    );
   });
 
   it("keeps title and summary storage failures observable after successful generation", async () => {

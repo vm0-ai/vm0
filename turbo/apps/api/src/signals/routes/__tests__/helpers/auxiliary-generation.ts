@@ -96,3 +96,37 @@ export function auxiliaryWarnings(context: TestContext) {
     return message === "Auxiliary generation failed";
   });
 }
+
+const diagnosticLevels = ["debug", "info", "warn", "error"] as const;
+
+const diagnosticSchema = z.object({
+  feature: z.string(),
+  reason: z.string(),
+  errorKind: z.string(),
+  threadId: z.string().optional(),
+  runId: z.string().optional(),
+  status: z.number().optional(),
+});
+
+/**
+ * Every diagnostic level, so a caller that stops reporting an expected outcome
+ * is proved silent rather than merely quieter: a reappearance at info or debug
+ * fails the same assertion as a reappearance at warn.
+ */
+export function auxiliaryDiagnostics(
+  context: TestContext,
+  feature?: AuxiliaryFeature,
+) {
+  return diagnosticLevels.flatMap((level) => {
+    return context.mocks.axiomLogging[level].mock.calls
+      .filter(([message]) => {
+        return message === "Auxiliary generation failed";
+      })
+      .map(([, fields]) => {
+        return { level, ...diagnosticSchema.parse(fields) };
+      })
+      .filter((diagnostic) => {
+        return feature === undefined || diagnostic.feature === feature;
+      });
+  });
+}
