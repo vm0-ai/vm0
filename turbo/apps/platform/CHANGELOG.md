@@ -11,6 +11,86 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.885.0](https://github.com/vm0-ai/vm0/compare/app-v0.884.5...app-v0.885.0) (2026-09-11)
+
+
+### Features
+
+* **chat:** add native reasoning effort controls ([#33016](https://github.com/vm0-ai/vm0/issues/33016)) ([f649925](https://github.com/vm0-ai/vm0/commit/f649925cbb81c11ee5b66d32bcc6072fc2fe80c2))
+
+
+### Bug Fixes
+
+* **platform:** align the flyout panel's bottom with the rail card ([#33386](https://github.com/vm0-ai/vm0/issues/33386)) ([8aa8510](https://github.com/vm0-ai/vm0/commit/8aa8510f58204106578be37c9310b151466f40d3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.427.0
+    * @okouai/core bumped to 8.652.0
+
+## [0.884.5](https://github.com/vm0-ai/vm0/compare/app-v0.884.4...app-v0.884.5) (2026-09-10)
+
+
+### Bug Fixes
+
+* **platform:** restore hosted auth last-used badge ([#33334](https://github.com/vm0-ai/vm0/issues/33334)) ([f8ddf76](https://github.com/vm0-ai/vm0/commit/f8ddf76a38fd5bd0e909b6eaf462576359cfecce))
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#33343](https://github.com/vm0-ai/vm0/issues/33343)) ([f670a02](https://github.com/vm0-ai/vm0/commit/f670a0233ae13a11d43f3a2ad72ff30831cab822))
+
+
+### Performance Improvements
+
+* **platform:** unmount template gallery during previews ([#33339](https://github.com/vm0-ai/vm0/issues/33339)) ([75095c2](https://github.com/vm0-ai/vm0/commit/75095c26e72eb7deb40f5c15b920aa0764d94ceb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.426.1
+    * @okouai/core bumped to 8.651.2
+
+## [0.884.4](https://github.com/vm0-ai/vm0/compare/app-v0.884.3...app-v0.884.4) (2026-09-10)
+
+
+### Refactoring
+
+* **platform:** remove computed signal propagation ([#33330](https://github.com/vm0-ai/vm0/issues/33330)) ([c65658a](https://github.com/vm0-ai/vm0/commit/c65658aa52e160f594d799050037cc4827dfc37f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.651.1
+
+## [0.884.3](https://github.com/vm0-ai/vm0/compare/app-v0.884.2...app-v0.884.3) (2026-09-10)
+
+
+### Refactoring
+
+* **platform:** own welcome thread creation by the settings action signal ([#33327](https://github.com/vm0-ai/vm0/issues/33327)) ([1cd0ae2](https://github.com/vm0-ai/vm0/commit/1cd0ae24f034db0360d0f43519131c1f1ea83c58))
+* **platform:** restore DOM-owned chat container refs ([#33328](https://github.com/vm0-ai/vm0/issues/33328)) ([54618ed](https://github.com/vm0-ai/vm0/commit/54618ed11c8319eea57f6b657a48ac5467652ccb))
+
+## [0.884.2](https://github.com/vm0-ai/vm0/compare/app-v0.884.1...app-v0.884.2) (2026-09-10)
+
+
+### Bug Fixes
+
+* **platform:** preserve welcome synchronization after settings dismissal ([#33306](https://github.com/vm0-ai/vm0/issues/33306)) ([4fb323c](https://github.com/vm0-ai/vm0/commit/4fb323c921126cd8bd829128989f926a6000e963))
+
+
+### Refactoring
+
+* **platform:** route voice draft observer through shared loop ([#33321](https://github.com/vm0-ai/vm0/issues/33321)) ([22005a5](https://github.com/vm0-ai/vm0/commit/22005a583bdaa308627884b07105922058710936))
+* **platform:** stabilize realtime handlers ([#33325](https://github.com/vm0-ai/vm0/issues/33325)) ([d155ea2](https://github.com/vm0-ai/vm0/commit/d155ea25935ece634cb91fccf02a2333ab30e6eb))
+
 ## [0.884.1](https://github.com/vm0-ai/vm0/compare/app-v0.884.0...app-v0.884.1) (2026-09-10)
 
 

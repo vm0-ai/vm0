@@ -13,6 +13,7 @@ export function FeishuOAuthCallbackPage(): React.JSX.Element {
   return (
     <ConnectorCallbackPage
       connectorIcon={connectorIcon}
+      connectorSlug="lark"
       connectorLabel="Feishu"
       status="loading"
       username={null}

@@ -6,7 +6,7 @@ import json
 import threading
 import urllib.request
 import zlib
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future
 from pathlib import Path
 from typing import Literal
 from unittest.mock import patch
@@ -26,6 +26,7 @@ import usage.anthropic_messages as anthropic_messages
 import usage.model_json as model_json
 import usage.openai_responses as openai_responses
 from body_limits import STREAM_BUFFER_LIMIT
+from model_provider_failure_executor import FailureReportExecutor
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import jsonl_exists_after_flush, read_jsonl_entries_after_flush
 from tests.model_provider_flow_helpers import make_openai_responses_websocket_flow
@@ -211,17 +212,16 @@ def _assert_single_report_omission(
 
 def _restart_reporter_after_callbacks(model_provider_failure_api) -> None:
     """Reset reporting only after every executor callback has returned."""
-    original_shutdown = ThreadPoolExecutor.shutdown
+    original_shutdown = FailureReportExecutor.shutdown
 
     def shutdown_and_wait(
-        executor: ThreadPoolExecutor,
-        wait: bool = True,
+        executor: FailureReportExecutor,
         *,
-        cancel_futures: bool = False,
+        wait: bool,
     ) -> None:
-        original_shutdown(executor, wait=True, cancel_futures=cancel_futures)
+        original_shutdown(executor, wait=True)
 
-    with patch.object(ThreadPoolExecutor, "shutdown", shutdown_and_wait):
+    with patch.object(FailureReportExecutor, "shutdown", shutdown_and_wait):
         model_provider_failure.shutdown()
     model_provider_failure.reset_for_tests()
     model_provider_failure.configure_reporting(
@@ -666,7 +666,7 @@ def test_executor_submission_failure_reclaims_capacity(
     model_provider_failure.drain_reports_for_tests()
     proxy_log_path = tmp_path / "submit-failed.jsonl"
     with patch.object(
-        ThreadPoolExecutor,
+        FailureReportExecutor,
         "submit",
         side_effect=RuntimeError("executor shut down"),
     ):
@@ -769,20 +769,19 @@ def test_shutdown_cancels_queued_reports(
 
     assert model_provider_failure_api.wait_for_request_count(_REPORT_WORKERS)
 
-    original_shutdown = ThreadPoolExecutor.shutdown
+    original_shutdown = FailureReportExecutor.shutdown
 
     def observe_shutdown(
-        executor: ThreadPoolExecutor,
-        wait: bool = True,
+        executor: FailureReportExecutor,
         *,
-        cancel_futures: bool = False,
+        wait: bool,
     ) -> None:
-        original_shutdown(executor, wait=wait, cancel_futures=cancel_futures)
+        original_shutdown(executor, wait=wait)
         executor_shutdown_started.set()
 
     shutdown_thread = ThreadUnderTest(target=model_provider_failure.shutdown)
     try:
-        with patch.object(ThreadPoolExecutor, "shutdown", observe_shutdown):
+        with patch.object(FailureReportExecutor, "shutdown", observe_shutdown):
             shutdown_thread.start()
             wait_for_event(
                 executor_shutdown_started,
@@ -825,15 +824,14 @@ def test_shutdown_timeout_returns_with_running_reports_blocked(
 
     assert model_provider_failure_api.wait_for_request_count(_REPORT_WORKERS)
 
-    original_shutdown = ThreadPoolExecutor.shutdown
+    original_shutdown = FailureReportExecutor.shutdown
 
     def pause_after_executor_shutdown(
-        executor: ThreadPoolExecutor,
-        wait: bool = True,
+        executor: FailureReportExecutor,
         *,
-        cancel_futures: bool = False,
+        wait: bool,
     ) -> None:
-        original_shutdown(executor, wait=wait, cancel_futures=cancel_futures)
+        original_shutdown(executor, wait=wait)
         executor_shutdown_started.set()
         if not continue_shutdown.wait(timeout=1):
             raise AssertionError("failure reporter shutdown test did not release executor shutdown")
@@ -842,7 +840,7 @@ def test_shutdown_timeout_returns_with_running_reports_blocked(
     try:
         with (
             patch.object(model_provider_failure, "_REPORT_TIMEOUT_SECONDS", 0.01),
-            patch.object(ThreadPoolExecutor, "shutdown", pause_after_executor_shutdown),
+            patch.object(FailureReportExecutor, "shutdown", pause_after_executor_shutdown),
         ):
             shutdown_thread.start()
             wait_for_event(
@@ -1017,10 +1015,10 @@ def test_bodyless_response_skips_usage_and_failure_observers(
 
 
 @pytest.mark.parametrize(
-    ("content_type", "body", "usage_finish_key"),
+    ("content_types", "body", "usage_finish_key"),
     [
         pytest.param(
-            "Text/Event-Stream; Charset=UTF-8",
+            (b"Text/Event-Stream; Charset=UTF-8",),
             b"event: error\n"
             b'data: {"type":"error","code":"server_error",'
             b'"message":"provider failed","param":null}\n\n',
@@ -1028,16 +1026,36 @@ def test_bodyless_response_skips_usage_and_failure_observers(
             id="parameterized-sse",
         ),
         pytest.param(
-            'application/json; profile="text/event-stream"',
+            (b'application/json; profile="text/event-stream"',),
             b'{"status":"failed","error":{"code":"server_error"}}',
             "model_json_usage_finish",
             id="sse-profile-lookalike",
         ),
         pytest.param(
-            "text/event-stream+json",
+            (b"text/event-stream+json",),
             b'{"status":"failed","error":{"code":"server_error"}}',
             "model_json_usage_finish",
             id="sse-suffix-lookalike",
+        ),
+        pytest.param(
+            (b"text/event-stream; pad=" + b"\xff" * (1024 * 1024),),
+            b"event: error\n"
+            b'data: {"type":"error","code":"server_error",'
+            b'"message":"provider failed","param":null}\n\n',
+            "model_sse_usage_finish",
+            id="oversized-parameterized-sse",
+        ),
+        pytest.param(
+            (b"text/event-stream; charset=utf-8", b"\xff" * (1024 * 1024)),
+            b'{"status":"failed","error":{"code":"server_error"}}',
+            "model_json_usage_finish",
+            id="repeated-content-type",
+        ),
+        pytest.param(
+            (b"text/event-stream" + b" " * (8 * 1024),),
+            b'{"status":"failed","error":{"code":"server_error"}}',
+            "model_json_usage_finish",
+            id="exhausted-media-type-prefix",
         ),
     ],
 )
@@ -1045,7 +1063,7 @@ def test_media_type_classification_is_shared_by_usage_and_failure_observers(
     tmp_path,
     real_flow,
     mitm_ctx,
-    content_type: str,
+    content_types: tuple[bytes, ...],
     body: bytes,
     usage_finish_key: str,
     model_provider_failure_api,
@@ -1055,13 +1073,22 @@ def test_media_type_classification_is_shared_by_usage_and_failure_observers(
         tmp_path / "proxy.jsonl",
         request_path="/v1/responses",
         response_body=body,
-        response_headers=header_map({"content-type": content_type}),
+        response_headers=http.Headers((b"Content-Type", value) for value in content_types),
     )
     flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
+    assert flow.response is not None
+    original_fields = flow.response.headers.fields
+    original_native = http._native
+
+    def reject_oversized_conversion(value: bytes) -> str:
+        assert len(value) <= 8 * 1024, "shared classifier decoded an oversized header"
+        return original_native(value)
 
     model_provider_failure.admit_flow(flow)
-    mitm_addon.responseheaders(flow)
+    with patch.object(http, "_native", reject_oversized_conversion):
+        mitm_addon.responseheaders(flow)
 
+    assert flow.response.headers.fields == original_fields
     assert usage_finish_key in flow.metadata
     other_usage_finish_key = (
         "model_json_usage_finish"

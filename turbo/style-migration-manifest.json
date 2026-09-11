@@ -464,6 +464,24 @@
       "evidence": []
     },
     {
+      "id": "running-indicator-motion",
+      "family": "motion-and-injection",
+      "tokens": [
+        "running-indicator",
+        "running-indicator-center",
+        "running-indicator-ripple"
+      ],
+      "consumers": ["packages/ui/src/components/ui/running-indicator.tsx"],
+      "cases": [
+        "running-indicator-light",
+        "running-indicator-dark",
+        "running-indicator-light-retina",
+        "running-indicator-dark-retina"
+      ],
+      "status": "implemented",
+      "evidence": []
+    },
+    {
       "id": "icon-button-affordance",
       "family": "navigation",
       "tokens": ["icon-button"],
@@ -509,7 +527,8 @@
     "../e2e/playwright/style-migration/icon-mono-cases.json",
     "../e2e/playwright/style-migration/settings-select-cases.json",
     "../e2e/playwright/style-migration/badge-cases.json",
-    "../e2e/playwright/style-migration/shared-recipe-cases.json",
-    "../e2e/playwright/style-migration/chat-emoji-cases.json"
+    "../e2e/playwright/style-migration/chat-emoji-cases.json",
+    "../e2e/playwright/style-migration/running-indicator-cases.json",
+    "../e2e/playwright/style-migration/shared-recipe-cases.json"
   ]
 }

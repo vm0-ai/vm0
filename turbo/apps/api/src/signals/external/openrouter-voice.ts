@@ -12,7 +12,11 @@ import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { OpenRouterRequestError, type OpenRouterTextPart } from "./openrouter";
 import { readBoundedResponseText, safeJsonParse } from "../utils";
-import { requestVoiceProvider } from "./voice-provider-request";
+import {
+  isRetryableVoiceProviderStatus,
+  requestVoiceProvider,
+  VoiceProviderTemporaryResponseError,
+} from "./voice-provider-request";
 
 const L = logger("OpenRouterVoice");
 
@@ -264,21 +268,60 @@ function requestError(
   });
 }
 
-function parseCompletionText(value: unknown): string {
+function completionError(
+  value: unknown,
+  context: { readonly model: string; readonly responseSchema: string },
+): Error {
+  const code = objectProperty(value, "code");
+  const status =
+    typeof code === "number" &&
+    Number.isInteger(code) &&
+    code >= 400 &&
+    code < 600
+      ? code
+      : undefined;
+  const errorType = providerErrorType(value);
+  const rawType = objectProperty(
+    objectProperty(value, "metadata"),
+    "error_type",
+  );
+  // A permanent or unknown typed error must not become retryable merely
+  // because its lossy numeric code resembles a temporary failure.
+  if (
+    status !== undefined &&
+    isRetryableVoiceProviderStatus(status) &&
+    (rawType === undefined ||
+      errorType === "rate_limit_exceeded" ||
+      errorType === "provider_overloaded" ||
+      errorType === "provider_unavailable" ||
+      errorType === "server" ||
+      errorType === "timeout")
+  ) {
+    return new VoiceProviderTemporaryResponseError(status, errorType);
+  }
+  L.warn("OpenRouter voice completion rejected", {
+    ...context,
+    source: "completion",
+    status,
+    errorType,
+  });
+  return new Error("OpenRouter voice completion failed");
+}
+
+function parseCompletionText(
+  value: unknown,
+  context: { readonly model: string; readonly responseSchema: string },
+): string {
   const data = value as OpenRouterVoiceResponse;
   const choice = data.choices?.[0];
+  if (data.error !== undefined) {
+    throw completionError(data.error, context);
+  }
   if (!choice) {
-    if (data.error !== undefined) {
-      throw requestError("OpenRouter voice request failed", 502, data);
-    }
     throw new Error("OpenRouter voice response contained no choices");
   }
   if (choice.finish_reason === "error") {
-    throw requestError(
-      "OpenRouter voice completion failed",
-      502,
-      choice.error ?? data.error,
-    );
+    throw completionError(choice.error, context);
   }
   if (choice.finish_reason !== "stop") {
     const nativeReason =
@@ -372,6 +415,7 @@ async function generateStructuredVoiceResponse<T>(
         L.warn("OpenRouter voice request rejected", {
           model: args.model,
           responseSchema: args.jsonSchema.name,
+          source: "http",
           status: error.status,
           errorType: error.errorType,
         });
@@ -381,7 +425,10 @@ async function generateStructuredVoiceResponse<T>(
         throw new Error("OpenRouter voice response was not valid JSON");
       }
 
-      const content = parseCompletionText(parsedBody);
+      const content = parseCompletionText(parsedBody, {
+        model: args.model,
+        responseSchema: args.jsonSchema.name,
+      });
       const generated = args.schema.safeParse(safeJsonParse(content));
       if (!generated.success) {
         throw new Error(

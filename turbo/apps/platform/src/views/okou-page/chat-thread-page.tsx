@@ -2822,9 +2822,8 @@ function ChatThread({
   thread: ChatPanelSignals;
 }) {
   const { t } = useTranslation();
-  const mainContainerRef = useGet(thread.mainContainerRef$);
   const setContainerRef = useSet(
-    isMain ? mainContainerRef : thread.setContainerRef$,
+    isMain ? thread.setMainContainerRef$ : thread.setContainerRef$,
   );
 
   return (
@@ -5599,8 +5598,9 @@ function PagedUserGroup({
   );
 }
 
-// A user event does not always render as a bubble: a workflow run, a goal, and
-// a rejected goal each render as their own card or as nothing at all.
+// A user event does not always render as a bubble: a workflow run, a historical
+// goal, and a rejected historical goal each render as their own card or as
+// nothing at all.
 function rendersUserBubble(event: EnrichedChatEvent): boolean {
   return (
     !isRejectedGoalUserMessage(event) &&

@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { TriggerSource } from "@okouai/api-contracts/contracts/logs";
 import type { PublicBrand } from "@okouai/api-contracts/contracts/public-brand";
+import type { ReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
 import { isBuiltInModelProviderType } from "@okouai/api-contracts/contracts/model-providers";
 import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { workflowAutomations } from "@okouai/db/schema/workflow";
@@ -30,6 +31,7 @@ import { createQueueFirstAgentRun$ } from "./agent-runs-create.service";
 import { workflowAutomationCanFire } from "./workflow-automation-access.service";
 import { loadComputerUseHostGrantForAutoSend } from "./chat-computer-use-host.service";
 import { shouldUsePiExecution } from "./pi-sandbox-config";
+import { validateReasoningEffortDispatch } from "./chat-reasoning-effort.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import type { ChatAgentRunSourceAnnotation } from "./chat-user-message.service";
 import {
@@ -90,6 +92,7 @@ type ModelContext =
       readonly builtInModelRuntimeRoute: BuiltInModelRuntimeRoute | undefined;
       readonly cliAgentType: string | null;
       readonly codexServiceTier: "fast" | undefined;
+      readonly reasoningEffort: ReasoningEffort | null;
       readonly piExecution: boolean;
     }
   | { readonly ok: false; readonly failure: RunFailure };
@@ -349,6 +352,16 @@ async function resolveModelContext(
     builtInModelRuntimeRoute: builtInModelRuntimeRoute ?? undefined,
     featureSwitchContext: threadModelContext.featureSwitchContext,
   });
+  const effortError = validateReasoningEffortDispatch(
+    threadModelContext.reasoningEffort,
+    piExecution,
+  );
+  if (effortError) {
+    return {
+      ok: false,
+      failure: { kind: "run_error", response: effortError },
+    };
+  }
   return {
     ok: true,
     modelPin: pin,
@@ -356,6 +369,7 @@ async function resolveModelContext(
     builtInModelRuntimeRoute: builtInModelRuntimeRoute ?? undefined,
     cliAgentType: piExecution ? "pi" : providerAdmission.cliAgentType,
     codexServiceTier: runCodexServiceTier,
+    reasoningEffort: threadModelContext.reasoningEffort,
     piExecution,
   };
 }
@@ -631,6 +645,7 @@ export const launchQueuedWorkflowAutomation$ = command(
       effectiveModelProvider,
       builtInModelRuntimeRoute,
       codexServiceTier,
+      reasoningEffort,
     } = modelContext;
 
     const computerUseHostGrant = await loadComputerUseHostGrantForAutoSend({
@@ -676,6 +691,7 @@ export const launchQueuedWorkflowAutomation$ = command(
         ...(builtInModelRuntimeRoute ? { builtInModelRuntimeRoute } : {}),
         threadSessionRoute: workflowThreadSessionRoute(modelContext),
         codexServiceTier,
+        reasoningEffort,
         appendSystemPrompt: runInput.appendSystemPrompt,
         callbacks: runInput.callbacks,
         agentRunMetadata: runInput.agentRunMetadata,

@@ -26,10 +26,7 @@ interface IntroVideoCatalogPage<T> extends CatalogPage<T> {
   readonly generation: number;
 }
 
-type CatalogLoader<T> = (
-  token: string | undefined,
-  signal?: AbortSignal,
-) => Promise<CatalogPage<T>>;
+type CatalogLoader<T> = (token: string | undefined) => Promise<CatalogPage<T>>;
 
 function createCatalogSentinelRef(
   loadMore$: Command<Promise<void>, [AbortSignal]>,
@@ -117,7 +114,7 @@ export function createPagedCatalogSignals<T>(
       signal: AbortSignal,
     ): Promise<void> => {
       const { token, generation } = request;
-      const next = await get(loadPage$)(token, signal);
+      const next = await get(loadPage$)(token);
       signal.throwIfAborted();
       if (get(internalGeneration$) !== generation) {
         return;
@@ -178,22 +175,19 @@ export function createPagedCatalogSignals<T>(
   };
 }
 
-// eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
 const avatarPageLoader$ = computed((get): CatalogLoader<IntroVideoAvatar> => {
   const client = get(apiClient$)(introVideoPresenterContract, {
     apiBase: "api",
   });
-  return async (token, signal) => {
+  return async (token) => {
     const result = await accept(
       client.avatars({
         query: {
           pageSize: INTRO_VIDEO_CATALOG_PAGE_SIZE,
           ...(token ? { token } : {}),
         },
-        ...(signal ? { fetchOptions: { signal } } : {}),
       }),
       [200],
-      signal,
     );
     return {
       items: result.body.avatars,

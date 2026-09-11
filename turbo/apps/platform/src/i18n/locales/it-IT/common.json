@@ -3007,13 +3007,13 @@
       "addAccount": "Aggiungi account",
       "connected": "Connesso",
       "default": "Predefinito",
-      "deleteAccount": "Elimina account",
-      "deleteDescription": "Le conversazioni che usano questo account torneranno all’ereditarietà predefinita.",
-      "deleteDescriptionWithCount": "{{value}} conversazioni torneranno all’ereditarietà predefinita.",
-      "deleteDescriptionWithCount_one": "",
-      "deleteDescriptionWithCount_many": "",
-      "deleteDescriptionWithCount_other": "",
-      "deleteTitle": "Eliminare {{account}}?",
+      "disconnectAccount": "Disconnetti account",
+      "disconnectDescription": "Questo disconnette l'account da Okou. Le conversazioni che lo usano torneranno all'ereditarietà predefinita. L'account del provider non verrà eliminato.",
+      "disconnectDescriptionWithCount": "Questo disconnette l'account da Okou. {{value}} conversazioni torneranno all'ereditarietà predefinita. L'account del provider non verrà eliminato.",
+      "disconnectDescriptionWithCount_one": "",
+      "disconnectDescriptionWithCount_many": "",
+      "disconnectDescriptionWithCount_other": "",
+      "disconnectTitle": "Disconnettere {{account}}?",
       "fallbackByMethod": {
         "api": "Chiave API",
         "api-token": "Token API",
@@ -3088,6 +3088,10 @@
       "genericLabel": "Connettore",
       "githubLabel": "GitHub",
       "invalidUrl": "Richiamata del connettore non valida URL.",
+      "mercuryAttribution": "Powered by Mercury",
+      "mercuryDisclosure": "Mercury is a fintech company, not an FDIC-insured bank. Banking services provided through Choice Financial Group and Column N.A., Members FDIC.",
+      "mercuryDisclosureLabel": "Mercury banking disclosure",
+      "mercuryLabel": "Mercury",
       "success": "Connesso"
     },
     "card": {
@@ -5542,6 +5546,9 @@
         "categoryImage": "Immagini",
         "categoryVideo": "Video",
         "chatModels": "Modelli chat",
+        "effort": "Sforzo di ragionamento",
+        "effortReset": "Ripristina il valore predefinito",
+        "effortUnavailable": "Lo sforzo non è disponibile per questa connessione al modello. Ripristina il valore predefinito per continuare.",
         "fast": "Veloce",
         "fastImpact": "Velocità del modello 1,5× · consumo di crediti 2,5×",
         "generationPriceTiers": {
@@ -5776,7 +5783,6 @@
           "unavailable": "Modello non disponibile ({{model}})"
         },
         "welcomeThread": {
-          "conflict": "Questo ID richiesta appartiene a un’altra chat. Chiudi le impostazioni e avvia una nuova creazione.",
           "create": "Crea chat di benvenuto",
           "creating": "Creazione…",
           "defaultAgentNotReady": "Configura l’agente predefinito dell’area di lavoro, poi riprova.",

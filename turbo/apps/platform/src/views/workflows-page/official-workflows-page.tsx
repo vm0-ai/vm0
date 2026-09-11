@@ -363,7 +363,7 @@ function InstallDialog({
             disabled={installing}
           />
         ) : null}
-        {installLoadable.state === "hasError" ? (
+        {activeForm?.submitted && installLoadable.state === "hasError" ? (
           <Alert variant="destructive">
             <AlertTitle>
               {i18n.t(($) => {

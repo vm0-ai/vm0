@@ -44,10 +44,7 @@ const sha256HexSchema = z
 
 const piMemoryPhase2CheckpointAttestationSchema = z
   .object({
-    // New Guests require receipt-aware prepare/commit. Old APIs reject v2
-    // before upload. Read v1 while pinned Guests drain (up to two hours);
-    // remove v1 under #31067 after that drain and the API rollback window.
-    schemaVersion: z.number().int().min(1).max(2),
+    schemaVersion: z.literal(2),
     leaseToken: z.uuid(),
     claimedRevision: z.number().int().positive(),
     claimedBaseVersionId: sha256HexSchema,

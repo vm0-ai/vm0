@@ -694,7 +694,7 @@ test.each([
   await transcriptionFailed.promise;
 
   await waitFor(() => {
-    expect(screen.getByText(failure.message)).toBeVisible();
+    expect(screen.getByText(failure.message, { exact: false })).toBeVisible();
   });
   await expect(findButton("Retry")).resolves.toBeEnabled();
   expect(queryButton("Voice input")).toBeNull();

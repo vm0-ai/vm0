@@ -2962,10 +2962,10 @@
       "addAccount": "Add account",
       "connected": "Connected",
       "default": "Default",
-      "deleteAccount": "Delete account",
-      "deleteDescription": "Threads using this account will return to default inheritance.",
-      "deleteDescriptionWithCount": "{{value}} threads will return to default inheritance.",
-      "deleteTitle": "Delete {{account}}?",
+      "disconnectAccount": "Disconnect account",
+      "disconnectDescription": "This disconnects the account from Okou. Threads using it will return to default inheritance. The provider account will not be deleted.",
+      "disconnectDescriptionWithCount": "This disconnects the account from Okou. {{value}} threads will return to default inheritance. The provider account will not be deleted.",
+      "disconnectTitle": "Disconnect {{account}}?",
       "fallbackByMethod": {
         "api": "API key",
         "api-token": "API token",
@@ -3031,6 +3031,10 @@
       "genericLabel": "Connector",
       "githubLabel": "GitHub",
       "invalidUrl": "Invalid connector callback URL.",
+      "mercuryAttribution": "Powered by Mercury",
+      "mercuryDisclosure": "Mercury is a fintech company, not an FDIC-insured bank. Banking services provided through Choice Financial Group and Column N.A., Members FDIC.",
+      "mercuryDisclosureLabel": "Mercury banking disclosure",
+      "mercuryLabel": "Mercury",
       "success": "Connected"
     },
     "card": {
@@ -5477,6 +5481,9 @@
         "categoryImage": "Image",
         "categoryVideo": "Video",
         "chatModels": "Chat models",
+        "effort": "Reasoning effort",
+        "effortReset": "Restore model default",
+        "effortUnavailable": "Effort is unavailable for this model route. Restore the default to continue.",
         "fast": "Fast",
         "fastImpact": "1.5× model speed · 2.5× credit usage",
         "generationPriceTiers": {
@@ -5708,7 +5715,6 @@
           "unavailable": "Unavailable model ({{model}})"
         },
         "welcomeThread": {
-          "conflict": "This request ID belongs to another chat. Close Settings and start a new welcome action.",
           "create": "Create welcome thread",
           "creating": "Creating…",
           "defaultAgentNotReady": "Configure the workspace default agent, then try again.",

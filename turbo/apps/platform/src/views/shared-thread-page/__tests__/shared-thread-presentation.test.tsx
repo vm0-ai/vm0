@@ -1,9 +1,13 @@
 import { sharedThreadsContract } from "@okouai/api-contracts/contracts/shared-threads";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 
+import { queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { platformOkouWordmarkLightImg } from "../../../lib/static-assets.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  warmMermaidParser,
+} from "../../../signals/__tests__/test-helpers.ts";
 import {
   getLinkByName,
   setupSharedThreadPage,
@@ -11,6 +15,8 @@ import {
 } from "./shared-thread-test-helpers.ts";
 
 const context = testContext();
+
+warmMermaidParser();
 
 test("A brand-only public title is not repeated", async () => {
   context.mocks.api(sharedThreadsContract.get, ({ respond }) => {
@@ -118,6 +124,39 @@ test("A public conversation hides owner and agent identity", async () => {
   );
   expect(screen.queryByText("Owner")).not.toBeInTheDocument();
   expect(screen.queryByText("Agent")).not.toBeInTheDocument();
+});
+
+test("A public conversation renders embedded media and diagrams", async () => {
+  const content = [
+    "![Launch map](https://media.example.com/launch.png)",
+    "",
+    "```mermaid",
+    "flowchart TD",
+    "  Plan --> Launch",
+    "```",
+  ].join("\n");
+  context.mocks.api(sharedThreadsContract.get, ({ respond }) => {
+    return respond(
+      200,
+      sharedThread({
+        messages: [{ messageIndex: 0, role: "assistant", content }],
+      }),
+    );
+  });
+
+  await setupSharedThreadPage(context, { host: "app.okou.ai" });
+
+  const image = await screen.findByRole("img", { name: "Launch map" });
+  fireEvent.load(image);
+  expect(image).toBeVisible();
+  expect(image).toHaveAttribute("src", "https://media.example.com/launch.png");
+  await expect(
+    screen.findByRole("img", { name: "Diagram" }),
+  ).resolves.toBeVisible();
+  const expandDiagram = queryAllByRoleFast("button").find((button) => {
+    return button.getAttribute("aria-label") === "Expand diagram";
+  });
+  expect(expandDiagram).toBeEnabled();
 });
 
 test("An intact public Goal archive displays its original literal text", async () => {

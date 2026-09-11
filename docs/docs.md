@@ -30,6 +30,8 @@ surface; the index does not replace their detailed rules.
 
 ## Specialized Guidance
 
+- [Marketing privacy choices](./marketing-privacy-choices.md): canonical privacy
+  state, anonymous/account association, consent ordering, and rollout boundaries.
 - [Google Ads browser routing](./google-ads-browser-routing.md): verified account
   ownership, conversion actions, rollout compatibility, and historical recovery.
 - [Connector inspection JSON](./connector-inspection-json.md): command output
@@ -43,8 +45,6 @@ surface; the index does not replace their detailed rules.
   commits.
 - [Chat cards](./chat-cards.md): recognizing links in chat messages, creating
   thread-scoped card signals, and rendering rich interactive cards.
-- [Welcome chat threads](./welcome-chat-threads.md): explicit creation contract,
-  atomic runless seeding, durable replay identity, and fixed localized content.
 - [Pi native provider preparation](./pi-native-provider-preparation.md): additive
   native readers, transport/auth ownership, accounting and activation gates.
 - [Runner host configuration](./runner-host-configuration.md): configure and

@@ -2962,12 +2962,12 @@
       "addAccount": "Konto hinzufügen",
       "connected": "Verbunden",
       "default": "Standard",
-      "deleteAccount": "Konto löschen",
-      "deleteDescription": "Threads, die dieses Konto verwenden, kehren zur Standardvererbung zurück.",
-      "deleteDescriptionWithCount": "{{value}} Threads kehren zur Standardvererbung zurück.",
-      "deleteDescriptionWithCount_one": "",
-      "deleteDescriptionWithCount_other": "",
-      "deleteTitle": "{{account}} löschen?",
+      "disconnectAccount": "Konto trennen",
+      "disconnectDescription": "Dadurch wird das Konto von Okou getrennt. Threads, die es verwenden, kehren zur Standardvererbung zurück. Das Konto beim Anbieter wird nicht gelöscht.",
+      "disconnectDescriptionWithCount": "Dadurch wird das Konto von Okou getrennt. {{value}} Threads kehren zur Standardvererbung zurück. Das Konto beim Anbieter wird nicht gelöscht.",
+      "disconnectDescriptionWithCount_one": "",
+      "disconnectDescriptionWithCount_other": "",
+      "disconnectTitle": "{{account}} trennen?",
       "fallbackByMethod": {
         "api": "API-Schlüssel",
         "api-token": "API-Token",
@@ -3039,6 +3039,10 @@
       "genericLabel": "Integration",
       "githubLabel": "GitHub",
       "invalidUrl": "Ungültige Integration-Rückruf-URL.",
+      "mercuryAttribution": "Powered by Mercury",
+      "mercuryDisclosure": "Mercury is a fintech company, not an FDIC-insured bank. Banking services provided through Choice Financial Group and Column N.A., Members FDIC.",
+      "mercuryDisclosureLabel": "Mercury banking disclosure",
+      "mercuryLabel": "Mercury",
       "success": "Verbunden"
     },
     "card": {
@@ -5485,6 +5489,9 @@
         "categoryImage": "Bild",
         "categoryVideo": "Video",
         "chatModels": "Chatmodelle",
+        "effort": "Denkaufwand",
+        "effortReset": "Modellstandard wiederherstellen",
+        "effortUnavailable": "Der Denkaufwand ist für diese Modellverbindung nicht verfügbar. Stelle den Standard wieder her, um fortzufahren.",
         "fast": "Schnell",
         "fastImpact": "1,5× Modellgeschwindigkeit · 2,5× Credit-Nutzung",
         "generationPriceTiers": {
@@ -5716,7 +5723,6 @@
           "unavailable": "Modell nicht verfügbar ({{model}})"
         },
         "welcomeThread": {
-          "conflict": "Diese Anfrage-ID gehört zu einem anderen Chat. Schließe die Einstellungen und starte eine neue Willkommensaktion.",
           "create": "Willkommenschat erstellen",
           "creating": "Wird erstellt…",
           "defaultAgentNotReady": "Konfiguriere den Standardagenten des Arbeitsbereichs und versuche es erneut.",

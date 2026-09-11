@@ -8,7 +8,6 @@ import { command, computed, state, type Command, type Computed } from "ccstate";
 
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
-import { rootSignal$ } from "../root-signal.ts";
 import { onRef, setLoop } from "../utils.ts";
 import {
   chatActionCallbackFromUrl,
@@ -136,14 +135,12 @@ export function parseBankingActionUrl(
 
 function createBankingStatusSignals(descriptor: BankingActionDescriptor) {
   const reload$ = state(0);
-  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const status$ = computed(async (get) => {
     get(reload$);
     const client = get(apiClient$)(bankingUserContract);
     const result = await accept(
       client.accessRequestStatus({
         params: { agentId: descriptor.agentId },
-        fetchOptions: { signal: get(rootSignal$) },
       }),
       [200],
     );

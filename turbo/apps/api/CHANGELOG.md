@@ -8,6 +8,74 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.583.0](https://github.com/vm0-ai/vm0/compare/api-v1.582.3...api-v1.583.0) (2026-09-11)
+
+
+### Features
+
+* **chat:** add native reasoning effort controls ([#33016](https://github.com/vm0-ai/vm0/issues/33016)) ([f649925](https://github.com/vm0-ai/vm0/commit/f649925cbb81c11ee5b66d32bcc6072fc2fe80c2))
+
+
+### Bug Fixes
+
+* **billing:** remove routine reconciliation warnings ([#33399](https://github.com/vm0-ai/vm0/issues/33399)) ([2c47c7a](https://github.com/vm0-ai/vm0/commit/2c47c7a2001543f5c92dc67edad4b4307bd66099))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.427.0
+    * @okouai/core bumped to 8.652.0
+    * @okouai/db bumped to 1.251.5
+    * @okouai/pi-agent-runtime bumped to 1.24.15
+
+## [1.582.3](https://github.com/vm0-ai/vm0/compare/api-v1.582.2...api-v1.582.3) (2026-09-10)
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#33343](https://github.com/vm0-ai/vm0/issues/33343)) ([f670a02](https://github.com/vm0-ai/vm0/commit/f670a0233ae13a11d43f3a2ad72ff30831cab822))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.426.1
+    * @okouai/core bumped to 8.651.2
+    * @okouai/db bumped to 1.251.4
+    * @okouai/pi-agent-runtime bumped to 1.24.14
+
+## [1.582.2](https://github.com/vm0-ai/vm0/compare/api-v1.582.1...api-v1.582.2) (2026-09-10)
+
+
+### Refactoring
+
+* remove final obsolete goal source references ([#33336](https://github.com/vm0-ai/vm0/issues/33336)) ([8ae8492](https://github.com/vm0-ai/vm0/commit/8ae84922a0556340df38b0be2197f55614c0c4f4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.651.1
+    * @okouai/db bumped to 1.251.3
+
+## [1.582.1](https://github.com/vm0-ai/vm0/compare/api-v1.582.0...api-v1.582.1) (2026-09-10)
+
+
+### Refactoring
+
+* retire completed goal transition validation ([#33326](https://github.com/vm0-ai/vm0/issues/33326)) ([e7d8cc5](https://github.com/vm0-ai/vm0/commit/e7d8cc5fa0af14ccf84d931e3f3357f061aa6a22))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/db bumped to 1.251.2
+
 ## [1.582.0](https://github.com/vm0-ai/vm0/compare/api-v1.581.0...api-v1.582.0) (2026-09-10)
 
 

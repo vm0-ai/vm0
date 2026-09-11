@@ -253,7 +253,7 @@ export async function publishChatThreadDetailChangedSafely(
 /**
  * Notify the chat message background sync that a new row was appended. It
  * refreshes IndexedDB and forwards newly fetched rows into visible threads, so
- * derived UI state (e.g. the composer's folded goal state) updates live.
+ * derived UI state (e.g. rendered chat messages) updates live.
  *
  * `syncThroughSeqId` is an optional watermark for the last row appended by the
  * publishing mutation. Clients that have already cached that sequence can

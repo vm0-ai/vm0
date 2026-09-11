@@ -3007,13 +3007,13 @@
       "addAccount": "Ajouter un compte",
       "connected": "Connecté",
       "default": "Par défaut",
-      "deleteAccount": "Supprimer le compte",
-      "deleteDescription": "Les fils utilisant ce compte reviendront à l’héritage par défaut.",
-      "deleteDescriptionWithCount": "{{value}} fils reviendront à l’héritage par défaut.",
-      "deleteDescriptionWithCount_one": "",
-      "deleteDescriptionWithCount_many": "",
-      "deleteDescriptionWithCount_other": "",
-      "deleteTitle": "Supprimer {{account}} ?",
+      "disconnectAccount": "Déconnecter le compte",
+      "disconnectDescription": "Cela déconnecte le compte d’Okou. Les fils qui l’utilisent reviendront à l’héritage par défaut. Le compte chez le fournisseur ne sera pas supprimé.",
+      "disconnectDescriptionWithCount": "Cela déconnecte le compte d’Okou. {{value}} fils reviendront à l’héritage par défaut. Le compte chez le fournisseur ne sera pas supprimé.",
+      "disconnectDescriptionWithCount_one": "",
+      "disconnectDescriptionWithCount_many": "",
+      "disconnectDescriptionWithCount_other": "",
+      "disconnectTitle": "Déconnecter {{account}} ?",
       "fallbackByMethod": {
         "api": "Clé d'API",
         "api-token": "Jeton d'API",
@@ -3088,6 +3088,10 @@
       "genericLabel": "Connecteur",
       "githubLabel": "GitHub",
       "invalidUrl": "URL de rappel du connecteur non valide.",
+      "mercuryAttribution": "Powered by Mercury",
+      "mercuryDisclosure": "Mercury is a fintech company, not an FDIC-insured bank. Banking services provided through Choice Financial Group and Column N.A., Members FDIC.",
+      "mercuryDisclosureLabel": "Mercury banking disclosure",
+      "mercuryLabel": "Mercury",
       "success": "Connecté"
     },
     "card": {
@@ -5542,6 +5546,9 @@
         "categoryImage": "Image",
         "categoryVideo": "Vidéo",
         "chatModels": "Modèles de chat",
+        "effort": "Effort de raisonnement",
+        "effortReset": "Rétablir la valeur par défaut",
+        "effortUnavailable": "L’effort n’est pas disponible pour cette connexion au modèle. Rétablissez la valeur par défaut pour continuer.",
         "fast": "Rapide",
         "fastImpact": "Vitesse du modèle 1,5× · consommation de crédits 2,5×",
         "generationPriceTiers": {
@@ -5776,7 +5783,6 @@
           "unavailable": "Modèle indisponible ({{model}})"
         },
         "welcomeThread": {
-          "conflict": "Cet identifiant de requête appartient à une autre discussion. Fermez les paramètres et lancez une nouvelle création.",
           "create": "Créer une discussion de bienvenue",
           "creating": "Création…",
           "defaultAgentNotReady": "Configurez l’agent par défaut de l’espace de travail, puis réessayez.",

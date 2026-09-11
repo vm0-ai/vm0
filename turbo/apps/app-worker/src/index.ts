@@ -1,3 +1,4 @@
+import favicon from "../assets/favicon.ico.bin";
 import icon192 from "../shell/icons/icon-192.bin";
 import icon512Maskable from "../shell/icons/icon-512-maskable.bin";
 import icon512 from "../shell/icons/icon-512.bin";
@@ -8,6 +9,7 @@ import serviceWorker from "../shell/sw.txt";
 import { createWorker } from "./worker.js";
 
 export default createWorker({
+  favicon,
   icon192,
   icon512,
   icon512Maskable,

@@ -45,28 +45,23 @@ function createThinkingSummaryDemand(
 ) {
   const internalReloadDemandSummary$ = state(0);
   const summaryDemandRunId$ = state<string | null>(null);
+  const summaryDemandReadyRunId$ = state<string | null>(null);
   const resetSummaryDemand$ = resetSignal();
-  let summaryDemandSignal: AbortSignal | null = null;
-  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const demandSummaries$ = computed(async (get) => {
     get(internalReloadDemandSummary$);
     const runId = get(summaryDemandRunId$);
-    const signal = summaryDemandSignal;
-    if (!runId || !signal) {
+    if (!runId || get(summaryDemandReadyRunId$) !== runId) {
       return null;
     }
-    signal.throwIfAborted();
     const response = await accept(
       get(apiClient$)(chatThreadActivitySummaryContract).summarize({
         params: { id: threadId },
         body: { runId },
-        fetchOptions: { signal },
       }),
       [200, 401, 403, 404],
-      signal,
+      undefined,
       { showErrorToast: false },
     );
-    signal.throwIfAborted();
     if (response.status !== 200) {
       return null;
     }
@@ -110,10 +105,13 @@ function createThinkingSummaryDemand(
       async ({ get, set }, demandOwnerSignal: AbortSignal) => {
         demandOwnerSignal.throwIfAborted();
         const runId = get(currentActiveRunId$);
-        if (runId === get(summaryDemandRunId$)) {
+        if (
+          runId === get(summaryDemandRunId$) &&
+          (runId === null || get(summaryDemandReadyRunId$) === runId)
+        ) {
           return;
         }
-        summaryDemandSignal = null;
+        set(summaryDemandReadyRunId$, null);
         const previousDemand = activeDemand;
         const demandSignal = set(resetSummaryDemand$, demandOwnerSignal);
         set(summaryDemandRunId$, runId);
@@ -123,8 +121,8 @@ function createThinkingSummaryDemand(
           return;
         }
         if (runId) {
-          summaryDemandSignal = demandSignal;
           activeDemand = set(startSummaryDemand$, demandSignal);
+          set(summaryDemandReadyRunId$, runId);
         }
       },
     );
@@ -154,6 +152,7 @@ function createThinkingSummaryDemand(
         subscriptionEnd.promise,
       ]),
       async () => {
+        set(summaryDemandReadyRunId$, null);
         set(resetSummaryDemand$);
         await activeDemand;
       },

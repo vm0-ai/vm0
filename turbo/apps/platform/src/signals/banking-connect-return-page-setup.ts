@@ -31,6 +31,7 @@ export const setupBankingConnectReturnPage$ = command(
       updatePage$,
       createElement(ConnectorCallbackPage, {
         connectorIcon: undefined,
+        connectorSlug: null,
         iconContent: createElement(Landmark, {
           size: 20,
           className: "text-foreground",

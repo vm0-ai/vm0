@@ -10,7 +10,7 @@ import {
 
 import { accept } from "../../lib/accept.ts";
 import { apiClient$, type ApiClientFactory } from "../api-client.ts";
-import { onRejection, resetSignal } from "../utils.ts";
+import { onRejection } from "../utils.ts";
 
 const CONNECTOR_ACCOUNT_PAGE_SIZE = 50;
 /** Keep account search responsive while coalescing normal typing bursts. */
@@ -116,27 +116,21 @@ function targetListQuery(
       };
 }
 
-async function fetchConnectorAccountPage(
-  args: {
-    readonly createClient: ApiClientFactory;
-    readonly target: ConnectorAccountTarget;
-    readonly search: string;
-    readonly cursor?: string;
-    readonly includeBuiltinScopeMismatch: boolean;
-  },
-  signal: AbortSignal,
-): Promise<ConnectorAccountPage> {
+async function fetchConnectorAccountPage(args: {
+  readonly createClient: ApiClientFactory;
+  readonly target: ConnectorAccountTarget;
+  readonly search: string;
+  readonly cursor?: string;
+  readonly includeBuiltinScopeMismatch: boolean;
+}): Promise<ConnectorAccountPage> {
   const enriched =
     args.includeBuiltinScopeMismatch && args.target.kind === "builtin";
   const result = await accept(
     args.createClient(connectorAccountsContract).connections({
       query: targetListQuery(args.target, args.search, args.cursor, enriched),
-      fetchOptions: { signal },
     }),
     [200, 404],
-    signal,
   );
-  signal.throwIfAborted();
   return result.status === 404
     ? emptyConnectorAccountPage()
     : { ...result.body, available: true };
@@ -146,16 +140,14 @@ interface ConnectorAccountQuery {
   readonly target: ConnectorAccountTarget;
   readonly search: string;
   readonly debounce: boolean;
-  readonly signal: AbortSignal;
 }
 
 function createConnectorAccountQuerySignals() {
   const query$ = state<ConnectorAccountQuery | null>(null);
   const search$ = state("");
   const lastPage$ = state<Computed<Promise<ConnectorAccountList>> | null>(null);
-  const resetQuerySignal$ = resetSignal();
   const setTarget$ = command(
-    ({ get, set }, target: ConnectorAccountTarget, signal: AbortSignal) => {
+    ({ get, set }, target: ConnectorAccountTarget, _signal: AbortSignal) => {
       const current = get(query$);
       if (
         current &&
@@ -170,18 +162,16 @@ function createConnectorAccountQuerySignals() {
         target,
         search: "",
         debounce: false,
-        signal: set(resetQuerySignal$, signal),
       });
     },
   );
   const clearTarget$ = command(({ set }) => {
-    set(resetQuerySignal$);
     set(query$, null);
     set(search$, "");
     set(lastPage$, null);
   });
   const setSearch$ = command(
-    ({ get, set }, search: string, signal: AbortSignal) => {
+    ({ get, set }, search: string, _signal: AbortSignal) => {
       const normalized = search.trimStart();
       if (get(search$) === normalized) {
         return;
@@ -196,15 +186,13 @@ function createConnectorAccountQuerySignals() {
         target: current.target,
         search: normalized,
         debounce: normalized.length > 0,
-        signal: set(resetQuerySignal$, signal),
       });
     },
   );
   const resetSearch$ = command(({ set }) => {
-    set(resetQuerySignal$);
     set(search$, "");
   });
-  const reload$ = command(({ get, set }, signal: AbortSignal) => {
+  const reload$ = command(({ get, set }, _signal: AbortSignal) => {
     const current = get(query$);
     if (!current) {
       return;
@@ -214,7 +202,6 @@ function createConnectorAccountQuerySignals() {
       target: current.target,
       search: get(search$),
       debounce: false,
-      signal: set(resetQuerySignal$, signal),
     });
   });
   return {
@@ -237,27 +224,23 @@ export function createConnectorAccountListSignals(
   const includeBuiltinScopeMismatch =
     options.includeBuiltinScopeMismatch === true;
   const querySignals = createConnectorAccountQuerySignals();
-  // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
   const firstPage$ = computed(async (get): Promise<ConnectorAccountList> => {
     const query = get(querySignals.query$);
     if (!query) {
       return emptyConnectorAccountPage();
     }
     if (query.debounce) {
-      await delay(CONNECTOR_ACCOUNT_SEARCH_DEBOUNCE_MS, {
-        signal: query.signal,
-      });
+      await delay(CONNECTOR_ACCOUNT_SEARCH_DEBOUNCE_MS);
+      if (get(querySignals.query$) !== query) {
+        return emptyConnectorAccountPage();
+      }
     }
-    query.signal.throwIfAborted();
-    return fetchConnectorAccountPage(
-      {
-        createClient: get(apiClient$),
-        target: query.target,
-        search: query.search,
-        includeBuiltinScopeMismatch,
-      },
-      query.signal,
-    );
+    return fetchConnectorAccountPage({
+      createClient: get(apiClient$),
+      target: query.target,
+      search: query.search,
+      includeBuiltinScopeMismatch,
+    });
   });
   const accounts$ = computed(async (get): Promise<ConnectorAccountList> => {
     return await get(get(querySignals.lastPage$) ?? firstPage$);
@@ -284,21 +267,16 @@ export function createConnectorAccountListSignals(
       if (!cursor) {
         return;
       }
-      const pageSignal = AbortSignal.any([query.signal, signal]);
-      // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
       const nextPage$ = computed(async (get): Promise<ConnectorAccountList> => {
         const [previous, page] = await Promise.all([
           get(previousPage$),
-          fetchConnectorAccountPage(
-            {
-              createClient: get(apiClient$),
-              target: query.target,
-              search: query.search,
-              cursor,
-              includeBuiltinScopeMismatch,
-            },
-            pageSignal,
-          ),
+          fetchConnectorAccountPage({
+            createClient: get(apiClient$),
+            target: query.target,
+            search: query.search,
+            cursor,
+            includeBuiltinScopeMismatch,
+          }),
         ]);
         return page.available
           ? mergeConnectorAccountPages(previous, [page])
@@ -317,7 +295,9 @@ export function createConnectorAccountListSignals(
         }
       });
       signal.throwIfAborted();
-      pageSignal.throwIfAborted();
+      if (get(querySignals.query$) !== query) {
+        return;
+      }
       if (!result.available) {
         set(querySignals.reload$, signal);
         await get(accounts$);

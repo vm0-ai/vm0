@@ -2954,11 +2954,11 @@
       "addAccount": "계정 추가",
       "connected": "연결됨",
       "default": "기본값",
-      "deleteAccount": "계정 삭제",
-      "deleteDescription": "이 계정을 사용하는 스레드는 기본 상속으로 돌아갑니다.",
-      "deleteDescriptionWithCount": "{{value}}개 스레드가 기본 상속으로 돌아갑니다.",
-      "deleteDescriptionWithCount_other": "",
-      "deleteTitle": "{{account}}을(를) 삭제할까요?",
+      "disconnectAccount": "계정 연결 해제",
+      "disconnectDescription": "이 계정과 Okou의 연결을 해제합니다. 이 계정을 사용하는 스레드는 기본 상속으로 돌아갑니다. 제공업체의 계정은 삭제되지 않습니다.",
+      "disconnectDescriptionWithCount": "이 계정과 Okou의 연결을 해제합니다. {{value}}개 스레드가 기본 상속으로 돌아갑니다. 제공업체의 계정은 삭제되지 않습니다.",
+      "disconnectDescriptionWithCount_other": "",
+      "disconnectTitle": "{{account}}의 연결을 해제할까요?",
       "fallbackByMethod": {
         "api": "API 키",
         "api-token": "API 토큰",
@@ -3027,6 +3027,10 @@
       "genericLabel": "커넥터",
       "githubLabel": "GitHub",
       "invalidUrl": "잘못된 커넥터 콜백 URL입니다.",
+      "mercuryAttribution": "Powered by Mercury",
+      "mercuryDisclosure": "Mercury is a fintech company, not an FDIC-insured bank. Banking services provided through Choice Financial Group and Column N.A., Members FDIC.",
+      "mercuryDisclosureLabel": "Mercury banking disclosure",
+      "mercuryLabel": "Mercury",
       "success": "연결됨"
     },
     "card": {
@@ -5473,6 +5477,9 @@
         "categoryImage": "이미지",
         "categoryVideo": "동영상",
         "chatModels": "채팅 모델",
+        "effort": "추론 강도",
+        "effortReset": "모델 기본값 복원",
+        "effortUnavailable": "이 모델 연결에서는 추론 강도를 사용할 수 없습니다. 계속하려면 기본값으로 복원하세요.",
         "fast": "빠름",
         "fastImpact": "모델 속도 1.5× · 크레딧 사용량 2.5×",
         "generationPriceTiers": {
@@ -5703,7 +5710,6 @@
           "unavailable": "사용할 수 없는 모델 ({{model}})"
         },
         "welcomeThread": {
-          "conflict": "이 요청 ID는 다른 채팅에 속합니다. 설정을 닫고 새 환영 채팅 만들기를 시작하세요.",
           "create": "환영 채팅 만들기",
           "creating": "만드는 중…",
           "defaultAgentNotReady": "워크스페이스의 기본 에이전트를 설정한 후 다시 시도하세요.",

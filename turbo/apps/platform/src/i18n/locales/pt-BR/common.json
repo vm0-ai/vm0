@@ -3007,13 +3007,13 @@
       "addAccount": "Adicionar conta",
       "connected": "Conectada",
       "default": "Padrão",
-      "deleteAccount": "Excluir conta",
-      "deleteDescription": "As conversas que usam esta conta voltarão à herança padrão.",
-      "deleteDescriptionWithCount": "{{value}} conversas voltarão à herança padrão.",
-      "deleteDescriptionWithCount_one": "",
-      "deleteDescriptionWithCount_many": "",
-      "deleteDescriptionWithCount_other": "",
-      "deleteTitle": "Excluir {{account}}?",
+      "disconnectAccount": "Desconectar conta",
+      "disconnectDescription": "Isto desconecta a conta do Okou. As conversas que a usam voltarão à herança padrão. A conta no provedor não será excluída.",
+      "disconnectDescriptionWithCount": "Isto desconecta a conta do Okou. {{value}} conversas voltarão à herança padrão. A conta no provedor não será excluída.",
+      "disconnectDescriptionWithCount_one": "",
+      "disconnectDescriptionWithCount_many": "",
+      "disconnectDescriptionWithCount_other": "",
+      "disconnectTitle": "Desconectar {{account}}?",
       "fallbackByMethod": {
         "api": "Chave de API",
         "api-token": "Token de API",
@@ -3088,6 +3088,10 @@
       "genericLabel": "Conector",
       "githubLabel": "GitHub",
       "invalidUrl": "A URL de callback do conector é inválida.",
+      "mercuryAttribution": "Powered by Mercury",
+      "mercuryDisclosure": "Mercury is a fintech company, not an FDIC-insured bank. Banking services provided through Choice Financial Group and Column N.A., Members FDIC.",
+      "mercuryDisclosureLabel": "Mercury banking disclosure",
+      "mercuryLabel": "Mercury",
       "success": "Conectado"
     },
     "card": {
@@ -5542,6 +5546,9 @@
         "categoryImage": "Imagem",
         "categoryVideo": "Vídeo",
         "chatModels": "Modelos de chat",
+        "effort": "Esforço de raciocínio",
+        "effortReset": "Restaurar padrão do modelo",
+        "effortUnavailable": "O esforço não está disponível nesta conexão do modelo. Restaure o padrão para continuar.",
         "fast": "Rápido",
         "fastImpact": "Velocidade do modelo 1,5× · uso de créditos 2,5×",
         "generationPriceTiers": {
@@ -5776,7 +5783,6 @@
           "unavailable": "Modelo indisponível ({{model}})"
         },
         "welcomeThread": {
-          "conflict": "Este ID de solicitação pertence a outra conversa. Feche as configurações e inicie uma nova criação.",
           "create": "Criar conversa de boas-vindas",
           "creating": "Criando…",
           "defaultAgentNotReady": "Configure o agente padrão do espaço de trabalho e tente novamente.",

@@ -1,5 +1,35 @@
 # Changelog
 
+## [8.652.0](https://github.com/vm0-ai/vm0/compare/core-v8.651.2...core-v8.652.0) (2026-09-11)
+
+
+### Features
+
+* **chat:** add native reasoning effort controls ([#33016](https://github.com/vm0-ai/vm0/issues/33016)) ([f649925](https://github.com/vm0-ai/vm0/commit/f649925cbb81c11ee5b66d32bcc6072fc2fe80c2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.427.0
+
+## [8.651.2](https://github.com/vm0-ai/vm0/compare/core-v8.651.1...core-v8.651.2) (2026-09-10)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.426.1
+
+## [8.651.1](https://github.com/vm0-ai/vm0/compare/core-v8.651.0...core-v8.651.1) (2026-09-10)
+
+
+### Refactoring
+
+* remove final obsolete goal source references ([#33336](https://github.com/vm0-ai/vm0/issues/33336)) ([8ae8492](https://github.com/vm0-ai/vm0/commit/8ae84922a0556340df38b0be2197f55614c0c4f4))
+
 ## [8.651.0](https://github.com/vm0-ai/vm0/compare/core-v8.650.0...core-v8.651.0) (2026-09-10)
 
 

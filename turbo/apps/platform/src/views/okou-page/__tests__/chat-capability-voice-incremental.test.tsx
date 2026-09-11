@@ -50,6 +50,7 @@ test("Keep transcription pending until server recovery succeeds without reportin
 
 test("Keep recording after an incremental segment fails and finish in order", async () => {
   const capture = context.mocks.deferred<(samples: Float32Array) => void>();
+  const unavailable = context.mocks.deferred<void>();
   context.mocks.browser.voiceInput({
     rms: 0.1,
     onPcmCapture: capture.resolve,
@@ -60,6 +61,7 @@ test("Keep recording after an incremental segment fails and finish in order", as
   context.mocks.http.post(endpoint, () => {
     requestAttempts += 1;
     if (requestAttempts === 1) {
+      unavailable.resolve();
       return HttpResponse.json(
         {
           error: {
@@ -87,7 +89,7 @@ test("Keep recording after an incremental segment fails and finish in order", as
   click(await findEnabledButton("Voice input"));
   const emit = await capture.promise;
   emit(new Float32Array(60 * 16_000).fill(0.1));
-  await screen.findByText("Segment temporarily unavailable");
+  await unavailable.promise;
   await expect(findEnabledButton("Stop recording")).resolves.toBeVisible();
   emit(new Float32Array(5 * 16_000).fill(0.2));
   click(await findEnabledButton("Stop recording"));
@@ -227,11 +229,12 @@ test("Stop during transcription and finalize the saved prefix without retranscri
   });
 });
 
-test("Preserve audio and actionable reporting after provider recovery is exhausted", async () => {
+test.each([
+  "Speech recognition is temporarily busy. Please retry in a moment.",
+  "Voice draft transcription is temporarily unavailable",
+])("Preserve audio without an application error for %s", async (message) => {
   const sentry = context.mocks.sentry();
   initSentry();
-  const message =
-    "Speech recognition is temporarily busy. Please retry in a moment.";
   context.mocks.browser.voiceInput({ rms: 0.1 });
   installRunChat();
   let available = false;
@@ -264,19 +267,15 @@ test("Preserve audio and actionable reporting after provider recovery is exhaust
   click(await findEnabledButton("Voice input"));
   click(await findEnabledButton("Stop recording"));
   await findEnabledButton("Retry");
-  await expect(screen.findByText(message)).resolves.toBeVisible();
+  await expect(
+    screen.findByText(message, { exact: false }),
+  ).resolves.toBeVisible();
   expect(
-    screen.getByText("Your recording is kept. Retry transcription."),
-  ).toBeVisible();
-  expect(sentry.reports).toContainEqual(
-    expect.objectContaining({
-      type: "exception",
-      error: expect.objectContaining({
-        code: "PROVIDER_UNAVAILABLE",
-        status: 503,
-      }),
+    screen.getByText("Your recording is kept. Retry transcription.", {
+      exact: false,
     }),
-  );
+  ).toBeVisible();
+  expect(sentry.reports).toStrictEqual([]);
   available = true;
   click(await findEnabledButton("Retry"));
   await waitFor(() => {
@@ -285,6 +284,36 @@ test("Preserve audio and actionable reporting after provider recovery is exhaust
     );
   });
   expect(audio[1]).toStrictEqual(audio[0]);
+  expect(sentry.reports).toStrictEqual([]);
+});
+
+test.each([
+  { status: 502, code: "VOICE_TRANSCRIPTION_FAILED" },
+  { status: 503, code: "NOT_CONFIGURED" },
+])("Keep genuine $code failures actionable", async ({ status, code }) => {
+  const sentry = context.mocks.sentry();
+  initSentry();
+  context.mocks.browser.voiceInput({ rms: 0.1 });
+  installRunChat();
+  context.mocks.http.post(endpoint, () => {
+    return HttpResponse.json(
+      { error: { code, message: "Transcription configuration failed" } },
+      { status },
+    );
+  });
+  await setupPage({ context, path: RUN_PATH, featureSwitches: flags });
+  click(await findEnabledButton("Voice input"));
+  click(await findEnabledButton("Stop recording"));
+  await findEnabledButton("Retry");
+  await expect(
+    screen.findByText("Transcription configuration failed"),
+  ).resolves.toBeVisible();
+  expect(sentry.reports).toContainEqual(
+    expect.objectContaining({
+      type: "exception",
+      error: expect.objectContaining({ code, status }),
+    }),
+  );
 });
 
 test("Abort pending transcription when removing a recording after a storage failure, then record again", async () => {

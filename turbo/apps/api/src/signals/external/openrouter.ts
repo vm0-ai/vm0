@@ -23,9 +23,9 @@ const OPENROUTER_ERROR_RESPONSE_MAX_BYTES = 64 * 1024;
 /**
  * The model behind every internal fast-path generation: chat and shared-thread
  * titles, recommended follow-ups, notification summaries, initial thinking
- * copy, run summaries, goal objective briefs, and voice I/O polish. These are
- * short, latency-sensitive calls that are not user-selectable, so they share a
- * single model rather than one constant per service.
+ * copy, run summaries, and voice I/O polish. These are short, latency-sensitive
+ * calls that are not user-selectable, so they share a single model rather than
+ * one constant per service.
  */
 export const FAST_PATH_MODEL = "google/gemini-3.8-flash";
 
