@@ -6114,7 +6114,6 @@
     "errors": {
       "agentUnavailable": "Cet agent n’est plus disponible. Choisissez un autre agent.",
       "configurationChanged": "Cet hôte a changé pendant votre modification. La liste a été actualisée. Rouvrez l’hôte et vérifiez ses paramètres actuels avant d’enregistrer.",
-      "duplicateEndpoint": "Un hôte SSH avec cette adresse et ce port existe déjà. Modifiez l’hôte existant ou utilisez une autre adresse ou un autre port.",
       "failed": "Impossible d’enregistrer la modification SSH. Réessayez.",
       "hostUnavailable": "Cet hôte SSH n’est plus disponible. Revenez à la liste et choisissez un hôte existant.",
       "invalidHost": "Saisissez un nom d’hôte ou une adresse IP sans protocole d’URL, chemin ni espaces.",

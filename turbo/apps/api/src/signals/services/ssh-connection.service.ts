@@ -11,7 +11,7 @@ import { agents } from "@okouai/db/schema/agent";
 import { agentSshAccess } from "@okouai/db/schema/agent-ssh-access";
 import { sshConnectionCredentials } from "@okouai/db/schema/ssh-connection-credential";
 import { sshConnections } from "@okouai/db/schema/ssh-connection";
-import { and, asc, count, eq, ne, sql } from "drizzle-orm";
+import { and, asc, count, eq, sql } from "drizzle-orm";
 
 import {
   SSH_ERROR_CODES,
@@ -51,11 +51,6 @@ const SSH_FAILURES = {
     kind: "conflict",
     message: "SSH connection was modified by another request",
     code: SSH_ERROR_CODES.GENERATION_CONFLICT,
-  },
-  endpointConflict: {
-    kind: "conflict",
-    message: "An SSH connection for this host and port already exists",
-    code: SSH_ERROR_CODES.ENDPOINT_CONFLICT,
   },
 } satisfies Record<string, SshConnectionFailure>;
 
@@ -184,33 +179,6 @@ async function findOwnerConnection(
   return row;
 }
 
-async function endpointExists(
-  db: Pick<ReadonlyDb, "select">,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly host: string;
-    readonly port: number;
-    readonly exceptConnectionId?: string;
-  },
-): Promise<boolean> {
-  const filters = [
-    eq(sshConnections.orgId, args.orgId),
-    eq(sshConnections.userId, args.userId),
-    eq(sshConnections.host, args.host),
-    eq(sshConnections.port, args.port),
-  ];
-  if (args.exceptConnectionId !== undefined) {
-    filters.push(ne(sshConnections.id, args.exceptConnectionId));
-  }
-  const [row] = await db
-    .select({ id: sshConnections.id })
-    .from(sshConnections)
-    .where(and(...filters))
-    .limit(1);
-  return row !== undefined;
-}
-
 async function countOwnerConnections(
   db: Pick<ReadonlyDb, "select">,
   orgId: string,
@@ -287,16 +255,6 @@ export async function createSshConnection(args: {
     return canonicalHost;
   }
 
-  const duplicate = await endpointExists(args.db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    host: canonicalHost.value,
-    port: args.body.port,
-  });
-  if (duplicate) {
-    return failure("endpointConflict");
-  }
-
   const encryptedCredentials = await encryptSshCredentials(
     args.body,
     args.featureContext,
@@ -304,17 +262,6 @@ export async function createSshConnection(args: {
 
   const result = await args.db.transaction(async (tx) => {
     await lockSshConnectionOwner(tx, args.orgId, args.userId);
-    if (
-      await endpointExists(tx, {
-        orgId: args.orgId,
-        userId: args.userId,
-        host: canonicalHost.value,
-        port: args.body.port,
-      })
-    ) {
-      return failure("endpointConflict");
-    }
-
     // Match Connector's zero-to-one account transition, including re-adding
     // after all hosts were deleted. The owner lock serializes concurrent adds.
     const firstHost =
@@ -370,13 +317,11 @@ export async function createSshConnection(args: {
       authorizedAgents: visibleAgents.length > 0,
     };
   });
-  if (result.ok) {
-    await publishSshRuntimeInvalidation(args.db, {
-      orgId: args.orgId,
-      userId: args.userId,
-      connectionId: result.authorizedAgents ? null : result.value.id,
-    });
-  }
+  await publishSshRuntimeInvalidation(args.db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    connectionId: result.authorizedAgents ? null : result.value.id,
+  });
   return result;
 }
 
@@ -403,20 +348,6 @@ export async function updateSshConnection(args: {
   if (preflight.generation !== args.body.expectedGeneration) {
     return failure("generationConflict");
   }
-  const preflightHost = canonicalHost?.value ?? preflight.host;
-  const preflightPort = args.body.port ?? preflight.port;
-  if (
-    await endpointExists(args.db, {
-      orgId: args.orgId,
-      userId: args.userId,
-      host: preflightHost,
-      port: preflightPort,
-      exceptConnectionId: args.connectionId,
-    })
-  ) {
-    return failure("endpointConflict");
-  }
-
   const encryptedCredentials =
     args.body.credentials === undefined
       ? undefined
@@ -447,18 +378,6 @@ export async function updateSshConnection(args: {
 
     const host = canonicalHost?.value ?? current.host;
     const port = args.body.port ?? current.port;
-    if (
-      await endpointExists(tx, {
-        orgId: args.orgId,
-        userId: args.userId,
-        host,
-        port,
-        exceptConnectionId: args.connectionId,
-      })
-    ) {
-      return failure("endpointConflict");
-    }
-
     const endpointChanged = host !== current.host || port !== current.port;
     const [updated] = await tx
       .update(sshConnections)
