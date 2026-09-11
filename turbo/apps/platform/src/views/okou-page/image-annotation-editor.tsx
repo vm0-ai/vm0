@@ -34,6 +34,7 @@ import {
   markOrdinal,
   nextMarkOrdinal,
   NOTE_GROUND,
+  SELECTION_STROKE,
   STROKE_HALO_INNER,
   textScale,
   type AnnotationArrowEnd,
@@ -619,13 +620,14 @@ function InlineMarkEditor({
         // The size the corners set, on the field and on the copy that measures
         // it alike, so resizing and typing agree about where the words wrap.
         // The outline is what says the label is the thing selected: a dashed
-        // frame in its own ink, held off the words far enough to sit inside the
-        // corner grips. `outline` rather than a border, because a border would
-        // take width from the text and move where it wraps.
+        // frame held off the words far enough to sit inside the corner grips,
+        // in the one fixed selection colour rather than the mark's own ink.
+        // `outline` rather than a border, because a border would take width
+        // from the text and move where it wraps.
         ...(isLabel
           ? {
               fontSize: `${LABEL_BASE_PX * textScale(mark)}px`,
-              outline: `1px dashed ${mark.ink}`,
+              outline: `1px dashed ${SELECTION_STROKE}`,
               outlineOffset: "3px",
             }
           : { background: NOTE_GROUND }),

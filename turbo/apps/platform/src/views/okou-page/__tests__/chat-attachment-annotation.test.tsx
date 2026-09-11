@@ -419,6 +419,9 @@ test("Dragging a label's corner resizes its type", async () => {
   fireEvent.click(screen.getByTestId("annotation-mark-1"));
 
   const field = await screen.findByTestId("annotation-inline-editor");
+  // One fixed selection colour, never the mark's own ink: in the ink the frame
+  // reads as part of the annotation, and the yellow one disappears.
+  expect(field.style.outline).toBe("#2F6FED dashed 1px");
   const before = field.style.fontSize;
   vi.spyOn(field, "getBoundingClientRect").mockReturnValue({
     x: 160,

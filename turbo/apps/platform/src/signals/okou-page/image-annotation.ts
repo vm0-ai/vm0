@@ -59,6 +59,18 @@ export const STROKE_HALO_INNER = "rgba(255, 255, 255, 0.90)";
  */
 export const NOTE_GROUND = "rgba(255, 255, 255, 0.94)";
 
+/**
+ * The frame around a selected label.
+ *
+ * One fixed colour rather than the mark's own ink: an outline in the ink reads
+ * as part of the annotation instead of as "this is the thing you picked up",
+ * and the yellow one all but disappears against a light screenshot. Like the
+ * inks it cannot come from a theme token — it is drawn on the user's picture,
+ * which does not follow our theme. This is the only saturated true blue in
+ * play, at 4.55 on white and 3.81 on near-black: the same bar the inks clear.
+ */
+export const SELECTION_STROKE = "#2F6FED";
+
 /** The type size a label is drawn at on screen before its corners are dragged. */
 export const LABEL_BASE_PX = 14;
 
