@@ -3112,7 +3112,7 @@
         "browse": "Jelajahi",
         "builtin": "Konektor bawaan",
         "builtinLoadFailed": "Tidak dapat memuat konektor bawaan.",
-        "custom": "Konektor kustom",
+        "custom": "Kustom",
         "customLoadFailed": "Tidak dapat memuat konektor kustom.",
         "emptyCustom": "Tambahkan API HTTP atau server MCP untuk digunakan organisasi Anda.",
         "loading": "Memuat konektor…",

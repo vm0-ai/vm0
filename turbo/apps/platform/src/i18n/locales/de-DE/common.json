@@ -3124,7 +3124,7 @@
         "browse": "Durchsuchen",
         "builtin": "Integrierte Konnektoren",
         "builtinLoadFailed": "Integrierte Konnektoren konnten nicht geladen werden.",
-        "custom": "Benutzerdefinierte Konnektoren",
+        "custom": "Benutzerdefiniert",
         "customLoadFailed": "Benutzerdefinierte Konnektoren konnten nicht geladen werden.",
         "emptyCustom": "Fügen Sie eine HTTP-API oder einen MCP-Server für Ihre Organisation hinzu.",
         "loading": "Konnektoren werden geladen…",

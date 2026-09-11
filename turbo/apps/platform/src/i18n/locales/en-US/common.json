@@ -3116,7 +3116,7 @@
         "browse": "Browse",
         "builtin": "Built-in connectors",
         "builtinLoadFailed": "Couldn't load built-in connectors.",
-        "custom": "Custom connectors",
+        "custom": "Custom",
         "customLoadFailed": "Couldn't load custom connectors.",
         "emptyCustom": "Add an HTTP API or MCP server for your organization to use.",
         "loading": "Loading connectors…",

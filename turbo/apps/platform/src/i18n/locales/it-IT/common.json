@@ -3173,7 +3173,7 @@
         "browse": "Esplora",
         "builtin": "Connettori integrati",
         "builtinLoadFailed": "Impossibile caricare i connettori integrati.",
-        "custom": "Connettori personalizzati",
+        "custom": "Personalizzato",
         "customLoadFailed": "Impossibile caricare i connettori personalizzati.",
         "emptyCustom": "Aggiungi un'API HTTP o un server MCP per la tua organizzazione.",
         "loading": "Caricamento dei connettori…",
