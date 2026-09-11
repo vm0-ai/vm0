@@ -138,6 +138,8 @@ async function postWorkflowWebhook(args: {
   readonly secret: string;
   readonly timestamp?: number;
   readonly signature?: string;
+  /** Sign under the pre-rename header names a stored curl snippet emits. */
+  readonly legacyHeaderNames?: boolean;
 }): Promise<{ readonly status: number; readonly body: unknown }> {
   const timestamp = args.timestamp ?? Math.floor(now() / 1000);
   const response = await createApp({
@@ -147,8 +149,9 @@ async function postWorkflowWebhook(args: {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-VM0-Timestamp": String(timestamp),
-      "X-VM0-Signature":
+      [args.legacyHeaderNames ? "X-VM0-Timestamp" : "X-Okou-Timestamp"]:
+        String(timestamp),
+      [args.legacyHeaderNames ? "X-VM0-Signature" : "X-Okou-Signature"]:
         args.signature ??
         computeHmacSignature(args.rawBody, args.secret, timestamp),
     },
@@ -158,6 +161,20 @@ async function postWorkflowWebhook(args: {
     status: response.status,
     body: await response.json(),
   };
+}
+
+function legacySignatureHeaderSurfaces(): unknown[] {
+  return context.mocks.axiomLogging.warn.mock.calls.flatMap((call) => {
+    const fields = call[1];
+    if (
+      !isRecord(fields) ||
+      fields.type !== "legacy_signature_header_use" ||
+      !("surface" in fields)
+    ) {
+      return [];
+    }
+    return [fields.surface];
+  });
 }
 
 describe("POST /api/webhooks/workflow-automations/:token", () => {
@@ -288,6 +305,42 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
       ]),
     );
     expect(concurrent).toHaveLength(2);
+  });
+
+  it("accepts either signature header name and signals only the legacy one", async () => {
+    const { workflowId } = await setupFixture();
+    const webhook = await createWebhookAutomation(workflowId);
+
+    const renamed = await postWorkflowWebhook({
+      token: webhook.token,
+      rawBody: JSON.stringify({ event: "renamed-signature-headers" }),
+      secret: webhook.secret,
+    });
+    expect(renamed).toStrictEqual({
+      status: 200,
+      body: {
+        success: true,
+        duplicate: false,
+        runId: expect.any(String),
+      },
+    });
+    expect(legacySignatureHeaderSurfaces()).toStrictEqual([]);
+
+    const legacy = await postWorkflowWebhook({
+      token: webhook.token,
+      rawBody: JSON.stringify({ event: "legacy-signature-headers" }),
+      secret: webhook.secret,
+      legacyHeaderNames: true,
+    });
+    expect(legacy).toStrictEqual({
+      status: 200,
+      body: {
+        success: true,
+        duplicate: false,
+        runId: expect.any(String),
+      },
+    });
+    expect(legacySignatureHeaderSurfaces()).toStrictEqual(["workflow-webhook"]);
   });
 
   it("deletes a failed delivery so an identical request can retry", async () => {
