@@ -226,27 +226,48 @@ fn pending_limit_keeps_original_output_order_and_terminal_status() {
 }
 
 #[test]
-fn session_identity_and_descriptor_fail_closed_without_reading_another_file() {
+fn session_header_identity_is_required_for_post_resume_repair() {
+    let text = format!("before `{OPEN}` observable suffix");
+    for (kind, session_id, expected_text) in [
+        (
+            "session_meta",
+            THREAD,
+            "before `&lt;oai-mem-citation&gt;` observable suffix",
+        ),
+        ("session_meta", TURN, "before `"),
+        ("response_item", THREAD, "before `"),
+    ] {
+        let harness = Harness::new();
+        std::fs::write(
+            &harness.path,
+            format!("{}\n", json!({"type":kind,"payload":{"id":session_id}})),
+        )
+        .unwrap();
+        let mut repair = harness.repair(true);
+        // Append after the resume cursor is established so only the header
+        // guard can reject otherwise repairable evidence in the invalid cases.
+        harness.append(raw(&text));
+        let event = normalized(&text);
+        let mut expected = event.clone();
+        expected["item"]["text"] = json!(expected_text);
+        let mut events = repair.submit(event, Some("final_answer"), false);
+        events.extend(repair.drain(true));
+        assert_eq!(events, [expected], "{kind}, {session_id}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn symlinked_session_descriptor_keeps_native_events() {
     let harness = Harness::new();
     let text = format!("before `{OPEN}` unrelated suffix");
-    std::fs::write(
-        &harness.path,
-        format!("{}\n", json!({"type":"session_meta","payload":{"id":TURN}})),
-    )
-    .unwrap();
-    harness.append(raw(&text));
+    let outside = harness.home.path().join("outside.jsonl");
+    std::fs::rename(&harness.path, &outside).unwrap();
+    std::os::unix::fs::symlink(outside, &harness.path).unwrap();
     let mut repair = harness.repair(true);
+    harness.append(raw(&text));
     let event = normalized(&text);
-    repair.submit(event.clone(), Some("final_answer"), false);
-    assert_eq!(repair.drain(true).as_slice(), std::slice::from_ref(&event));
-
-    #[cfg(unix)]
-    {
-        let outside = harness.home.path().join("outside.jsonl");
-        std::fs::rename(&harness.path, &outside).unwrap();
-        std::os::unix::fs::symlink(outside, &harness.path).unwrap();
-        let mut repair = harness.repair(true);
-        repair.submit(event.clone(), Some("final_answer"), false);
-        assert_eq!(repair.drain(true), [event]);
-    }
+    let mut events = repair.submit(event.clone(), Some("final_answer"), false);
+    events.extend(repair.drain(true));
+    assert_eq!(events, [event]);
 }
