@@ -2332,6 +2332,7 @@ function createEventChangeEffects(
     projections,
     scroll,
     syncVisibleEventTrees$,
+    reconcileThreadSummaryDemand$,
   }: {
     readonly threadId: string;
     readonly chatEvents: ChatEventSignals;
@@ -2344,6 +2345,7 @@ function createEventChangeEffects(
       Promise<void>,
       [boolean, AbortSignal]
     >;
+    readonly reconcileThreadSummaryDemand$: Command<void, [AbortSignal]>;
   },
   ownerSignal: AbortSignal,
 ) {
@@ -2416,6 +2418,7 @@ function createEventChangeEffects(
           get(chatEvents.chatEvents$).slice(-10),
         ),
       });
+      set(reconcileThreadSummaryDemand$, ownerSignal);
       await Promise.all([
         set(updateEventPresentation$, scrollPosition, signal),
         set(markThreadReadIfNeeded$, signal),
@@ -2523,18 +2526,22 @@ function createBrowserLifecycleOptimisticEvents(
   };
 }
 
+interface ChatThreadMessagePipelineOptions {
+  chatActionContext: ChatActionContext;
+  chatEvents: ChatEventSignals;
+  previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
+  connector: ComposerConnectorSignals;
+  reconcileThreadSummaryDemand$: Command<void, [AbortSignal]>;
+}
+
 function createChatThreadMessagePipeline(
   {
     chatActionContext,
     chatEvents,
     previewImageUrlsByUrl$,
     connector,
-  }: {
-    chatActionContext: ChatActionContext;
-    chatEvents: ChatEventSignals;
-    previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
-    connector: ComposerConnectorSignals;
-  },
+    reconcileThreadSummaryDemand$,
+  }: ChatThreadMessagePipelineOptions,
   ownerSignal: AbortSignal,
 ) {
   const { threadId } = chatActionContext;
@@ -2605,6 +2612,7 @@ function createChatThreadMessagePipeline(
       projections,
       scroll,
       syncVisibleEventTrees$,
+      reconcileThreadSummaryDemand$,
     },
     ownerSignal,
   );
@@ -4019,6 +4027,7 @@ function createChatPanelSignalsWithDraft(
         artifact.artifacts$,
       ),
       connector: composer.connector,
+      reconcileThreadSummaryDemand$: activity.reconcileThreadSummaryDemand$,
     },
     signal,
   );
