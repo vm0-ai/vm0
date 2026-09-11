@@ -98,14 +98,14 @@ default Axiom transport's `info` threshold. The shared logger and unrelated
 debug filtering are unchanged. Axiom events retain `source: api`, the stable
 message, and the following nested `fields`:
 
-| Message                        | Context                | Level                                                                                                                                                                       | Safe fields besides context                                                                                                            |
-| ------------------------------ | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `Activity summary cache`       | `api:activity-summary` | info                                                                                                                                                                        | `runId`, `outcome` (existing response status)                                                                                          |
-| `Activity summary attempt`     | `api:activity-summary` | info                                                                                                                                                                        | `runId`                                                                                                                                |
-| `Activity summary completion`  | `api:activity-summary` | info for success; warn for a reported provider_failure; error for a rejected response contract or an unclassified exception; no record at any level for an absorbed outcome | `runId`, `outcome`, `durationMs`, `cooldownMs`; numeric `providerStatus` and the enumerated `reason` only for `OpenRouterRequestError` |
-| `Activity summary unavailable` | `api:activity-summary` | warn                                                                                                                                                                        | `runId`, `outcome: storage_failed`                                                                                                     |
-| `Activity snapshot capture`    | `api:run-activity`     | info for written/unchanged and for an expected failure; warn otherwise                                                                                                      | `runId`, `outcome`, `eventCount`; `stage` and `errorCode` on failure                                                                   |
-| `Activity snapshot cleanup`    | `api:run-activity`     | info on success; warn on failure                                                                                                                                            | `outcome`, `removed`, `retentionMs`; `errorCode` on failure                                                                            |
+| Message                        | Context                | Level                                                                                                                                                              | Safe fields besides context                                                                                                            |
+| ------------------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `Activity summary cache`       | `api:activity-summary` | info                                                                                                                                                               | `runId`, `outcome` (existing response status)                                                                                          |
+| `Activity summary attempt`     | `api:activity-summary` | info                                                                                                                                                               | `runId`                                                                                                                                |
+| `Activity summary completion`  | `api:activity-summary` | info for success; error for a reported provider_failure, a rejected response contract or an unclassified exception; no record at any level for an absorbed outcome | `runId`, `outcome`, `durationMs`, `cooldownMs`; numeric `providerStatus` and the enumerated `reason` only for `OpenRouterRequestError` |
+| `Activity summary unavailable` | `api:activity-summary` | warn                                                                                                                                                               | `runId`, `outcome: storage_failed`                                                                                                     |
+| `Activity snapshot capture`    | `api:run-activity`     | info for written/unchanged and for an expected failure; warn otherwise                                                                                             | `runId`, `outcome`, `eventCount`; `stage` and `errorCode` on failure                                                                   |
+| `Activity snapshot cleanup`    | `api:run-activity`     | info on success; warn on failure                                                                                                                                   | `outcome`, `removed`, `retentionMs`; `errorCode` on failure                                                                            |
 
 Completion outcomes reachable in production are `success`, `provider_failure`,
 `cancelled`, `timeout`, `unconfigured`, `unusable_output`, and the subset of
@@ -133,18 +133,34 @@ recorded. `unknown` stays unknown: it names an exception nothing classified and
 asserts no cause.
 
 An outcome this endpoint's fallback absorbs emits **no record at any level**.
-That covers `cancelled`, `timeout`, `unconfigured`, `unusable_output`,
-`output_truncated`, `unexpected_tool_calls`, the two transport reasons a
-non-request throw can carry, `network` and `upstream_timeout`, and a
-`provider_failure` whose `reason` is `rate_limited`. In each case the response
-stays truthful (`cooldown` with the caller's last usable phrase or the existing
-generic label, or `pending` when none exists yet), the attempt interval or the
-shared cooldown bounds recovery, and no operator action exists. Emitting them at
-a quieter level, or as an equivalent replacement event, would only restore the
-noise; they are removed instead. `invalid_output` and `unknown` reach `error`
-because the contract or the exception genuinely needs an operator, and a
-provider failure that is not an absorbed rate limit keeps the provider
-classification's own level.
+On the residual side that covers `cancelled`, `timeout`, `unconfigured`,
+`unusable_output`, `output_truncated`, `unexpected_tool_calls`, and the two
+transport reasons a non-request throw can carry, `network` and
+`upstream_timeout`. In each case the response stays truthful (`cooldown` with
+the caller's last usable phrase or the existing generic label, or `pending` when
+none exists yet), the attempt interval or the shared cooldown bounds recovery,
+and no operator action exists. Emitting them at a quieter level, or as an
+equivalent replacement event, would only restore the noise; they are removed
+instead. `invalid_output` and `unknown` reach `error` because the contract or
+the exception genuinely needs an operator.
+
+A `provider_failure` is absorbed the same way, and emits no record at any level,
+whenever its `reason` is one the shared classifier calls transient:
+`rate_limited`, `upstream_timeout` or `provider_unavailable`. The provider is
+momentarily over its limit or unreachable, the caller keeps its last usable
+phrase or the generic label, and the cooldown that record would have reported
+already bounds the retry, so there is nothing for an operator to do. The set is
+the classifier's own, so a reason that stops counting as transient there stops
+being absorbed here. (`network` is in that set but cannot occur on that branch:
+a transport rejection is not an `OpenRouterRequestError`, so it becomes a
+residual `network` outcome instead, absorbed by the residual rule above.)
+
+Every other `provider_failure` reason is a real failure and records at `error`:
+`auth` and `invalid_request` are credential and request-contract defects, and a
+request error the classifier could not place records as `reason: unknown`.
+`unknown` stays unknown — it names no cause and implies nothing about the main
+run — but it is still reported, because nothing here shows it recovers on its
+own.
 
 This deliberately removes the per-outcome counts those records used to carry,
 including the deadline rate that a previous revision documented here. **An
@@ -175,10 +191,14 @@ attempts, each in its own right:
 Read those four series independently. Do not treat `attempts` as their total.
 Alerting on any of them is an operator decision and is not configured here.
 
-Absorbed outcomes, rate limits among them, are deliberately not counted
-anywhere. No replacement record or telemetry channel is added to recover the
-number, and the rate-limit counters of other auxiliary generations describe
-their own features, not this one.
+Absorbed outcomes, provider failures and residual ones alike, are deliberately
+not counted anywhere. `attempts` minus the emitted completions is not that
+count: an attempt and its completion are written separately, so an instance that
+stops between them leaves the same residual. No replacement record or telemetry
+channel is added to recover the number, and the rate-limit counters of other
+auxiliary generations describe their own features, not this one. `provider`
+above therefore counts only the reported failures, which are exactly the ones at
+`error`.
 
 A failed capture is classified into a finite set instead of one opaque
 `write_failed`. `contended` (`55P03`) and `run_missing` (`23503`) are expected

@@ -19,6 +19,7 @@
 //! lifecycle. Each path retains ownership of its process, event delivery,
 //! heartbeat races, and child reaping until completion.
 
+mod bounded_event_delivery;
 mod child_env;
 mod child_exit_notifier;
 mod claude;
@@ -35,9 +36,12 @@ mod codex_startup;
 mod command;
 mod diagnostics;
 mod event_delivery;
+#[cfg(test)]
+mod event_delivery_budget_tests;
 mod exec_boundary;
 mod jsonl_result;
 mod line_reader;
+mod pi_event_delivery;
 mod pi_memory_citation;
 mod pi_rpc;
 mod process_group;
@@ -811,28 +815,7 @@ impl<'a> CliEventIngestor<'a> {
             })?;
             if should_send_events {
                 let event = events::prepare_event_for_delivery(event, sequence, masker);
-                if self.framework == env::Framework::Codex {
-                    let prepared = codex_event_delivery::prepare_for_delivery(
-                        event,
-                        event_tx.max_serialized_event_bytes(),
-                    )?;
-                    if let Some(reduction) = prepared.reduction {
-                        log_warn!(
-                            LOG_TAG,
-                            "Codex event reduced for delivery: seq={} event_type={} item_type={} original_bytes={} delivered_bytes={} fields={} fallback={}",
-                            sequence,
-                            reduction.event_type,
-                            reduction.item_type,
-                            reduction.original_bytes,
-                            reduction.delivered_bytes,
-                            reduction.fields.join(","),
-                            reduction.fallback
-                        );
-                    }
-                    event_tx.try_send_serialized(sequence, prepared.serialized)?;
-                } else {
-                    event_tx.try_send(sequence, event)?;
-                }
+                event_tx.try_send_for_framework(sequence, event, self.framework)?;
             }
         }
         Ok(())

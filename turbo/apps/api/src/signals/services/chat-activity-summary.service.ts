@@ -31,6 +31,7 @@ import {
   OpenRouterRequestError,
 } from "../external/openrouter";
 import {
+  isTransientProviderFailure,
   openRouterFailureReason,
   type OpenRouterFailureReason,
 } from "../external/openrouter-failure";
@@ -343,30 +344,56 @@ interface CompletionRecord {
 
 /**
  * Provider failures this optional generation already absorbs, recognized by the
- * shared semantic reason rather than by a transport status. A shared rate limit
- * resolves without anyone here acting: the caller keeps its last usable phrase
- * or the existing generic label, and the same cooldown this record would report
- * bounds the retry. Emitting it at any level would only teach operators to
+ * shared semantic reason rather than by a transport status. None of them
+ * resolves by anyone here acting: the caller keeps its last usable phrase or
+ * the existing generic label, and the same cooldown this record would report
+ * bounds the retry. Emitting them at any level would only teach operators to
  * ignore the record. The outer status cannot decide this — a native rate limit
- * arrives inside a synthetic 502 envelope, and a raw 429 whose native evidence
- * is auth or invalid_request is a real failure that must keep reaching someone.
+ * or an upstream timeout/unavailability arrives inside a synthetic 502
+ * envelope, and a raw 429 whose native evidence is auth or invalid_request is a
+ * real failure that must keep reaching someone.
+ *
+ * The set is the shared classifier's own, so a reason that stops counting as
+ * transient there stops being absorbed here. `network` belongs to it but is
+ * unreachable on this branch: a transport rejection is not an
+ * `OpenRouterRequestError`, so it lands in the residual bucket instead.
  */
 function absorbedCompletion(completion: CompletionRecord): boolean {
   return (
     completion.outcome === "provider_failure" &&
-    completion.reason === "rate_limited"
+    completion.reason !== undefined &&
+    isTransientProviderFailure(completion.reason)
+  );
+}
+
+/**
+ * A provider-request failure the shared classifier does not absorb: a
+ * credential defect, a request-contract defect, or a request error it could not
+ * place. Each needs an owner, so each is a real failure rather than a
+ * degradation. `unknown` stays unknown — it names no cause and implies nothing
+ * about the main run — but it is still reported, because nothing here shows it
+ * recovers on its own.
+ */
+function realProviderFailure(completion: CompletionRecord): boolean {
+  return (
+    completion.outcome === "provider_failure" &&
+    completion.reason !== undefined &&
+    !isTransientProviderFailure(completion.reason)
   );
 }
 
 /**
  * The level one completion deserves, or `null` when it deserves none.
  *
- * The silent outcomes are already absorbed by this endpoint's optional
- * fallback: the response stays truthful, the caller keeps its last usable
- * phrase, and the shared cooldown or the attempt interval bounds recovery.
- * Recording them at any level only trains an operator to ignore the record, so
- * they are omitted rather than moved to a quieter level or re-emitted as an
- * equivalent event. The rate they used to make queryable is gone with them.
+ * A provider-request failure is decided first, by the shared classifier: the
+ * transient set is absorbed and everything else is a real failure. The silent
+ * outcomes below are the residual ones this endpoint's optional fallback
+ * already absorbs: the response stays truthful, the caller keeps its last
+ * usable phrase, and the shared cooldown or the attempt interval bounds
+ * recovery. Recording any of them at any level only trains an operator to
+ * ignore the record, so they are omitted rather than moved to a quieter level
+ * or re-emitted as an equivalent event. The rate they used to make queryable is
+ * gone with them.
  *
  * Everything else falls through to `error`: a response the strict contract
  * cannot accept, and an exception the shared classifier could not name. A
@@ -376,8 +403,8 @@ function absorbedCompletion(completion: CompletionRecord): boolean {
  * The silent cases name only reasons this residual arm can actually receive.
  * `auth`, `invalid_request`, `rate_limited` and `provider_unavailable` belong
  * to the shared reason union but are recorded exclusively while constructing an
- * `OpenRouterRequestError`, so they arrive as `provider_failure` and their
- * severity is decided by `absorbedCompletion` and the provider case below.
+ * `OpenRouterRequestError`, so they arrive as `provider_failure` and are
+ * decided by the two predicates above.
  */
 function completionLevel(
   completion: CompletionRecord,
@@ -385,14 +412,12 @@ function completionLevel(
   if (absorbedCompletion(completion)) {
     return null;
   }
+  if (realProviderFailure(completion)) {
+    return "error";
+  }
   switch (completion.outcome) {
     case "success": {
       return "info";
-    }
-    // The severity of a non-absorbed `OpenRouterRequestError` belongs to the
-    // provider classification, not to this residual boundary.
-    case "provider_failure": {
-      return "warn";
     }
     case "cancelled":
     case "timeout":
