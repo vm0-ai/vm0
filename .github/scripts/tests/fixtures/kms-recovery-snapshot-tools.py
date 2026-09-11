@@ -59,6 +59,7 @@ if Path(sys.argv[0]).name == "psql":
     assert os.environ["PGDATABASE"] == "neondb"
     assert os.environ["PGPASSWORD"] == "fixture-private-password"
     assert os.environ["PGSSLMODE"] == "verify-full"
+    assert os.environ["PGSSLROOTCERT"] == "/etc/ssl/certs/ca-certificates.crt"
     assert "default_transaction_read_only=on" in os.environ["PGOPTIONS"]
     assert "-X" in sys.argv and "NEON_API_KEY" not in os.environ
     if scenario == "sql-failure":

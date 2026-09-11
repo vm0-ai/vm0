@@ -248,6 +248,7 @@ def inspect_database(database, endpoint, branch_id):
             "PGUSER": owner,
             "PGPASSWORD": urllib.parse.unquote(parsed.password),
             "PGSSLMODE": "verify-full",
+            "PGSSLROOTCERT": "/etc/ssl/certs/ca-certificates.crt",
             "PGCONNECT_TIMEOUT": "30",
             "PGOPTIONS": "-c default_transaction_read_only=on -c statement_timeout=120000 -c lock_timeout=5000",
         }
