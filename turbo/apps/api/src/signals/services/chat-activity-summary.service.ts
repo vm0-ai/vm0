@@ -30,6 +30,10 @@ import {
   generateText,
   OpenRouterRequestError,
 } from "../external/openrouter";
+import {
+  openRouterFailureReason,
+  type OpenRouterFailureReason,
+} from "../external/openrouter-failure";
 import { settleIncludingAbort } from "../utils";
 import {
   canonicalChatEventContent,
@@ -321,8 +325,7 @@ async function claimSummary(db: Db, identity: ActivityRunIdentity) {
 /**
  * Completion outcomes an operator cannot act on. The response stays truthful,
  * the caller keeps its last usable phrase, and the shared cooldown or the
- * attempt interval bounds recovery. Persistent provider failures and
- * contract/configuration defects stay at warn.
+ * attempt interval bounds recovery.
  */
 function expectedOutcome(outcome: string): boolean {
   return (
@@ -330,11 +333,38 @@ function expectedOutcome(outcome: string): boolean {
   );
 }
 
+interface CompletionRecord {
+  readonly outcome: string;
+  readonly durationMs: number;
+  readonly cooldownMs: number;
+  /** Present only for an `OpenRouterRequestError`; never a provider body. */
+  readonly providerStatus?: number;
+  /** The shared semantic classification of a provider request failure. */
+  readonly reason?: OpenRouterFailureReason;
+}
+
+/**
+ * Provider failures this optional generation already absorbs, recognized by the
+ * shared semantic reason rather than by a transport status. A shared rate limit
+ * resolves without anyone here acting: the caller keeps its last usable phrase
+ * or the existing generic label, and the same cooldown this record would report
+ * bounds the retry. Emitting it at any level would only teach operators to
+ * ignore the record. The outer status cannot decide this — a native rate limit
+ * arrives inside a synthetic 502 envelope, and a raw 429 whose native evidence
+ * is auth or invalid_request is a real failure that must keep reaching someone.
+ */
+function absorbedCompletion(completion: CompletionRecord): boolean {
+  return (
+    completion.outcome === "provider_failure" &&
+    completion.reason === "rate_limited"
+  );
+}
+
 /**
  * The content-free record of one generation attempt. The caller reads `outcome`
- * to pick a level and `cooldownMs` to write the next attempt, so the diagnostic
- * and the stored backoff can never disagree. No prompt, phrase, provider body
- * or driver message is ever attached.
+ * and `reason` to pick a level and `cooldownMs` to write the next attempt, so
+ * the diagnostic and the stored backoff can never disagree. No prompt, phrase,
+ * provider body or driver message is ever attached.
  */
 function completionRecord(
   started: number,
@@ -342,7 +372,7 @@ function completionRecord(
   abandoned: boolean,
   deadlineReached: boolean,
   failure: unknown,
-) {
+): CompletionRecord {
   const request =
     failure instanceof OpenRouterRequestError ? failure : undefined;
   const cooldown = Math.min(
@@ -361,7 +391,12 @@ function completionRecord(
             : "invalid_or_unconfigured",
     durationMs: Math.round(performance.now() - started),
     cooldownMs: phrase || abandoned ? 0 : cooldown,
-    ...(request ? { providerStatus: request.status } : {}),
+    ...(request
+      ? {
+          providerStatus: request.status,
+          reason: openRouterFailureReason(failure),
+        }
+      : {}),
   };
 }
 
@@ -421,10 +456,15 @@ async function generateSummary(
       result.ok ? null : result.error,
     ),
   };
-  if (expectedOutcome(completion.outcome)) {
-    log.info("Activity summary completion", completion);
-  } else {
-    log.warn("Activity summary completion", completion);
+  // Only the diagnostic is skipped. The cooldown this attempt charged, the
+  // stored summary and the final reread below all still run, so an absorbed
+  // failure degrades exactly like a reported one.
+  if (!absorbedCompletion(completion)) {
+    if (expectedOutcome(completion.outcome)) {
+      log.info("Activity summary completion", completion);
+    } else {
+      log.warn("Activity summary completion", completion);
+    }
   }
   // An abandoned attempt must not spend the shared cooldown on the next
   // viewer's behalf. Its lease expires like any owner that stopped reporting,
