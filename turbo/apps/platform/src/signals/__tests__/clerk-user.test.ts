@@ -7,7 +7,7 @@ import {
 } from "../../__tests__/mock-auth.ts";
 import { clerkUser$, setupClerkUser$ } from "../auth.ts";
 import { setRootSignal$ } from "../root-signal.ts";
-import { createChildAbortController } from "../utils.ts";
+import { resetSignal } from "../utils.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
@@ -115,10 +115,11 @@ test("An owner claims the signal before it resolves the Clerk runtime", async ()
 test("Aborting the owner keeps the last published value and stops listening", async () => {
   signIn("user-a");
 
-  const controller = createChildAbortController(context.signal);
-  await startClerkUser(controller.signal);
+  const resetOwner$ = resetSignal();
+  await startClerkUser(context.store.set(resetOwner$, context.signal));
   const settled = context.store.get(clerkUser$);
-  controller.abort();
+  // Requesting the next owner aborts the previous one.
+  context.store.set(resetOwner$, context.signal);
 
   mockClerkSessionTransitioning(true);
   expect(context.store.get(clerkUser$)).toBe(settled);
@@ -128,11 +129,11 @@ test("Aborting the owner keeps the last published value and stops listening", as
 test("Aborting the owner mid-transition rejects the pending read", async () => {
   signIn("user-a");
 
-  const controller = createChildAbortController(context.signal);
-  await startClerkUser(controller.signal);
+  const resetOwner$ = resetSignal();
+  await startClerkUser(context.store.set(resetOwner$, context.signal));
   mockClerkSessionTransitioning(true);
   const pending = context.store.get(clerkUser$);
-  controller.abort();
+  context.store.set(resetOwner$, context.signal);
 
   await expect(pending).rejects.toThrow("signal is aborted");
 });
