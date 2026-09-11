@@ -1327,8 +1327,10 @@ function CustomConnectorDialogTitle({
 
 export function CustomConnectorCreateDialog({
   connector,
+  onCreated,
 }: {
   readonly connector?: CustomConnectorResponse;
+  readonly onCreated?: (connector: CustomConnectorResponse) => void;
 }) {
   const { t } = useTranslation();
   const form = useGet(customConnectorCreateForm$);
@@ -1399,8 +1401,9 @@ export function CustomConnectorCreateDialog({
     }
     detach(
       (async () => {
-        await createConnector(buildCreateBody(form), signal);
+        const created = await createConnector(buildCreateBody(form), signal);
         close();
+        onCreated?.(created);
       })(),
       Reason.DomCallback,
     );
