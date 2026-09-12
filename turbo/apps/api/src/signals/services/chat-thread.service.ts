@@ -770,7 +770,7 @@ export const createChatThread$ = command(
         return result;
       }
       // Preserve ordinary creation's same-transaction, owner-and-agent-scoped
-      // replay. Welcome creation verifies its distinct seed provenance instead.
+      // replay. Welcome creation answers 404 on a conflict and never replays.
       if (args.clientThreadId === undefined) {
         return undefined;
       }
