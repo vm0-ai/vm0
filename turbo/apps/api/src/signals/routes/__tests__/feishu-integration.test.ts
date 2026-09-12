@@ -5153,16 +5153,22 @@ describe("Feishu integration", () => {
         );
       }),
     ).toHaveLength(1);
+  });
 
-    await seedOrgMetadata({
-      orgId: actor.orgId,
-      tier: "pro",
-      credits: 20_000,
-    });
-    await upsertOrgPlanEntitlementFixture({
-      orgId: actor.orgId,
-      status: "active",
-      canBuyCredits: true,
+  it("persists a queued Feishu admission failure when delivery fails", async () => {
+    const fixture = await setupFeishuRunFixture();
+    const { actor, runnerGroup, appId, callbackUrl, defaultAgentId } = fixture;
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped Feishu actor");
+    }
+    await connectFixtureUser(fixture);
+    context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+      data: [
+        {
+          organization: { id: actor.orgId },
+          role: "org:admin",
+        },
+      ],
     });
     const failedDeliveryAnchorPrompt =
       "finish before queued Feishu delivery failure";
@@ -5220,6 +5226,22 @@ describe("Feishu integration", () => {
       assistantText: "Second Feishu task completed",
     });
 
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+    const threadEvents = await accept(
+      setupApp({ context, routes: chatThreadRoutes })(
+        chatThreadsContract,
+      ).events({
+        headers: { authorization: "Bearer clerk-session" },
+        query: {},
+      }),
+      [200],
+    );
+    const thread = requireValue(
+      threadEvents.body.events.find((event) => {
+        return event.kind === "created" && event.agentId === defaultAgentId;
+      }),
+      "Expected the failed-delivery Feishu chat thread",
+    );
     const afterDeliveryFailure = await readProjectedChatEvents(context, {
       threadId: thread.chatThreadId,
       headers: { authorization: "Bearer clerk-session" },
@@ -5240,7 +5262,7 @@ describe("Feishu integration", () => {
           event.error === "insufficient_credits"
         );
       }),
-    ).toHaveLength(2);
+    ).toHaveLength(1);
     expect(
       (await runsApi.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
         return run.prompt === failedDeliveryPrompt;
