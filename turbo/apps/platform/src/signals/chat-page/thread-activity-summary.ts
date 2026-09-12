@@ -24,11 +24,7 @@ const REQUEST_INTERVAL_MS = 15_000;
 
 export interface ThinkingSummaries extends Pick<
   ActivitySummaryResponse,
-  | "runId"
-  | "summaryRevision"
-  | "summarySequence"
-  | "summaryMessageCursor"
-  | "summarizedAt"
+  "runId"
 > {
   readonly messages: readonly ThinkingMessage[];
 }
