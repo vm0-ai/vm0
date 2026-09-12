@@ -29,7 +29,9 @@ Prefer integration coverage through real entry points. Add tests for new
 behavior and regressions where they provide confidence beyond existing checks.
 Keep cases focused on meaningful business, security, cancellation, recovery,
 and compatibility contracts. Avoid duplicate cases that merely exercise a
-library, restate static configuration, or pin incidental implementation.
+library, restate static configuration, or pin incidental implementation. Log
+records are incidental implementation: outside the logger's own suite and one
+redaction check, tests must not assert on log levels, messages, or fields.
 
 Use expensive deployed E2E runs for representative happy paths. Exercise error
 and edge cases in controlled integration tests. Follow each surface's guide

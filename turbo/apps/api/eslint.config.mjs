@@ -132,6 +132,9 @@ const apiTestExternalBehaviorMessage =
 const apiTestDirectDbImportMessage =
   "API tests must not import DB handles directly. Exercise setup and assertions through API endpoints; add a test route only when an external-behavior exception is justified.";
 
+const apiTestLoggerImportMessage =
+  "API tests must not observe the logger. Assert HTTP responses and effects instead; see docs/testing/testing-external-behavior.md.";
+
 const productionRouteTestImportMessage =
   "Production source must not import test-only routes. Mount required test fixture routes explicitly from tests through setupApp().";
 
@@ -199,6 +202,8 @@ const apiTestServiceImportPatterns = [
   "src/signals/services/*",
   "src/signals/services/**/*",
 ];
+
+const apiTestLoggerImportPatterns = ["**/lib/log", "**/lib/log.js"];
 
 export default [
   {
@@ -732,6 +737,9 @@ export default [
       // through the production API. This focused PostgreSQL test proves the
       // exact Agent Draft writer through both rollout targets.
       "src/signals/services/__tests__/agent-draft-write.service.test.ts",
+      // The logger is the subject here, not a diagnostic: this suite covers the
+      // app factory's log wiring and flush ownership, which no route exposes.
+      "src/__tests__/app-factory.test.ts",
     ],
     rules: {
       "no-restricted-imports": [
@@ -755,6 +763,10 @@ export default [
             {
               group: apiTestDirectDbImportPatterns,
               message: apiTestDirectDbImportMessage,
+            },
+            {
+              group: apiTestLoggerImportPatterns,
+              message: apiTestLoggerImportMessage,
             },
           ],
         },
