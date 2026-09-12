@@ -156,6 +156,14 @@ process control/placement IPC, not this cross-VM transport.
 
 ## SSH consumer ownership and delivery
 
+Managed `ssh.session.*` methods use the same opaque version-1 transport and one
+terminal result per short request. Session IDs, cursor reads, stdin/EOF, signals,
+PTY and retained process state belong to the SSH consumer, not this protocol.
+The Runner-owned session task never retains the initiating guest stream or its
+park reservation. No helper negotiation, method fallback or automatic replay is
+added: an older Runner returns `unknown_method` explicitly. See
+[managed SSH session ownership](runner-ssh-execution.md#managed-sessions-within-one-run).
+
 #32013 owns explicit `ssh.exec` dispatch, strict business schemas, dynamic JIT
 authorization, credentials, TOFU and execution. Generic events wrap SSH
 accepted/stdout/stderr data; a generic result wraps SSH finished/error data.

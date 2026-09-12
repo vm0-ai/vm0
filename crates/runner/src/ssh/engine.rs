@@ -1,4 +1,4 @@
-//! One verified connection, one non-PTY exec, and no reconnect or replay.
+//! Verified connection setup shared by independent exec and managed sessions.
 
 mod trust;
 
@@ -17,7 +17,8 @@ use tokio::{net::TcpStream, sync::OwnedSemaphorePermit};
 use super::{
     FailureReason, Scope,
     authority::{Authority, PreparedAuth, PreparedCredential},
-    io::{GuestIo, SshSocket},
+    io::{GuestIo, SocketGuard, SshSocket},
+    observation::Attempt,
     output::{Output, RemoteExit, Stream},
 };
 use crate::ids::RunId;
@@ -30,7 +31,93 @@ pub(super) struct Execution {
     pub(super) credential: Arc<PreparedCredential>,
 }
 
+pub(super) struct Connected {
+    pub(super) session: client::Handle<trust::HostTrust>,
+    guard: SocketGuard,
+}
+
+impl Connected {
+    pub(super) async fn close(self, scope: &Scope) {
+        // The library's detached I/O retains its host permit until socket release.
+        drop(self.guard);
+        let _ = scope.wait(self.session).await;
+    }
+}
+
 impl Execution {
+    pub(super) async fn connect(
+        self,
+        stream: TcpStream,
+        scope: &Scope,
+        trust_scope: &Scope,
+        config: client::Config,
+        observation: &mut Attempt,
+    ) -> Result<Connected, FailureReason> {
+        let (stream, socket_guard) =
+            SshSocket::new(stream, self.lease).map_err(|_| FailureReason::NetworkFailure)?;
+        let handler = trust::HostTrust::new(
+            self.authority,
+            self.run,
+            self.connection,
+            Arc::clone(&self.credential),
+            trust_scope.clone(),
+        );
+        let failure = Arc::clone(&handler.failure);
+        let authority_pending = Arc::clone(&handler.authority_pending);
+        let connection = scope
+            .wait(client::connect_stream(Arc::new(config), stream, handler))
+            .await;
+        observation.connecting = !authority_pending.load(Ordering::Acquire);
+        let session = connection?.map_err(|_| {
+            failure
+                .lock()
+                .ok()
+                .and_then(|failure| *failure)
+                .unwrap_or(FailureReason::Protocol)
+        })?;
+        let mut connected = Connected {
+            session,
+            guard: socket_guard,
+        };
+        let session = &mut connected.session;
+        let authentication = match &self.credential.auth {
+            PreparedAuth::Password(password) => scope
+                .wait(
+                    session
+                        .authenticate_password(self.credential.username.clone(), password.expose()),
+                )
+                .await?
+                .map_err(|_| FailureReason::AuthenticationFailed)?,
+            PreparedAuth::PrivateKey(key) => {
+                let hash = if matches!(key.0.algorithm(), Algorithm::Rsa { .. }) {
+                    match scope
+                        .wait(session.best_supported_rsa_hash())
+                        .await?
+                        .map_err(|_| FailureReason::Protocol)?
+                    {
+                        Some(Some(hash)) => Some(hash),
+                        None => Some(HashAlg::Sha512),
+                        Some(None) => return Err(FailureReason::AuthenticationFailed),
+                    }
+                } else {
+                    None
+                };
+                scope
+                    .wait(session.authenticate_publickey(
+                        self.credential.username.clone(),
+                        PrivateKeyWithHashAlg::new(Arc::clone(&key.0), hash),
+                    ))
+                    .await?
+                    .map_err(|_| FailureReason::AuthenticationFailed)?
+            }
+        };
+        if !authentication.success() {
+            return Err(FailureReason::AuthenticationFailed);
+        }
+        observation.authenticated_at = Some(chrono::Utc::now());
+        Ok(connected)
+    }
+
     pub(super) async fn execute(
         self,
         stream: TcpStream,
@@ -39,65 +126,11 @@ impl Execution {
         writer: &mut ResponseWriter<GuestIo>,
         output: &mut Output,
     ) -> Result<RemoteExit, FailureReason> {
-        let (stream, socket_guard) =
-            SshSocket::new(stream, self.lease).map_err(|_| FailureReason::NetworkFailure)?;
-        let handler = trust::HostTrust::new(
-            self.authority,
-            self.run,
-            self.connection,
-            Arc::clone(&self.credential),
-            scope.clone(),
-        );
-        let failure = Arc::clone(&handler.failure);
-        let authority_pending = Arc::clone(&handler.authority_pending);
-        let connection = scope
-            .wait(client::connect_stream(Arc::new(config()), stream, handler))
-            .await;
-        output.connection.connecting = !authority_pending.load(Ordering::Acquire);
-        let mut session = connection?.map_err(|_| {
-            failure
-                .lock()
-                .ok()
-                .and_then(|failure| *failure)
-                .unwrap_or(FailureReason::Protocol)
-        })?;
+        let mut connected = self
+            .connect(stream, scope, scope, config(), &mut output.connection)
+            .await?;
         let result = async {
-            let authentication =
-                match &self.credential.auth {
-                    PreparedAuth::Password(password) => scope
-                        .wait(session.authenticate_password(
-                            self.credential.username.clone(),
-                            password.expose(),
-                        ))
-                        .await?
-                        .map_err(|_| FailureReason::AuthenticationFailed)?,
-                    PreparedAuth::PrivateKey(key) => {
-                        let hash = if matches!(key.0.algorithm(), Algorithm::Rsa { .. }) {
-                            match scope
-                                .wait(session.best_supported_rsa_hash())
-                                .await?
-                                .map_err(|_| FailureReason::Protocol)?
-                            {
-                                Some(Some(hash)) => Some(hash),
-                                None => Some(HashAlg::Sha512),
-                                Some(None) => return Err(FailureReason::AuthenticationFailed),
-                            }
-                        } else {
-                            None
-                        };
-                        scope
-                            .wait(session.authenticate_publickey(
-                                self.credential.username.clone(),
-                                PrivateKeyWithHashAlg::new(Arc::clone(&key.0), hash),
-                            ))
-                            .await?
-                            .map_err(|_| FailureReason::AuthenticationFailed)?
-                    }
-                };
-            if !authentication.success() {
-                return Err(FailureReason::AuthenticationFailed);
-            }
-            output.connection.authenticated_at = Some(chrono::Utc::now());
+            let session = &mut connected.session;
             let mut channel = scope
                 .wait(session.channel_open_session())
                 .await?
@@ -177,13 +210,12 @@ impl Execution {
         // russh's handle does not abort its spawned I/O task on Drop. Closing
         // the exact connected socket wakes it; its socket retains host capacity
         // until the library really releases the connection, even on cancellation.
-        drop(socket_guard);
-        let _ = scope.wait(session).await;
+        connected.close(scope).await;
         result
     }
 }
 
-fn config() -> client::Config {
+pub(super) fn config() -> client::Config {
     client::Config {
         preferred: Preferred {
             kex: Cow::Borrowed(&[
@@ -237,7 +269,7 @@ fn config() -> client::Config {
     }
 }
 
-fn signal(signal: &Sig) -> &'static str {
+pub(super) fn signal(signal: &Sig) -> &'static str {
     match signal {
         Sig::ABRT => "ABRT",
         Sig::ALRM => "ALRM",

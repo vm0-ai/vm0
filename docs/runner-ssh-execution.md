@@ -59,6 +59,63 @@ completion only: future callers must inspect these business fields. Losing a
 terminal response never permits automatic replay. Local cancellation closes the
 socket but cannot guarantee the remote process stopped.
 
+## Managed sessions within one Run
+
+#33464 adds `ssh.session.start/list/read/status/write/signal/close` as opaque
+version-1 RPC methods. Each request is still short and owns its guest stream
+only until its response. Each admitted session initially owns a separate verified,
+authenticated SSH transport; connection pooling remains #33465.
+
+`start` accepts `sshConnectionId`, `program: {type: "exec", command}` or
+`program: {type: "shell"}`, and optional `pty: true`. A PTY requests
+`xterm-256color`, 80 columns and 24 rows. Forwarding, agent forwarding,
+subsystems and arbitrary SSH options remain unavailable. Start returns
+`{type: "started", session_id}` before asynchronous setup finishes. Use `status`
+or `list` to inspect `starting`, `running`, `finished` or `failed`; an admitted
+ID is not evidence of successful authentication or process execution. Setup
+has a 60-second budget, while an active, quiet process can run until Run/sandbox
+cancellation or a two-hour session maximum. Keepalives detect dead peers without
+imposing a shorter idle timeout on a healthy process.
+
+There are eight retained session records per exact current Run, separate from
+the existing eight short request slots. Completed records occupy a slot for five
+minutes unless explicitly closed; pruning runs every 30 seconds and on access.
+No Runner-wide connection quota is introduced. A retired session's CPU, DNS or
+socket work retains its original session permit until actual cleanup. These host
+resources never own guest I/O or a guest park reservation. Run end invalidates
+all IDs; a later Run cannot reattach to an earlier session.
+
+`read` takes `sessionId` and a nonnegative byte `cursor`. It immediately returns
+tagged standard-base64 chunks, a `next_cursor`, and session status including
+`oldest_cursor` and `end_cursor`. Reads do not consume data. Output retention is
+bounded by 1 MiB and 256 chunks of at most 4 KiB per session. Old chunks are
+discarded; reading behind the retained prefix returns `lost: {from, to}`. A read
+returns at most 8 KiB and 32 chunks, fitting one existing 24 KiB RPC frame.
+Stdout and stderr share one cursor; their observed interleaving is preserved.
+
+`write` accepts `sessionId`, canonical `dataBase64` (at most 16 KiB decoded) and
+optional `eof`. Empty input requires EOF. One bounded eight-item queue serializes
+stdin, EOF and `signal` requests while independently draining output. Expired or
+cancelled control requests are checked before submission. A write after EOF is
+rejected. Signals are limited to INT, TERM, KILL, HUP, USR1 and USR2. A submitted
+write/signal returns `effects: unknown`, because SSH submission does not prove
+what the remote process did. Partial input failure closes the session and is
+never replayed. Closing retires the ID and local transport; it does not confirm
+remote descendants stopped. Lost start replies can be investigated using `list`.
+
+Retained authority requires an active invalidation subscription. Delivered
+targeted/Run-wide invalidation, registration replacement and observed Ably
+disconnect cancel the affected sessions and retire their IDs. New sessions fail
+explicitly while disconnected. Cache saturation uses session-owned, uncached
+credentials with weak cancellation watchers on the exact Run registration, so
+the 256 cache cells do not become a global session cap. Per-Run admission bounds
+these extra retained credentials, and dead watchers are pruned. Failed
+asynchronous credential preparation remains inspectable without caching a failed
+value. A one-shot authentication/trust/configuration failure that evicts a shared
+snapshot also retires sessions using that snapshot. The documented
+missed-notification window still applies; close/revocation
+does not guarantee remote process-tree termination.
+
 ## Authority, trust and destination
 
 Resolve/pin requests use the host's immutable Runner process identity and exact
@@ -101,7 +158,7 @@ authorized N+1 response.
 
 Before subscription readiness or while disconnected/failed, the Runner bypasses
 shared caching and resolves each command. Observed connection loss clears cached
-entries; recovery rebuilds them lazily from the API. A relevant invalidation or
+entries; recovery rebuilds them lazily from the API. A relevant invalidation or one-shot
 authentication/trust/configuration failure evicts the entry for later commands.
 Required re-resolution failure never restores an invalidated credential, and no
 failure or invalidation automatically replays a command or silently repins a host.
