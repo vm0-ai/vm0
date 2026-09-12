@@ -354,6 +354,7 @@ export async function staleChatEventQueueThreadIds(
     readonly limit: number;
     readonly chatThreadIds?: readonly string[];
   },
+  signal: AbortSignal,
 ): Promise<readonly string[]> {
   if (args.limit <= 0 || args.chatThreadIds?.length === 0) {
     return [];
@@ -369,6 +370,7 @@ export async function staleChatEventQueueThreadIds(
       limit: CHAT_QUEUE_SCAN_PAGE_SIZE,
       chatThreadIds: args.chatThreadIds,
     });
+    signal.throwIfAborted();
     if (candidates.length === 0) {
       break;
     }
@@ -380,6 +382,7 @@ export async function staleChatEventQueueThreadIds(
       revokedChatEventIds(db, eventIds),
       openActiveInputDeliveryEventIds(db, eventIds),
     ]);
+    signal.throwIfAborted();
     for (const candidate of candidates) {
       if (
         !revokedEventIds.has(candidate.id) &&

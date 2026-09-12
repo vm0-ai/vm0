@@ -25,6 +25,7 @@ import {
 import { normalizeRunMetadata } from "../services/agent-run-metadata-write.service";
 import { createUserMessageDocument } from "../services/chat-user-message.service";
 import {
+  CHAT_QUEUE_SCAN_PAGE_SIZE,
   CHAT_QUEUE_STALE_AFTER_MS,
   CHAT_QUEUE_STALE_RECHECK_WINDOW_MS,
 } from "../services/chat-event-queue.service";
@@ -194,11 +195,58 @@ function requireSeededEventId(
   return event.id;
 }
 
+async function seedPaginatedOrphanEvents(tx: DbTransaction, threadId: string) {
+  // A missing context row cannot be produced through a valid external request.
+  // Revoke the entire first page so the alert depends on reaching page two.
+  const userMessage = createUserMessageDocument({
+    text: "paginated orphan monitor fixture",
+  });
+  const firstCreatedAt = recentStaleEventCreatedAt();
+  const sourceEvents = Array.from(
+    { length: CHAT_QUEUE_SCAN_PAGE_SIZE + 1 },
+    (_, index) => {
+      return {
+        id: randomUUID(),
+        chatThreadId: threadId,
+        contextType: "slack" as const,
+        contextId: randomUUID(),
+        eventType: "input.prompt" as const,
+        payload: { userMessage },
+        runId: null,
+        seqId: index + 1,
+        createdAt: new Date(firstCreatedAt.getTime() + index),
+      };
+    },
+  );
+  await tx.insert(chatEvents).values(sourceEvents);
+  await tx.insert(chatEvents).values(
+    sourceEvents.slice(0, CHAT_QUEUE_SCAN_PAGE_SIZE).map((source, index) => {
+      return {
+        id: randomUUID(),
+        chatThreadId: threadId,
+        contextType: source.contextType,
+        contextId: source.contextId,
+        eventType: source.eventType,
+        payload: source.payload,
+        runId: randomUUID(),
+        revokesEventId: source.id,
+        seqId: sourceEvents.length + index + 1,
+      };
+    }),
+  );
+  return sourceEvents.map(({ id }) => {
+    return { id };
+  });
+}
+
 async function seedFixtureEvents(
   tx: DbTransaction,
   fixtureKind: FixtureKind,
   threadId: string,
 ) {
+  if (fixtureKind === "paginated-orphan") {
+    return await seedPaginatedOrphanEvents(tx, threadId);
+  }
   const userMessage = createUserMessageDocument({
     text: "orphan monitor fixture",
   });

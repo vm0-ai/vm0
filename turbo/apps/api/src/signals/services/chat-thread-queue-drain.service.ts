@@ -223,11 +223,15 @@ export const drainStaleChatThreadQueues$ = command(
         limit: DRAIN_SWEEP_LIMIT,
         chatThreadIds: input.chatThreadIds,
       }),
-      staleChatThreadQueueThreadIds(db, {
-        ...staleWindow,
-        limit: DRAIN_SWEEP_LIMIT,
-        chatThreadIds: input.chatThreadIds,
-      }),
+      staleChatThreadQueueThreadIds(
+        db,
+        {
+          ...staleWindow,
+          limit: DRAIN_SWEEP_LIMIT,
+          chatThreadIds: input.chatThreadIds,
+        },
+        signal,
+      ),
     ]);
     signal.throwIfAborted();
     const recoveryThreadIdSet = new Set(

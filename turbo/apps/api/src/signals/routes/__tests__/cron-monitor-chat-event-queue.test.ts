@@ -166,6 +166,27 @@ describe("cron monitor chat event queue", () => {
     });
   });
 
+  it("continues orphan monitoring after a full revoked candidate page", async () => {
+    const fixture = await trackFixture(seedFixture("paginated-orphan"));
+
+    const response = await accept(
+      stateClient().monitor({ body: { event_ids: [...fixture.eventIds] } }),
+      [500],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: "Internal server error",
+    });
+    expect(
+      context.mocks.sentry.captureException.mock.calls.at(-1)?.[0],
+    ).toMatchObject({
+      name: "OrphanedQueuedChatEventsError",
+      code: "ORPHANED_QUEUED_CHAT_MESSAGES",
+      orphanedMessages: 1,
+      orphanedMessagesBySource: { slack: 1 },
+    });
+  });
+
   it("does not flag input.automation without legacy encrypted params", async () => {
     const fixture = await trackFixture(seedFixture("orphaned-automation"));
 
