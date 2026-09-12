@@ -1236,9 +1236,9 @@ async function updateUserModelPreference(
           ? {}
           : {
               modelSettings: sql`${orgMembersMetadata.modelSettings} || jsonb_build_object(
-                ${params.modelSettingsPatch.model},
-                COALESCE(${orgMembersMetadata.modelSettings} -> ${params.modelSettingsPatch.model}, '{}'::jsonb)
-                  || jsonb_build_object('effort', ${params.modelSettingsPatch.effort})
+                cast(${params.modelSettingsPatch.model} as text),
+                COALESCE(${orgMembersMetadata.modelSettings} -> cast(${params.modelSettingsPatch.model} as text), '{}'::jsonb)
+                  || jsonb_build_object('effort', cast(${params.modelSettingsPatch.effort} as text))
               )`,
             }),
         updatedAt: nowValue,

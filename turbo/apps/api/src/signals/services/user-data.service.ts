@@ -434,9 +434,9 @@ export const updateUserModelPreference$ = command(
             ? {}
             : {
                 modelSettings: sql`${orgMembersMetadata.modelSettings} || jsonb_build_object(
-                  ${modelSettingsPatch.model},
-                  COALESCE(${orgMembersMetadata.modelSettings} -> ${modelSettingsPatch.model}, '{}'::jsonb)
-                    || jsonb_build_object('effort', ${modelSettingsPatch.effort})
+                  cast(${modelSettingsPatch.model} as text),
+                  COALESCE(${orgMembersMetadata.modelSettings} -> cast(${modelSettingsPatch.model} as text), '{}'::jsonb)
+                    || jsonb_build_object('effort', cast(${modelSettingsPatch.effort} as text))
                 )`,
               }),
           updatedAt,
