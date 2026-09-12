@@ -1,7 +1,7 @@
 # API-first transition boundary
 
-This is the local module contract for #33570. The wider Pi SDK and memory
-architecture remains owned by #33519's later SDK boundary work.
+This is the local module contract for #33570. The wider Pi SDK, memory, and
+compatibility map is [Pi runtime architecture](../../../../../../docs/pi-runtime-architecture.md).
 
 ## Responsibilities and dependency direction
 
