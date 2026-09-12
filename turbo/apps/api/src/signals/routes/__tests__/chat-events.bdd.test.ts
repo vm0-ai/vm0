@@ -4050,6 +4050,9 @@ describe("CHAT effort: thread configuration", () => {
       },
     });
     for (const response of responses) {
+      if (response.status !== 201) {
+        throw new Error("Expected both effort updates to be accepted");
+      }
       if (response.body.runId) {
         await cancelChatRun(actor, response.body.runId);
       }
