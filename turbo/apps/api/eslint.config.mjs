@@ -135,6 +135,82 @@ const apiTestDirectDbImportMessage =
 const apiTestLoggerImportMessage =
   "API tests must not observe the logger. Assert HTTP responses and effects instead; see docs/testing/testing-external-behavior.md.";
 
+const apiTestDiagnosticsMessage =
+  "API tests must not observe the logger or telemetry; assert HTTP responses and effects. See docs/testing/testing-external-behavior.md";
+
+const apiTestDiagnosticsSyntax = [
+  {
+    selector: 'MemberExpression[property.name="axiomLogging"]',
+    message: apiTestDiagnosticsMessage,
+  },
+  {
+    selector: 'MemberExpression[property.name="sdkIngest"]',
+    message: apiTestDiagnosticsMessage,
+  },
+  {
+    selector: 'MemberExpression[property.name="useRealTelemetry"]',
+    message: apiTestDiagnosticsMessage,
+  },
+];
+
+// Files that still read the logger or telemetry mocks, owned by #33656. This
+// list may only shrink: never add a file to it. Delete the list, and the
+// ignores entry that spreads it, once the last file leaves.
+const apiTestDiagnosticsBaseline = [
+  "src/signals/routes/__tests__/auxiliary-generation.test.ts",
+  "src/signals/routes/__tests__/billing-redeem-code.test.ts",
+  "src/signals/routes/__tests__/browser.test.ts",
+  "src/signals/routes/__tests__/chat-callbacks.bdd.test.ts",
+  "src/signals/routes/__tests__/chat-event-archive-consumers.test.ts",
+  "src/signals/routes/__tests__/chat-event-snapshot.test.ts",
+  "src/signals/routes/__tests__/chat-events.bdd.test.ts",
+  "src/signals/routes/__tests__/chat-threads.bdd.test.ts",
+  "src/signals/routes/__tests__/codex-reset-credit-expiry.test.ts",
+  "src/signals/routes/__tests__/connector-runtime-wakeups.test.ts",
+  "src/signals/routes/__tests__/cron-billing-entitlements.test.ts",
+  "src/signals/routes/__tests__/cron-connector-catalog.test.ts",
+  "src/signals/routes/__tests__/cron-monitor-chat-event-queue.test.ts",
+  "src/signals/routes/__tests__/cron-snapshot-chat-events.test.ts",
+  "src/signals/routes/__tests__/cron-sync-skills.test.ts",
+  "src/signals/routes/__tests__/desktop-updates.test.ts",
+  "src/signals/routes/__tests__/goal-schema-contraction.test.ts",
+  "src/signals/routes/__tests__/helpers/auxiliary-generation.ts",
+  "src/signals/routes/__tests__/helpers/projection-observations.ts",
+  "src/signals/routes/__tests__/image-io-generate.test.ts",
+  "src/signals/routes/__tests__/integrations-telegram-post.test.ts",
+  "src/signals/routes/__tests__/integrations.bdd.test.ts",
+  "src/signals/routes/__tests__/mail.test.ts",
+  "src/signals/routes/__tests__/me-model-providers-upsert.test.ts",
+  "src/signals/routes/__tests__/memory-summary-projection.test.ts",
+  "src/signals/routes/__tests__/pi-memory-stage1-worker.test.ts",
+  "src/signals/routes/__tests__/run-lifecycle.bdd.test.ts",
+  "src/signals/routes/__tests__/scrape.test.ts",
+  "src/signals/routes/__tests__/seo-backlinks.test.ts",
+  "src/signals/routes/__tests__/seo.test.ts",
+  "src/signals/routes/__tests__/shared-threads.test.ts",
+  "src/signals/routes/__tests__/social.test.ts",
+  "src/signals/routes/__tests__/test-runtime-state.test.ts",
+  "src/signals/routes/__tests__/test-teams-state.test.ts",
+  "src/signals/routes/__tests__/video-io-generate.test.ts",
+  "src/signals/routes/__tests__/voice-google-auth.test.ts",
+  "src/signals/routes/__tests__/voice-io-polish.test.ts",
+  "src/signals/routes/__tests__/voice-io-transcribe.test.ts",
+  "src/signals/routes/__tests__/webhooks-agent-firewall-auth-aws.test.ts",
+  "src/signals/routes/__tests__/webhooks-agent-firewall-auth-custom-oauth.test.ts",
+  "src/signals/routes/__tests__/webhooks-agent-firewall-auth-google-analytics.test.ts",
+  "src/signals/routes/__tests__/webhooks-agent-firewall-auth.bdd.test.ts",
+  "src/signals/routes/__tests__/webhooks-agent-health-usage-telemetry.test.ts",
+  "src/signals/routes/__tests__/webhooks-callbacks.bdd.test.ts",
+  "src/signals/routes/__tests__/webhooks-github-workflow.test.ts",
+  "src/signals/routes/__tests__/webhooks-gmail.test.ts",
+  "src/signals/routes/__tests__/webhooks-google-calendar.test.ts",
+  "src/signals/routes/__tests__/webhooks-google-forms.test.ts",
+  "src/signals/routes/__tests__/webhooks-workflow-automations.test.ts",
+  "src/signals/routes/__tests__/workflow-automations.test.ts",
+  "src/signals/routes/__tests__/workflow-skill-storage-presigned-url-cache.suite.ts",
+  "src/signals/routes/__tests__/workflows.test.ts",
+];
+
 const productionRouteTestImportMessage =
   "Production source must not import test-only routes. Mount required test fixture routes explicitly from tests through setupApp().";
 
@@ -765,6 +841,42 @@ export default [
             },
           ],
         },
+      ],
+    },
+  },
+  // Diagnostics gate: API tests must not reach the logger or telemetry stubs
+  // through `context.mocks`. This is the last `no-restricted-syntax` config for
+  // the files it matches, so it carries `restrictedSyntax` forward; files in
+  // `ignores` fall back to the shared test block above.
+  {
+    files: ["src/**/__tests__/**/*.ts", "src/**/*.test.ts"],
+    ignores: [
+      // Bootstrap-only module: it owns the process.env and vi.stubEnv usage
+      // that `restrictedSyntax` bans everywhere else.
+      "src/__tests__/env-stub.ts",
+      // Service-directory tests are answered by their own blocks above, which
+      // either ban the file outright or restore the shared selectors for a
+      // named exception.
+      "src/signals/services/**/*.test.ts",
+      // The stub definition site installs the logger and telemetry mocks that
+      // this rule stops tests from reading; it asserts nothing itself.
+      "src/__tests__/mocks.ts",
+      // The logger is the subject of this suite, not a diagnostic.
+      "src/lib/__tests__/log.test.ts",
+      // The Axiom log transport is the subject of this suite.
+      "src/lib/__tests__/log-axiom-transport.test.ts",
+      // The telemetry SDK client is the subject of this suite.
+      "src/signals/external/__tests__/axiom.test.ts",
+      // The app factory's log wiring and flush ownership is the subject here,
+      // and no route exposes it.
+      "src/__tests__/app-factory.test.ts",
+      ...apiTestDiagnosticsBaseline,
+    ],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        ...restrictedSyntax,
+        ...apiTestDiagnosticsSyntax,
       ],
     },
   },
