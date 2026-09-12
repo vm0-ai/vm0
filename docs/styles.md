@@ -216,7 +216,10 @@ variant over the element's own semantic attribute, as in
 which generates the same unconditional descendant selector at the same
 specificity, and folds a two-state rule into one utility. This matches the
 unconditional `[&:hover]` form the choice and surface variants already use;
-reach for `group-hover:` only when the media gate is wanted.
+reach for `group-hover:` only when the media gate is wanted. The sidebar copy
+foreground above is such a case: it keeps the guard deliberately, because a
+foreground that never repaints on a sticky tap state is the better behaviour
+there, while a title that never scrolls to its end would lose the affordance.
 
 Spell such a variant out at every call site. Tailwind's scanner is text-based,
 so a variant assembled from a constant produces a candidate that never appears

@@ -680,9 +680,9 @@ real microphone recording or real transcription occurred.
 The `session-list-title` batch owns `okou-nav-title`, `okou-nav-title-row` and
 `okou-nav-recent-label`: the clipped sidebar thread title, the row that drives
 its hover/focus travel, and the "Recent" header. It removes 17 CSS declarations
-and 5 consumption sites (4 production, 1 test hook) from `sidebar-threads.tsx`
-and `sidebar.test.tsx`. `okou-nav-recent-label` carried no declarations, so its
-removal is a pure class deletion. `@property --okou-nav-title-shift` stays in
+and 5 consumption sites — 3 production sites in `sidebar-threads.tsx` and 2 test
+references in `sidebar.test.tsx`. `okou-nav-recent-label` carried no
+declarations, so its removal is a pure class deletion. `@property --okou-nav-title-shift` stays in
 the App stylesheet, because a registration is not a class selector and the
 transition cannot interpolate a length without it.
 
@@ -724,10 +724,9 @@ The negative control is part of the acceptance, because a diff channel that
 cannot fail proves nothing. Dropping the merged `:is()` hover/focus travel
 changes 10,284 pixels and 6 observations, which is what establishes that the
 merged variant is load-bearing rather than silently inert. Dropping the text
-span's
-`[transform:translateX(var(--okou-nav-title-shift))]` changes 10,266 pixels, and
-narrowing the fade from 24px to 23px changes 1,161, so the channel resolves both
-a gross and a one-pixel-scale change. Three earlier controls — dropping
+span's `[transform:translateX(var(--okou-nav-title-shift))]` changes 10,266
+pixels, and narrowing the fade from 24px to 23px changes 1,161, so the channel
+resolves both a gross and a one-pixel-scale change. Three earlier controls — dropping
 `overflow-hidden`, `mask-no-repeat` and `min-w-0` — changed 0 pixels and are
 retained: the mask already clips the overflow, `mask-size: 100% 100%` leaves
 nothing for `mask-repeat` to tile, and `overflow: hidden` already resolves the
