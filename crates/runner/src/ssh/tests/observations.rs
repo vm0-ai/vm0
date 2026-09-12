@@ -3,7 +3,7 @@ use serde_json::json;
 use std::{sync::atomic::Ordering, time::Duration};
 
 #[tokio::test]
-async fn connection_evidence_is_independent_of_command_outcomes_and_cache_hits() {
+async fn connection_evidence_reports_actual_authentication_and_skips_reused_transports() {
     for (reply, failure) in [
         (Reply::default(), None),
         (Reply::Reject, Some("exec_rejected")),
@@ -36,9 +36,12 @@ async fn connection_evidence_is_independent_of_command_outcomes_and_cache_hits()
             }
         }
         dispatcher.shutdown().await;
-        report.assert_calls_async(2).await;
+        // Failed commands retire the transport; a normal exit reuses it without
+        // inventing authentication evidence for the second command.
+        let authentications = if failure.is_some() { 2 } else { 1 };
+        report.assert_calls_async(authentications).await;
         resolve.assert_calls_async(1).await;
-        assert_eq!(h.observed.auth.load(Ordering::SeqCst), 2);
+        assert_eq!(h.observed.auth.load(Ordering::SeqCst), authentications);
     }
 }
 
