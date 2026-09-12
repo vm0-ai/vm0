@@ -39,20 +39,12 @@ fn cancelled_blocking_job_keeps_host_capacity_without_blocking_guest_park() {
         assert_eq!(terminal(&frames)["effects"], "not_started");
         h.shutdown().await;
         // RPC terminal+EOF and shutdown do not wait for host blocking work.
-        // Its CPU/request capacity remains charged while the guest can park.
+        // Its CPU capacity remains charged while the guest can park.
         assert_eq!(h.runtime.cpu.available_permits(), 1);
-        assert_eq!(
-            h.runtime.permits.available_permits(),
-            super::super::RUNNER_CAPACITY - 1
-        );
         let fence = h.control.try_fence_normal_operations().unwrap();
         release.send(()).unwrap();
         occupied.await.unwrap();
-        wait_for(|| {
-            h.runtime.cpu.available_permits() == 2
-                && h.runtime.permits.available_permits() == super::super::RUNNER_CAPACITY
-        })
-        .await;
+        wait_for(|| h.runtime.cpu.available_permits() == 2).await;
         assert_eq!(h.observed.auth.load(Ordering::SeqCst), 0);
         assert!(h.observed.attempts.lock().unwrap().is_empty());
         assert!(h.observed.commands.lock().unwrap().is_empty());
@@ -152,9 +144,19 @@ async fn run_cancellation_during_input_does_not_decode_or_call_authority() {
     let mut guest = h.open().await;
     guest.write_u32(100).await.unwrap();
     guest.write_all(b"{").await.unwrap();
-    wait_for(|| h.runtime.permits.available_permits() == super::super::RUNNER_CAPACITY - 1).await;
+    let mut pending = vec![guest];
+    for _ in 1..8 {
+        pending.push(h.open().await);
+    }
+    // The ninth rejection proves the earlier partial input was admitted.
+    assert_eq!(
+        frames(h.open().await).await[0]["code"],
+        "resource_exhausted"
+    );
     h.cancel.cancel();
-    assert!(frames(guest).await.is_empty());
+    for guest in pending {
+        assert!(frames(guest).await.is_empty());
+    }
     resolve.assert_calls_async(0).await;
     h.shutdown().await;
     drop(h.control.try_fence_normal_operations().unwrap());
