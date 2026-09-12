@@ -310,7 +310,10 @@ their own model policies.
 
 The model-policy API advertises the current concrete built-in provider to the
 picker; server admission resolves it again when the run starts. This advisory
-response does not reserve a route. The API, commit-addressed CLI, and runtime ship
-together; queued execution contexts retain the CLI and configuration they captured.
+response does not reserve a route. New API launch contexts select the corresponding
+commit-addressed CLI containing the runtime change; queued execution contexts retain
+the CLI and configuration they captured. API rollback does not rewrite stored effort
+or history; this staff-only feature requires the updated API and CLI to honor changed
+effort on resume.
 The existing Pi model-config generations and Runner/Guest schemas are unchanged.
 `ChatReasoningEffort` and `PiLoop` retain their existing rollout gates.

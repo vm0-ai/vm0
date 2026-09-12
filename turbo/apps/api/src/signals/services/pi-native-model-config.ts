@@ -1,3 +1,4 @@
+import { piNativeCatalogModelSchema } from "@okouai/api-contracts/contracts/pi-native-models";
 import { isPiNativeRoute } from "@okouai/core/pi-execution";
 import {
   getProviderRuntimeModel,
@@ -5,7 +6,6 @@ import {
 } from "@okouai/api-contracts/contracts/model-providers";
 import {
   piModelConfigV4Schema,
-  piNativeCatalogModelSchema,
   type PiModelConfigV4,
 } from "@okouai/api-contracts/contracts/pi-native";
 

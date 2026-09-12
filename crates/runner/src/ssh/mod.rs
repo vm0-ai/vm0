@@ -1,4 +1,4 @@
-//! Official Runner-owned, one-shot SSH dispatch. No guest-supplied authority.
+//! Official Runner-owned SSH execution and sessions. No guest-supplied authority.
 
 mod authority;
 mod cache;
@@ -8,6 +8,7 @@ mod keys;
 mod network;
 mod observation;
 mod output;
+mod sessions;
 #[cfg(test)]
 mod tests;
 
@@ -177,11 +178,15 @@ impl SshRuntime {
         registration: Arc<cache::Registration>,
     ) {
         let permits = Arc::new(Semaphore::new(RUN_REQUEST_CAPACITY));
+        let sessions = sessions::Manager::new(Arc::clone(&self), run, registration, cancel.clone());
+        let mut prune = tokio::time::interval(Duration::from_secs(30));
+        prune.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut tasks = JoinSet::new();
         loop {
             let accepted = tokio::select! {
                 biased;
                 () = cancel.cancelled() => break,
+                _ = prune.tick() => { sessions.prune(); continue; }
                 result = tasks.join_next(), if !tasks.is_empty() => {
                     if result.is_some_and(|result| result.is_err()) { tracing::warn!(run_id = %run, "SSH request task failed"); }
                     continue;
@@ -203,16 +208,17 @@ impl SshRuntime {
                 deadline: Instant::now() + Duration::from_secs(60),
             };
             let lease = Arc::new(permit);
-            let registration = Arc::clone(&registration);
+            let sessions = Arc::clone(&sessions);
             tasks.spawn(async move {
                 runtime
-                    .dispatch(accepted.stream, lease, run, scope, registration)
+                    .dispatch(accepted.stream, lease, run, scope, sessions)
                     .await;
             });
         }
         cancel.cancel();
-        registration.close();
+        sessions.registration.close();
         while tasks.join_next().await.is_some() {}
+        sessions.shutdown().await;
     }
 
     async fn dispatch(
@@ -221,7 +227,7 @@ impl SshRuntime {
         lease: Arc<OwnedSemaphorePermit>,
         run: RunId,
         mut scope: Scope,
-        registration: Arc<cache::Registration>,
+        sessions: Arc<sessions::Manager>,
     ) {
         let _cancel_on_drop = scope.cancelled.clone().drop_guard();
         let started = Instant::now();
@@ -234,7 +240,7 @@ impl SshRuntime {
                 return;
             }
         };
-        if request.method != "ssh.exec" {
+        if request.method != "ssh.exec" && !request.method.starts_with("ssh.session.") {
             send_generic(&scope, &mut writer, ErrorCode::UnknownMethod).await;
             return;
         }
@@ -249,6 +255,18 @@ impl SshRuntime {
             deadline: scope.deadline - TERMINAL_RESERVE,
             ..scope.clone()
         };
+        if request.method.starts_with("ssh.session.") {
+            sessions
+                .dispatch(
+                    &request.method,
+                    request.params.get(),
+                    &work,
+                    &scope,
+                    &mut writer,
+                )
+                .await;
+            return;
+        }
         let params: Params = match serde_json::from_str(request.params.get()) {
             Ok(params) => params,
             Err(_) => {
@@ -277,7 +295,7 @@ impl SshRuntime {
                 &work,
                 &mut writer,
                 &mut output,
-                &registration,
+                &sessions.registration,
             )
             .await;
         let observation = output.connection.finish(result.as_ref().err().copied());
@@ -456,25 +474,9 @@ impl SshRuntime {
             connection,
             command,
         } = request;
-        // System DNS can own blocking resolver work after its waiter is dropped.
-        // Retain host capacity until resolution completes, independently of
-        // the guest stream and its park reservation.
-        let network = Arc::clone(&self.network);
-        let host = credential.host.clone();
-        let port = credential.port;
-        let resolver_lease = Arc::clone(&lease);
-        let resolver = tokio::spawn(async move {
-            let _lease = resolver_lease;
-            network::destination(network, &host, port).await
-        });
-        let address = scope
-            .wait(resolver)
-            .await?
-            .map_err(|_| FailureReason::NetworkFailure)??;
-        let stream = scope
-            .wait(self.network.connect(address))
-            .await?
-            .map_err(|_| FailureReason::NetworkFailure)?;
+        let stream = self
+            .open_socket(Arc::clone(&lease), &credential.host, credential.port, scope)
+            .await?;
         engine::Execution {
             authority: Arc::clone(&self.authority),
             run,
@@ -484,6 +486,33 @@ impl SshRuntime {
         }
         .execute(stream, command, scope, writer, output)
         .await
+    }
+
+    async fn open_socket(
+        &self,
+        lease: Arc<OwnedSemaphorePermit>,
+        host: &str,
+        port: u16,
+        scope: &Scope,
+    ) -> Result<tokio::net::TcpStream, FailureReason> {
+        // System DNS can own blocking resolver work after its waiter is dropped.
+        // Retain host capacity until resolution completes, independently of
+        // the guest stream and its park reservation.
+        let network = Arc::clone(&self.network);
+        let host = host.to_owned();
+        let resolver_lease = Arc::clone(&lease);
+        let resolver = tokio::spawn(async move {
+            let _lease = resolver_lease;
+            network::destination(network, &host, port).await
+        });
+        let address = scope
+            .wait(resolver)
+            .await?
+            .map_err(|_| FailureReason::NetworkFailure)??;
+        scope
+            .wait(self.network.connect(address))
+            .await?
+            .map_err(|_| FailureReason::NetworkFailure)
     }
 }
 

@@ -317,6 +317,8 @@ describe("GET/PUT /api/model-policies", () => {
       [200],
     );
     expect(response.body.policies[0]?.runtimeProviderType).toBe("deepseek");
+    // Operator-managed key availability/cooldowns have no user mutation API.
+    // Scope the infrastructure state to this request without changing shared rows.
     const fallback =
       await withBuiltInModelRuntimeRouteCandidateUnavailableForTest(
         {
@@ -881,7 +883,6 @@ describe("GET/PUT /api/model-policies", () => {
 
     expect(sol).toMatchObject({
       defaultProviderType: "openai-api-key",
-      runtimeProviderType: "openai-api-key",
       credentialScope: "org",
       modelProviderId: openAiProviderId,
       routeStatus: "valid",

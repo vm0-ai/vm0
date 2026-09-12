@@ -70,9 +70,9 @@ function applyUpdate(policy: UpdateOrgModelPolicy): OrgModelPolicy {
     modelLabel: getCanonicalModelDisplayName(policy.model),
     isDefault: policy.isDefault,
     defaultProviderType: policy.defaultProviderType,
-    runtimeProviderType: isBuiltInModelProviderType(policy.defaultProviderType)
-      ? getBuiltInConcreteProviderType(policy.model)
-      : policy.defaultProviderType,
+    ...(isBuiltInModelProviderType(policy.defaultProviderType)
+      ? { runtimeProviderType: getBuiltInConcreteProviderType(policy.model) }
+      : {}),
     credentialScope: policy.credentialScope,
     modelProviderId: policy.modelProviderId,
     modelProviderSurfaceId: policy.modelProviderSurfaceId ?? null,

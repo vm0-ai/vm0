@@ -45,8 +45,7 @@ export function availableChatReasoningEfforts(
   )
     ? policy.runtimeProviderType
     : policy.defaultProviderType;
-  // An older API has not advertised the captured built-in route yet.
-  if (runtimeProviderType === null || runtimeProviderType === undefined) {
+  if (runtimeProviderType === null) {
     return [];
   }
   const piExecution = isPiExecutionRoute({

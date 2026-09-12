@@ -73,8 +73,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ComposerWorkflowFuzzySearch]: {
     maintainer: "bingjie@okou.ai",
     description: "Fuzzy workflow name matching in the chat composer",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.Dummy]: {
     maintainer: "ethan@okou.ai",
@@ -405,8 +404,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "bingjie@okou.ai",
     description:
       "Render explicit LaTeX delimiters in Agent messages as native MathML.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.MarkdownTime]: {
     maintainer: "ethan@okou.ai",

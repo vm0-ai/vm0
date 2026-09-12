@@ -4,7 +4,7 @@ import {
   isModelSupportedByProvider,
   modelProviderTypeSchema,
 } from "@okouai/api-contracts/contracts/model-providers";
-import { piNativeCatalogModelSchema } from "@okouai/api-contracts/contracts/pi-native";
+import { piNativeCatalogModelSchema } from "@okouai/api-contracts/contracts/pi-native-models";
 
 export type PiGptModel = "gpt-5.6-terra" | "gpt-5.6-sol" | "gpt-5.6-luna";
 

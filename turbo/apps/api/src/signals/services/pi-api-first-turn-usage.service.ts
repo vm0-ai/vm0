@@ -1,9 +1,7 @@
+import { piNativeCatalogModelSchema } from "@okouai/api-contracts/contracts/pi-native-models";
 import { createHash } from "node:crypto";
 
-import {
-  piNativeCatalogModelSchema,
-  type PiModelConfigV4,
-} from "@okouai/api-contracts/contracts/pi-native";
+import type { PiModelConfigV4 } from "@okouai/api-contracts/contracts/pi-native";
 import type { z } from "zod";
 import { MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS } from "@okouai/api-contracts/contracts/model-price-tiers";
 import type { PiModelConfig } from "@okouai/api-contracts/contracts/runners";

@@ -67,9 +67,9 @@ function modelPolicy(
     modelLabel: getCanonicalModelDisplayName(model),
     isDefault: options.default ?? false,
     defaultProviderType: providerType,
-    runtimeProviderType: isBuiltInModelProviderType(providerType)
-      ? getBuiltInConcreteProviderType(model)
-      : providerType,
+    ...(isBuiltInModelProviderType(providerType)
+      ? { runtimeProviderType: getBuiltInConcreteProviderType(model) }
+      : {}),
     credentialScope,
     modelProviderId:
       credentialScope === "member"

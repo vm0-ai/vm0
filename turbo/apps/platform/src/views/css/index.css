@@ -66,6 +66,12 @@
   --color-artifact-presentation: #8175a8;
   --color-artifact-video: #ad775f;
   --color-artifact-image: #638b80;
+
+  /* Mic button — the starting spinner. Its keyframes animate `transform`, so
+     the consumer sets `transform` rather than the individual `rotate`
+     property, which would compose with the animation instead of being
+     replaced by it. */
+  --animate-mic-starting-spin: mic-starting-spin 0.7s linear infinite;
 }
 
 /* Palette previews keep the fixed 135deg/52% sRGB blend in Light and Dark.
@@ -674,18 +680,6 @@ body {
 }
 
 /* Morandi outline buttons */
-.okou-app .okou-btn-morandi {
-  background-color: hsl(var(--gray-50));
-  border: 0.7px solid hsl(var(--gray-400));
-  color: hsl(var(--foreground));
-}
-.okou-app .okou-btn-morandi:hover {
-  background-image: linear-gradient(
-    var(--color-state-hover),
-    var(--color-state-hover)
-  );
-  border-color: hsl(var(--gray-400));
-}
 
 /* Cards inside the chat transcript: notice cards, action cards, artifact and
    media frames. One surface, one border, one shadow, one radius — before this
@@ -1389,21 +1383,6 @@ details > summary {
  * Mic button – voice activity fill
  * ------------------------------------------------------------------------- */
 
-.mic-starting-spinner {
-  display: block;
-  width: 17px;
-  height: 17px;
-  border: 2px solid rgb(255 255 255 / 0.35);
-  border-top-color: #ffffff;
-  border-radius: 9999px;
-  pointer-events: none;
-  transform: rotate(0deg) translateZ(0);
-  transform-origin: 50% 50%;
-  animation: mic-starting-spin 0.7s linear infinite;
-  backface-visibility: hidden;
-  will-change: transform;
-}
-
 @keyframes mic-starting-spin {
   from {
     transform: rotate(0deg) translateZ(0);
@@ -1411,31 +1390,6 @@ details > summary {
   to {
     transform: rotate(360deg) translateZ(0);
   }
-}
-
-.mic-volume-icon-meter {
-  position: absolute;
-  bottom: 16px;
-  left: 50%;
-  height: 8px;
-  width: 5px;
-  border-radius: 9999px;
-  background-color: rgb(255 255 255 / 0.18);
-  overflow: hidden;
-  pointer-events: none;
-  transform: translateX(-50%);
-}
-
-.mic-volume-icon-meter::after {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: var(--mic-volume-fill, 0%);
-  border-radius: inherit;
-  background: linear-gradient(to top, #bdf9ff, #ffffff);
-  content: "";
-  transition: height 0.12s ease;
 }
 
 /* Onboarding workflow preview diagram (owf-) */

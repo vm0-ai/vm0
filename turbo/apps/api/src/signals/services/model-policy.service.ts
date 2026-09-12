@@ -783,13 +783,17 @@ async function listOrgModelPolicies(
   const policies = await Promise.all(
     rows.map(async (row) => {
       const policy = serializePolicy(row, providersById, surfacesById);
-      const runtimeProviderType = isBuiltInModelProviderType(
-        policy.defaultProviderType,
-      )
-        ? ((await resolveBuiltInModelRuntimeRoute(db, policy.model))
-            ?.providerType ?? null)
-        : policy.defaultProviderType;
-      return { ...policy, runtimeProviderType };
+      if (!isBuiltInModelProviderType(policy.defaultProviderType)) {
+        return policy;
+      }
+      const runtimeRoute = await resolveBuiltInModelRuntimeRoute(
+        db,
+        policy.model,
+      );
+      return {
+        ...policy,
+        runtimeProviderType: runtimeRoute?.providerType ?? null,
+      };
     }),
   );
   const workspaceDefault = selectWorkspaceDefaultPolicy(policies);
