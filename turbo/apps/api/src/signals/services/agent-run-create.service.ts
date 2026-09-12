@@ -613,7 +613,6 @@ interface ResolvedAgentExecution {
   readonly agentId: string;
   readonly ownerUserId: string;
   readonly orgId: string;
-  readonly agentName?: string;
   readonly content: AgentExecutionConfig;
   readonly artifacts: readonly ContextArtifact[];
   readonly vars?: Record<string, string>;
@@ -629,10 +628,9 @@ interface ResolvedAgentExecution {
 
 interface ResolvedPrivateMaintenanceExecution extends Omit<
   ResolvedAgentExecution,
-  "agentId" | "agentName"
+  "agentId"
 > {
   readonly agentId: null;
-  readonly agentName?: never;
 }
 
 type ResolvedRunExecution =
@@ -1973,8 +1971,7 @@ function firewallSecretPlaceholdersFromFirewalls(
   for (const firewall of firewalls) {
     const secretNames = extractSecretNamesFromApis(firewall.apis);
     for (const name of secretNames) {
-      placeholders[name] =
-        firewall.placeholders?.[name] ?? DEFAULT_FIREWALL_SECRET_PLACEHOLDER;
+      placeholders[name] = DEFAULT_FIREWALL_SECRET_PLACEHOLDER;
     }
     for (const [name, value] of Object.entries(firewall.placeholders ?? {})) {
       placeholders[name] = value;
@@ -4341,18 +4338,41 @@ function advanceUnavailableConnectorCandidates<TKey>(
   return remaining.size > 0 ? remaining : undefined;
 }
 
+interface StoredConnectorMaterializationArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly allowedConnectorSlugs: readonly ConnectorSlug[];
+  readonly connectorIdCandidatesBySlug:
+    | ReadonlyMap<ConnectorSlug, readonly string[]>
+    | undefined;
+  readonly scopeSource: ConnectorScopeSource;
+  readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
+}
+
+// Nothing materialized, so every first candidate is unavailable: retry with the
+// next candidate per slug, or give up when the candidate list cannot advance.
+async function retryStoredConnectorMaterializationSnapshot(
+  db: Db,
+  args: StoredConnectorMaterializationArgs,
+  timing: ApiDispatchTimingCollector | undefined,
+): Promise<StoredConnectorMaterializationSnapshot | null> {
+  const remainingCandidates = advanceUnavailableConnectorCandidates(
+    args.connectorIdCandidatesBySlug,
+    new Set(),
+  );
+  if (remainingCandidates === args.connectorIdCandidatesBySlug) {
+    return null;
+  }
+  return await loadStoredConnectorMaterializationSnapshot(
+    db,
+    { ...args, connectorIdCandidatesBySlug: remainingCandidates },
+    timing,
+  );
+}
+
 async function loadStoredConnectorMaterializationSnapshot(
   db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly allowedConnectorSlugs: readonly ConnectorSlug[];
-    readonly connectorIdCandidatesBySlug:
-      | ReadonlyMap<ConnectorSlug, readonly string[]>
-      | undefined;
-    readonly scopeSource: ConnectorScopeSource;
-    readonly connectorCatalogSnapshot: ConnectorRuntimeSelection;
-  },
+  args: StoredConnectorMaterializationArgs,
   timing?: ApiDispatchTimingCollector,
 ): Promise<StoredConnectorMaterializationSnapshot | null> {
   const baseTimingDimensions = storedConnectorTimingDimensions({
@@ -4384,18 +4404,7 @@ async function loadStoredConnectorMaterializationSnapshot(
       : [];
   });
   if (connectorIds.length === 0) {
-    const remainingCandidates = advanceUnavailableConnectorCandidates(
-      args.connectorIdCandidatesBySlug,
-      new Set(),
-    );
-    if (remainingCandidates !== args.connectorIdCandidatesBySlug) {
-      return await loadStoredConnectorMaterializationSnapshot(
-        db,
-        { ...args, connectorIdCandidatesBySlug: remainingCandidates },
-        timing,
-      );
-    }
-    return null;
+    return await retryStoredConnectorMaterializationSnapshot(db, args, timing);
   }
   const rows = await loadStoredConnectorSnapshotRows(
     db,
@@ -4408,18 +4417,7 @@ async function loadStoredConnectorMaterializationSnapshot(
     timing,
   );
   if (rows.length === 0) {
-    const remainingCandidates = advanceUnavailableConnectorCandidates(
-      args.connectorIdCandidatesBySlug,
-      new Set(),
-    );
-    if (remainingCandidates !== args.connectorIdCandidatesBySlug) {
-      return await loadStoredConnectorMaterializationSnapshot(
-        db,
-        { ...args, connectorIdCandidatesBySlug: remainingCandidates },
-        timing,
-      );
-    }
-    return null;
+    return await retryStoredConnectorMaterializationSnapshot(db, args, timing);
   }
 
   const snapshot = await materializeStoredConnectorSnapshotRows(
@@ -5597,12 +5595,9 @@ async function buildPermissionManifest(
         return [];
       }
       const snapshot = args.connectorCatalogSelection.selection;
-      const connectorSlugs =
-        args.connectorSlugs ??
-        Object.keys(args.permissionPolicies ?? {}).filter((connectorSlug) => {
-          return snapshot.serverFirewalls.has(connectorSlug);
-        });
-      const builtinConnectorSlugs = connectorSlugs.filter((connectorSlug) => {
+      const builtinConnectorSlugs = (
+        args.connectorSlugs ?? Object.keys(args.permissionPolicies ?? {})
+      ).filter((connectorSlug) => {
         return snapshot.serverFirewalls.has(connectorSlug);
       });
       return await Promise.all(
@@ -5785,7 +5780,6 @@ async function resolveByAgentId(
       return await db
         .select({
           agentId: agents.id,
-          agentName: agents.name,
           agentOrgId: agents.orgId,
           agentOwner: agents.owner,
         })
@@ -5802,7 +5796,6 @@ async function resolveByAgentId(
   return {
     agentId: row.agentId,
     ownerUserId: row.agentOwner,
-    agentName: row.agentName || undefined,
     orgId: row.agentOrgId,
     content: options.executionPlan.content,
     artifacts: [],
@@ -5925,7 +5918,6 @@ function resolveBySessionId(
               },
               agent: {
                 id: agents.id,
-                name: agents.name,
                 orgId: agents.orgId,
                 owner: agents.owner,
               },
@@ -5997,7 +5989,6 @@ function resolveBySessionId(
       return {
         agentId: snapshot.agent.id,
         ownerUserId: snapshot.agent.owner,
-        agentName: snapshot.agent.name || undefined,
         orgId: snapshot.agent.orgId,
         content: options.executionPlan.content,
         ...resolvedSessionStorage(snapshot.session),
@@ -6016,6 +6007,20 @@ function resolveBySessionId(
       };
     },
   );
+}
+
+function requireResolvedAgentIdMatch(
+  resolved: ResolvedAgentExecution | CreateRunErrorResult,
+  agentId: string | undefined,
+): ResolvedAgentExecution | CreateRunErrorResult {
+  if (
+    !isRouteError(resolved) &&
+    agentId !== undefined &&
+    resolved.agentId !== agentId
+  ) {
+    return badRequestMessage("agentId does not match sessionId");
+  }
+  return resolved;
 }
 
 function resolveAgentExecution(
@@ -6048,14 +6053,7 @@ function resolveAgentExecution(
             });
           },
         );
-        if (
-          !isRouteError(resolved) &&
-          body.agentId !== undefined &&
-          resolved.agentId !== body.agentId
-        ) {
-          return badRequestMessage("agentId does not match sessionId");
-        }
-        return resolved;
+        return requireResolvedAgentIdMatch(resolved, body.agentId);
       }
 
       const productAgentExecutionPlan = options.productAgentExecutionPlan;
@@ -6090,14 +6088,7 @@ function resolveAgentExecution(
             );
           },
         );
-        if (
-          !isRouteError(resolved) &&
-          body.agentId !== undefined &&
-          resolved.agentId !== body.agentId
-        ) {
-          return badRequestMessage("agentId does not match sessionId");
-        }
-        return resolved;
+        return requireResolvedAgentIdMatch(resolved, body.agentId);
       }
       if (!body.agentId) {
         return badRequestMessage("Missing agentId or sessionId");
@@ -6757,16 +6748,16 @@ function buildRunContextSnapshot(args: {
   return snapshot;
 }
 
+// Telemetry ingestion is best effort: no caller branches on the outcome and a
+// failed ingest carries no operator action.
+function bestEffortTelemetry(record: () => unknown): void {
+  safeSync(record);
+}
+
 function ingestRunContextSnapshot(snapshot: RunContextAxiomSnapshot): void {
-  const result = safeSync(() => {
+  bestEffortTelemetry(() => {
     return ingestToAxiom(getDatasetName("run-context"), [snapshot]);
   });
-  if ("error" in result) {
-    L.warn("Failed to ingest run context snapshot", {
-      runId: snapshot.runId,
-      error: result.error,
-    });
-  }
 }
 
 function recordQueuedRunEnqueueTelemetry(args: {
@@ -6774,7 +6765,7 @@ function recordQueuedRunEnqueueTelemetry(args: {
   readonly queueDepth: number;
   readonly timestamp: string;
 }): void {
-  const result = safeSync(() => {
+  bestEffortTelemetry(() => {
     recordSandboxOperation({
       sandboxType: "runner",
       actionType: "enqueue_agent_run",
@@ -6787,19 +6778,13 @@ function recordQueuedRunEnqueueTelemetry(args: {
       },
     });
   });
-  if ("error" in result) {
-    L.warn("Failed to record queued run enqueue telemetry", {
-      runId: args.runId,
-      error: result.error,
-    });
-  }
 }
 
 function recordThreadSessionBindingTelemetry(args: {
   readonly binding: ThreadSessionBindingWrite;
   readonly runStatus: "pending" | "queued";
 }): void {
-  const result = safeSync(() => {
+  bestEffortTelemetry(() => {
     recordSandboxOperation({
       sandboxType: "chat",
       actionType: "chat_thread_session_binding_persisted",
@@ -6815,18 +6800,12 @@ function recordThreadSessionBindingTelemetry(args: {
       },
     });
   });
-  if ("error" in result) {
-    L.warn("Failed to record chat thread session binding telemetry", {
-      runId: args.binding.agentSessionRunId,
-      error: result.error,
-    });
-  }
 }
 
 export function recordThreadSessionBindingRetryTelemetry(
   retry: ThreadSessionSnapshotStale,
 ): void {
-  const result = safeSync(() => {
+  bestEffortTelemetry(() => {
     recordSandboxOperation({
       sandboxType: "chat",
       actionType: "chat_thread_session_binding_retry",
@@ -6843,12 +6822,6 @@ export function recordThreadSessionBindingRetryTelemetry(
       },
     });
   });
-  if ("error" in result) {
-    L.warn("Failed to record chat thread session binding retry telemetry", {
-      runId: retry.agentSessionRunId,
-      error: result.error,
-    });
-  }
 }
 
 function buildStoredExecutionSecrets(args: {
@@ -7824,9 +7797,6 @@ async function persistQueuedAtomicLaunch(
   args: PersistAtomicLaunchRowsArgs,
   context: AtomicLaunchCteContext,
 ): Promise<Extract<PersistedAtomicLaunchRows, { readonly kind: "queued" }>> {
-  if (!args.commit.encryptedQueuedParams) {
-    throw new Error("Missing encrypted queued runner job payload");
-  }
   const insertedQueue = args.tx.$with("inserted_launch_run_queue").as(
     args.tx
       .insert(agentRunQueue)
@@ -7890,6 +7860,14 @@ async function persistQueuedAtomicLaunch(
   };
 }
 
+// The status the caller passes as a literal selects the persisted kind, so
+// each entry point returns the matching member instead of the whole union.
+async function persistAtomicLaunchRows(
+  args: PersistAtomicLaunchRowsArgs & { readonly status: "pending" },
+): Promise<Extract<PersistedAtomicLaunchRows, { readonly kind: "pending" }>>;
+async function persistAtomicLaunchRows(
+  args: PersistAtomicLaunchRowsArgs & { readonly status: "queued" },
+): Promise<Extract<PersistedAtomicLaunchRows, { readonly kind: "queued" }>>;
 async function persistAtomicLaunchRows(
   args: PersistAtomicLaunchRowsArgs,
 ): Promise<PersistedAtomicLaunchRows> {
@@ -8346,9 +8324,6 @@ async function commitQueuedPreparedLaunch(
     payload,
     validatedThreadSession,
   });
-  if (persisted.kind !== "queued") {
-    throw new Error("Queued launch persistence returned a pending result");
-  }
   await bindPreparedPiMemoryPhase2MaintenanceRun(tx, args, persisted.run.id);
   await activatePreparedLaunchUsageAllowance({
     tx,
@@ -8377,9 +8352,6 @@ async function commitPendingPreparedLaunch(
     payload,
     validatedThreadSession,
   });
-  if (persisted.kind !== "pending") {
-    throw new Error("Pending launch persistence returned a queued result");
-  }
   await bindPreparedPiMemoryPhase2MaintenanceRun(tx, args, persisted.run.id);
   await activatePreparedLaunchUsageAllowance({
     tx,
@@ -8624,14 +8596,13 @@ function buildAtomicLaunchPayload(
 
 function createdRunResponse(
   run: RunRecord,
-  dispatchResult: { readonly status: RunStatus; readonly sandboxId?: string },
+  dispatchResult: { readonly status: RunStatus },
 ): Extract<CreateRunRouteResult, { readonly status: 201 }> {
   return {
     status: 201,
     body: {
       runId: run.id,
       status: dispatchResult.status,
-      sandboxId: dispatchResult.sandboxId,
       sessionId: run.sessionId,
       createdAt: run.createdAt.toISOString(),
     },
@@ -10124,7 +10095,6 @@ function committedAtomicLaunchResponse(args: {
   readonly transactionReturnedAt: number;
   readonly timing: ApiDispatchTimingCollector;
   readonly phaseTiming: ApiDispatchPhaseCollector;
-  readonly launch: PreparedRunnerLaunch;
 }): Extract<CreateRunRouteResult, { readonly status: 201 }> {
   if (args.committed.threadSessionBinding) {
     recordThreadSessionBindingTelemetry({
@@ -10303,7 +10273,6 @@ function finalizeAtomicLaunchCommit(
     transactionReturnedAt: args.committed.transactionReturnedAt,
     timing: args.input.timing,
     phaseTiming: args.input.phaseTiming,
-    launch: args.launch,
   });
 }
 
