@@ -2499,12 +2499,19 @@ async function readBriefPreference(actor: ApiTestUser) {
   );
 }
 
-async function prepareBriefMember(
+async function prepareBriefMember({
   actor = bdd.user(),
   createdAt = new Date("2030-01-01T00:00:00.000Z"),
-) {
+  catalogAvailable = true,
+}: {
+  readonly actor?: ApiTestUser;
+  readonly createdAt?: Date;
+  readonly catalogAvailable?: boolean;
+} = {}) {
   installCatalogStorageFixture();
-  await syncDeployedCatalog();
+  if (catalogAvailable) {
+    await syncDeployedCatalog();
+  }
   mockBriefMemberships([{ actor, createdAt }]);
   await setOfficialWorkflowsEnabled(actor, false);
   await setMorningBriefEnabled(actor, true);
@@ -2596,9 +2603,8 @@ describe.sequential("Morning Brief default onboarding", () => {
   });
 
   it("recovers a transient installation failure without repeating onboarding", async () => {
-    const { actor } = await prepareBriefMember();
+    const { actor } = await prepareBriefMember({ catalogAvailable: false });
     await connectBriefSource(actor);
-    await cleanupCatalog();
     await initializeBriefMember(actor, "Asia/Shanghai");
     await expect(listMorningBriefInstallations(actor)).resolves.toHaveLength(0);
     await syncDeployedCatalog();
@@ -2675,10 +2681,9 @@ describe.sequential("Morning Brief default onboarding", () => {
   });
 
   it("enrolls an invited member of an existing organization without enrolling its existing owner", async () => {
-    const owner = await prepareBriefMember(
-      undefined,
-      new Date("2020-01-01T00:00:00.000Z"),
-    );
+    const owner = await prepareBriefMember({
+      createdAt: new Date("2020-01-01T00:00:00.000Z"),
+    });
     const actor = bdd.user({ orgId: owner.actor.orgId, orgRole: "org:member" });
     const createdAt = new Date("2030-01-01T00:00:00.000Z");
     mockBriefMemberships([owner, { actor, createdAt }]);
@@ -2703,9 +2708,9 @@ describe.sequential("Morning Brief default onboarding", () => {
 
   it("isolates enrollment, sources, and cancellation for the same account in two organizations", async () => {
     const first = await prepareBriefMember();
-    const second = await prepareBriefMember(
-      bdd.user({ userId: first.actor.userId, email: first.actor.email }),
-    );
+    const second = await prepareBriefMember({
+      actor: bdd.user({ userId: first.actor.userId, email: first.actor.email }),
+    });
     mockBriefMemberships([first, second]);
     await initializeBriefMember(first.actor, "Asia/Shanghai");
     await initializeBriefMember(second.actor, "America/Los_Angeles");

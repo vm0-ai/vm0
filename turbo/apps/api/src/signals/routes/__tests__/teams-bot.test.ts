@@ -2447,29 +2447,31 @@ describe("POST /api/webhooks/teams/bot", () => {
     );
     outboundRequests.splice(0, outboundRequests.length);
 
-    const firstResponse = await postTeamsActivity({
-      activity: teamsPersonalThreadMessageActivity({
-        fixture,
-        id: firstActivityId,
-        threadId: firstThreadId,
-        text: "active run one",
+    const [firstResponse, secondResponse] = await Promise.all([
+      postTeamsActivity({
+        activity: teamsPersonalThreadMessageActivity({
+          fixture,
+          id: firstActivityId,
+          threadId: firstThreadId,
+          text: "active run one",
+        }),
+        token: teamsToken(),
       }),
-      token: teamsToken(),
-    });
+      postTeamsActivity({
+        activity: teamsPersonalThreadMessageActivity({
+          fixture,
+          id: secondActivityId,
+          threadId: secondThreadId,
+          text: "active run two",
+        }),
+        token: teamsToken(),
+      }),
+    ]);
     expect(firstResponse.status).toBe(200);
     const firstBody = await readTeamsBotResponseAndFlush(firstResponse);
     expect(firstBody).not.toHaveProperty("dispatch");
     const firstRunId = await runIdForPrompt(actor, "active run one");
 
-    const secondResponse = await postTeamsActivity({
-      activity: teamsPersonalThreadMessageActivity({
-        fixture,
-        id: secondActivityId,
-        threadId: secondThreadId,
-        text: "active run two",
-      }),
-      token: teamsToken(),
-    });
     expect(secondResponse.status).toBe(200);
     const secondBody = await readTeamsBotResponseAndFlush(secondResponse);
     expect(secondBody).not.toHaveProperty("dispatch");
