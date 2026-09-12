@@ -727,7 +727,7 @@ describe("CHAT-02 chat messages and visible validation", () => {
     const agent = await api.createAgentForChatThread(owner);
     const thread = await api.createThread(owner, {
       agentId: agent.agentId,
-      title: "Zero message boundary",
+      title: "Empty message boundary",
     });
 
     const ownerMessages = await api.listThreadEvents(owner, thread.id, {

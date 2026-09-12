@@ -204,7 +204,6 @@ raise "missing locked runner reconciliation and start" unless locked_start
 unless locked_start.dig("env", "AWS_METAL_RUNNER_HOSTS") ==
       "${{ secrets.AWS_METAL_RUNNER_HOSTS }}" &&
     locked_start.dig("env", "BIN_DIR") == "${{ needs.deploy-runner-prepare.outputs.bin-dir }}" &&
-    locked_start.dig("env", "CURRENT_EVENT") == "${{ github.event_name }}" &&
     locked_start.dig("env", "JOB_REF") == "${{ needs.prepare.outputs.runner-image-job-ref }}" &&
     locked_start.dig("env", "METAL_HOSTS") == "${{ secrets.AWS_METAL_RUNNER_HOSTS }}" &&
     locked_start.dig("env", "RUNNER_SHA_MAP") ==

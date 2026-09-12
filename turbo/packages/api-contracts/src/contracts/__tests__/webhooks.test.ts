@@ -848,3 +848,67 @@ describe("webhook telemetry contract", () => {
     expect(result.success).toBe(false);
   });
 });
+
+it("accepts existing Pi and Codex shapes used by bounded delivery", () => {
+  const notice = "[event content truncated for delivery]";
+  const imageNotice = "[image omitted for delivery]";
+  const events = [
+    {
+      type: "assistant",
+      sequenceNumber: 1,
+      message: {
+        content: [
+          {
+            type: "tool_use",
+            id: "pi-call",
+            name: "read",
+            input: { _delivery_notice: notice },
+          },
+        ],
+      },
+    },
+    {
+      type: "user",
+      sequenceNumber: 2,
+      message: {
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "pi-call",
+            is_error: true,
+            content: [
+              { type: "text", text: notice },
+              { type: "text", text: imageNotice },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      type: "item.completed",
+      sequenceNumber: 3,
+      thread_id: "thread",
+      turn_id: "turn",
+      item: {
+        type: "function_call_output",
+        id: "codex-call",
+        name: "read",
+        namespace: "tools",
+        output: [
+          { type: "input_text", text: notice },
+          { type: "input_text", text: imageNotice },
+        ],
+      },
+    },
+  ];
+  for (const transport of [undefined, { schemaVersion: 1, citations: [] }]) {
+    const payload = {
+      runId: "bounded-delivery",
+      events,
+      piMemoryCitationTransport: transport,
+    };
+    expect(webhookEventsContract.send.body.parse(payload)).toStrictEqual(
+      payload,
+    );
+  }
+});

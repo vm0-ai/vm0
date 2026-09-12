@@ -11,6 +11,7 @@ use tokio::sync::oneshot;
 use crate::operation_tracker::NormalOperationReadiness;
 use crate::tests::support::{
     MockGuest, host_from_stream, make_pair, normal_operation_readiness, pending_request_count,
+    setup_host_and_mock_guest,
 };
 
 fn entropy() -> [u8; 256] {
@@ -82,6 +83,50 @@ async fn guest_state_restore_sends_fixed_request_and_decodes_result() {
     );
     release_tx.send(()).unwrap();
     guest.await.unwrap();
+}
+
+#[tokio::test]
+async fn guest_state_restore_rejects_empty_named_timezones_without_sending_request() {
+    let (host, mut guest) = setup_host_and_mock_guest().await;
+    let entropy = entropy();
+    for timezone in [
+        GuestStateRestoreTimezone::BestEffort(""),
+        GuestStateRestoreTimezone::Required(""),
+    ] {
+        let error = host
+            .guest_state_restore(1, 0, &entropy, timezone, 1, Duration::from_secs(1))
+            .await
+            .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidInput);
+    }
+
+    let (result, ()) = tokio::join!(
+        host.guest_state_restore(
+            1,
+            0,
+            &entropy,
+            GuestStateRestoreTimezone::Required("UTC"),
+            1,
+            Duration::from_secs(1),
+        ),
+        async {
+            let request = guest.expect_message(MSG_GUEST_STATE_RESTORE).await;
+            let decoded =
+                guest_control_proto::decode_guest_state_restore_request(&request.payload).unwrap();
+            assert_eq!(decoded.timezone, GuestStateRestoreTimezone::Required("UTC"));
+            guest
+                .send_response(
+                    MSG_GUEST_STATE_RESTORE_RESULT,
+                    request.seq,
+                    &success_payload(),
+                )
+                .await;
+        },
+    );
+    assert_eq!(
+        result.unwrap().termination,
+        ExecTermination::Exited { exit_code: 0 }
+    );
 }
 
 #[tokio::test]

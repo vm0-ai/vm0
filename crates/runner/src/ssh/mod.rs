@@ -19,19 +19,18 @@ use std::{
     time::Duration,
 };
 use tokio::{
-    sync::Semaphore,
+    sync::{OwnedSemaphorePermit, Semaphore},
     task::{JoinHandle, JoinSet},
     time::Instant,
 };
 use tokio_util::sync::CancellationToken;
 
 use crate::{http::HttpClient, ids::RunId, runner_process_identity::RunnerProcessIdentity};
-use authority::{Authority, PreparedCredential, Trust};
-use io::{GuestIo, Lease};
+use authority::{Authority, CredentialAuth, PreparedAuth, PreparedCredential, Trust};
+use io::GuestIo;
 use network::{Network, PublicNetwork};
 
-const SANDBOX_CAPACITY: usize = 2;
-const RUNNER_CAPACITY: usize = 16;
+const RUN_REQUEST_CAPACITY: usize = 8;
 const TERMINAL_RESERVE: Duration = Duration::from_secs(1);
 
 /// Only allow-listed business codes cross the guest/log boundary.
@@ -74,7 +73,6 @@ struct ExecRequest {
 pub(crate) struct SshRuntime {
     authority: Arc<Authority>,
     network: Arc<dyn Network>,
-    permits: Arc<Semaphore>,
     cpu: Arc<Semaphore>,
     reports: Arc<Semaphore>,
     cache: cache::Cache,
@@ -130,7 +128,6 @@ impl SshRuntime {
         Ok(Some(Arc::new(Self {
             authority: Arc::new(authority),
             network: Arc::new(PublicNetwork),
-            permits: Arc::new(Semaphore::new(RUNNER_CAPACITY)),
             cpu: Arc::new(Semaphore::new(2)),
             reports: Arc::new(Semaphore::new(4)),
             cache: cache::Cache::new(),
@@ -179,7 +176,7 @@ impl SshRuntime {
         cancel: CancellationToken,
         registration: Arc<cache::Registration>,
     ) {
-        let permits = Arc::new(Semaphore::new(SANDBOX_CAPACITY));
+        let permits = Arc::new(Semaphore::new(RUN_REQUEST_CAPACITY));
         let mut tasks = JoinSet::new();
         loop {
             let accepted = tokio::select! {
@@ -194,10 +191,7 @@ impl SshRuntime {
             if accepted.sandbox_id != sandbox {
                 continue;
             }
-            let (Ok(local), Ok(global)) = (
-                Arc::clone(&permits).try_acquire_owned(),
-                Arc::clone(&self.permits).try_acquire_owned(),
-            ) else {
+            let Ok(permit) = Arc::clone(&permits).try_acquire_owned() else {
                 tracing::info!(run_id = %run, sandbox_id = %sandbox, outcome = "resource_exhausted", "SSH admission rejected");
                 reject(accepted, ErrorCode::ResourceExhausted, &cancel).await;
                 continue;
@@ -208,10 +202,12 @@ impl SshRuntime {
                 sandbox_cancelled: accepted.cancelled,
                 deadline: Instant::now() + Duration::from_secs(60),
             };
-            let lease = Arc::new(Lease::new(accepted.stream, local, global));
+            let lease = Arc::new(permit);
             let registration = Arc::clone(&registration);
             tasks.spawn(async move {
-                runtime.dispatch(lease, run, scope, registration).await;
+                runtime
+                    .dispatch(accepted.stream, lease, run, scope, registration)
+                    .await;
             });
         }
         cancel.cancel();
@@ -221,14 +217,14 @@ impl SshRuntime {
 
     async fn dispatch(
         self: Arc<Self>,
-        lease: Arc<Lease>,
+        mut input: GuestIo,
+        lease: Arc<OwnedSemaphorePermit>,
         run: RunId,
         mut scope: Scope,
         registration: Arc<cache::Registration>,
     ) {
         let _cancel_on_drop = scope.cancelled.clone().drop_guard();
         let started = Instant::now();
-        let mut input = GuestIo(Arc::clone(&lease));
         let request = scope.wait(runner_rpc_proto::read_request(&mut input)).await;
         let mut writer = ResponseWriter::new(input);
         let request = match request {
@@ -312,7 +308,7 @@ impl SshRuntime {
 
     async fn execute(
         &self,
-        lease: Arc<Lease>,
+        lease: Arc<OwnedSemaphorePermit>,
         request: ExecRequest,
         scope: &Scope,
         writer: &mut ResponseWriter<GuestIo>,
@@ -382,7 +378,7 @@ impl SshRuntime {
 
     async fn prepare(
         &self,
-        lease: Arc<Lease>,
+        lease: Arc<OwnedSemaphorePermit>,
         run: RunId,
         connection: uuid::Uuid,
         scope: &Scope,
@@ -391,8 +387,29 @@ impl SshRuntime {
         let credential = scope
             .wait(self.authority.resolve(run, connection))
             .await??;
-        let cpu = Arc::clone(&self.cpu)
-            .try_acquire_owned()
+        let (private_key, passphrase) = match credential.auth {
+            CredentialAuth::PrivateKey {
+                private_key,
+                passphrase,
+            } => (private_key, passphrase),
+            CredentialAuth::Password(password) => {
+                scope.check()?;
+                observation.generation = Some(credential.generation);
+                return Ok(PreparedCredential {
+                    host: credential.host,
+                    port: credential.port,
+                    username: credential.username,
+                    trust: Mutex::new(Trust {
+                        generation: credential.generation,
+                        pin: credential.pin,
+                    }),
+                    auth: PreparedAuth::Password(password),
+                });
+            }
+        };
+        let cpu = scope
+            .wait(Arc::clone(&self.cpu).acquire_owned())
+            .await?
             .map_err(|_| FailureReason::ResourceExhausted)?;
         let worker_scope = scope.clone();
         let generation = credential.generation;
@@ -402,8 +419,8 @@ impl SshRuntime {
             let _lease = worker_lease;
             worker_scope.check()?;
             let key = keys::decode(
-                credential.private_key.expose(),
-                credential.passphrase.as_ref().map(|value| value.expose()),
+                private_key.expose(),
+                passphrase.as_ref().map(|value| value.expose()),
             )?;
             worker_scope.check()?;
             Ok::<_, FailureReason>(PreparedCredential {
@@ -414,7 +431,7 @@ impl SshRuntime {
                     generation: credential.generation,
                     pin: credential.pin,
                 }),
-                key,
+                auth: PreparedAuth::PrivateKey(key),
             })
         });
         let result = scope
@@ -427,7 +444,7 @@ impl SshRuntime {
 
     async fn execute_prepared(
         &self,
-        lease: Arc<Lease>,
+        lease: Arc<OwnedSemaphorePermit>,
         request: ExecRequest,
         credential: Arc<PreparedCredential>,
         scope: &Scope,
@@ -440,7 +457,8 @@ impl SshRuntime {
             command,
         } = request;
         // System DNS can own blocking resolver work after its waiter is dropped.
-        // This task retains the real stream/permits until resolution completes.
+        // Retain host capacity until resolution completes, independently of
+        // the guest stream and its park reservation.
         let network = Arc::clone(&self.network);
         let host = credential.host.clone();
         let port = credential.port;

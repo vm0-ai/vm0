@@ -282,13 +282,32 @@ function shouldSuppressFailureLog(
   return shouldSuppressKnownFailureLog(run, knownFailureReason.data);
 }
 
+/**
+ * A capacity rejection on a built-in route fails the user's run against a
+ * credential the platform owns, so it stays a genuine operator-actionable
+ * failure rather than a caller-side condition. The reason token is
+ * framework-independent, so a built-in Claude overload that reaches this same
+ * boundary is included. Routing recovery is a separate decision; this only
+ * classifies the severity of the single terminal record.
+ */
+function isBuiltInCapacityFailure(commit: CompletionCommit): boolean {
+  return (
+    commit.transitionFailureReason === "provider_overloaded" &&
+    isBuiltInModelProviderType(commit.run.modelProvider)
+  );
+}
+
 function logRunFailure(
   input: CompleteAgentRunInput,
   commit: CompletionCommit,
 ): void {
   const isCreditError =
     commit.transitionFailureReason === "insufficient_credits";
-  const logFailure = isCreditError ? L.debug : L.warn;
+  const logFailure = isCreditError
+    ? L.debug
+    : isBuiltInCapacityFailure(commit)
+      ? L.error
+      : L.warn;
   logFailure(
     isCreditError ? "Run stopped: insufficient credits" : "Run failed",
     {

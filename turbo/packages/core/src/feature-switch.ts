@@ -45,15 +45,11 @@ export interface FeatureSwitchContext {
  * Registry of all feature switches
  */
 const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
-  [FeatureSwitchKey.PrivacyChoices]: {
-    maintainer: "yuma@okou.ai",
-    description: "Canonical anonymous and personal privacy preference APIs",
-    enabled: true,
-  },
   [FeatureSwitchKey.WelcomeThread]: {
     maintainer: "lancy@okou.ai",
     description: "Manually create a welcome conversation with fixed examples",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ThreadActivitySummary]: {
     maintainer: "lancy@okou.ai",
@@ -114,7 +110,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.CalComConnector]: {
     maintainer: "yuma@okou.ai",
     description: "Enable the Cal.com scheduling connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.CopperConnector]: {
     maintainer: "yuma@okou.ai",
@@ -259,8 +255,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@okou.ai",
     description:
       "Enable Morning Brief and email subscription management in Preferences.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@okou.ai",
@@ -373,6 +368,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.VoiceGoogleCloud]: {
+    maintainer: "liangyou@okou.ai",
+    description:
+      "Route Gemini voice transcription and polishing through Google Cloud instead of OpenRouter.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@okou.ai",
     description:
@@ -383,13 +385,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@okou.ai",
     description:
       "Enable Okou Desktop Computer Use plugins for local resources, starting with the bundled filesystem plugin gateway.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ChatErrorRecovery]: {
-    maintainer: "ethan@okou.ai",
-    description:
-      "Replace supported Codex and Claude Code limit errors with recovery actions in chat.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -439,20 +434,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Let an attached image be marked up in the composer lightbox — boxes, arrows, freehand, text, highlight and redaction, each able to carry a note — and send a rendered copy carrying the editable marks.",
     enabled: false,
-  },
-  [FeatureSwitchKey.ResponsiveFollowupCards]: {
-    maintainer: "ethan@okou.ai",
-    description:
-      "Render recommended follow-ups as a horizontally scrollable rail of tappable quick replies on touch devices.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.StableChatThreadNavigation]: {
-    maintainer: "ethan@okou.ai",
-    description:
-      "Keep pinned chats in a stable, manually adjustable order, show current chats in empty search, and use numbered shortcuts inside the search dialog.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.GradientColorThemes]: {
     maintainer: "ming@okou.ai",
@@ -504,7 +485,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ConnectorDirectory]: {
     maintainer: "tongx@okou.ai",
     description:
-      "Shelf-based connector browsing in the chat composer and on the connectors page: connected connectors separated from discovery, category shelves and chips, per-connector detail, and keyboard navigation.",
+      "Shelf-based connector browsing in the chat composer and on the connectors page: a Discover/Your connectors scope segment with one filter each (category and agent), category shelves and chips, per-connector detail, and keyboard navigation.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -512,6 +493,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@okou.ai",
     description:
       "Pin chats from the desktop title and keep Pin, Share, and More visible in the mobile thread header.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ComposerSlashTemplatePanel]: {
+    maintainer: "tongx@okou.ai",
+    description:
+      "Replace the composer's flat slash menu with a two-pane panel that previews each template type's covers.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

@@ -145,7 +145,7 @@ test("Honor Custom deep links, scoped search, and returning to All", async () =>
     screen.findByText("No custom connectors match your search."),
   ).resolves.toBeVisible();
   expect(getConnectorAction("button", "New custom connector")).toBeVisible();
-  click(getConnectorAction("button", "Connectors"));
+  click(getConnectorAction("button", "Discover"));
   await expect(
     screen.findByText('No connectors matching "missing"'),
   ).resolves.toBeVisible();

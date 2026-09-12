@@ -24,9 +24,11 @@
 //!
 //! Entries above [`CACHE_MAX_SIZE`], entries without a content key, and
 //! reuse/repair actions pass through untouched.
-//! If the probe says an entry is cache-eligible but the full response exceeds
-//! [`CACHE_MAX_SIZE`], the cache fails closed instead of handing the same
-//! inconsistent URL to the guest.
+//! For a post-spawn background fill, if the probe says an entry is cache-eligible
+//! but the full response exceeds [`CACHE_MAX_SIZE`], the cache rejects publication
+//! and reports a background-fill failure. The original URL has already been handed
+//! to the guest; this failure does not revoke it or retroactively fail storage
+//! application.
 //!
 //! Runtime contract: `file://` URLs produced here point to guest-local archives
 //! staged under [`GUEST_STAGE_DIR`]. `guest-storage-apply` supports that scheme and

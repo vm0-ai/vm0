@@ -502,6 +502,8 @@ def load_registry_state(registry_path: str) -> RegistryState:
     successful snapshot while valid entries remain in ``sandboxes`` and stay
     available for enforcement. They do not make the whole registry unavailable;
     requests for an invalid entry are blocked as ``invalid_registry_sandbox``.
+    A catalog dependency also owns its reuse eligibility: retryable catalog
+    failures rebuild the registry even when neither file identity has changed.
 
     ``stat_failed`` covers failures before a file identity is available, and
     later calls retry opening the path while the stat warning guard suppresses
@@ -535,8 +537,9 @@ def load_registry_state(registry_path: str) -> RegistryState:
         loaded_catalog_snapshot = state.snapshot.builtin_firewall_catalog_snapshot
         if key == state.snapshot.loaded_key and (
             loaded_catalog_snapshot is None
-            or registry_firewalls.catalog_file_key(builtin_catalog_cache_path)
-            == loaded_catalog_snapshot.dependency_file_key
+            or loaded_catalog_snapshot.can_reuse(
+                registry_firewalls.catalog_file_key(builtin_catalog_cache_path)
+            )
         ):
             state.unavailable = None
             state.stat_error_logged = False
@@ -582,7 +585,9 @@ def load_registry_state(registry_path: str) -> RegistryState:
         raw_registry,
         builtin_firewall_catalog_cache_path=builtin_catalog_cache_path,
     )
-    if invalid_sandboxes:
+    if invalid_sandboxes and (
+        key != state.snapshot.loaded_key or invalid_sandboxes != state.snapshot.invalid_sandboxes
+    ):
         addon_process_logging.emit_addon_process_event(
             "warn",
             f"Rejected {len(invalid_sandboxes)} invalid proxy registry sandbox entries",

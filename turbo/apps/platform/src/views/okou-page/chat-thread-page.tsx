@@ -2125,9 +2125,9 @@ function HeaderWorkflowAutomationCard({
             ) : null}
             <Button
               type="button"
-              variant="outline"
+              variant="neutral"
               size="sm"
-              className="okou-btn-morandi h-8 shrink-0 gap-1.5 rounded-lg px-3 text-xs font-medium"
+              className="h-8 shrink-0 gap-1.5 rounded-lg px-3 text-xs font-medium"
               disabled={running}
               onClick={() => {
                 detach(
@@ -3959,13 +3959,10 @@ function RecommendedFollowupList({
   source: RecommendedFollowupSource;
 }) {
   const { t } = useTranslation();
-  const responsiveFollowupCards =
-    useGet(featureSwitch$)[FeatureSwitchKey.ResponsiveFollowupCards] ?? false;
   // Quick replies only on actual mobile/touch text-entry devices, mirroring the
   // composer auto-focus heuristic. A desktop window dragged narrow must still
   // render the flat list, so container width is not the deciding factor.
-  const showFollowupCards =
-    responsiveFollowupCards && isMobileTextInputDevice();
+  const showFollowupCards = isMobileTextInputDevice();
   const selectOrAppendComposerText = useSet(
     thread.composer.editor.selectOrAppendText$,
   );
@@ -4137,9 +4134,16 @@ function ChatThreadComposer({ thread }: { thread: ChatPanelSignals }) {
       }}
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-[21px] bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
+      {/* `overflow-y-auto` clips at this element's padding box. The composer's
+          focus veil is offset down and blurred well past the gap the footer
+          leaves, so it is still painting at that boundary and gets sliced off in
+          a hard line across the card's full width. Pad out far enough for
+          `--okou-composer-focus-veil` to finish and take the same amount back
+          with a negative margin, so the veil fades out instead of ending in a
+          seam while the footer keeps its height. */}
       <div
         className={cn(
-          "overflow-y-auto [scrollbar-gutter:stable] pb-2 pl-4 pr-4 pt-3 sm:pl-6 sm:pr-6",
+          "-mb-8 overflow-y-auto [scrollbar-gutter:stable] pb-10 pl-4 pr-4 pt-3 sm:pl-6 sm:pr-6",
           standalonePwa && "overscroll-contain",
         )}
       >
@@ -5054,8 +5058,7 @@ function AssistantRecoveryActions({
         <Button
           type="button"
           size="sm"
-          variant="outline"
-          className="okou-btn-morandi"
+          variant="neutral"
           disabled={retrying || resetting}
           onClick={() => {
             detach(resetAndRetry(pageSignal), Reason.DomCallback);
@@ -5085,10 +5088,9 @@ function AssistantRecoveryActions({
         <Button
           type="button"
           size="sm"
-          variant="outline"
           // Filled neutral leads; the plain outline reads as the secondary
           // action when reset is also offered.
-          className={hasResetAction ? undefined : "okou-btn-morandi"}
+          variant={hasResetAction ? "outline" : "neutral"}
           disabled={retrying || resetting}
           onClick={() => {
             detach(retry(pageSignal), Reason.DomCallback);
@@ -5105,6 +5107,40 @@ function AssistantRecoveryActions({
               })}
         </Button>
       )}
+    </div>
+  );
+}
+
+function AssistantErrorCard({
+  icon: Icon,
+  title,
+  description,
+  actions,
+  testId,
+}: {
+  icon: LucideIcon;
+  title: string;
+  description: ReactNode;
+  actions?: ReactNode;
+  testId?: string;
+}) {
+  return (
+    <div
+      role="status"
+      data-testid={testId}
+      className="okou-chat-card grid min-h-[88px] w-full grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 gap-y-3 px-3.5 py-3 text-foreground @[640px]:grid-cols-[auto_minmax(0,1fr)_auto] @[640px]:content-center"
+    >
+      <Icon
+        size={16}
+        className="col-start-1 row-start-1 mt-1 shrink-0 self-start text-brand-text"
+      />
+      <div className="col-start-2 row-start-1 min-w-0">
+        <div className="text-[0.9375rem] font-medium leading-6">{title}</div>
+        <div className="mt-0.5 text-sm leading-5 text-muted-foreground">
+          {description}
+        </div>
+      </div>
+      {actions}
     </div>
   );
 }
@@ -5167,32 +5203,17 @@ function AssistantErrorRecoveryCard({
             });
 
   return (
-    <div
-      role="status"
-      data-testid="assistant-error-recovery"
-      className="okou-chat-card grid min-h-[88px] w-full grid-cols-[auto_minmax(0,1fr)] items-start gap-x-2.5 gap-y-3 px-3.5 py-3 text-foreground @[640px]:grid-cols-[auto_minmax(0,1fr)_auto] @[640px]:content-center"
-    >
-      {recovery.kind === "usage-limit" ||
-      recovery.kind === "execution-timeout" ? (
-        <Clock
-          size={16}
-          className="col-start-1 row-start-1 mt-1 shrink-0 self-start text-brand-text"
-        />
-      ) : (
-        <Coffee
-          size={16}
-          className="col-start-1 row-start-1 mt-1 shrink-0 self-start text-brand-text"
-        />
-      )}
-      <div className="col-start-2 row-start-1 min-w-0">
-        <div className="text-[0.9375rem] font-medium leading-6">{title}</div>
-        <p className="mt-0.5 text-sm leading-5 text-muted-foreground">
-          {description}
-          {resetText ? ` ${resetText}` : null}
-        </p>
-      </div>
-      <AssistantRecoveryActions recovery={recovery} thread={thread} />
-    </div>
+    <AssistantErrorCard
+      icon={
+        recovery.kind === "usage-limit" || recovery.kind === "execution-timeout"
+          ? Clock
+          : Coffee
+      }
+      title={title}
+      description={`${description}${resetText ? ` ${resetText}` : ""}`}
+      actions={<AssistantRecoveryActions recovery={recovery} thread={thread} />}
+      testId="assistant-error-recovery"
+    />
   );
 }
 
@@ -5329,13 +5350,19 @@ function AssistantErrorFallback({ error }: { error: string }) {
   }
 
   return (
-    <div className="flex items-start gap-0 text-destructive">
-      <AssistantErrorLeadingIcon />
-      <Markdown
-        source={error}
-        style={{ fontSize: "inherit", lineHeight: "inherit" }}
-      />
-    </div>
+    <AssistantErrorCard
+      icon={AlertCircle}
+      title={t(($) => {
+        return $.chat.errors.genericTitle;
+      })}
+      description={
+        <Markdown
+          className="!text-muted-foreground"
+          source={error}
+          style={{ fontSize: "inherit", lineHeight: "inherit" }}
+        />
+      }
+    />
   );
 }
 
@@ -5627,7 +5654,7 @@ interface ResolvedMessageAttachment {
   readonly signals: ArtifactSignals;
 }
 
-type OpenMessageImagePreview = (url: string, filename?: string) => void;
+type OpenMessageImagePreview = (attachment: ResolvedMessageAttachment) => void;
 
 function userMessageRenderAttachments(
   document: UserMessageRenderDocument | undefined,
@@ -5712,10 +5739,11 @@ function MessageAttachment({
         imageClassName="block h-full w-full object-contain"
         linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
         onPreview={() => {
-          onImageClick(a.url, a.filename);
+          onImageClick(a);
         }}
         placeholderClassName="h-full w-full"
         resourceUrl$={a.signals.resourceUrl$}
+        thumbnailUrl$={a.signals.thumbnailUrl$}
         url={a.url}
       />
     );
@@ -6764,14 +6792,6 @@ function inputPromptRunAnchor(inputEvent: ChatInputEvent | undefined) {
     : undefined;
 }
 
-function messageImageLightboxTarget(
-  threadId: string,
-  url: string,
-  filename: string | undefined,
-) {
-  return { threadId, url, ...(filename ? { filename } : {}) };
-}
-
 function PagedUserMessage({
   event,
   thread,
@@ -6789,10 +6809,13 @@ function PagedUserMessage({
     });
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
-  const openLightbox: OpenMessageImagePreview = (url, filename) => {
-    openImageLightbox(
-      messageImageLightboxTarget(thread.threadId, url, filename),
-    );
+  const openLightbox: OpenMessageImagePreview = (attachment) => {
+    openImageLightbox({
+      threadId: thread.threadId,
+      url: attachment.url,
+      filename: attachment.filename,
+      preview: attachment.signals,
+    });
   };
   const copiedId = useGet(thread.copiedEventId$);
   const copied = copiedId === event.id;
@@ -7227,8 +7250,11 @@ function PagedAssistantEventItem({
   const error = chatEventDisplayError(event);
   if (error) {
     return (
-      <ChatAssistantMessageBody
-        className={cn(workHistory && CHAT_THREAD_WORK_HISTORY_TEXT_CLASS)}
+      <div
+        className={cn(
+          "min-w-0 text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere]",
+          workHistory && CHAT_THREAD_WORK_HISTORY_TEXT_CLASS,
+        )}
         data-chat-scroll-anchor-event-id={event.id}
         data-chat-run-id={event.runId}
       >
@@ -7237,7 +7263,7 @@ function PagedAssistantEventItem({
           eventId={event.id}
           thread={thread}
         />
-      </ChatAssistantMessageBody>
+      </div>
     );
   }
 

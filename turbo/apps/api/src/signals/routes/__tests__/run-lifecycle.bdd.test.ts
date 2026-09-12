@@ -4,6 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { CLIENT_VERSION_HEADER } from "@okouai/api-contracts/contracts/client-headers";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+  getBuiltInApiModel,
   getModelProviderFirewall,
   getProviderRuntimeModel,
   getBuiltInConcreteProviderType,
@@ -510,23 +511,8 @@ const API_DISPATCH_CUSTOM_CONNECTOR_SUBSTEP_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_custom_connector_value_rows",
   "api_dispatch_prepare_context_build_custom_connector_firewalls",
 ] as const;
-const API_DISPATCH_CUSTOM_CONNECTOR_BUILD_PHASE_ACTION_TYPES = [
-  "api_dispatch_prepare_context_render_custom_connector_auth_templates",
-  "api_dispatch_prepare_context_render_custom_connector_prefixes",
-  "api_dispatch_prepare_context_assemble_custom_connector_firewalls",
-] as const;
 const API_DISPATCH_CUSTOM_CONNECTOR_TIMING_ACTION_TYPES = [
   ...API_DISPATCH_CUSTOM_CONNECTOR_SUBSTEP_ACTION_TYPES,
-  ...API_DISPATCH_CUSTOM_CONNECTOR_BUILD_PHASE_ACTION_TYPES,
-] as const;
-const CUSTOM_CONNECTOR_RUNTIME_BUCKET_DIMENSION_KEYS = [
-  "custom_connector_runtime_connector_count_bucket",
-  "custom_connector_runtime_configured_value_count_bucket",
-  "custom_connector_runtime_prefix_template_count_bucket",
-  "custom_connector_runtime_rendered_api_count_bucket",
-  "custom_connector_runtime_missing_required_count_bucket",
-  "custom_connector_runtime_no_auth_injection_count_bucket",
-  "custom_connector_runtime_invalid_prefix_count_bucket",
 ] as const;
 const API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_builtin_permission_indexes",
@@ -1216,22 +1202,6 @@ function expectClaimNetworkPolicyRefreshPath(
       policy_refresh_path: path,
     }),
   );
-}
-
-function expectCustomConnectorRuntimePhaseTimingEvents(
-  events: readonly Record<string, unknown>[],
-): void {
-  expectApiDispatchSpanKind(
-    events,
-    API_DISPATCH_CUSTOM_CONNECTOR_BUILD_PHASE_ACTION_TYPES,
-    "nested",
-  );
-  for (const actionType of API_DISPATCH_CUSTOM_CONNECTOR_BUILD_PHASE_ACTION_TYPES) {
-    const event = singleApiDispatchEvent(events, actionType);
-    for (const key of CUSTOM_CONNECTOR_RUNTIME_BUCKET_DIMENSION_KEYS) {
-      expect(typeof event[key]).toBe("string");
-    }
-  }
 }
 
 function expectApiDispatchTimingEventsNotToLeak(
@@ -2926,7 +2896,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     });
     await api.requestCancelRun(actor, rotatedRun.runId, [200]);
 
-    const capabilityIdentityEnvName = "CALCOM_OAUTH_CLIENT_ID";
+    const capabilityIdentityEnvName = "CAL_COM_OAUTH_CLIENT_ID";
     const capabilityIdentityEnvValue = "api-test-calcom-oauth-client-id";
     mockOptionalEnv(capabilityIdentityEnvName, undefined);
     await installApiTestConnectorCatalog({
@@ -3017,15 +2987,16 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, filteredRun.runId, [200]);
   });
 
-  it("loads, deduplicates, and reuses an exact scoped runtime projection", async () => {
+  async function exactRuntimeProjection() {
     const api = createRunsApi(context);
     const fw = createFirewallApi(context);
     mockEnv(
       "R2_USER_STORAGES_BUCKET_NAME",
       `test-run-lifecycle-runtime-projection-${randomUUID()}`,
     );
+    const catalogVersion = `api-test-runtime-projection-${randomUUID()}`;
     await installApiTestConnectorCatalog({
-      catalogVersion: `api-test-runtime-projection-${randomUUID()}`,
+      catalogVersion,
       runtimeProjection: true,
     });
     await corruptApiTestConnectorCatalogRuntimeProjectionDigest("slack");
@@ -3049,6 +3020,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       });
     };
 
+    return { api, actor, runnerGroup, catalogVersion, createProjectedRun };
+  }
+
+  it("deduplicates concurrent scoped runtime projection loads and reuses the warm result", async () => {
+    const { api, actor, runnerGroup, createProjectedRun } =
+      await exactRuntimeProjection();
     const concurrentRuns = await Promise.all(
       Array.from({ length: 2 }, async (_, index) => {
         return await createProjectedRun(
@@ -3185,6 +3162,14 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     );
     await api.requestCancelRun(actor, repeatedRun.runId, [200]);
+  });
+
+  it("invalidates scoped runtime projection history when the catalog version changes", async () => {
+    const { api, actor, createProjectedRun } = await exactRuntimeProjection();
+    const initialRun = await createProjectedRun(
+      "warm the previous catalog identity",
+    );
+    await api.requestCancelRun(actor, initialRun.runId, [200]);
 
     const rotatedVersion = `api-test-projection-observation-${randomUUID()}`;
     await installApiTestConnectorCatalog({
@@ -3222,10 +3207,19 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       }),
     );
     await api.requestCancelRun(actor, resetRun.runId, [200]);
+  });
 
-    mockOptionalEnv("CALCOM_OAUTH_CLIENT_ID", undefined);
+  it("invalidates a scoped runtime projection when capabilities change at the same catalog version", async () => {
+    const { api, actor, catalogVersion, createProjectedRun } =
+      await exactRuntimeProjection();
+    const initialRun = await createProjectedRun(
+      "warm the previous capability identity",
+    );
+    await api.requestCancelRun(actor, initialRun.runId, [200]);
+
+    mockOptionalEnv("CAL_COM_OAUTH_CLIENT_ID", undefined);
     await installApiTestConnectorCatalog({
-      catalogVersion: rotatedVersion,
+      catalogVersion,
       runtimeProjection: true,
     });
     const capabilityRun = await createProjectedRun(
@@ -8398,7 +8392,7 @@ describe("RUN-02: model provider selection and built-in admission", () => {
       orgId,
       status: "active",
       supportByok: true,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
     const completed = await bdd.completeOnboarding(actor);
     expect(completed.status).toBe(200);
@@ -8406,7 +8400,7 @@ describe("RUN-02: model provider selection and built-in admission", () => {
       orgId,
       status: "active",
       supportByok: true,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
     await api.ensureOrgModelProvider(actor);
     const agent = await bdd.createAgent(actor, {
@@ -8424,7 +8418,7 @@ describe("RUN-02: model provider selection and built-in admission", () => {
       orgId,
       status: "active",
       supportByok: true,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
 
     const run = await api.createRun(actor, {
@@ -8446,7 +8440,7 @@ describe("RUN-02: model provider selection and built-in admission", () => {
       orgId,
       status: "suspended",
       supportByok: true,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
 
     const byokPrompt = `staff suspended BYOK ${randomUUID()}`;
@@ -8490,7 +8484,7 @@ describe("RUN-02: model provider selection and built-in admission", () => {
     expect(queue.body.concurrency.active).toBe(0);
   });
 
-  it("defaults limited-free runs to DeepSeek V4 Pro and rejects paid models", async () => {
+  it("defaults limited-free runs to DeepSeek V4.1 Flash and rejects paid models", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
@@ -8541,7 +8535,20 @@ describe("RUN-02: model provider selection and built-in admission", () => {
       await api.heartbeatRunner(runnerGroup);
       const claim = await api.claimRunnerJob(sent.body.runId);
       expect(claim.cliAgentType).toBe("codex");
-      expect(claim.environment).toMatchObject({ OPENAI_MODEL: model });
+      expect(claim.environment).toMatchObject({
+        OPENAI_MODEL: getBuiltInApiModel(model),
+      });
+      if (model === "deepseek-v4.1-flash") {
+        expect(claim.codexRuntimeConfig?.providerId).toBe("openrouter-codex");
+        expect(claim.codexRuntimeConfig?.modelCatalog?.models).toStrictEqual([
+          expect.objectContaining({
+            slug: "deepseek/deepseek-v4.1-flash",
+            context_window: 1_048_576,
+            input_modalities: ["text", "image"],
+            apply_patch_tool_type: null,
+          }),
+        ]);
+      }
       expect(claim.modelUsageProvider).toBe(model);
       await api.requestCancelRun(actor, sent.body.runId, [200]);
     }
@@ -8827,6 +8834,68 @@ describe("RUN-02: model provider selection and built-in admission", () => {
       await api.requestCancelRun(actor, sent.body.runId, [200]);
     },
   );
+
+  it("projects DeepSeek V4.1 Flash metadata for an OpenRouter workspace key", async () => {
+    const api = createRunsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const { providerId } = await api.createOrgModelProvider(actor, {
+      type: "openrouter-codex",
+      secret: "openrouter-deepseek-v4-1-flash-key",
+    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "deepseek-v4.1-flash",
+        isDefault: true,
+        defaultProviderType: "openrouter-codex",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+
+    const sent = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        prompt: "use DeepSeek V4.1 Flash through OpenRouter",
+        model: "deepseek-v4.1-flash",
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected DeepSeek V4.1 Flash to create a run");
+    }
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(sent.body.runId);
+
+    expect(claim.cliAgentType).toBe("codex");
+    expect(claim.environment).toMatchObject({
+      OPENAI_API_KEY: modelProviderPlaceholder(
+        "openrouter-codex",
+        "OPENROUTER_API_KEY",
+      ),
+      OPENAI_BASE_URL: "https://openrouter.ai/api/v1",
+      OPENAI_MODEL: "deepseek/deepseek-v4.1-flash",
+    });
+    expect(claim.codexRuntimeConfig).toMatchObject({
+      providerId: "openrouter-codex",
+      baseUrl: "https://openrouter.ai/api/v1",
+      wireApi: "responses",
+      modelCatalog: {
+        models: [
+          expect.objectContaining({
+            slug: "deepseek/deepseek-v4.1-flash",
+            context_window: 1_048_576,
+            input_modalities: ["text", "image"],
+            apply_patch_tool_type: null,
+          }),
+        ],
+      },
+    });
+    expect(claim.modelUsageProvider).toBe("deepseek-v4.1-flash");
+
+    await api.requestCancelRun(actor, sent.body.runId, [200]);
+  });
 
   it("offers image recognition only for image-unsupported models", async () => {
     const api = createRunsApi(context);
@@ -9679,7 +9748,6 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       expect.objectContaining({
         connector_scope_source: "explicit",
         stored_connector_count_bucket: "1",
-        stored_connector_secret_count_bucket: "0",
       }),
     );
     expect(buildStoredConnectorStateEvent).not.toHaveProperty(
@@ -11418,7 +11486,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       timingEvents,
       API_DISPATCH_CUSTOM_CONNECTOR_TIMING_ACTION_TYPES,
     );
-    expectCustomConnectorRuntimePhaseTimingEvents(timingEvents);
     expectApiDispatchActions(
       timingEvents,
       API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES,
@@ -13710,7 +13777,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       timingEvents,
       API_DISPATCH_CUSTOM_CONNECTOR_TIMING_ACTION_TYPES,
     );
-    expectCustomConnectorRuntimePhaseTimingEvents(timingEvents);
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [
       saved.connector.id,
       rand,
@@ -15655,7 +15721,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     );
     const direct = await api.createDirectRun(actor, {
       agentId: directAgent.agentId,
-      prompt: "consume an application-owned Zero context",
+      prompt: "consume an application-owned Nova context",
       modelProviderType: "anthropic-api-key",
       vars: { CUSTOM_AGENT_ID: directAgent.agentId },
       secrets: { CUSTOM_API_TOKEN: directOkouToken },
@@ -19674,6 +19740,165 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       },
     );
 
+    // The predicate reads only the terminal reason and the stored provider, so
+    // every built-in route reaches this record with the same two inputs no
+    // matter which framework produced the reason token.
+    it("reports capacity exhaustion on a built-in run as an error", async () => {
+      const control = await completeFailure({
+        modelProvider: "built-in",
+        failureReason: "provider_overloaded",
+      });
+      const errors = matchingLogCalls(
+        context.mocks.axiomLogging.error,
+        "Run failed",
+        control.runId,
+      );
+      expect(errors).toHaveLength(1);
+      expect(errors[0]?.[1]).toStrictEqual(
+        expect.objectContaining({
+          runId: control.runId,
+          exitCode: 1,
+          error: control.error,
+          failureReason: "provider_overloaded",
+          context: "webhook:complete",
+        }),
+      );
+      expect(genericFailureLogCalls(control.runId)).toHaveLength(1);
+    });
+
+    it.each([
+      { name: "a null provider", persistedModelProvider: null },
+      {
+        name: "a legacy provider",
+        persistedModelProvider: "legacy-unknown-provider",
+      },
+    ] satisfies readonly (FailureCase & { readonly name: string })[])(
+      "keeps capacity exhaustion on $name at warning severity",
+      async (provider) => {
+        const control = await completeFailure({
+          ...provider,
+          failureReason: "provider_overloaded",
+        });
+        expect(
+          matchingLogCalls(
+            context.mocks.axiomLogging.warn,
+            "Run failed",
+            control.runId,
+          ),
+        ).toHaveLength(1);
+        expect(genericFailureLogCalls(control.runId)).toHaveLength(1);
+      },
+    );
+
+    it("keeps built-in credit exhaustion on its own debug record", async () => {
+      const control = await completeFailure({
+        modelProvider: "built-in",
+        failureReason: "insufficient_credits",
+      });
+      expect(
+        matchingLogCalls(
+          context.mocks.axiomLogging.debug,
+          "Run stopped: insufficient credits",
+          control.runId,
+        ),
+      ).toHaveLength(1);
+      expect(genericFailureLogCalls(control.runId)).toHaveLength(0);
+    });
+
+    it("keeps one error when a duplicate repeats the capacity failure", async () => {
+      const api = createRunsApi(context);
+      const webhooks = createWebhookCallbackApi(context);
+      const first = await completeFailure({
+        modelProvider: "built-in",
+        failureReason: "provider_overloaded",
+      });
+      expect(genericFailureLogCalls(first.runId)).toHaveLength(1);
+
+      await webhooks.requestAgentComplete(
+        {
+          runId: first.runId,
+          exitCode: 1,
+          error: "late built-in capacity report",
+          failureReason: "provider_overloaded",
+        },
+        {
+          authorization: `Bearer ${api.sandboxTokenForRun(
+            first.actor,
+            first.runId,
+          )}`,
+        },
+        [200],
+      );
+
+      expect(genericFailureLogCalls(first.runId)).toHaveLength(1);
+      expect(
+        matchingLogCalls(
+          context.mocks.axiomLogging.error,
+          "Run failed",
+          first.runId,
+        ),
+      ).toHaveLength(1);
+      await expect(
+        api.readRun(first.actor, first.runId),
+      ).resolves.toMatchObject({ status: "failed", error: first.error });
+      await expect(
+        readRunFailureReasonFixture(context, first.runId),
+      ).resolves.toBe("provider_overloaded");
+    });
+
+    it("records one error when completions race the capacity failure", async () => {
+      const api = createRunsApi(context);
+      const webhooks = createWebhookCallbackApi(context);
+      await seedBuiltInDefaultModelKey();
+      const { actor, agentId } = await entitledRunActor();
+      const run = await api.createRun(actor, {
+        agentId,
+        prompt: "race a built-in capacity completion",
+        modelProvider: "built-in",
+      });
+      const error = `racing capacity failure for ${run.runId}`;
+      const body = {
+        runId: run.runId,
+        exitCode: 1,
+        error,
+        failureReason: "provider_overloaded",
+      } as const;
+      const headers = {
+        authorization: `Bearer ${api.sandboxTokenForRun(actor, run.runId)}`,
+      };
+      const lifecycleGate = await holdAgentRunRowLockFixture({
+        runId: run.runId,
+        signal: context.signal,
+      });
+      const completions = Promise.all([
+        webhooks.requestAgentComplete(body, headers, [200]),
+        webhooks.requestAgentComplete(body, headers, [200]),
+      ]);
+      onTestFinished(async () => {
+        lifecycleGate.release();
+        await Promise.allSettled([completions, lifecycleGate.done]);
+      });
+      await expect.poll(lifecycleGate.waiterCount).toBe(2);
+      lifecycleGate.release();
+      await Promise.all([lifecycleGate.done, completions]);
+
+      expect(genericFailureLogCalls(run.runId)).toHaveLength(1);
+      expect(
+        matchingLogCalls(
+          context.mocks.axiomLogging.error,
+          "Run failed",
+          run.runId,
+        ),
+      ).toHaveLength(1);
+      await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+        status: "failed",
+        error,
+      });
+      await expect(
+        readRunFailureReasonFixture(context, run.runId),
+      ).resolves.toBe("provider_overloaded");
+    });
+
     it("keeps the missing-checkpoint warning visible for a suppressible reason", async () => {
       const api = createRunsApi(context);
       const webhooks = createWebhookCallbackApi(context);
@@ -20915,7 +21140,7 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
       canBuyConcurrency: false,
       autoRechargeAllowed: false,
       supportByok: false,
-      restrictedVm0Models: true,
+      restrictedBuiltInModels: true,
       videoGenerationAllowed: false,
       workflowWebhookAutomationAllowed: false,
       stripeSubscriptionId: granted.subscriptionId,

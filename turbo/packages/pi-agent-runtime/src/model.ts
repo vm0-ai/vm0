@@ -19,7 +19,7 @@ import type {
 } from "@earendil-works/pi-ai";
 import { clampThinkingLevel } from "@earendil-works/pi-ai";
 
-import type { PiAgentModelConfig } from "./types";
+import type { PiAgentModelConfig, PiAgentStreamConfig } from "./types";
 import { preserveProviderErrorStatus } from "./provider-error-body";
 import {
   observePiResponseStatus,
@@ -282,17 +282,7 @@ export const piAgentRegisteredStream = (
 
 /** Apply API-owned per-request policy to both API-first and Sandbox turns. */
 export function piAgentStreamForConfig(
-  config: Pick<
-    PiAgentModelConfig,
-    | "accountId"
-    | "dialect"
-    | "requestHeaders"
-    | "serviceTier"
-    | "transport"
-    | "catalogModel"
-    | "region"
-    | "bedrockAuth"
-  >,
+  config: PiAgentStreamConfig,
 ): typeof piAgentRegisteredStream {
   return (model, context, options) => {
     const configuredHeaderNames = new Set(

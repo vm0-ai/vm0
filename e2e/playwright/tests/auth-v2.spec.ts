@@ -143,7 +143,7 @@ test("primary actions retain brand styling while links remain accessible", async
   );
 });
 
-test.describe("English startup in a non-English browser", () => {
+test.describe("Localized startup in a non-English browser", () => {
   test.use({
     colorScheme: "dark",
     locale: "fr-FR",
@@ -161,7 +161,7 @@ test.describe("English startup in a non-English browser", () => {
     const heading = authV2Root(page).locator("h1");
     await expect(heading).toBeVisible();
     await expect(heading).toContainText("Okou");
-    await expect(page.locator("html")).toHaveAttribute("lang", "en-US");
+    await expect(page.locator("html")).toHaveAttribute("lang", "fr-FR");
     await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
     await expect(heading).toBeFocused();
     await expectStepAnnouncement(page);
@@ -182,12 +182,21 @@ test.describe("English startup in a non-English browser", () => {
     expect(hasHorizontalOverflow).toBe(false);
   });
 
-  test("loads English platform-owned sign-up copy", async ({ page }) => {
+  test("loads French platform-owned sign-up copy", async ({ page }) => {
     await openAuthV2(page, "/sign-up/verify-email-address");
-    await expect(page.locator("html")).toHaveAttribute("lang", "en-US");
+    await expect(page.locator("html")).toHaveAttribute("lang", "fr-FR");
     await expect(authV2Root(page).locator("h1")).toHaveText(
-      "Create your account",
+      "Créer votre compte",
     );
+    await expect(
+      authV2Root(page).getByLabel("Adresse e-mail", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      authV2Root(page).getByLabel("Mot de passe", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      authV2Root(page).getByRole("button", { name: "Continuer", exact: true }),
+    ).toBeVisible();
   });
 });
 

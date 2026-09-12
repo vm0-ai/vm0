@@ -3387,7 +3387,7 @@ describe("CHAT-03 run usage events", () => {
 
   it("emits zero-credit usage events and skips runs without usage", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor(
-      "Zero usage message agent",
+      "Zero-credit usage message agent",
     );
 
     const agentRun = await sendChatRun(actor, {
@@ -4501,17 +4501,12 @@ describe("CHAT-03 thread artifacts and google drive status", () => {
       code: "drive-reconnected-again",
       state: stateFromAuthorizationUrl(secondReconnectStart.authorizationUrl),
     });
-    context.mocks.axiomLogging.warn.mockClear();
     artifacts = await chat.listThreadArtifacts(actor, run.threadId);
     expectDriveStatuses(artifacts, {
       status: "disconnected",
       recovery: { action: "reconnect", connectionId: connected.id },
     });
     expect(unknownSubtypeRefresh.refreshBodies).toHaveLength(1);
-    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-      "Connector credential refresh failed",
-      expect.objectContaining({ connectorSlug: "google-drive" }),
-    );
     await expect(
       connectorsApi.readConnectorBySlug(actor, "google-drive"),
     ).resolves.toMatchObject({

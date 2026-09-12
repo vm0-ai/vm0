@@ -45,6 +45,7 @@ describe("chat reasoning effort capabilities", () => {
     expect(compatibleReasoningEffort("claude-sonnet-5", "extra")).toBe("extra");
     expect(compatibleReasoningEffort("gpt-6-astra", "xhigh")).toBe("xhigh");
     expect(compatibleReasoningEffort("claude-sonnet-5", "high")).toBe("high");
+    expect(compatibleReasoningEffort("deepseek-v4.1-flash", "high")).toBeNull();
     expect(compatibleReasoningEffort("deepseek-v4-flash", "high")).toBeNull();
   });
 

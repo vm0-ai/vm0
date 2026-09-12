@@ -2,12 +2,23 @@ import type { PhoneNumberResource, UserResource } from "@clerk/react/types";
 import { command, state, type Command, type State } from "ccstate";
 
 import { clerk$ } from "../auth.ts";
-import { isRecord, settle, stringProperty } from "../utils.ts";
+import { settle } from "../utils.ts";
+import {
+  normalizeClerkAuthError,
+  type AuthV2ClerkError,
+} from "./clerk-errors.ts";
+import {
+  clerkPasswordError,
+  clerkPasswordSettings$,
+  type AuthV2PasswordError,
+} from "./password-errors.ts";
 import type { AuthV2ContinuationState } from "./continuation.ts";
 
 export type AuthV2SecurityTaskState = {
   readonly accountIdentifier: string;
   readonly status: "incomplete";
+  readonly clerkError?: AuthV2ClerkError;
+  readonly passwordError?: AuthV2PasswordError;
   readonly error:
     | "request-failed"
     | "password-mismatch"
@@ -257,18 +268,6 @@ function createMfaCommand(dependencies: SecurityTaskDependencies) {
   );
 }
 
-function passwordRejected(error: unknown): boolean {
-  if (!isRecord(error) || !Array.isArray(error.errors)) {
-    return false;
-  }
-  return error.errors.some((item: unknown) => {
-    return (
-      isRecord(item) &&
-      stringProperty(item, "code")?.startsWith("form_password_") === true
-    );
-  });
-}
-
 export function createAuthV2SecurityTaskCommand(
   dependencies: SecurityTaskDependencies,
 ): Command<Promise<void>, [AuthV2SecurityTaskAction, AbortSignal]> {
@@ -287,7 +286,12 @@ export function createAuthV2SecurityTaskCommand(
       ) {
         return;
       }
-      set(dependencies.state$, { ...current, error: null });
+      set(dependencies.state$, {
+        ...current,
+        error: null,
+        clerkError: undefined,
+        passwordError: undefined,
+      });
       const clerk = await get(clerk$);
       signal.throwIfAborted();
       const session = clerk.session;
@@ -314,13 +318,26 @@ export function createAuthV2SecurityTaskCommand(
           current.status === "incomplete" &&
           current.task !== "choose-organization"
         ) {
-          // Provider messages can contain identifiers and credentials. Preserve
-          // retry state, but expose only known error categories.
+          const clerkError = normalizeClerkAuthError(result.error);
+          const passwordError =
+            current.task === "reset-password"
+              ? clerkPasswordError(
+                  result.error,
+                  await get(clerkPasswordSettings$),
+                )
+              : undefined;
+          signal.throwIfAborted();
+          // Keep safe SDK codes and validation rules; raw messages can contain
+          // identifiers, passwords, or authenticator secrets.
           set(dependencies.state$, {
             ...current,
-            error: passwordRejected(result.error)
-              ? "password-invalid"
-              : "request-failed",
+            clerkError,
+            passwordError,
+            error:
+              clerkError.clerkCode?.startsWith("form_password_") ||
+              clerkError.clerkCode === "form_new_password_matches_current"
+                ? "password-invalid"
+                : "request-failed",
           });
         }
       }

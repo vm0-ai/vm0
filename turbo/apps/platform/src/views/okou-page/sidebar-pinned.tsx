@@ -339,6 +339,7 @@ function PinnedAgentGridCard({
         <AgentAvatarImg
           name={agent.agentId}
           alt=""
+          preserveChinBaseline
           className={`block h-full w-full object-cover object-top ${
             isDefaultAgent ? "" : "rounded-full"
           }`}

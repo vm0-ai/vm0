@@ -307,15 +307,16 @@ function FieldList({
 function CaptchaStatus({ copy, signals }: SignUpStepProps) {
   const captchaState = useGet(signals.captchaState$);
   const error = useGet(signals.error$);
-  if (captchaState === "idle") {
+  const captchaError = error?.field === "captcha" ? error : null;
+  if (captchaState === "idle" && !captchaError) {
     return null;
   }
-  if (captchaState === "error" || captchaState === "expired") {
+  if (captchaState === "error" || captchaError) {
     return (
       <AuthV2ErrorAlert
         focusKey={`captcha:${captchaState}:${error?.clerkCode ?? ""}`}
         message={
-          captchaState === "expired" ? copy.captchaExpired : copy.captchaError
+          (captchaError && copy.clerkError(captchaError)) ?? copy.captchaError
         }
       />
     );
@@ -424,21 +425,24 @@ function DetailsStep({
       "start auth v2 OAuth sign up",
     );
   };
-  const retrying = captchaState === "error" || captchaState === "expired";
+  const retrying = captchaState === "error";
   const operationPending =
     submitLoadable.state === "loading" || oauthLoadable.state === "loading";
+  const fieldVisibility: readonly [AuthV2SignUpErrorField, boolean][] = [
+    ["captcha", true],
+    ["email-address", state.fields.emailAddress !== "hidden"],
+    ["first-name", state.fields.firstName !== "hidden"],
+    ["last-name", state.fields.lastName !== "hidden"],
+    ["legal", state.legal.required],
+    ["password", state.fields.password !== "hidden"],
+  ];
   return (
     <form className="flex flex-col gap-6" onSubmit={handleSubmit}>
       <FlowErrorAlert
         copy={copy}
-        handledFields={[
-          "captcha",
-          "email-address",
-          "first-name",
-          "last-name",
-          "legal",
-          "password",
-        ]}
+        handledFields={fieldVisibility.flatMap(([field, visible]) => {
+          return visible ? [field] : [];
+        })}
         signals={signals}
         signInHref={signInHref}
       />

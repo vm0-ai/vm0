@@ -1,3 +1,4 @@
+import { inlineSshKey } from "./helpers/ssh-credential";
 import { randomUUID } from "node:crypto";
 import {
   agentsByIdContract,
@@ -138,8 +139,7 @@ describe("owner SSH grants and live Run inventory", () => {
         body: {
           displayName: "Deployment",
           host,
-          username: "deploy",
-          privateKey: "test-private-key",
+          credential: inlineSshKey("deploy", "test-private-key"),
         },
       }),
       [201],
@@ -222,6 +222,62 @@ describe("owner SSH grants and live Run inventory", () => {
       (await accept(inventory().list({ headers: f.token() }), [200])).body
         .hosts,
     ).toHaveLength(2);
+  });
+
+  it("lists both logins at a shared endpoint without restoring a revoked grant", async () => {
+    const f = await fixture();
+    const first = await createHost();
+    await accept(
+      grant().update({ headers, params: f.params, body: { enabled: false } }),
+      [200],
+    );
+    const second = await accept(
+      config().create({
+        headers,
+        body: {
+          displayName: "Maintenance",
+          host: "SSH.example.com.",
+          credential: inlineSshKey("ubuntu", "maintenance-private-key"),
+        },
+      }),
+      [201],
+    );
+    await accept(inventory().list({ headers: f.token() }), [404]);
+    await accept(
+      grant().update({ headers, params: f.params, body: { enabled: true } }),
+      [200],
+    );
+    const listed = await accept(
+      inventory().list({ headers: f.token() }),
+      [200],
+    );
+    expect(listed.body.hosts).toStrictEqual([
+      {
+        id: first.body.id,
+        displayName: "Deployment",
+        host: "ssh.example.com",
+        port: 22,
+        username: "deploy",
+        learnedHostKey: null,
+      },
+      {
+        id: second.body.id,
+        displayName: "Maintenance",
+        host: "ssh.example.com",
+        port: 22,
+        username: "ubuntu",
+        learnedHostKey: null,
+      },
+    ]);
+    expect(JSON.stringify(listed.body)).not.toContain("private-key");
+    await accept(
+      config().delete({ headers, params: { connectionId: first.body.id } }),
+      [204],
+    );
+    expect(
+      (await accept(inventory().list({ headers: f.token() }), [200])).body
+        .hosts,
+    ).toStrictEqual([listed.body.hosts[1]]);
   });
 
   it("uses only the Run user's hosts for shared Agents and rejects current visibility loss", async () => {
@@ -319,8 +375,7 @@ describe("owner SSH grants and live Run inventory", () => {
         body: {
           displayName: "Deployment",
           host: "ssh.example.com",
-          username: "deploy",
-          privateKey: "test-private-key",
+          credential: inlineSshKey("deploy", "test-private-key"),
         },
       }),
       [201],
@@ -382,9 +437,11 @@ describe("owner SSH grants and live Run inventory", () => {
           body: {
             displayName: "Deployment",
             host: "ssh.example.com",
-            username: "deploy",
-            privateKey: " secret-canary\n",
-            passphrase: " passphrase-canary ",
+            credential: inlineSshKey(
+              "deploy",
+              " secret-canary\n",
+              " passphrase-canary ",
+            ),
           },
         }),
         [201],

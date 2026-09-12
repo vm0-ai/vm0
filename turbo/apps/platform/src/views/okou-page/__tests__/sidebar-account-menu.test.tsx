@@ -121,7 +121,7 @@ function prepareDefaultAgent(targetContext = context): void {
     {
       agentId: AGENT_ID,
       ownerId: "test-user-123",
-      displayName: "Zero",
+      displayName: "Nova",
       description: null,
       sound: null,
       avatarUrl: null,

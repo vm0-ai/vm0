@@ -539,6 +539,62 @@ async function requestAppPage(origin) {
   return { html, response };
 }
 
+const posthogMetadataUrl =
+  "https://app.okou.ai/connectors/posthog/metadata.json";
+const posthogMetadataResponse = await worker.fetch(
+  new Request(posthogMetadataUrl),
+  {},
+);
+assert.equal(posthogMetadataResponse.status, 200);
+assert.equal(
+  posthogMetadataResponse.headers.get("content-type"),
+  "application/json; charset=UTF-8",
+);
+assert.equal(
+  posthogMetadataResponse.headers.get("cache-control"),
+  "public, max-age=300",
+);
+assert.equal(posthogMetadataResponse.headers.get("set-cookie"), null);
+assert.equal(
+  posthogMetadataResponse.headers.get("x-content-type-options"),
+  "nosniff",
+);
+const posthogMetadata = await posthogMetadataResponse.json();
+assert.equal(posthogMetadata.client_id, posthogMetadataUrl);
+assert.deepEqual(posthogMetadata.redirect_uris, [
+  "https://app.okou.ai/connectors/posthog/callback",
+]);
+assert.equal(posthogMetadata.token_endpoint_auth_method, "none");
+
+const posthogMetadataHead = await worker.fetch(
+  new Request(posthogMetadataUrl, { method: "HEAD" }),
+  {},
+);
+assert.equal(posthogMetadataHead.status, 200);
+assert.deepEqual(
+  [...posthogMetadataHead.headers],
+  [...posthogMetadataResponse.headers],
+);
+assert.equal(await posthogMetadataHead.text(), "");
+
+const posthogMetadataPost = await worker.fetch(
+  new Request(posthogMetadataUrl, { method: "POST" }),
+  {},
+);
+assert.equal(posthogMetadataPost.status, 405);
+assert.equal(posthogMetadataPost.headers.get("allow"), "GET, HEAD");
+
+const posthogCallbackResponse = await worker.fetch(
+  new Request("https://app.okou.ai/connectors/posthog/callback?code=test"),
+  {},
+);
+assert.equal(posthogCallbackResponse.status, 200);
+assert.equal(
+  posthogCallbackResponse.headers.get("content-type"),
+  "text/html; charset=UTF-8",
+);
+assert.equal(documentTitle(await posthogCallbackResponse.text()), okouTitle);
+
 const okouPage = await requestAppPage("https://app.okou.ai");
 assert.equal(okouPage.response.status, 200);
 assert.equal(

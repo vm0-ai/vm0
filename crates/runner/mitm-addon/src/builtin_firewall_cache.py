@@ -107,34 +107,43 @@ class BuiltinFirewallCatalogSnapshot:
       uses `cache_path_missing`.
     - Open or trust failure has no dependency or catalog, retains the absolute
       cache path, and uses the corresponding open-failure reason.
-    - Read, decode, schema, or validation failure has the opened file key and
-      absolute cache path, no catalog, and uses `cache_invalid`.
+    - Read, size, decode, schema, or validation failure has the opened file key
+      and absolute cache path, no catalog, and uses `cache_invalid`.
 
     `dependency_file_key` comes from the descriptor actually opened for this
-    snapshot, not a preliminary path stat. Registry snapshots compare it with
-    the current path identity to decide whether cached resolution remains valid.
+    snapshot, not a preliminary path stat. `reuse_by_identity` is true only for
+    success or deterministic size/decode/schema/validation rejection. I/O and
+    open/trust failures must be retried even if the identity is unchanged.
+    Both the loader and dependent registry snapshots use `can_reuse()`; the
+    diagnostic reason alone does not establish reuse eligibility.
     """
 
     dependency_file_key: CatalogFileKey | None
     catalog: BuiltinFirewallCatalog | None
     cache_path: str | None = None
     unavailable_reason: CatalogUnavailableReason | None = None
+    reuse_by_identity: bool = False
+
+    def can_reuse(self, file_key: CatalogFileKey | None) -> bool:
+        """Whether this result remains valid for the supplied file identity."""
+        return (
+            self.reuse_by_identity
+            and self.dependency_file_key is not None
+            and self.dependency_file_key == file_key
+        )
 
 
 @dataclass
 class _CatalogCacheState:
     path_key: str | None = None
-    loaded_key: CatalogFileKey | None = None
-    failed_key: CatalogFileKey | None = None
-    failed_reason: CatalogUnavailableReason | None = None
-    catalog: BuiltinFirewallCatalog | None = None
+    snapshot: BuiltinFirewallCatalogSnapshot | None = None
+    # Retry unchanged read failures, suppressing only their duplicate warnings.
+    read_error_key: CatalogFileKey | None = None
 
     def reset(self, path_key: str | None = None) -> None:
         self.path_key = path_key
-        self.loaded_key = None
-        self.failed_key = None
-        self.failed_reason = None
-        self.catalog = None
+        self.snapshot = None
+        self.read_error_key = None
 
 
 _cache_state = _CatalogCacheState()
@@ -153,7 +162,7 @@ def clear_cache() -> None:
 def configured_catalog_cache_path() -> str | None:
     """Return the runner-configured builtin catalog cache path."""
     options = getattr(ctx, "options", None)
-    cache_path = getattr(options, "vm0_builtin_firewall_catalog_cache_path", None)
+    cache_path = getattr(options, "okou_builtin_firewall_catalog_cache_path", None)
     if not isinstance(cache_path, str) or cache_path == "":
         return None
     return cache_path
@@ -224,41 +233,44 @@ def load_catalog_snapshot(cache_path: str | None) -> BuiltinFirewallCatalogSnaps
 
     with opened_file:
         key = opened_file.identity
-        if key == state.loaded_key:
-            return BuiltinFirewallCatalogSnapshot(key, state.catalog, cache_path=path_key)
-        if key == state.failed_key:
-            return BuiltinFirewallCatalogSnapshot(
-                key,
-                None,
-                cache_path=path_key,
-                unavailable_reason=state.failed_reason or "cache_invalid",
-            )
+        if state.snapshot is not None and state.snapshot.can_reuse(key):
+            return state.snapshot
+        reuse_by_identity = True
+        unavailable_reason: CatalogUnavailableReason | None = None
         try:
             catalog = _read_catalog(
                 opened_file.read_bytes(BUILTIN_FIREWALL_CATALOG_MAX_BYTES),
                 key,
             )
-        except (BuiltinFirewallCatalogCacheError, OSError, ValueError, RecursionError) as exc:
-            state.failed_key = key
-            state.failed_reason = "cache_invalid"
-            state.loaded_key = None
-            state.catalog = None
+        except (state_file.StateFileTooLargeError, ValueError, RecursionError) as exc:
+            catalog = None
+            unavailable_reason = "cache_invalid"
+            state.read_error_key = None
             addon_process_logging.emit_addon_process_event(
                 "warn",
                 f"Failed to read builtin firewall catalog cache: {exc}",
             )
-            return BuiltinFirewallCatalogSnapshot(
-                key,
-                None,
-                cache_path=path_key,
-                unavailable_reason=state.failed_reason,
-            )
+        except OSError as exc:
+            catalog = None
+            unavailable_reason = "cache_invalid"
+            reuse_by_identity = False
+            if state.read_error_key != key:
+                addon_process_logging.emit_addon_process_event(
+                    "warn",
+                    f"Failed to read builtin firewall catalog cache: {exc}",
+                )
+            state.read_error_key = key
+        else:
+            state.read_error_key = None
 
-    state.loaded_key = key
-    state.failed_key = None
-    state.failed_reason = None
-    state.catalog = catalog
-    return BuiltinFirewallCatalogSnapshot(key, catalog, cache_path=path_key)
+    state.snapshot = BuiltinFirewallCatalogSnapshot(
+        key,
+        catalog,
+        cache_path=path_key,
+        unavailable_reason=unavailable_reason,
+        reuse_by_identity=reuse_by_identity,
+    )
+    return state.snapshot
 
 
 def _open_error_unavailable_reason(exc: OSError) -> CatalogUnavailableReason:

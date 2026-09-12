@@ -144,7 +144,6 @@ export {
   SSH_USERNAME_MAX_LENGTH,
   createSshConnectionRequestSchema,
   resetSshConnectionHostKeyRequestSchema,
-  sshConnectionCredentialsInputSchema,
   sshConnectionPathParamsSchema,
   sshConnectionResponseSchema,
   sshConnectionsContract,

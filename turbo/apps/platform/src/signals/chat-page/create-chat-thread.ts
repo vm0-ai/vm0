@@ -237,7 +237,10 @@ import type {
   SendChatEventResult,
   SendInputChatEvent,
 } from "./chat-event-signals.ts";
-import { registerChatEventChangeHandler$ } from "./chat-event-change-registry.ts";
+import {
+  registerChatEventChangeHandler$,
+  type ChatEventChangeHandler,
+} from "./chat-event-change-registry.ts";
 import {
   canonicalUserMessageFileUrl,
   userMessageFileAttachments,
@@ -1107,6 +1110,7 @@ function createRenderedChatGroups(
               userMessage: isInputChatEvent(event)
                 ? event.userMessage
                 : undefined,
+              userMessageRenderDocument: event.userMessageRenderDocument,
               tree: event.tree,
             };
           }),
@@ -2394,7 +2398,12 @@ function createEventChangeEffects(
     },
   );
   const afterEventsChange$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    async (
+      { get, set },
+      _handler: ChatEventChangeHandler,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      signal.throwIfAborted();
       const hasOptimisticUserMessage = get(
         chatEvents.hasOptimisticUserMessage$,
       );
@@ -2423,18 +2432,21 @@ function createEventChangeEffects(
       signal.throwIfAborted();
     },
   );
-  return { sidebar, afterEventsChange$ };
+  const eventChangeHandler: ChatEventChangeHandler = Object.freeze({
+    command$: afterEventsChange$,
+  });
+  return { sidebar, eventChangeHandler };
 }
 
 function createChatEventPresentationLifecycle({
   chatEvents,
-  afterEventsChange$,
+  eventChangeHandler,
   syncVisibleEventTrees$,
   enableSidebarEntryAnimations$,
   initialEventsReady$,
 }: {
   readonly chatEvents: ChatEventSignals;
-  readonly afterEventsChange$: Command<Promise<void>, [AbortSignal]>;
+  readonly eventChangeHandler: ChatEventChangeHandler;
   readonly syncVisibleEventTrees$: Command<
     Promise<void>,
     [boolean, AbortSignal]
@@ -2454,7 +2466,7 @@ function createChatEventPresentationLifecycle({
       set(
         registerChatEventChangeHandler$,
         chatEvents.chatEvents$,
-        afterEventsChange$,
+        eventChangeHandler,
         signal,
       );
       await set(syncVisibleEventTrees$, false, signal);
@@ -2523,18 +2535,20 @@ function createBrowserLifecycleOptimisticEvents(
   };
 }
 
+interface ChatThreadMessagePipelineOptions {
+  chatActionContext: ChatActionContext;
+  chatEvents: ChatEventSignals;
+  previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
+  connector: ComposerConnectorSignals;
+}
+
 function createChatThreadMessagePipeline(
   {
     chatActionContext,
     chatEvents,
     previewImageUrlsByUrl$,
     connector,
-  }: {
-    chatActionContext: ChatActionContext;
-    chatEvents: ChatEventSignals;
-    previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
-    connector: ComposerConnectorSignals;
-  },
+  }: ChatThreadMessagePipelineOptions,
   ownerSignal: AbortSignal,
 ) {
   const { threadId } = chatActionContext;
@@ -2610,7 +2624,7 @@ function createChatThreadMessagePipeline(
   );
   const lifecycle = createChatEventPresentationLifecycle({
     chatEvents,
-    afterEventsChange$: effects.afterEventsChange$,
+    eventChangeHandler: effects.eventChangeHandler,
     syncVisibleEventTrees$,
     enableSidebarEntryAnimations$: effects.sidebar.enableEntryAnimations$,
     initialEventsReady$,
@@ -2686,6 +2700,10 @@ function createEventRunIndicatorState(chatEvents$: Computed<ChatEvent[]>) {
 // Factory: createRunTracking
 // ---------------------------------------------------------------------------
 
+type ThreadActivitySummarySignals = ReturnType<
+  typeof createThreadActivitySummarySignals
+>;
+
 interface RunTrackingDeps {
   threadId: string;
   setupChatEvents$: Command<Promise<void>, [AbortSignal]>;
@@ -2693,7 +2711,8 @@ interface RunTrackingDeps {
   syncHydratedEventTrees$: Command<Promise<void>, [AbortSignal]>;
   reloadArtifacts$: Command<void, []>;
   subscribeBrowserSessions$: Command<Promise<void>, [AbortSignal]>;
-  subscribeThinkingSummaries$: Command<Promise<void>, [AbortSignal]>;
+  subscribeThinkingSummaries$: ThreadActivitySummarySignals["subscribe$"];
+  thinkingSummarySubscription: ThreadActivitySummarySignals["subscription"];
   automationSignals: Pick<ChatPanelSignals, "headerAutomations">;
   cancellationRecovery: ReturnType<typeof createCancellationRecoverySignals>;
   reloadConnectorAccounts$: Command<void, []>;
@@ -3041,6 +3060,13 @@ function createOnSubscribedCommand({
   });
 }
 
+const onWorkflowsChanged$ = command(
+  async ({ set }, signal: AbortSignal): Promise<boolean> => {
+    await set(reloadMountedComposerWorkflows$, signal);
+    return false;
+  },
+);
+
 function createRunTracking({
   threadId,
   setupChatEvents$,
@@ -3049,6 +3075,7 @@ function createRunTracking({
   reloadArtifacts$,
   subscribeBrowserSessions$,
   subscribeThinkingSummaries$,
+  thinkingSummarySubscription,
   automationSignals,
   cancellationRecovery,
   reloadConnectorAccounts$,
@@ -3067,48 +3094,23 @@ function createRunTracking({
     await set(setupChatEvents$, signal);
     signal.throwIfAborted();
 
-    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
-    const onThreadDetailChanged$ = command(({ set }) => {
-      L.debug("onThreadDetailChanged$ fired", { threadId });
-      set(cancellationRecovery.reload$);
-      set(reloadConnectorAccountPreference$);
-      return false;
-    });
-
-    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
-    const onAutomationsChanged$ = command(({ set }) => {
-      set(automationSignals.headerAutomations.reload$);
-      return false;
-    });
-
-    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
-    const onArtifactsChanged$ = command(({ set }) => {
-      L.debug("onArtifactsChanged$ fired", { threadId });
-      set(reloadArtifacts$);
-      return false;
-    });
-
-    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
-    const onWorkflowsChanged$ = command(
-      async ({ set }, signal: AbortSignal): Promise<boolean> => {
-        L.debug("onWorkflowsChanged$ fired", { threadId });
-        await set(reloadMountedComposerWorkflows$, signal);
-        return false;
-      },
-    );
-
     await Promise.all([
       set(syncHydratedEventTrees$, signal),
       set(subscribeBrowserSessions$, signal),
-      set(subscribeThinkingSummaries$, signal),
+      set(subscribeThinkingSummaries$, thinkingSummarySubscription, signal),
       set(
         subscribeChatThreadRealtime$,
         {
           threadId,
+          invalidations: {
+            threadDetail: [
+              cancellationRecovery.reload$,
+              reloadConnectorAccountPreference$,
+            ],
+            automations: [automationSignals.headerAutomations.reload$],
+            artifacts: [reloadArtifacts$],
+          },
           handlers: {
-            onThreadDetailChanged$,
-            onAutomationsChanged$,
-            onArtifactsChanged$,
             onWorkflowsChanged$,
             onSubscribed$,
           },
@@ -3668,10 +3670,6 @@ function createThinkingIndicatorSignals(
       }
       return {
         runId: eventId,
-        summaryRevision: eventId,
-        summarySequence: null,
-        summaryMessageCursor: null,
-        summarizedAt: null,
         messages: [
           ...new Set(
             text
@@ -4049,6 +4047,7 @@ function createChatPanelSignalsWithDraft(
     reloadArtifacts$: messages.reloadArtifacts$,
     subscribeBrowserSessions$: messages.subscribeBrowserSessions$,
     subscribeThinkingSummaries$: activity.subscribe$,
+    thinkingSummarySubscription: activity.subscription,
     automationSignals: threadOwned,
     cancellationRecovery,
     reloadConnectorAccounts$: composer.connector.accounts.reload$,

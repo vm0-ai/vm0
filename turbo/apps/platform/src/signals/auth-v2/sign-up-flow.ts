@@ -2,7 +2,7 @@ import type {
   Attribute,
   AttributeData,
   Attributes,
-  PasswordValidation,
+  PasswordSettingsData,
   SignUpCreateParams,
   SignUpField,
   SignUpResource,
@@ -24,15 +24,20 @@ import { logger } from "../log.ts";
 import {
   createChildAbortController,
   createDeferredPromise,
-  isRecord,
   onRef,
   settle,
-  stringProperty,
   withCleanup,
 } from "../utils.ts";
 import type { AuthV2ContinuationFlowHandoff } from "./continuation.ts";
+import { normalizeClerkAuthError } from "./clerk-errors.ts";
 import type { AuthV2Navigation } from "./navigation.ts";
 import type { AuthV2OAuthStrategy } from "./oauth-strategies.ts";
+import {
+  clerkPasswordError,
+  clerkPasswordSettings$,
+  passwordValidationError,
+  type AuthV2PasswordError,
+} from "./password-errors.ts";
 import {
   AUTH_V2_SIGN_UP_RESEND_COOLDOWN_STORAGE_KEY,
   createAuthV2ResendCooldownStorage,
@@ -94,12 +99,7 @@ export type AuthV2SignUpResendState =
   | { readonly remainingSeconds: 0; readonly status: "ready" }
   | { readonly remainingSeconds: number; readonly status: "cooling-down" };
 
-export type AuthV2SignUpCaptchaState =
-  | "blocked"
-  | "error"
-  | "expired"
-  | "idle"
-  | "loading";
+export type AuthV2SignUpCaptchaState = "blocked" | "error" | "idle" | "loading";
 
 export type AuthV2SignUpUnknownReason =
   | "missing-legal-configuration"
@@ -142,9 +142,15 @@ export type AuthV2SignUpErrorField =
 
 export interface AuthV2SignUpError {
   readonly clerkCode?: string;
-  readonly code: "clerk" | "legal-required" | "password-invalid" | "unknown";
+  readonly clerkParamName?: string;
+  readonly passwordError?: AuthV2PasswordError;
+  readonly code:
+    | "clerk"
+    | "legal-required"
+    | "password-invalid"
+    | "rate-limited"
+    | "unknown";
   readonly field: AuthV2SignUpErrorField;
-  readonly message?: string;
 }
 
 interface AuthV2SignUpFlowDependencies {
@@ -539,11 +545,9 @@ function snapshotSignUpResource(
 }
 
 function clerkErrorField(
-  error: Record<string, unknown>,
+  parameter: string | undefined,
   fallbackField: AuthV2SignUpErrorField,
 ): AuthV2SignUpErrorField {
-  const meta = error.meta;
-  const parameter = isRecord(meta) ? stringProperty(meta, "paramName") : null;
   if (parameter === "email_address" || parameter === "emailAddress") {
     return "email-address";
   }
@@ -572,62 +576,39 @@ function normalizeClerkError(
   error: unknown,
   fallbackField: AuthV2SignUpErrorField,
 ): AuthV2SignUpError {
-  if (isRecord(error) && Array.isArray(error.errors)) {
-    const firstError = error.errors.find(isRecord);
-    if (firstError) {
-      const message =
-        stringProperty(firstError, "longMessage") ??
-        stringProperty(firstError, "message");
-      const clerkCode = stringProperty(firstError, "code");
-      return {
-        ...(clerkCode ? { clerkCode } : {}),
-        code: "clerk",
-        field: clerkErrorField(firstError, fallbackField),
-        ...(message ? { message } : {}),
-      };
-    }
-  }
-  return { code: "unknown", field: fallbackField };
+  const normalized = normalizeClerkAuthError(error);
+  return {
+    ...normalized,
+    field:
+      normalized.clerkCode?.startsWith("captcha_") ||
+      normalized.clerkCode === "requires_captcha"
+        ? "captcha"
+        : clerkErrorField(normalized.clerkParamName, fallbackField),
+  };
 }
 
 function isExpiredError(error: AuthV2SignUpError): boolean {
-  const code = error.clerkCode?.toLowerCase();
-  return (
-    code?.includes("expired") === true || code?.includes("timeout") === true
-  );
+  return error.clerkCode === "verification_expired";
 }
 
 function captchaFailureState(
   error: AuthV2SignUpError,
 ): AuthV2SignUpCaptchaState | null {
-  const code = error.clerkCode?.toLowerCase();
-  if (!code?.includes("captcha")) {
-    return error.field === "captcha" ? "error" : null;
-  }
-  return code.includes("expired") ||
-    code.includes("timeout") ||
-    code === "captcha_invalid"
-    ? "expired"
-    : "error";
-}
-
-function passwordValidationFailed(validation: PasswordValidation): boolean {
-  return (
-    Object.values(validation.complexity ?? {}).some(Boolean) ||
-    validation.strength?.state === "fail"
-  );
+  // captcha_invalid also covers rejected tokens and is not proof of expiry.
+  return error.field === "captcha" ? "error" : null;
 }
 
 function validatePassword(
   resource: SignUpResource,
   password: string,
+  settings: PasswordSettingsData,
   signal: AbortSignal,
-): Promise<boolean> {
-  const validation = createDeferredPromise<boolean>(signal);
+): Promise<AuthV2PasswordError | null> {
+  const validation = createDeferredPromise<AuthV2PasswordError | null>(signal);
   resource.validatePassword(password, {
     onValidation: (result) => {
       if (!validation.settled()) {
-        validation.resolve(passwordValidationFailed(result));
+        validation.resolve(passwordValidationError(result, settings));
       }
     },
   });
@@ -849,6 +830,7 @@ function createScheduleExpiryCommand(
         set(atoms.verificationExpired$, true);
         return;
       }
+      // eslint-disable-next-line ccstate/no-create-child-abort-controller -- migrate this lifetime to the ccstate signal hierarchy
       const controller = createChildAbortController(signal);
       set(runtime.expiryController$, controller);
       controller.signal.addEventListener(
@@ -1283,11 +1265,14 @@ function createSubmitOperation(
       set(atoms.error$, { code: "legal-required", field: "legal" });
       return;
     }
+    const passwordSettings = await get(clerkPasswordSettings$);
+    signal.throwIfAborted();
     const password = get(atoms.password$);
     if (snapshot.fields.password !== "hidden" && password) {
       const invalidPassword = await validatePassword(
         resource,
         password,
+        passwordSettings,
         signal,
       );
       signal.throwIfAborted();
@@ -1295,6 +1280,7 @@ function createSubmitOperation(
         set(atoms.error$, {
           code: "password-invalid",
           field: "password",
+          passwordError: invalidPassword,
         });
         return;
       }
@@ -1324,7 +1310,10 @@ function createSubmitOperation(
     const submitted = await settle(request, signal);
     set(atoms.captchaPending$, false);
     if (!submitted.ok) {
-      const error = normalizeClerkError(submitted.error, "general");
+      const error = {
+        ...normalizeClerkError(submitted.error, "general"),
+        passwordError: clerkPasswordError(submitted.error, passwordSettings),
+      };
       const captchaState = captchaFailureState(error);
       if (captchaState) {
         set(atoms.captchaState$, captchaState);

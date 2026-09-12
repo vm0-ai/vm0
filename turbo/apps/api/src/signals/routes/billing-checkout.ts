@@ -1,4 +1,3 @@
-import { MARKETING_PRIVACY_RECEIPT_KEY } from "@okouai/api-contracts/contracts/marketing-privacy";
 import {
   googleAdsAccountForAttribution,
   GOOGLE_ADS_ADSMARCH_ACCOUNT_ID,
@@ -15,6 +14,7 @@ import {
   type UsagePackSubscriptionChangePreviewResponse,
 } from "@okouai/api-contracts/contracts/billing";
 import { adAttributionMetadataSchema } from "@okouai/api-contracts/contracts/acquisition-attribution";
+import { clerkAttributionDisabled } from "../../lib/clerk-attribution";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
 
@@ -170,22 +170,10 @@ async function signupAttributionForUser(
   const user = usersResult.value?.data?.find((candidate) => {
     return candidate.id === userId;
   });
-  const attribution = user
+  return user
     ? parseStoredSignupAttribution(
         user.privateMetadata?.[SIGNUP_ATTRIBUTION_KEY],
       )
-    : undefined;
-  const receipt = user?.privateMetadata?.[MARKETING_PRIVACY_RECEIPT_KEY];
-  return attribution
-    ? {
-        ...attribution,
-        ...(typeof receipt === "string"
-          ? {
-              marketing_privacy_receipt: receipt,
-              marketing_privacy_user_id: userId,
-            }
-          : {}),
-      }
     : undefined;
 }
 
@@ -195,6 +183,9 @@ async function checkoutAttribution(
   adAttribution: Parameters<typeof mergeFirstTouchAttribution>[0],
   signal: AbortSignal,
 ): Promise<ReturnType<typeof mergeFirstTouchAttribution>> {
+  if (clerkAttributionDisabled()) {
+    return undefined;
+  }
   const storedAttribution = await signupAttributionForUser(
     clerk,
     userId,

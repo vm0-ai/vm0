@@ -37,21 +37,68 @@ The management page follows the Agent and Workflow detail-page layout, with
 breadcrumb to return to the directory. Host management remains independent of
 Agent grants.
 
-Supply a display name, public hostname or IP, port, SSH username, and
-private key with an optional passphrase. Paste the key or use **Choose file** in
-Add host or Replace credentials to read a non-empty key file up to 64 KiB locally.
-File selection does not upload anything; Save submits the existing credential
-request. The browser does not parse the key format. Credentials are write-only and stay
-outside the sandbox. Preserve complete key material, including whitespace.
-Use a least-privilege remote SSH user for the Agent's intended work.
-The form clears credentials on submission, close and navigation; unsuccessful
-submissions require entering them again.
+The **Hosts** view configures a display name, public hostname or IP, port, and a
+credential. Select an existing credential or create a named credential inline with
+the host. The **Credentials** view manages reusable logins owned by the same
+organization and user. Each credential contains an SSH username and either a
+private key with an optional passphrase, or a password. Password authentication
+uses SSH password authentication, not keyboard-interactive prompts.
+
+Paste a key or use **Choose file** to read a non-empty key file up to 64 KiB
+locally. File selection does not upload anything or parse the key format; Save
+submits the credential. Keys, passphrases and passwords preserve whitespace.
+Secrets are write-only and stay outside the sandbox. Use a least-privilege
+remote SSH user. Submitted input stays only in the open form while saving;
+controls are disabled until the request completes. A retryable failure preserves
+the input so the user can correct it or click Save again. Successful saves close
+the form and clear its secrets, as do cancellation, navigation and owner changes.
+Changing authentication methods clears the previous method's inputs. Secrets
+are never stored in reactive state or browser caches. A background notification
+refreshes the lists without clearing an open form. Stale revisions still require
+reopening the refreshed item rather than retrying an outdated write.
+
+Each saved connection has its own ID. Multiple configurations may use the same
+host and port, with different usernames or different keys for the same username.
+Use display names to distinguish them. An authorized Run can use all of these
+configurations by their exact IDs. Learned host keys, configuration generations
+and observations remain independent per host. Editing a host can change its
+credential reference without changing other hosts. Deleting a host keeps its
+credential; deleting an in-use credential is rejected until all hosts are
+rebound or deleted.
 
 Saving a host is not a connectivity test. Configuration does not establish an
-SSH session. Use **Replace credentials** to rotate a key or passphrase; ordinary
-metadata edits leave credentials unchanged. Host/port changes clear the learned
-host identity. A stale generation is not retried: the list refreshes automatically.
-Reopen the host to review the current settings before saving again.
+SSH session. **Edit credential** shows affected hosts. Changing its username or
+explicitly selecting **Replace authentication** updates the login for every host
+currently using that credential, atomically advancing their generations while
+preserving learned host keys. Renaming a credential leaves host generations
+unchanged. Host/port changes clear only that host's learned identity. Stale host
+generations or credential revisions are not retried; reopen the refreshed item
+and review current settings and affected hosts.
+
+### Owner storage and pre-GA cutover
+
+`/api/ssh/credentials` provides session-authenticated, feature-gated metadata
+listing and credential creation/update/deletion. Host writes select
+`credential: { id }` or atomically create `credential: { create: ... }`.
+Responses never return plaintext or ciphertext. A composite database foreign key
+requires the host and credential to have the same organization and user.
+
+Current encrypted storage is `ssh_credentials.encrypted_private_key` plus
+optional `encrypted_passphrase`, or `ssh_credentials.encrypted_password`.
+The selected method is enforced by a database check; changing methods clears
+the previous method's ciphertext columns. These fields use the normal stored
+secret encryption envelope. Historical KMS rotation scripts remain immutable
+records of the schema they migrated, not an inventory of current encrypted fields.
+
+Migration `1113_reusable_ssh_credentials` implements the explicitly approved
+pre-GA reset: it deletes old SSH hosts, their bound credentials, observations and
+learned pins. Agent SSH grants and unrelated data are retained. There is no
+backfill, legacy writer or rollback restoration; old hosts must be configured
+again. Applying this migration is destructive. A production cutover must stop
+outgoing owner API writers before applying the migration and starting the new
+API; ordinary overlapping API deployment is not supported for this reset.
+Already-loaded staff pages must reload. This is separate from the Runner's
+existing support for both key and password authority responses.
 
 Enable the **SSH** row in **Agent -> Authorization**, alongside connector rows
 with the same search and loading switch, not in Profile. The description explains
@@ -88,10 +135,10 @@ Changing owner discards that retained display, and each composer selects only
 its own Agent's grant.
 
 Owner API business errors use stable `SSH_*` codes. Platform translates them,
-including recovery guidance for invalid input, duplicate endpoints, stale
-generations and unavailable hosts/Agents. A failed read shows a localized load
-error with **Retry**, distinct from feature unavailability. There is no persistent
-Refresh button and background failures do not show raw server-message toasts.
+including recovery guidance for invalid input, stale generations and unavailable
+hosts/Agents. A failed read shows a localized load error with **Retry**, distinct
+from feature unavailability. There is no persistent Refresh button and background
+failures do not show raw server-message toasts.
 
 Successful host and grant changes publish best-effort `ssh:changed` on the owner's
 user channel with only `{ orgId }`. Learning a new host key also refreshes the
@@ -192,3 +239,17 @@ See [Runner authority](runner-ssh-authority.md) for authorization and cache
 semantics, [SSH execution](runner-ssh-execution.md) for supported keys, network
 policy and resource limits, and [RPC transport](runner-rpc-transport.md) for
 packaged-helper framing, deadlines and deployment constraints.
+
+## Shared-endpoint rollout compatibility
+
+The migration removes only the owner/host/port unique index and runs before API
+promotion. Existing configuration rows, request/response shapes and ID-based
+Runner operations remain valid. Outgoing or rolled-back API versions still
+reject creates and edits at occupied endpoints, including edits to configurations
+that a newer API created at a shared endpoint. Listing, execution and deletion
+continue to select exact IDs.
+
+API rollback does not restore the database index. Reintroducing endpoint
+uniqueness would require explicit reconciliation of saved configurations;
+never delete or merge them as an automatic rollback step. Host-key trust remains
+per configuration, including separate first-use learning and explicit resets.

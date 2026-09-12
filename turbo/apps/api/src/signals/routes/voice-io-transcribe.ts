@@ -263,6 +263,10 @@ const voiceIoTranscribeHandler$ = command(
       files,
       model,
       audioDurationSeconds,
+      useGoogleCloud: isFeatureEnabled(
+        FeatureSwitchKey.VoiceGoogleCloud,
+        featureContext,
+      ),
       debug: isFeatureEnabled(FeatureSwitchKey.OkouDebug, featureContext),
       ...(reference === undefined ? {} : { lastAssistantMessage: reference }),
       ...(editorContext === undefined ? {} : { editorContext }),

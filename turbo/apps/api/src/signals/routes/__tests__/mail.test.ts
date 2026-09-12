@@ -319,7 +319,7 @@ async function seedGmailMailCardFixture() {
   const actorWithOrg = { ...actor, orgId: actor.orgId };
   bdd.acceptAgentStorageWrites();
   const agent = await bdd.createAgent(actor, {
-    displayName: "Zero Mail agent",
+    displayName: "Nova Mail agent",
     visibility: "private",
   });
   const thread = await chat.createThread(actor, {

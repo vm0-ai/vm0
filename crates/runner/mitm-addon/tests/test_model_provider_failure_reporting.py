@@ -16,6 +16,7 @@ import zstandard
 from mitmproxy import http
 from mitmproxy.connection import ConnectionState
 from mitmproxy.flow import Error
+from mitmproxy.net.http import http1
 
 import body_decoding
 import flow_metadata_keys as metadata_keys
@@ -40,6 +41,8 @@ from tests.thread_helpers import ThreadUnderTest, wait_for_event
 
 _REPORT_CAPACITY = 16
 _REPORT_WORKERS = 4
+_RETRY_AFTER_FIELD_LIMIT = 8 * 1024
+_RETRY_AFTER_VALUE_LIMIT = 8 * 1024
 
 
 def _make_flow(
@@ -884,6 +887,7 @@ def test_shutdown_timeout_returns_with_running_reports_blocked(
     ("status", "retry_after", "expected_kind", "expected_seconds"),
     [
         (429, "0", "rate_limit", 1),
+        (429, "000120", "rate_limit", 120),
         (503, "301", "provider_unavailable", 300),
         pytest.param(
             503,
@@ -891,6 +895,27 @@ def test_shutdown_timeout_returns_with_running_reports_blocked(
             "provider_unavailable",
             300,
             id="long-numeric-delay",
+        ),
+        pytest.param(
+            429,
+            "0" * (_RETRY_AFTER_VALUE_LIMIT - 3) + "120",
+            "rate_limit",
+            120,
+            id="leading-zeroes-at-value-limit",
+        ),
+        pytest.param(
+            503,
+            "9" * _RETRY_AFTER_VALUE_LIMIT,
+            "provider_unavailable",
+            300,
+            id="clamped-at-value-limit",
+        ),
+        pytest.param(
+            429,
+            "0" * _RETRY_AFTER_VALUE_LIMIT,
+            "rate_limit",
+            1,
+            id="zero-at-value-limit",
         ),
     ],
 )
@@ -921,9 +946,22 @@ def test_numeric_retry_after_is_clamped(
 @pytest.mark.parametrize(
     ("status", "retry_after_values", "expected_kind"),
     [
+        (429, (), "rate_limit"),
+        (429, ("",), "rate_limit"),
         (429, ("invalid",), "rate_limit"),
         (429, ("Fri, 21 Aug 2026 12:00:00 GMT",), "rate_limit"),
         (429, ("120", "121"), "rate_limit"),
+        (429, ("", "120"), "rate_limit"),
+        (429, (" 120",), "rate_limit"),
+        (429, ("120\t",), "rate_limit"),
+        (429, ("١٢٠",), "rate_limit"),
+        (429, ("120,121",), "rate_limit"),
+        pytest.param(
+            503,
+            ("9" * (_RETRY_AFTER_VALUE_LIMIT + 1),),
+            "provider_unavailable",
+            id="over-value-limit",
+        ),
         (401, ("120",), "authentication"),
     ],
 )
@@ -948,6 +986,159 @@ def test_unusable_retry_after_is_omitted(
     _finish_http_flow(flow, body=None, mitm_ctx=mitm_ctx)
 
     assert _reported_payloads(model_provider_failure_api) == [{"failureKind": expected_kind}]
+
+
+def _assert_retry_after_header_report(
+    flow: http.HTTPFlow,
+    model_provider_failure_api,
+    expected_payload: dict[str, object],
+) -> None:
+    assert flow.response is not None
+    fields = flow.response.headers.fields
+    model_provider_failure.admit_flow(flow)
+    original_native = http._native
+
+    def reject_oversized_conversion(value: bytes) -> str:
+        assert len(value) <= _RETRY_AFTER_VALUE_LIMIT, "decoded an oversized header value"
+        return original_native(value)
+
+    with patch.object(http, "_native", reject_oversized_conversion):
+        mitm_addon.responseheaders(flow)
+
+    assert _reported_payloads(model_provider_failure_api) == [expected_payload]
+    assert flow.response.headers.fields == fields
+    model_provider_failure.release_flow(flow)
+
+
+@pytest.mark.parametrize(
+    ("status", "failure_kind"), [(429, "rate_limit"), (503, "provider_unavailable")]
+)
+@pytest.mark.parametrize("padding", [b"0", b"\xff"], ids=["ascii", "non-utf8"])
+@pytest.mark.parametrize("copies", [1, 2], ids=["singleton", "duplicate"])
+def test_retry_after_http1_oversized_values_are_omitted_without_conversion(
+    tmp_path, real_flow, model_provider_failure_api, status, failure_kind, padding, copies
+):
+    flow = _make_flow(real_flow, tmp_path / "proxy.jsonl")
+    value = padding * (1024 * 1024) + b"120"
+    flow.response = http1.read_response_head(
+        [f"HTTP/1.1 {status} Error".encode(), *[b"Retry-After: " + value] * copies]
+    )
+
+    _assert_retry_after_header_report(
+        flow, model_provider_failure_api, {"failureKind": failure_kind}
+    )
+
+
+class _UninspectedRetryAfter(bytes):
+    def __bytes__(self) -> bytes:
+        raise AssertionError("copied an unusable Retry-After value")
+
+    def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+        raise AssertionError("decoded an unusable Retry-After value")
+
+    def isdigit(self) -> bool:
+        raise AssertionError("scanned an unusable Retry-After value")
+
+    def lstrip(self, chars: bytes | None = None) -> bytes:
+        raise AssertionError("stripped an unusable Retry-After value")
+
+    def strip(self, chars: bytes | None = None) -> bytes:
+        raise AssertionError("stripped an unusable Retry-After value")
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        pytest.param((_UninspectedRetryAfter(b"120"), b"121"), id="duplicate"),
+        pytest.param((_UninspectedRetryAfter(b""), b"120"), id="empty-first-duplicate"),
+        pytest.param(
+            (_UninspectedRetryAfter(b"0" * (_RETRY_AFTER_VALUE_LIMIT + 1)),), id="oversized"
+        ),
+    ],
+)
+def test_retry_after_rejects_unusable_values_before_inspection(
+    tmp_path, real_flow, model_provider_failure_api, values
+):
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        response_status=429,
+        response_headers=http.Headers((b"Retry-After", value) for value in values),
+    )
+
+    _assert_retry_after_header_report(
+        flow, model_provider_failure_api, {"failureKind": "rate_limit"}
+    )
+
+
+class _UnnormalizedRetryAfterName(bytes):
+    def lower(self) -> bytes:
+        raise AssertionError("normalized a header name before checking its budget")
+
+
+@pytest.mark.parametrize("field_count", [_RETRY_AFTER_FIELD_LIMIT, _RETRY_AFTER_FIELD_LIMIT + 1])
+def test_retry_after_header_field_budget(
+    tmp_path, real_flow, model_provider_failure_api, field_count
+):
+    fields = ((b"X-Padding", b""),) * (field_count - 1) + ((b"rEtRy-AfTeR", b"120"),)
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        response_status=429,
+        response_headers=http.Headers(fields),
+    )
+    expected: dict[str, object] = {"failureKind": "rate_limit"}
+    if field_count <= _RETRY_AFTER_FIELD_LIMIT:
+        expected["retryAfterSeconds"] = 120
+
+    _assert_retry_after_header_report(flow, model_provider_failure_api, expected)
+
+
+def test_retry_after_checks_late_duplicate_before_inspection(
+    tmp_path, real_flow, model_provider_failure_api
+):
+    fields = (
+        ((b"Retry-After", _UninspectedRetryAfter(b"120")),)
+        + ((b"X-Padding", b""),) * (_RETRY_AFTER_FIELD_LIMIT - 2)
+        + ((b"RETRY-AFTER", b"121"),)
+    )
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        response_status=429,
+        response_headers=http.Headers(fields),
+    )
+
+    _assert_retry_after_header_report(
+        flow, model_provider_failure_api, {"failureKind": "rate_limit"}
+    )
+
+
+@pytest.mark.parametrize("excess_fields", [False, True], ids=["oversized-name", "excess-fields"])
+def test_retry_after_response_hook_checks_budgets_before_normalizing_names(
+    tmp_path, real_flow, model_provider_failure_api, *, excess_fields
+):
+    fields = (
+        ((_UnnormalizedRetryAfterName(b"Retry-After"), b"120"),) * (_RETRY_AFTER_FIELD_LIMIT + 1)
+        if excess_fields
+        else ((_UnnormalizedRetryAfterName(b"X" * (1024 * 1024)), b""), (b"Retry-After", b"120"))
+    )
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        response_status=429,
+        response_headers=http.Headers(fields),
+    )
+    expected: dict[str, object] = {"failureKind": "rate_limit"}
+    if not excess_fields:
+        expected["retryAfterSeconds"] = 120
+
+    _assert_retry_after_header_report(flow, model_provider_failure_api, expected)
+
+    assert flow.response.status_code == 429
+    assert flow.response.headers.fields == fields
+    assert response_stream(flow)(b"upstream-error") == b"upstream-error"
+    assert response_stream(flow)(b"") == b""
 
 
 def test_later_success_does_not_retract_report(

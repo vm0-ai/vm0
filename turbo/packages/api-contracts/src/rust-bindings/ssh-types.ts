@@ -1,6 +1,7 @@
 import {
   runnerSshContract,
   runnerSshInvalidateSchema,
+  SSH_PASSWORD_MAX_LENGTH,
 } from "../contracts/runner-ssh";
 import {
   SSH_PRIVATE_KEY_MAX_LENGTH,
@@ -192,6 +193,7 @@ export const sshTypeBindings = [
     fieldTypeOverrides: {
       privateKey: `crate::SecretText<${SSH_PRIVATE_KEY_MAX_LENGTH}>`,
       passphrase: `Option<crate::SecretText<${SSH_PASSPHRASE_MAX_LENGTH}>>`,
+      password: `crate::SecretText<${SSH_PASSWORD_MAX_LENGTH}>`,
     },
     declarations: [
       {
@@ -207,10 +209,16 @@ export const sshTypeBindings = [
           learnedHostKey: ["Existing pin, or first-use trust required."],
           privateKey: ["Bounded zeroizing private key text."],
           passphrase: ["Bounded zeroizing passphrase, preserving whitespace."],
+          password: [
+            "Bounded zeroizing login password, preserving whitespace.",
+          ],
         },
         variants: {
           unavailable: ["Current authority not available; no secrets."],
           resolved: ["Authorized current credential handoff."],
+          resolved_password: [
+            "Authorized current password credential handoff.",
+          ],
         },
       },
       ...hostKeyDocs("ResolveResponseResolvedLearnedHostKey"),

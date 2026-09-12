@@ -41,6 +41,8 @@ Borders and rules are separate decisions with separate tokens. `--border` is for
 
 Color-theme presets in the App stylesheet share their anchor and companion colors between picker swatches and workspace ambience. Daydream uses cool blue and violet, while Cotton sky uses pastel pink and blue. Each preset's hue and ring values keep semantic surfaces, selected states, and focus indicators aligned with that palette in Light/Dark.
 
+When `GradientColorThemes` is enabled on the document, each preset's HSL primary value supplies both its anchor color and the shared `--primary` token. Primary actions, including portaled dialog buttons, immediately use that fill and the preset's contrast-checked `--primary-foreground` in Light/Dark. Hover and pressed fills blend the anchor toward its companion using the existing filled-state alpha tokens. Disabled buttons retain the shared opacity treatment. Removing the document's color-theme attributes restores the shared Amber primary tokens.
+
 ## Token and variant governance
 
 New tokens must represent a reusable semantic decision, have a documented consumer contract, and define their light and dark theme behavior in the canonical stylesheet. Shared tokens and variants belong to `@okouai/ui`; App-only tokens belong to the App token layer. A new alias for one component's hard-coded values is not a token contract.
@@ -48,6 +50,10 @@ New tokens must represent a reusable semantic decision, have a documented consum
 Token and variant changes are reviewed at their owning layer together with affected consumers and theme behavior. A rename or semantic change must update those consumers; deprecated names are removed when their consumers have migrated, rather than being copied into component-local registries. A change to ownership, naming, or theme mapping must update this guide in the same PR.
 
 Large editable surfaces use `border-surface-focus` to emphasize their existing border on focus: neutral gray in light themes and muted amber in dark themes. Keep the border width constant across interaction states. A shadow-only focus overlay may fade through opacity, but must not duplicate the surface border or depend on a negative inset to align its edge. The chat composer uses the default `border` width for its surface and connector circles; intentional badge overlap remains independent of border geometry. `data-slot="chat-composer-card"` identifies the editable card for keyboard positioning and page tests.
+
+The composer's focus overlay is `--okou-composer-focus-veil`. It is a runtime theme value, so it is owned at `:root` in the App stylesheet rather than inside the `.okou-app` scope: `signals/theme.ts` writes the theme attributes onto the document element, and document scope keeps the token available to any surface that later needs it, including portaled ones. Light carries a neutral veil, dark carries none, and the gradient themes tint it with the canonical state layer. Each override keys off `[data-theme="dark"]` and `[data-gradient-color-themes]` alone and wraps the theme test in `:where()`, so it stays at the specificity of the rule it refines and source order decides between them. Do not reach for the paired `.dark` class here: a class in the selector registers a new first-party class-selector declaration and fails the shrink-only baseline.
+
+A focus overlay is also sized to the space its surface actually has. The composer sits 16px above the workspace pane's bottom edge, so the veil's offset and blur must bring its falloff back to the surface inside that gap. An overlay still painting when it meets a clipping ancestor or the pane edge ends in a visible straight seam instead of fading out, and the gap is not a place to absorb an arbitrarily wide shadow.
 
 Standalone selectable controls use the shared `ToggleButton` and its required
 `selected` prop. Its default `inline` layout keeps compact icon/text choices;
@@ -198,6 +204,49 @@ compose with the animation rather than be replaced by it.
 
 The `mic-starting-spinner` and `mic-volume-icon-meter` selectors have been
 removed; the `mic-starting-spin` keyframes remain.
+
+### Neutral button and select variants
+
+Use `Button variant="neutral"` for neutral actions and
+`SelectTrigger variant="neutral"` for neutral select controls. Each component
+owns its utilities; their public API does not export class strings.
+Use `Button asChild variant="neutral"` around a router `Link` for navigation
+styled as a button, and compose `Button` with `DialogTrigger` for dialog
+actions. The existing components own the interaction contract; `neutral` is
+only a visual variant. Link composition preserves the native anchor, ref,
+and navigation behavior without adding a wrapper.
+
+The components compose `border border-control-border bg-control-surface
+text-foreground [&:hover]:bg-state-hover-overlay` internally. This is the treatment the
+settings-select batch established, extended with the border and foreground the
+retired `okou-btn-morandi` selector owned. Language, timezone, and voice-input
+settings all use the select variant. Dimensions, padding, and radius remain
+with the existing component and caller.
+
+The neutral button adds the existing outline interaction fills
+(`hover:bg-state-hover active:bg-state-pressed`) to the shared surface, keeping
+the hover overlay above those fills. Select triggers retain the opaque surface
+and hover overlay. The existing recovery links and Add automation trigger
+preserve that same interaction treatment with `hover:bg-control-surface
+active:bg-control-surface` on their `Button` instances.
+
+Preserve consumer-specific interaction colors when extracting shared styles.
+The official workflow Configure button, for example, retains its existing
+`hover:bg-primary-hover active:bg-primary-pressed` overrides.
+
+The retired rule hard-coded a `0.7px` border while the rest of the product had
+already moved to `--default-border-width`. The replacement takes the shared
+hairline instead of naming a width. Blink and Gecko round both values up to one
+device pixel, so the change is invisible there and layout is unchanged; WebKit
+may draw the true hairline on a high-density display, which is the product
+behaviour the shared token already describes.
+
+`text-foreground` is currently redundant at every consumer, because each one
+already inherits that foreground. It is kept because the retired rule set it,
+so a control moved onto a differently coloured surface keeps the treatment it
+has today.
+
+The `okou-btn-morandi` selector has been removed.
 
 ## Exception boundary
 

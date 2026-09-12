@@ -65,7 +65,7 @@ def test_rejects_initially_oversized_file(tmp_path: Path) -> None:
 
     with (
         state_file.open_state_file(path, description="test state") as opened_file,
-        pytest.raises(OSError, match=r"test state .* exceeds 3 bytes"),
+        pytest.raises(state_file.StateFileTooLargeError, match=r"test state .* exceeds 3 bytes"),
     ):
         opened_file.read_bytes(3)
 
@@ -76,7 +76,7 @@ def test_rejects_bytes_beyond_underreported_size() -> None:
 
     with (
         state_file.open_state_file(path, description="test state") as opened_file,
-        pytest.raises(OSError, match=r"test state .* exceeds 1 bytes"),
+        pytest.raises(state_file.StateFileTooLargeError, match=r"test state .* exceeds 1 bytes"),
     ):
         opened_file.read_bytes(1)
 

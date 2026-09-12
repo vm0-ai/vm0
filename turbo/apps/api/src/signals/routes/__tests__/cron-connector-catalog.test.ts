@@ -146,7 +146,7 @@ const DEFAULT_API_VERSION = apiPackage.version;
 const ZERO_DIGEST = `sha256:${"0".repeat(64)}`;
 const PREVIOUS_CONNECTOR_CATALOG_MAX_RAW_BYTES = 32 * 1024 * 1024;
 const EXPECTED_CAPABILITY_DIGEST =
-  "sha256:b87fcf9228ccc330b86d25a2df94d4a94ea8d27cb459e048ba6c6b2d866cf5b4";
+  "sha256:9a8c84f91a49b1ab88d0771fda4bfa91816dcd9d471d98d2d3eb2f2aafbc4627";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SLACK_OAUTH_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
@@ -2406,6 +2406,22 @@ describe("connector catalog valid lifecycle", () => {
       routes: featureSwitchesRoutes,
     })(featureSwitchesContract);
 
+    const released = await accept(catalogClient.list({ headers }), [200]);
+    expect(
+      released.body.connectors[0]?.authMethods.map((method) => {
+        return method.id;
+      }),
+    ).toStrictEqual(["api-token", "cli"]);
+
+    await accept(
+      featureClient.update({
+        headers,
+        body: {
+          switches: { [FeatureSwitchKey.CalComConnector]: false },
+        },
+      }),
+      [200],
+    );
     const disabled = await accept(catalogClient.list({ headers }), [200]);
     expect(disabled.body.connectors[0]?.authMethods).toStrictEqual([
       {
@@ -4357,7 +4373,7 @@ describe("connector catalog valid lifecycle", () => {
       orgId,
       status: "active",
       supportByok: true,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
     const initialOauth = await connectorsApi.startOauth(
       actor,

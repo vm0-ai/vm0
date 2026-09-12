@@ -20,7 +20,16 @@ import {
   setLegacyGoalRunOriginFixture,
 } from "../../../test-fixtures/goal-queue";
 
-import { HeadObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import {
+  HeadObjectCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+} from "@aws-sdk/client-s3";
+import { Header } from "tar";
+import { getInstructionsStorageName } from "@okouai/core/storage-names";
+import { readCanonicalAgentNameFixture } from "../../../test-fixtures/canonical-agent-authority";
+import { createStoragesBddApi } from "./helpers/api-bdd-storages";
+import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { isChatRunTerminalEventType } from "@okouai/api-contracts/contracts/chat-events";
 import {
   chatEventsContract,
@@ -49,6 +58,7 @@ import {
 import {
   getModelProviderFirewall,
   getProviderRuntimeModel,
+  LIMITED_FREE1_DEFAULT_RUN_MODEL,
   type UpsertModelProviderRequest,
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   type ModelProviderType,
@@ -65,7 +75,10 @@ import {
   piApiFirstTurnManifestSchema,
 } from "@okouai/api-contracts/contracts/runners";
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
-import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
+import {
+  workflowAutomationsContract,
+  workflowsDetailContract,
+} from "@okouai/api-contracts/contracts/workflows";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
@@ -201,6 +214,7 @@ import { modelProvidersRoutes } from "../model-providers";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import { webhooksWorkflowAutomationsRoutes } from "../webhooks-workflow-automations";
 import { workflowAutomationsRoutes } from "../workflow-automations";
+import { workflowsRoutes } from "../workflows";
 import { readAgentRunState$ } from "./helpers/agent-run-callback";
 import {
   createBddApi,
@@ -236,17 +250,12 @@ import {
   readCustomConnectorCredentialStorageParent,
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
-import {
-  auxiliaryResults,
-  auxiliaryWarnings,
-} from "./helpers/auxiliary-generation";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import {
   commitMemoryVersion,
   seedReadyMemorySummaryProjection,
 } from "./helpers/memory";
 import { overwriteModelProviderSecretForTests } from "./helpers/model-provider-state";
-import { openRouterErrorFixtures } from "./helpers/openrouter-error-fixtures";
 import { openRouterModelContractError } from "./helpers/openrouter-model-contract";
 import { createRouteMocks } from "./helpers/route-test";
 import {
@@ -1768,9 +1777,13 @@ async function expectPiActivitySummaryBeforeGuestReplay(
     [200],
   );
   expect(activity.body).toMatchObject({
-    status: "fresh",
-    sourceSequence: activityEnabled ? 3 : null,
-    summarySequence: activityEnabled ? 3 : null,
+    status: "available",
+    messages: [
+      {
+        id: "Checking the CLI and preparing the note",
+        text: "Checking the CLI and preparing the note",
+      },
+    ],
   });
   if (activityEnabled) {
     expect(activityInput).toContain("okou --help");
@@ -2195,95 +2208,113 @@ describe("CHAT-02: thread connector account selection", () => {
     );
   });
 
-  it("uses the current default connector account without persisting an override", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    if (!actor.orgId) {
-      throw new Error("Expected an organization-scoped chat actor");
-    }
-    const connection = await connectors.connectManualGrant(
-      actor,
-      "openai",
-      "api-token",
-      { apiKey: "thread-selected-openai-key" },
-      agentId,
-    );
-
-    context.mocks.ably.publish.mockClear();
-    const run = await sendChatRun(actor, {
-      agentId,
-      prompt: "Use my OpenAI connector account",
-    });
-    const { claim, sandboxHeaders } = await claimChatRun(
-      runnerGroup,
-      run.runId,
-    );
-    expect(claim.secretConnectorMetadataMap?.OPENAI_TOKEN).toMatchObject({
-      sourceId: connection.id,
-    });
-
-    const selections = await accept(
-      chatThreadConnectorSelectionsClient().get({
-        headers: sessionHeaders(actor),
-        params: { id: run.threadId },
-      }),
-      [200],
-    );
-    expect(selections.body.selections).toStrictEqual([]);
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadDetailChanged:${run.threadId}`,
-      null,
-    );
-
-    await completeChatRunOk(run.runId, sandboxHeaders);
-    await flushWaitUntilForTest();
-    await api.enableAgentConnectors(actor, agentId, []);
-    const unauthorizedResponse = await chat.requestSendEvent(
-      actor,
-      {
+  it.each(["revocation", "reauthorization"] as const)(
+    "uses the default connector account across %s without an override",
+    async (transition) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      if (!actor.orgId) {
+        throw new Error("Expected an organization-scoped chat actor");
+      }
+      const connection = await connectors.connectManualGrant(
+        actor,
+        "openai",
+        "api-token",
+        { apiKey: "thread-selected-openai-key" },
         agentId,
-        threadId: run.threadId,
-        prompt: "Continue while OpenAI is unauthorized",
-      },
-      [201],
-    );
-    if (unauthorizedResponse.status !== 201) {
-      throw new Error("Expected the unauthorized-connector send to succeed");
-    }
-    if (!unauthorizedResponse.body.runId) {
-      throw new Error("Expected the unauthorized-connector run to start");
-    }
-    const unauthorized = {
-      runId: unauthorizedResponse.body.runId,
-      threadId: unauthorizedResponse.body.threadId,
-    };
-    const unauthorizedClaim = await claimChatRun(
-      runnerGroup,
-      unauthorized.runId,
-    );
-    expect(
-      unauthorizedClaim.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
-    ).toBeUndefined();
-    await completeChatRunOk(
-      unauthorized.runId,
-      unauthorizedClaim.sandboxHeaders,
-    );
-    await flushWaitUntilForTest();
+      );
 
-    await api.enableAgentConnectors(actor, agentId, ["openai"]);
-    const reauthorized = await sendChatRun(actor, {
-      agentId,
-      threadId: run.threadId,
-      prompt: "Continue after OpenAI is authorized again",
-    });
-    const reauthorizedClaim = await claimChatRun(
-      runnerGroup,
-      reauthorized.runId,
-    );
-    expect(
-      reauthorizedClaim.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
-    ).toMatchObject({ sourceId: connection.id });
-    await cancelChatRun(actor, reauthorized.runId);
-  });
+      let threadId: string;
+      if (transition === "revocation") {
+        context.mocks.ably.publish.mockClear();
+        const authorized = await sendChatRun(actor, {
+          agentId,
+          prompt: "Use my OpenAI connector account",
+        });
+        const { claim, sandboxHeaders } = await claimChatRun(
+          runnerGroup,
+          authorized.runId,
+        );
+        expect(claim.secretConnectorMetadataMap?.OPENAI_TOKEN).toMatchObject({
+          sourceId: connection.id,
+        });
+
+        const selections = await accept(
+          chatThreadConnectorSelectionsClient().get({
+            headers: sessionHeaders(actor),
+            params: { id: authorized.threadId },
+          }),
+          [200],
+        );
+        expect(selections.body.selections).toStrictEqual([]);
+        expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+          `chatThreadDetailChanged:${authorized.threadId}`,
+          null,
+        );
+
+        await completeChatRunOk(authorized.runId, sandboxHeaders);
+        await flushWaitUntilForTest();
+        threadId = authorized.threadId;
+      } else {
+        const thread = await chat.createThread(actor, {
+          agentId,
+          title: "Connector reauthorization",
+        });
+        threadId = thread.id;
+      }
+
+      await api.enableAgentConnectors(actor, agentId, []);
+      const unauthorizedResponse = await chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId,
+          prompt: "Continue while OpenAI is unauthorized",
+        },
+        [201],
+      );
+      if (unauthorizedResponse.status !== 201) {
+        throw new Error("Expected the unauthorized-connector send to succeed");
+      }
+      if (!unauthorizedResponse.body.runId) {
+        throw new Error("Expected the unauthorized-connector run to start");
+      }
+      const unauthorized = {
+        runId: unauthorizedResponse.body.runId,
+        threadId: unauthorizedResponse.body.threadId,
+      };
+      const unauthorizedClaim = await claimChatRun(
+        runnerGroup,
+        unauthorized.runId,
+      );
+      expect(
+        unauthorizedClaim.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
+      ).toBeUndefined();
+      await completeChatRunOk(
+        unauthorized.runId,
+        unauthorizedClaim.sandboxHeaders,
+      );
+      await flushWaitUntilForTest();
+
+      if (transition === "revocation") {
+        return;
+      }
+
+      await api.enableAgentConnectors(actor, agentId, ["openai"]);
+      const reauthorized = await sendChatRun(actor, {
+        agentId,
+        threadId,
+        prompt: "Continue after OpenAI is authorized again",
+      });
+      const reauthorizedClaim = await claimChatRun(
+        runnerGroup,
+        reauthorized.runId,
+      );
+      expect(
+        reauthorizedClaim.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
+      ).toMatchObject({ sourceId: connection.id });
+      await cancelChatRun(actor, reauthorized.runId);
+    },
+  );
 
   it("does not persist connector overrides during concurrent first sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -3113,8 +3144,8 @@ async function postThreadPiAutomationEvent(args: {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "X-VM0-Timestamp": String(timestamp),
-      "X-VM0-Signature": computeHmacSignature(
+      "X-Okou-Timestamp": String(timestamp),
+      "X-Okou-Signature": computeHmacSignature(
         rawBody,
         args.webhookSecret,
         timestamp,
@@ -7104,14 +7135,14 @@ async function expectPiApiFirstTurnTerminalWithoutOutput(
   actor: ApiTestUser,
   run: { readonly runId: string; readonly threadId: string },
   status: "failed" | "cancelled",
+  failureMessage = "[PI_API_MODEL_OUTPUT_INCOMPLETE] Pi API first-turn model output is incomplete",
 ): Promise<void> {
   const terminal = await api.readRun(actor, run.runId);
   expect(terminal).toMatchObject({
     status,
     ...(status === "failed"
       ? {
-          error:
-            "[PI_API_MODEL_OUTPUT_INCOMPLETE] Pi API first-turn model output is incomplete",
+          error: failureMessage,
         }
       : {}),
   });
@@ -7142,6 +7173,9 @@ function uploadedPiS3Object(objectKey: string): Buffer | undefined {
       candidate.constructor?.name === "PutObjectCommand" &&
       piS3ObjectKey(candidate) === objectKey
     ) {
+      if (typeof candidate.input?.Body === "string") {
+        return Buffer.from(candidate.input.Body, "utf8");
+      }
       if (!(candidate.input?.Body instanceof Uint8Array)) {
         throw new Error(
           `Expected uploaded Pi S3 object bytes for ${objectKey}`,
@@ -7166,6 +7200,77 @@ function piS3Object(objectKey: string): Buffer {
     return seeded;
   }
   throw new Error(`Expected Pi S3 object ${objectKey}`);
+}
+
+// A generic Storage commit keeps this test-owned instruction version pending.
+// Shared official skill versions may already be indexed by another test.
+async function publishPendingPiInstructions(
+  actor: ApiTestUser,
+  agentId: string,
+): Promise<string> {
+  const storageName = getInstructionsStorageName(
+    await readCanonicalAgentNameFixture(agentId),
+  );
+  const content = `Pending resource fixture ${randomUUID()}`;
+  const bytes = Buffer.from(content);
+  const header = Buffer.alloc(512);
+  new Header({
+    path: "AGENTS.md",
+    size: bytes.length,
+    type: "File",
+    mode: 0o644,
+  }).encode(header);
+  const archive = gzipSync(
+    Buffer.concat([
+      header,
+      bytes,
+      Buffer.alloc((512 - (bytes.length % 512)) % 512),
+      Buffer.alloc(1024),
+    ]),
+  );
+  const storages = createStoragesBddApi(context);
+  const files = [storageTextFile("AGENTS.md", content)];
+  const prepared = await storages.prepareStorage(actor, {
+    storageName,
+    storageOwner: "organization",
+    files,
+  });
+  let upload: { Bucket: string; Key: string } | undefined;
+  const original = context.mocks.s3.send.getMockImplementation();
+  context.mocks.s3.send.mockImplementation((request: unknown) => {
+    if (request instanceof HeadObjectCommand) {
+      if (
+        request.input.Bucket &&
+        request.input.Key?.endsWith("/archive.tar.gz")
+      ) {
+        upload = { Bucket: request.input.Bucket, Key: request.input.Key };
+      }
+      return Promise.resolve({ ContentLength: archive.length });
+    }
+    if (!original) {
+      throw new Error("Expected the test object store");
+    }
+    return original(request);
+  });
+  await storages
+    .commitStorage(actor, {
+      storageName,
+      storageOwner: "organization",
+      files,
+      versionId: prepared.versionId,
+    })
+    .finally(() => {
+      if (original) {
+        context.mocks.s3.send.mockImplementation(original);
+      }
+    });
+  if (!upload) {
+    throw new Error("Expected the instruction fixture archive to be verified");
+  }
+  await context.mocks.s3.send(
+    new PutObjectCommand({ ...upload, Body: archive }),
+  );
+  return content;
 }
 
 function mockPiResourceArchiveDownloads(unavailable = false): void {
@@ -7889,7 +7994,7 @@ describe("CHAT-02: model-first provider policies", () => {
       orgId,
       status: "suspended",
       supportByok: true,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
     const suspendedEventId = randomUUID();
     const suspended = await chat.requestSendEvent(
@@ -7937,9 +8042,9 @@ describe("CHAT-02: model-first provider policies", () => {
       orgId,
       status: "active",
       supportByok: false,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
-    await seedBuiltInModelKey("deepseek-v4-pro");
+    await seedBuiltInModelKey(LIMITED_FREE1_DEFAULT_RUN_MODEL);
     const byokDisabled = await chat.requestSendEvent(
       actor,
       {
@@ -7958,7 +8063,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const byokDisabledPolicies = await misc.listModelPolicies(actor);
     expect(byokDisabledPolicies.policies).toContainEqual(
       expect.objectContaining({
-        model: "deepseek-v4-pro",
+        model: LIMITED_FREE1_DEFAULT_RUN_MODEL,
         isDefault: true,
         defaultProviderType: "built-in",
         modelProviderId: null,
@@ -7970,7 +8075,7 @@ describe("CHAT-02: model-first provider policies", () => {
       orgId,
       status: "active",
       supportByok: true,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
     await api.updateOrgModelPolicies(actor, [
       {
@@ -7985,7 +8090,7 @@ describe("CHAT-02: model-first provider policies", () => {
       orgId,
       status: "active",
       supportByok: true,
-      restrictedVm0Models: true,
+      restrictedBuiltInModels: true,
     });
     const restricted = await chat.requestSendEvent(
       actor,
@@ -8007,7 +8112,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const restrictedPolicies = await misc.listModelPolicies(actor);
     expect(restrictedPolicies.policies).toContainEqual(
       expect.objectContaining({
-        model: "deepseek-v4-pro",
+        model: LIMITED_FREE1_DEFAULT_RUN_MODEL,
         isDefault: true,
         defaultProviderType: "built-in",
         modelProviderId: null,
@@ -8065,7 +8170,7 @@ describe("CHAT-02: model-first provider policies", () => {
       orgId,
       status: "suspended",
       supportByok: true,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
     threadLock.release();
     const rejected = await followUp;
@@ -8088,6 +8193,7 @@ describe("CHAT-02: model-first provider policies", () => {
     "keeps captured Pi admission after PiLoop turns off for %s",
     async (selectedModel) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
+      await publishPendingPiInstructions(actor, agentId);
       const orgId = requireOrgId(actor);
       await configureBuiltInPiModel(actor, selectedModel);
       mockPiResourceArchiveDownloads(true);
@@ -8341,6 +8447,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
   it("keeps an empty recall-enabled Pi memory mount valid", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await publishPendingPiInstructions(actor, agentId);
     const orgId = requireOrgId(actor);
     await configureBuiltInPiModel(actor, "gpt-5.6-terra");
     await updateFeatureSwitchesForUser(
@@ -10307,6 +10414,7 @@ describe("CHAT-02: model-first provider policies", () => {
     "preserves captured custom %s Fast credentials after gateway removal without substitution",
     async (selectedModel) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
+      await publishPendingPiInstructions(actor, agentId);
       const gateway = await configureCustomPiModel(actor, selectedModel);
       const entered = createDeferredPromise<void>(context.signal);
       const release = createDeferredPromise<void>(context.signal);
@@ -12284,8 +12392,183 @@ describe("CHAT-02: model-first provider policies", () => {
     ]);
   }, 90_000);
 
+  it("uses newly published Pi instruction indexes with resource archives unavailable", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockPiCheckpointObjectStore();
+    mockPiResourceArchiveDownloads();
+    const requests: string[] = [];
+    server.use(
+      http.post("https://api.openai.com/v1/responses", async ({ request }) => {
+        requests.push(await request.text());
+        return nativeCodexSseResponse(
+          piResponsesTextSse("indexed response", requests.length),
+        );
+      }),
+    );
+    await bdd.updateAgentInstructions(
+      actor,
+      agentId,
+      "Initial indexed instruction",
+    );
+    const queued = await queueCapabilityProvenPiRun({
+      actor,
+      agentId,
+      runnerGroup,
+      prompt: "warm exact resource versions",
+    });
+    await completeChatRunOk(
+      queued.anchor.runId,
+      queued.anchorClaim.sandboxHeaders,
+      { usagePricingResolution: queued.usagePricingResolution },
+    );
+    await waitForRunStatus(actor, queued.run.runId, "completed", 10_000);
+    await flushWaitUntilForTest();
+
+    // A new instruction version forces a new full-snapshot key. Its synchronous
+    // index and the warmed shared versions must suffice without archive access.
+    await bdd.updateAgentInstructions(
+      actor,
+      agentId,
+      "Updated instruction available immediately",
+    );
+    mockPiResourceArchiveDownloads(true);
+    const next = await sendChatRun(
+      actor,
+      {
+        agentId,
+        prompt: "use the newly saved instructions",
+        model: "gpt-5.6-terra",
+      },
+      queued.usagePricingResolution,
+    );
+    await waitForRunStatus(actor, next.runId, "completed", 10_000);
+    const events = (await chat.listThreadEvents(actor, next.threadId)).events;
+    expect(eventBackedContents(events, next.runId)).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ content: "indexed response" }),
+      ]),
+    );
+    expect(piResponsesDeveloperPrompt(requests.at(-1))).toContain(
+      "Updated instruction available immediately",
+    );
+    await flushWaitUntilForTest();
+    const pendingInstructions = await publishPendingPiInstructions(
+      actor,
+      agentId,
+    );
+    let archiveReads = 0;
+    server.use(
+      http.get(PI_RESOURCE_ARCHIVE_DOWNLOAD_URL, ({ request }) => {
+        archiveReads++;
+        const objectKey = new URL(request.url).searchParams.get("object");
+        if (!objectKey) {
+          throw new Error("Expected a resource archive identity");
+        }
+        return new HttpResponse(piS3Object(objectKey));
+      }),
+    );
+    const pending = await sendChatRun(
+      actor,
+      {
+        agentId,
+        prompt: "load the one pending resource version",
+        model: "gpt-5.6-terra",
+      },
+      queued.usagePricingResolution,
+    );
+    await waitForRunStatus(actor, pending.runId, "completed", 10_000);
+    expect(archiveReads).toBe(1);
+    expect(piResponsesDeveloperPrompt(requests.at(-1))).toContain(
+      pendingInstructions,
+    );
+  }, 30_000);
+
+  it.each(["created", "copied"] as const)(
+    "discovers a newly %s Workflow without reading its archive",
+    async (publication) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      mockPiCheckpointObjectStore();
+      mockPiResourceArchiveDownloads();
+      const requests: string[] = [];
+      server.use(
+        http.post(
+          "https://api.openai.com/v1/responses",
+          async ({ request }) => {
+            requests.push(await request.text());
+            return nativeCodexSseResponse(
+              piResponsesTextSse("workflow indexed", requests.length),
+            );
+          },
+        ),
+      );
+      const queued = await queueCapabilityProvenPiRun({
+        actor,
+        agentId,
+        runnerGroup,
+        prompt: "warm shared resource versions",
+      });
+      await completeChatRunOk(
+        queued.anchor.runId,
+        queued.anchorClaim.sandboxHeaders,
+        { usagePricingResolution: queued.usagePricingResolution },
+      );
+      await waitForRunStatus(actor, queued.run.runId, "completed", 10_000);
+      await flushWaitUntilForTest();
+
+      const sourceAgentId =
+        publication === "created"
+          ? agentId
+          : (await bdd.createAgent(actor, { displayName: "Workflow source" }))
+              .agentId;
+      const name = `indexed-${randomUUID().slice(0, 8)}`;
+      const workflow = await createMiscRoutesApi(context).createWorkflow(
+        actor,
+        sourceAgentId,
+        name,
+        { content: "Produce the indexed workflow report." },
+        [201],
+      );
+      if (workflow.status !== 201) {
+        throw new Error("Expected the workflow to be published");
+      }
+      if (publication === "copied") {
+        routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+        await accept(
+          setupApp({ context, routes: workflowsRoutes })(
+            workflowsDetailContract,
+          ).copy({
+            headers: { authorization: "Bearer clerk-session" },
+            params: { workflowId: workflow.body.id },
+            body: { toAgentId: agentId },
+          }),
+          [201],
+        );
+      }
+      mockPiResourceArchiveDownloads(true);
+      const next = await sendChatRun(
+        actor,
+        {
+          agentId,
+          prompt: "discover the new workflow",
+          model: "gpt-5.6-terra",
+        },
+        queued.usagePricingResolution,
+      );
+      await waitForRunStatus(actor, next.runId, "completed", 10_000);
+      expect(piResponsesDeveloperPrompt(requests.at(-1))).toContain(name);
+      const events = (await chat.listThreadEvents(actor, next.threadId)).events;
+      expect(eventBackedContents(events, next.runId)).toStrictEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ content: "workflow indexed" }),
+        ]),
+      );
+    },
+    30_000,
+  );
+
   it("classifies old Pi citations across real request caps, retries, replay, and ordering", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await publishPendingPiInstructions(actor, agentId);
     const resourceEntered = createDeferredPromise<void>(context.signal);
     const releaseResource = createDeferredPromise<void>(context.signal);
     onTestFinished(() => {
@@ -12783,6 +13066,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
   it("transfers authoritative H0 when API ownership expires before provider transport", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await publishPendingPiInstructions(actor, agentId);
     const resourceEntered = createDeferredPromise<void>(context.signal);
     const releaseResource = createDeferredPromise<void>(context.signal);
     server.use(
@@ -13295,6 +13579,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
   it("transfers pre-provider active input through one stable sandbox-first delivery", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await publishPendingPiInstructions(actor, agentId);
     const resourceEntered = createDeferredPromise<void>(context.signal);
     const releaseResource = createDeferredPromise<void>(context.signal);
     server.use(
@@ -13807,6 +14092,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
   it("lets canonical cancellation win before provider ownership without API artifacts", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await publishPendingPiInstructions(actor, agentId);
     const resourceEntered = createDeferredPromise<void>(context.signal);
     const releaseResource = createDeferredPromise<void>(context.signal);
     server.use(
@@ -14998,6 +15284,57 @@ describe("CHAT-02: model-first provider policies", () => {
     });
   }, 90_000);
 
+  it("keeps a raw API usage failure terminal before aborting its private attempt", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockPiResourceArchiveDownloads();
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.openai.com/v1/responses", () => {
+        modelCalls += 1;
+        return nativeCodexSseResponse(
+          piResponsesTextSse(
+            "invalid usage must not authorize H0 replay",
+            modelCalls,
+            {
+              input_tokens: 1.5,
+              output_tokens: 3,
+              total_tokens: 4.5,
+            },
+          ),
+        );
+      }),
+    );
+    const objects = mockPiCheckpointObjectStore();
+    const { anchor, anchorClaim, run, usagePricingResolution } =
+      await queueCapabilityProvenPiRun({
+        actor,
+        agentId,
+        runnerGroup,
+        prompt: "reject invalid provider usage without retrying the prompt",
+      });
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
+      usagePricingResolution,
+    });
+    await waitForRunStatus(actor, run.runId, "failed");
+    await flushWaitUntilForTest();
+    expect(modelCalls).toBe(1);
+    expectNoPiApiFirstTurnArtifacts(run.runId, objects);
+    await expectPiApiFirstTurnTerminalWithoutOutput(
+      actor,
+      run,
+      "failed",
+      "[PI_API_MODEL_FAILED] Pi API first turn failed",
+    );
+    await expectNoBuiltInModelUsage(run.runId);
+    expect(context.mocks.axiomLogging.info).not.toHaveBeenCalledWith(
+      "Pi API first-turn outcome",
+      expect.objectContaining({
+        runId: run.runId,
+        outcome: "sandbox_retry_started",
+      }),
+    );
+  }, 90_000);
+
   it.each(["H1 commit", "H1 deadline", "handoff publication"] as const)(
     "keeps a genuine %s failure terminal without replaying H0",
     async (stage) => {
@@ -15266,10 +15603,16 @@ describe("CHAT-02: model-first provider policies", () => {
     90_000,
   );
 
-  it.each(["identity", "gzip", "zstd"] as const)(
-    "saves large Pi %s history and transfers the next turn without API history or resource IO",
-    async (encoding) => {
+  it.each([
+    { encoding: "identity", responseLost: false },
+    { encoding: "gzip", responseLost: false },
+    { encoding: "zstd", responseLost: false },
+    { encoding: "identity", responseLost: true },
+  ] as const)(
+    "saves large Pi $encoding history without API history or resource IO (publication response lost: $responseLost)",
+    async ({ encoding, responseLost }) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
+      await publishPendingPiInstructions(actor, agentId);
       const checkpointObjects = mockPiCheckpointObjectStore();
       let modelCalls = 0;
       let resourceDownloads = 0;
@@ -15431,6 +15774,44 @@ describe("CHAT-02: model-first provider policies", () => {
       await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
         status: "completed",
       });
+      if (responseLost) {
+        const deadline = new AbortController();
+        onTestFinished(() => {
+          deadline.abort();
+        });
+        // An object-store response can be lost after the manifest is visible.
+        // Expire the real attempt signal exactly at that external boundary.
+        context.mocks.abortSignal.timeout.mockImplementation((milliseconds) => {
+          return milliseconds > API_FIRST_TURN_OWNERSHIP_BUDGET_MS - 1000 &&
+            milliseconds <= API_FIRST_TURN_OWNERSHIP_BUDGET_MS
+            ? deadline.signal
+            : undefined;
+        });
+        const send = context.mocks.s3.send.getMockImplementation();
+        if (!send) {
+          throw new Error("Expected the checkpoint object store");
+        }
+        context.mocks.s3.send.mockImplementation(async (command: unknown) => {
+          const candidate = command as PiCheckpointS3Command;
+          const stored = await send(command);
+          if (
+            candidate.constructor?.name === "PutObjectCommand" &&
+            piS3ObjectKey(candidate)?.endsWith("/manifest.json")
+          ) {
+            expect(
+              checkpointObjects.has(piS3ObjectKey(candidate) ?? ""),
+            ).toBeTruthy();
+            deadline.abort(
+              new DOMException(
+                "Manifest response lost at ownership deadline",
+                "TimeoutError",
+              ),
+            );
+            throw deadline.signal.reason;
+          }
+          return stored;
+        });
+      }
       const callsBeforeResume = context.mocks.s3.send.mock.calls.length;
       const resumed = await sendChatRun(
         actor,
@@ -15444,10 +15825,14 @@ describe("CHAT-02: model-first provider policies", () => {
       );
       await flushWaitUntilForTest();
       const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${resumed.runId}/manifest.json`;
+      // Terminal cleanup removes the failed run's object. The captured write
+      // still proves that ownership publication happened before its response
+      // was lost; the normal transfer retains its currently readable object.
+      const publishedManifest = responseLost
+        ? uploadedPiS3Object(manifestKey)
+        : checkpointObjects.get(manifestKey);
       const manifest = piApiFirstTurnManifestSchema.parse(
-        JSON.parse(
-          checkpointObjects.get(manifestKey)?.toString("utf8") ?? "{}",
-        ),
+        JSON.parse(publishedManifest?.toString("utf8") ?? "{}"),
       );
       expect(manifest).toMatchObject({
         schemaVersion: 4,
@@ -15486,6 +15871,28 @@ describe("CHAT-02: model-first provider policies", () => {
           `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${resumed.runId}/session.jsonl`,
         ),
       ).toBeFalsy();
+      if (responseLost) {
+        await waitForRunStatus(actor, resumed.runId, "failed");
+        await expectPiApiFirstTurnTerminalWithoutOutput(
+          actor,
+          resumed,
+          "failed",
+          "[PI_API_FIRST_TURN_DEADLINE_EXCEEDED] Pi API first-turn deadline elapsed",
+        );
+        expect(
+          context.mocks.s3.send.mock.calls
+            .slice(callsBeforeResume)
+            .filter(([command]) => {
+              const candidate = command as PiCheckpointS3Command;
+              return (
+                candidate.constructor?.name === "PutObjectCommand" &&
+                piS3ObjectKey(candidate) === manifestKey
+              );
+            }),
+        ).toHaveLength(1);
+        await api.requestClaimRunnerJob(true, resumed.runId, [404]);
+        return;
+      }
       const resumedClaim = await claimChatRun(runnerGroup, resumed.runId);
       expect(resumedClaim.claim.resumeSession).toMatchObject({
         sessionId: run.threadId,
@@ -15516,6 +15923,7 @@ describe("CHAT-02: model-first provider policies", () => {
     "hands native input %j to Sandbox with exact fresh and resumed H0",
     async (prompt) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
+      await publishPendingPiInstructions(actor, agentId);
       const checkpointObjects = mockPiCheckpointObjectStore();
       let modelCalls = 0;
       let resourceDownloads = 0;
@@ -15928,6 +16336,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
   it("hands a Terra resource failure to Sandbox without replaying a later credential failure", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await publishPendingPiInstructions(actor, agentId);
     if (!actor.orgId) {
       throw new Error("Expected entitled chat actor to have an org");
     }
@@ -18262,6 +18671,7 @@ describe("CHAT-02: model-first provider policies", () => {
     "fails closed when the admitted $name Fast credential disappears before provider ownership",
     async (route) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
+      await publishPendingPiInstructions(actor, agentId);
       const secret = `${route.type}-deleted-secret`;
       await configureApiKeyGptPiModel(actor, route, secret);
       const entered = createDeferredPromise<void>(context.signal);
@@ -20127,10 +20537,6 @@ describe("CHAT-02: run-level model overrides", () => {
           context.mocks.axiomLogging.info,
         ]) {
           expect(log).not.toHaveBeenCalledWith(
-            "codex-oauth-token token refresh failed",
-            expect.anything(),
-          );
-          expect(log).not.toHaveBeenCalledWith(
             "Pi API first-turn outcome",
             expect.objectContaining({
               runId: run.runId,
@@ -20209,6 +20615,7 @@ describe("CHAT-02: run-level model overrides", () => {
 
   it("refreshes the captured subscription Fast account while another account becomes active", async () => {
     const { actor, agentId } = await entitledChatActor();
+    await publishPendingPiInstructions(actor, agentId);
     const other = await configureSubscriptionPiModel(actor, {
       accountId: "other-active-account",
     });
@@ -22038,7 +22445,7 @@ describe("CHAT-02: incomplete-round context", () => {
 });
 
 describe("CHAT-02: initial thinking indicator", () => {
-  // Provider text is untrusted and must never reach a log or a metric.
+  // Provider text is untrusted and must never reach the thread.
   const privateProviderDetail = "private_prompt_history_authorization_canary";
 
   it.each([
@@ -22134,7 +22541,7 @@ describe("CHAT-02: initial thinking indicator", () => {
               text: "Preparing the visible checklist",
             },
           ],
-          status: "fresh",
+          status: "available",
           runId: run.runId,
         });
         expect(indicatorCalls).toStrictEqual(["summary"]);
@@ -22150,58 +22557,29 @@ describe("CHAT-02: initial thinking indicator", () => {
 
   const providerDetail = "private-provider-detail";
 
+  // One shape per externally distinguishable outcome. Which gateway code or
+  // transport fault the provider classification separates further reaches the
+  // thread identically, so those are not enumerated again.
   it.each([
-    {
-      name: "an upstream gateway timeout delivered inside a 200 envelope",
-      thinkingResponse: () => {
-        return HttpResponse.json({
-          error: { code: 504, message: providerDetail },
-        });
-      },
-      outcome: "degraded",
-      reason: "upstream_timeout",
-      warned: false,
-    },
     {
       name: "a provider rate limit",
       thinkingResponse: () => {
         return new HttpResponse(providerDetail, { status: 429 });
       },
-      outcome: "degraded",
-      reason: "rate_limited",
-      warned: false,
     },
-    {
-      name: "an upstream bad gateway",
-      thinkingResponse: () => {
-        return new HttpResponse(providerDetail, { status: 502 });
-      },
-      outcome: "degraded",
-      reason: "provider_unavailable",
-      warned: false,
-    },
-    // Negative control: an unsupported request is our defect, not the
-    // provider's availability, and stays reportable.
     {
       name: "a rejected request",
       thinkingResponse: () => {
         return new HttpResponse(providerDetail, { status: 400 });
       },
-      outcome: "error",
-      reason: "invalid_request",
-      warned: true,
     },
     {
       name: "broken credentials",
       thinkingResponse: () => {
         return new HttpResponse(providerDetail, { status: 401 });
       },
-      outcome: "error",
-      reason: "auth",
-      warned: true,
     },
-    // The shared boundary counts a token ceiling as expected degradation, but
-    // the optional marker remains absent because shortened copy is unusable.
+    // Shortened copy is unusable for this caller, so the marker stays absent.
     {
       name: "an exhausted token budget",
       thinkingResponse: () => {
@@ -22215,66 +22593,57 @@ describe("CHAT-02: initial thinking indicator", () => {
           ],
         });
       },
-      outcome: "degraded",
-      reason: "output_truncated",
-      warned: false,
     },
-  ])(
-    "omits opening copy and reports a defect only for $name",
-    async ({ thinkingResponse, outcome, reason, warned }) => {
-      const { actor, agentId } = await entitledChatActor();
-      mockOptionalEnv("OPENROUTER_API_KEY", "thinking-classification-key");
-      server.use(
-        http.post(
-          "https://openrouter.ai/api/v1/chat/completions",
-          async ({ request }) => {
-            const payload = openRouterBodySchema.parse(await request.json());
-            const system = payload.messages[0]?.content ?? "";
-            return system.includes("Write user-visible progress copy")
-              ? thinkingResponse()
-              : HttpResponse.json({
-                  choices: [
-                    {
-                      finish_reason: "stop",
-                      message: { content: "Launch Checklist" },
-                    },
-                  ],
-                });
-          },
-        ),
-      );
-
-      const run = await sendChatRun(actor, {
-        agentId,
-        prompt: "Prepare the launch checklist",
-      });
-      await flushWaitUntilForTest();
-
-      // The optional generation is isolated: no marker, and the run proceeds.
-      const events = await chat.listThreadEvents(actor, run.threadId);
-      expect(
-        events.events.filter((event) => {
-          return event.runEventId === "thinking:initial";
-        }),
-      ).toStrictEqual([]);
-      expect((await api.readRun(actor, run.runId)).status).toBe("pending");
-
-      const warnings = auxiliaryWarnings(context);
-      expect(warnings).toHaveLength(warned ? 1 : 0);
-      expect(JSON.stringify(warnings)).not.toContain(providerDetail);
-      expect(auxiliaryResults(context, "chat_initial_thinking")).toStrictEqual([
-        expect.objectContaining({
-          outcome,
-          reason,
-          run_id: run.runId,
-        }),
-      ]);
-      expect(
-        JSON.stringify(auxiliaryResults(context, "chat_initial_thinking")),
-      ).not.toContain(providerDetail);
-      await cancelChatRun(actor, run.runId);
+    {
+      // Non-empty for the provider, yet nothing survives sanitization.
+      name: "output that sanitizes to nothing",
+      thinkingResponse: () => {
+        return HttpResponse.json({
+          choices: [{ finish_reason: "stop", message: { content: '"""' } }],
+        });
+      },
     },
-  );
+  ])("omits opening copy after $name", async ({ thinkingResponse }) => {
+    const { actor, agentId } = await entitledChatActor();
+    mockOptionalEnv("OPENROUTER_API_KEY", "thinking-classification-key");
+    server.use(
+      http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          const payload = openRouterBodySchema.parse(await request.json());
+          const system = payload.messages[0]?.content ?? "";
+          return system.includes("Write user-visible progress copy")
+            ? thinkingResponse()
+            : HttpResponse.json({
+                choices: [
+                  {
+                    finish_reason: "stop",
+                    message: { content: "Launch Checklist" },
+                  },
+                ],
+              });
+        },
+      ),
+    );
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "Prepare the launch checklist",
+    });
+    await flushWaitUntilForTest();
+
+    // The optional generation is isolated: no marker, the run proceeds, and
+    // nothing the provider sent reaches the thread.
+    const events = await chat.listThreadEvents(actor, run.threadId);
+    expect(
+      events.events.filter((event) => {
+        return event.runEventId === "thinking:initial";
+      }),
+    ).toStrictEqual([]);
+    expect(JSON.stringify(events.events)).not.toContain(providerDetail);
+    expect((await api.readRun(actor, run.runId)).status).toBe("pending");
+    await cancelChatRun(actor, run.runId);
+  });
 
   it("persists a fast assistant thinking marker with paragraphs for active web chat runs", async () => {
     const { actor, agentId } = await entitledChatActor();
@@ -22568,136 +22937,6 @@ describe("CHAT-02: initial thinking indicator", () => {
 
   it.each([
     {
-      name: "an HTTP rate limit",
-      response: () => {
-        return HttpResponse.json(
-          { error: { code: 429 } },
-          { status: 429, headers: { "retry-after": "12" } },
-        );
-      },
-      outcome: "degraded",
-      reason: "rate_limited",
-      retryAfterMs: 12_000,
-    },
-    {
-      // OpenRouter reports an exhausted upstream window as a synthetic gateway
-      // failure. It is the same admission problem, not a separate outage.
-      name: "a rate limit wrapped in a synthetic 502",
-      response: () => {
-        return HttpResponse.json({
-          choices: [
-            {
-              finish_reason: "error",
-              error: { code: 429, message: privateProviderDetail },
-            },
-          ],
-        });
-      },
-      outcome: "degraded",
-      reason: "rate_limited",
-      retryAfterMs: undefined,
-    },
-    {
-      name: "an unreachable provider",
-      response: () => {
-        return new HttpResponse(privateProviderDetail, { status: 503 });
-      },
-      outcome: "degraded",
-      reason: "provider_unavailable",
-      retryAfterMs: undefined,
-    },
-    {
-      name: "rejected credentials",
-      response: () => {
-        return new HttpResponse(privateProviderDetail, { status: 401 });
-      },
-      outcome: "error",
-      reason: "auth",
-      retryAfterMs: undefined,
-    },
-    {
-      // Non-empty for the provider, yet nothing survives sanitization.
-      name: "output that sanitizes to nothing",
-      response: () => {
-        return HttpResponse.json({
-          choices: [{ finish_reason: "stop", message: { content: '"""' } }],
-        });
-      },
-      outcome: "error",
-      reason: "unusable_output",
-      retryAfterMs: undefined,
-    },
-  ])(
-    "classifies $name for optional progress copy",
-    async ({ response, outcome, reason, retryAfterMs }) => {
-      const { actor, agentId } = await entitledChatActor();
-      mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
-      server.use(
-        http.post(
-          "https://openrouter.ai/api/v1/chat/completions",
-          async ({ request }) => {
-            const body = openRouterBodySchema.parse(await request.json());
-            return body.messages[0]?.content.includes(
-              "Write user-visible progress copy",
-            )
-              ? response()
-              : HttpResponse.json({
-                  choices: [
-                    { finish_reason: "stop", message: { content: "Update" } },
-                  ],
-                });
-          },
-        ),
-      );
-      const run = await sendChatRun(actor, {
-        agentId,
-        prompt: "Prepare an update",
-      });
-      await flushWaitUntilForTest();
-
-      expect(auxiliaryResults(context, "chat_initial_thinking")).toStrictEqual([
-        expect.objectContaining({
-          outcome,
-          reason,
-          run_id: run.runId,
-          // Recorded only when the provider actually asked for a delay.
-          ...(retryAfterMs === undefined
-            ? {}
-            : { retry_after_ms: retryAfterMs }),
-        }),
-      ]);
-      expect(
-        auxiliaryResults(context, "chat_initial_thinking")[0],
-      ).toStrictEqual(
-        retryAfterMs === undefined
-          ? expect.not.objectContaining({ retry_after_ms: expect.anything() })
-          : expect.anything(),
-      );
-      // Only a defect the caller can act on still reaches the log.
-      expect(auxiliaryWarnings(context)).toHaveLength(
-        outcome === "error" ? 1 : 0,
-      );
-      expect(JSON.stringify(auxiliaryWarnings(context))).not.toContain(
-        privateProviderDetail,
-      );
-      expect(JSON.stringify(auxiliaryResults(context))).not.toContain(
-        privateProviderDetail,
-      );
-
-      // The optional copy is absent either way; the run itself is untouched.
-      const page = await chat.listThreadEvents(actor, run.threadId);
-      expect(
-        page.events.some((event) => {
-          return event.runEventId === "thinking:initial";
-        }),
-      ).toBeFalsy();
-      expect((await api.readRun(actor, run.runId)).status).toBe("pending");
-      await cancelChatRun(actor, run.runId);
-    },
-  );
-
-  it.each([
-    {
       name: "empty",
       responseBody: {
         choices: [{ finish_reason: "stop", message: { content: "  " } }],
@@ -22714,8 +22953,8 @@ describe("CHAT-02: initial thinking indicator", () => {
       responseBody: {
         choices: [
           {
-            finish_reason: "private_prompt_history_authorization_canary",
-            native_finish_reason: "private_prompt_history_authorization_canary",
+            finish_reason: privateProviderDetail,
+            native_finish_reason: privateProviderDetail,
             message: { content: "Incomplete" },
           },
         ],
@@ -22723,7 +22962,7 @@ describe("CHAT-02: initial thinking indicator", () => {
     },
     {
       name: "malformed JSON",
-      responseBody: "private_prompt_history_authorization_canary: invalid JSON",
+      responseBody: `${privateProviderDetail}: invalid JSON`,
     },
   ])(
     "discards $name output without failing the run or leaking provider data",
@@ -22764,28 +23003,7 @@ describe("CHAT-02: initial thinking indicator", () => {
           return event.runEventId === "thinking:initial";
         }),
       ).toBeFalsy();
-      // Output the feature cannot interpret stays a reported defect; only the
-      // provider-side conditions the caller cannot act on became silent.
-      expect(auxiliaryWarnings(context)).toStrictEqual([
-        [
-          "Auxiliary generation failed",
-          expect.objectContaining({
-            feature: "chat_initial_thinking",
-            reason: "invalid_output",
-            runId: run.runId,
-          }),
-        ],
-      ]);
-      expect(JSON.stringify(auxiliaryWarnings(context))).not.toContain(
-        "private_prompt_history_authorization_canary",
-      );
-      expect(auxiliaryResults(context, "chat_initial_thinking")).toStrictEqual([
-        expect.objectContaining({
-          outcome: "error",
-          reason: "invalid_output",
-          run_id: run.runId,
-        }),
-      ]);
+      expect(JSON.stringify(page.events)).not.toContain(privateProviderDetail);
       await cancelChatRun(actor, run.runId);
     },
   );
@@ -22843,66 +23061,6 @@ describe("CHAT-02: initial thinking indicator", () => {
       if (outcome === "answer") {
         await cancelChatRun(actor, run.runId, claim.sandboxHeaders);
       }
-    },
-  );
-
-  it.each(openRouterErrorFixtures)(
-    "retains only safe initial-thinking diagnostics: $name",
-    async ({ body, expected }) => {
-      const { actor, agentId } = await entitledChatActor();
-      mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
-      server.use(
-        http.post(
-          "https://openrouter.ai/api/v1/chat/completions",
-          async ({ request }) => {
-            const payload = openRouterBodySchema.parse(await request.json());
-            return payload.messages[0]?.content.includes(
-              "Write user-visible progress copy",
-            )
-              ? typeof body === "string"
-                ? HttpResponse.text(body, { status: 400 })
-                : HttpResponse.json(body, { status: 400 })
-              : HttpResponse.json({
-                  choices: [
-                    { finish_reason: "stop", message: { content: "Update" } },
-                  ],
-                });
-          },
-        ),
-      );
-      const run = await sendChatRun(actor, {
-        agentId,
-        prompt: "Prepare an update",
-      });
-      await flushWaitUntilForTest();
-      // A rejected request is the caller's own defect, so it keeps warning with
-      // the enumerated diagnostics and without the provider's message or stack.
-      expect(auxiliaryWarnings(context)).toStrictEqual([
-        [
-          "Auxiliary generation failed",
-          expect.objectContaining({
-            feature: "chat_initial_thinking",
-            reason: "invalid_request",
-            errorKind: "openrouter_request",
-            status: 400,
-            errorType: undefined,
-            runId: run.runId,
-            ...expected,
-          }),
-        ],
-      ]);
-      expect(JSON.stringify(auxiliaryWarnings(context))).not.toContain(
-        "private_prompt_history_authorization_canary",
-      );
-      expect(auxiliaryWarnings(context)[0]?.[1]).not.toHaveProperty("err");
-      const page = await chat.listThreadEvents(actor, run.threadId);
-      expect(
-        page.events.some((event) => {
-          return event.runEventId === "thinking:initial";
-        }),
-      ).toBeFalsy();
-      expect((await api.readRun(actor, run.runId)).status).toBe("pending");
-      await cancelChatRun(actor, run.runId);
     },
   );
 });
@@ -25801,17 +25959,17 @@ describe("CHAT-02: default assistant identity", () => {
     await cancelChatRun(actor, promoted.runId);
 
     mockEnv("APP_URL", "https://preview.example.test");
-    const customZero = await bdd.createAgent(actor, {
-      displayName: "Zero",
+    const customAgent = await bdd.createAgent(actor, {
+      displayName: "Nova",
       visibility: "private",
     });
     const customRun = await sendChatRun(actor, {
-      agentId: customZero.agentId,
+      agentId: customAgent.agentId,
       prompt: "keep my custom name",
     });
     const customPrompt = (await api.readRun(actor, customRun.runId))
       .appendSystemPrompt;
-    expect(customPrompt).toContain("Your name is Zero.");
+    expect(customPrompt).toContain("Your name is Nova.");
     expect(customPrompt).not.toContain("Your name is Okou.");
     const customClaim = await claimChatRun(runnerGroup, customRun.runId);
     await expectRunAppContext({
@@ -26092,7 +26250,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     const grantedRun = await api.readRun(actor, granted.runId);
     expect(grantedRun.appendSystemPrompt).toContain("# Computer Use");
     expect(grantedRun.appendSystemPrompt).toContain(
-      "Computer Use is enabled for this run on Zero Desktop.",
+      "Computer Use is enabled for this run on BDD Desktop.",
     );
     expect(grantedRun.appendSystemPrompt).not.toContain(hostId);
     const grantedClaim = await claimChatRun(runnerGroup, granted.runId);
@@ -26142,7 +26300,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     });
     const staleRun = await api.readRun(actor, staleGranted.runId);
     expect(staleRun.appendSystemPrompt).toContain(
-      "Computer Use is enabled for this run on Zero Desktop.",
+      "Computer Use is enabled for this run on BDD Desktop.",
     );
     clearMockNow();
     const staleClaim = await claimChatRun(runnerGroup, staleGranted.runId);

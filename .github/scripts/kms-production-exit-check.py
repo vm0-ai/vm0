@@ -216,6 +216,15 @@ def validate_service_state(service):
 def missing_registry_evidence(directory):
     """Read metadata only. Runner maintenance commands can clean state."""
     evidence = {"runnerVersion": directory.name, "collectionComplete": False}
+    diagnostics = {
+        "stage": "directory",
+        "directoryEntryCount": None,
+        "configFileOnly": None,
+        "serviceReturnCode": None,
+        "serviceStderrPresent": None,
+        "serviceProperties": {},
+        "matchingRunnerCommandLines": None,
+    }
     try:
         before = directory.stat(follow_symlinks=False)
         require(stat.S_ISDIR(before.st_mode), "invalid_runner_directory")
@@ -226,41 +235,15 @@ def missing_registry_evidence(directory):
             and entries[0].name == "runner.yaml"
             and stat.S_ISREG(entries[0].stat(follow_symlinks=False).st_mode)
         )
-        command = [
-            "systemctl",
-            "show",
-            "--all",
-            "--no-pager",
-            "--property=" + ",".join([*SERVICE_STATES, "MainPID", "ControlPID"]),
-            "vm0-runner-" + directory.name + ".service",
-        ]
-        child = subprocess.run(command, capture_output=True, text=True, timeout=15)
-        require(
-            child.returncode in (0, 1) and len(child.stdout) <= 4096,
-            "service_state_unavailable",
-        )
-        pairs = [line.split("=", 1) for line in child.stdout.splitlines()]
-        require(all(len(pair) == 2 for pair in pairs), "invalid_service_state")
-        service = strict_object(pairs)
-        for key in ("MainPID", "ControlPID"):
-            require(
-                isinstance(service.get(key), str)
-                and service[key].isascii()
-                and service[key].isdigit(),
-                "invalid_service_state",
-            )
-            service[key] = int(service[key])
-        validate_service_state(service)
-        require(
-            child.returncode == 0
-            or service["LoadState"] == "not-found"
-            and service["MainPID"] == service["ControlPID"] == 0,
-            "service_state_unavailable",
+        diagnostics.update(
+            directoryEntryCount=len(entries),
+            configFileOnly=config_only,
+            stage="process_command",
         )
         # Command lines may contain credentials: keep them in host memory and
         # export only a count. This does not prove absence of all retained state.
         processes = subprocess.run(
-            ["ps", "-C", "runner", "-o", "args=", "--ww"],
+            ["ps", "-C", "runner", "-o", "args=", "-ww"],
             capture_output=True,
             text=True,
             timeout=15,
@@ -281,6 +264,50 @@ def missing_registry_evidence(directory):
         matches = sum(
             bool(version.search(line)) for line in processes.stdout.splitlines()
         )
+        diagnostics["matchingRunnerCommandLines"] = matches
+        diagnostics["stage"] = "service_command"
+        command = [
+            "systemctl",
+            "show",
+            "--all",
+            "--no-pager",
+            "--property=" + ",".join([*SERVICE_STATES, "MainPID", "ControlPID"]),
+            "vm0-runner-" + directory.name + ".service",
+        ]
+        child = subprocess.run(command, capture_output=True, text=True, timeout=15)
+        diagnostics.update(
+            serviceReturnCode=child.returncode, serviceStderrPresent=bool(child.stderr)
+        )
+        require(
+            child.returncode in (0, 1) and len(child.stdout) <= 4096,
+            "service_state_unavailable",
+        )
+        diagnostics["stage"] = "service_properties"
+        pairs = [line.split("=", 1) for line in child.stdout.splitlines()]
+        require(all(len(pair) == 2 for pair in pairs), "invalid_service_state")
+        service = strict_object(pairs)
+        # Retain only known state values on failure, never raw command output.
+        diagnostics["serviceProperties"] = {
+            key: value
+            for key, value in service.items()
+            if key in SERVICE_STATES and value in SERVICE_STATES[key]
+        }
+        for key in ("MainPID", "ControlPID"):
+            require(
+                isinstance(service.get(key), str)
+                and service[key].isascii()
+                and service[key].isdigit(),
+                "invalid_service_state",
+            )
+            service[key] = int(service[key])
+        validate_service_state(service)
+        require(
+            child.returncode == 0
+            or service["LoadState"] == "not-found"
+            and service["MainPID"] == service["ControlPID"] == 0,
+            "service_state_unavailable",
+        )
+        diagnostics["stage"] = "directory_readback"
         after = directory.stat(follow_symlinks=False)
         unchanged = (before.st_dev, before.st_ino, before.st_mtime_ns) == (
             after.st_dev,
@@ -297,7 +324,11 @@ def missing_registry_evidence(directory):
             "matchingRunnerCommandLines": matches,
         }
     except (CheckError, OSError, ValueError, subprocess.TimeoutExpired):
-        return {**evidence, "error": "runner_state_unavailable"}
+        return {
+            **evidence,
+            "error": "runner_state_unavailable",
+            "diagnostics": diagnostics,
+        }
 
 
 def validate_missing_evidence(evidence):
@@ -310,11 +341,63 @@ def validate_missing_evidence(evidence):
     )
     if "error" in evidence:
         require(
-            set(evidence) == {"runnerVersion", "collectionComplete", "error"}
+            set(evidence)
+            == {"runnerVersion", "collectionComplete", "error", "diagnostics"}
             and evidence["collectionComplete"] is False
             and evidence["error"] == "runner_state_unavailable",
             "invalid_remote_report",
         )
+        diagnostics = evidence["diagnostics"]
+        require(
+            isinstance(diagnostics, dict)
+            and set(diagnostics)
+            == {
+                "stage",
+                "directoryEntryCount",
+                "configFileOnly",
+                "serviceReturnCode",
+                "serviceStderrPresent",
+                "serviceProperties",
+                "matchingRunnerCommandLines",
+            },
+            "invalid_remote_report",
+        )
+        require(
+            diagnostics["stage"]
+            in {
+                "directory",
+                "service_command",
+                "service_properties",
+                "process_command",
+                "directory_readback",
+            },
+            "invalid_remote_report",
+        )
+        for key, minimum, maximum in [
+            ("directoryEntryCount", 0, 10000),
+            ("matchingRunnerCommandLines", 0, 10000),
+            ("serviceReturnCode", -255, 255),
+        ]:
+            value = diagnostics[key]
+            require(
+                value is None or type(value) is int and minimum <= value <= maximum,
+                "invalid_remote_report",
+            )
+        for key in ["configFileOnly", "serviceStderrPresent"]:
+            require(
+                diagnostics[key] is None or type(diagnostics[key]) is bool,
+                "invalid_remote_report",
+            )
+        properties = diagnostics["serviceProperties"]
+        require(
+            isinstance(properties, dict) and set(properties) <= set(SERVICE_STATES),
+            "invalid_remote_report",
+        )
+        for key, value in properties.items():
+            require(
+                isinstance(value, str) and value in SERVICE_STATES[key],
+                "invalid_remote_report",
+            )
         return
     require(
         set(evidence)

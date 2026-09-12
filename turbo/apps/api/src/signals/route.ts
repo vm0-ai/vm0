@@ -1,3 +1,4 @@
+import { cronMaterializePiResourceIndexesRoutes } from "./routes/cron-materialize-pi-resource-indexes";
 import { authMeRoutes } from "./routes/auth-me";
 import { cliAuthRoutes } from "./routes/cli-auth";
 import type { RouteEntry } from "./route-entry";
@@ -190,8 +191,6 @@ import { imageReferencesRoutes } from "./routes/image-references";
 import { usageMembersRoutes } from "./routes/usage-members";
 import { usageRecordRoutes } from "./routes/usage-record";
 import { userPreferencesRoutes } from "./routes/user-preferences";
-import { marketingPrivacyRoutes } from "./routes/marketing-privacy";
-import { privacyChoicesRoutes } from "./routes/privacy-choices";
 import { userPermissionGrantsRoutes } from "./routes/user-permission-grants";
 import { userModelPreferenceRoutes } from "./routes/user-model-preference";
 import { avatarVideoRoutes } from "./routes/avatar-video";
@@ -254,6 +253,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronReconcileBillingEntitlementsRoutes,
   ...cronRefreshStoragePresignedUrlsRoutes,
   ...cronMaterializeMemorySummariesRoutes,
+  ...cronMaterializePiResourceIndexesRoutes,
   ...cronExtractPiMemoryStage1Routes,
   ...cronConsolidatePiMemoryPhase2Routes,
   ...cronComputerUseScreenshotCleanupRoutes,
@@ -357,8 +357,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...pushSubscriptionsRoutes,
   ...userPermissionGrantsRoutes,
   ...userPreferencesRoutes,
-  ...privacyChoicesRoutes,
-  ...marketingPrivacyRoutes,
   ...userModelPreferenceRoutes,
   ...morningBriefPreferenceRoutes,
   ...emailSubscriptionRoutes,

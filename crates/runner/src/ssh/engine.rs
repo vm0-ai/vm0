@@ -12,12 +12,12 @@ use std::{
     sync::{Arc, atomic::Ordering},
     time::Duration,
 };
-use tokio::net::TcpStream;
+use tokio::{net::TcpStream, sync::OwnedSemaphorePermit};
 
 use super::{
     FailureReason, Scope,
-    authority::{Authority, PreparedCredential},
-    io::{GuestIo, Lease, SshSocket},
+    authority::{Authority, PreparedAuth, PreparedCredential},
+    io::{GuestIo, SshSocket},
     output::{Output, RemoteExit, Stream},
 };
 use crate::ids::RunId;
@@ -26,7 +26,7 @@ pub(super) struct Execution {
     pub(super) authority: Arc<Authority>,
     pub(super) run: RunId,
     pub(super) connection: uuid::Uuid,
-    pub(super) lease: Arc<Lease>,
+    pub(super) lease: Arc<OwnedSemaphorePermit>,
     pub(super) credential: Arc<PreparedCredential>,
 }
 
@@ -62,26 +62,38 @@ impl Execution {
                 .unwrap_or(FailureReason::Protocol)
         })?;
         let result = async {
-            let hash = if matches!(self.credential.key.0.algorithm(), Algorithm::Rsa { .. }) {
-                match scope
-                    .wait(session.best_supported_rsa_hash())
-                    .await?
-                    .map_err(|_| FailureReason::Protocol)?
-                {
-                    Some(Some(hash)) => Some(hash),
-                    None => Some(HashAlg::Sha512),
-                    Some(None) => return Err(FailureReason::AuthenticationFailed),
-                }
-            } else {
-                None
-            };
-            let authentication = scope
-                .wait(session.authenticate_publickey(
-                    self.credential.username.clone(),
-                    PrivateKeyWithHashAlg::new(Arc::clone(&self.credential.key.0), hash),
-                ))
-                .await?
-                .map_err(|_| FailureReason::AuthenticationFailed)?;
+            let authentication =
+                match &self.credential.auth {
+                    PreparedAuth::Password(password) => scope
+                        .wait(session.authenticate_password(
+                            self.credential.username.clone(),
+                            password.expose(),
+                        ))
+                        .await?
+                        .map_err(|_| FailureReason::AuthenticationFailed)?,
+                    PreparedAuth::PrivateKey(key) => {
+                        let hash = if matches!(key.0.algorithm(), Algorithm::Rsa { .. }) {
+                            match scope
+                                .wait(session.best_supported_rsa_hash())
+                                .await?
+                                .map_err(|_| FailureReason::Protocol)?
+                            {
+                                Some(Some(hash)) => Some(hash),
+                                None => Some(HashAlg::Sha512),
+                                Some(None) => return Err(FailureReason::AuthenticationFailed),
+                            }
+                        } else {
+                            None
+                        };
+                        scope
+                            .wait(session.authenticate_publickey(
+                                self.credential.username.clone(),
+                                PrivateKeyWithHashAlg::new(Arc::clone(&key.0), hash),
+                            ))
+                            .await?
+                            .map_err(|_| FailureReason::AuthenticationFailed)?
+                    }
+                };
             if !authentication.success() {
                 return Err(FailureReason::AuthenticationFailed);
             }
@@ -163,7 +175,7 @@ impl Execution {
         }
         .await;
         // russh's handle does not abort its spawned I/O task on Drop. Closing
-        // the exact connected socket wakes it; its stream retains our lease
+        // the exact connected socket wakes it; its socket retains host capacity
         // until the library really releases the connection, even on cancellation.
         drop(socket_guard);
         let _ = scope.wait(session).await;

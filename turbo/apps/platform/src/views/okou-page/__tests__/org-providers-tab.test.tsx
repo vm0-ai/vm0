@@ -197,6 +197,7 @@ function billingStatus(
   tier: string,
   modelCapabilities?: {
     readonly supportByok?: boolean;
+    readonly restrictedBuiltInModels?: boolean;
     readonly restrictedVm0Models?: boolean;
   },
 ): BillingStatusResponse {
@@ -224,6 +225,16 @@ function billingStatus(
 }
 
 function mockBillingCapabilities(modelCapabilities: {
+  readonly supportByok: boolean;
+  readonly restrictedBuiltInModels: boolean;
+}): void {
+  context.mocks.api(billingStatusContract.get, ({ respond }) => {
+    return respond(200, billingStatus("pro", modelCapabilities));
+  });
+}
+
+/** Billing status as an API from before #33658 step 1 returns it. */
+function mockLegacyBillingCapabilities(modelCapabilities: {
   readonly supportByok: boolean;
   readonly restrictedVm0Models: boolean;
 }): void {
@@ -358,7 +369,7 @@ async function openExistingGateway(displayName: string, routed = false) {
 async function openProvidersTab(): Promise<void> {
   await setupPage({
     context,
-    path: "/?settings=model",
+    path: "/agents?settings=model",
   });
   await waitFor(() => {
     expect(
@@ -371,7 +382,7 @@ async function openProvidersTab(): Promise<void> {
 async function openModelSettings(): Promise<void> {
   await setupPage({
     context,
-    path: "/?settings=model",
+    path: "/agents?settings=model",
   });
   await waitFor(() => {
     expect(
@@ -785,7 +796,7 @@ test("Limit free workspaces to eligible built-in models", async () => {
   mockAdminOrg();
   mockBillingCapabilities({
     supportByok: false,
-    restrictedVm0Models: true,
+    restrictedBuiltInModels: true,
   });
   context.mocks.data.orgModelProviders([]);
   context.mocks.data.orgModelPolicies([
@@ -863,7 +874,7 @@ test("Connect a workspace API key to a model route", async () => {
   expect(within(row).getByText("Anthropic")).toBeInTheDocument();
 });
 
-test("Rotate a workspace model API key", async () => {
+test("Reject an empty workspace model API key without replacing its provider", async () => {
   mockApiKeyModelRouteStory();
   await openProvidersTab();
 
@@ -883,6 +894,24 @@ test("Rotate a workspace model API key", async () => {
   click(buttonByText("Save changes"));
   expect(screen.getByText("API key is required")).toBeInTheDocument();
   expect(within(row).getByText("Anthropic")).toBeInTheDocument();
+});
+
+test("Rotate a workspace model API key without exposing the new secret", async () => {
+  mockApiKeyModelRouteStory();
+  await openProvidersTab();
+
+  const row = await screen.findByTestId("org-model-policy-row-claude-opus-4-8");
+  expect(within(row).getByText("Claude Opus 4.8")).toBeInTheDocument();
+  expect(within(row).getByText("Anthropic")).toBeInTheDocument();
+
+  click(within(row).getByLabelText("Actions for Claude Opus 4.8"));
+  click(menuItemByText("Edit model"));
+
+  await waitFor(() => {
+    expect(
+      screen.getByRole("dialog", { name: "Edit model" }),
+    ).toBeInTheDocument();
+  });
   await fill(
     screen.getByPlaceholderText("Enter your API key"),
     "  sk-ant-rotated  ",
@@ -997,9 +1026,31 @@ test("Add a GPT 6 Astra Codex subscription model route", async () => {
   expect(within(codexRow).getByText("ChatGPT (Codex)")).toBeInTheDocument();
 });
 
+test("Add DeepSeek V4.1 Flash as a built-in model", async () => {
+  mockAdminOrg();
+  context.mocks.data.orgModelProviders([]);
+  context.mocks.data.orgModelPolicies([]);
+  await openProvidersTab();
+
+  click(buttonByText("Add model"));
+  const dialog = screen.getByRole("dialog", { name: "Add model" });
+  await selectDialogModel("DeepSeek V4.1 Flash");
+  expect(radioByName(/Built-in/u, dialog)).toBeChecked();
+  click(buttonByText("Add model", dialog));
+
+  const modelRow = await screen.findByTestId(
+    "org-model-policy-row-deepseek-v4.1-flash",
+  );
+  expect(within(modelRow).getByText("DeepSeek V4.1 Flash")).toBeInTheDocument();
+  expect(within(modelRow).getByText("Built-in")).toBeInTheDocument();
+});
+
 test("Offer an upgrade for restricted Pro models", async () => {
   mockAdminOrg();
-  mockBillingCapabilities({ supportByok: false, restrictedVm0Models: true });
+  mockBillingCapabilities({
+    supportByok: false,
+    restrictedBuiltInModels: true,
+  });
   context.mocks.data.orgModelProviders([]);
   context.mocks.api(billingCheckoutContract.create, ({ body, respond }) => {
     return respond(200, {
@@ -1062,9 +1113,45 @@ test("Offer an upgrade for restricted Pro models", async () => {
   });
 });
 
+test("Offer an upgrade for restricted Pro models from an API before the rename", async () => {
+  mockAdminOrg();
+  mockLegacyBillingCapabilities({
+    supportByok: false,
+    restrictedVm0Models: true,
+  });
+  context.mocks.data.orgModelProviders([]);
+  context.mocks.data.orgModelPolicies([
+    builtInPolicy(
+      "00000000-0000-4000-a000-000000000221",
+      "claude-fable-5-1",
+      "Claude Fable 5.1",
+      false,
+    ),
+    builtInPolicy(
+      "00000000-0000-4000-a000-000000000222",
+      "gpt-5.6-luna",
+      "GPT 5.6 Luna",
+      true,
+    ),
+  ]);
+  await openModelSettings();
+
+  const defaultRow = screen.getByTestId("default-model-row");
+  click(within(defaultRow).getByRole("combobox"));
+
+  // The restriction can only come from the retired alias, so seeing the Pro
+  // affordance proves the page honored it.
+  await expect(
+    screen.findByRole("option", { name: /Claude Fable 5.*Pro/u }),
+  ).resolves.toBeInTheDocument();
+});
+
 test("Offer a plan change when bring-your-own-key is unavailable", async () => {
   mockAdminOrg();
-  mockBillingCapabilities({ supportByok: false, restrictedVm0Models: false });
+  mockBillingCapabilities({
+    supportByok: false,
+    restrictedBuiltInModels: false,
+  });
   context.mocks.data.orgModelProviders([]);
   context.mocks.data.orgModelPolicies([
     builtInPolicy(

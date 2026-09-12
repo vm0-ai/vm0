@@ -108,6 +108,7 @@ test.each(["setupPage", "startPage"])(
   "%s does not report cancelled authentication startup as ready",
   async (entryPoint) => {
     const clerkLoad = context.mocks.clerk().runtimePending();
+    // eslint-disable-next-line ccstate/no-create-child-abort-controller -- migrate this lifetime to the ccstate signal hierarchy
     const controller = createChildAbortController(context.signal);
     const options = {
       context: {
@@ -142,6 +143,7 @@ test("Cancelled locale startup does not adopt a replacement lifetime", async () 
     await localeResponse.promise;
     return HttpResponse.json(frFRCommon);
   });
+  // eslint-disable-next-line ccstate/no-create-child-abort-controller -- migrate this lifetime to the ccstate signal hierarchy
   const controller = createChildAbortController(context.signal);
   let currentSignal = controller.signal;
   const startup = startPage({

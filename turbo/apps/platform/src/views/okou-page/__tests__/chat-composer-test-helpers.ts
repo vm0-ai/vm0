@@ -1,5 +1,4 @@
 import { screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import type { PresentationTemplateItem } from "@okouai/core";
 import {
   chatThreadByIdContract,
@@ -195,7 +194,7 @@ function billingStatus(
   tier: string,
   modelCapabilities?: {
     readonly supportByok?: boolean;
-    readonly restrictedVm0Models?: boolean;
+    readonly restrictedBuiltInModels?: boolean;
   },
 ): BillingStatusResponse {
   return {
@@ -224,7 +223,7 @@ function billingStatus(
 export function mockBillingCapabilities(
   modelCapabilities: {
     readonly supportByok: boolean;
-    readonly restrictedVm0Models: boolean;
+    readonly restrictedBuiltInModels: boolean;
   },
   tier = "pro",
 ): void {
@@ -520,7 +519,6 @@ export async function expectInlineTemplateInComposer(
 }
 
 export async function selectTemplate(
-  user: ReturnType<typeof userEvent.setup>,
   template: PresentationTemplateItem,
 ): Promise<void> {
   click(
@@ -532,7 +530,7 @@ export async function selectTemplate(
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
-  await user.click(screen.getByLabelText(`Select template ${template.title}`));
+  click(screen.getByLabelText(`Select template ${template.title}`));
 
   await waitFor(() => {
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
