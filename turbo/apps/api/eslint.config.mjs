@@ -257,21 +257,6 @@ export default [
     },
   },
   {
-    files: ["src/signals/services/run-activity-snapshot.service.ts"],
-    rules: {
-      // One record per relevant batch or cleanup; suppressed captures stay silent.
-      "api/no-logger-info": [
-        "error",
-        {
-          allowedMessages: [
-            "Activity snapshot capture",
-            "Activity snapshot cleanup",
-          ],
-        },
-      ],
-    },
-  },
-  {
     files: ["src/signals/services/onboarding.service.ts"],
     rules: {
       "api/no-logger-info": [

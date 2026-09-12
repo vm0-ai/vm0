@@ -68,7 +68,9 @@ function continuationHeading(
   }
   if (state.status === "failure") {
     return {
-      description: copy.activationErrorDescription,
+      description:
+        (state.clerkError && copy.clerkError(state.clerkError)) ??
+        copy.activationErrorDescription,
       title: copy.activationErrorTitle,
     };
   }
@@ -185,7 +187,13 @@ function OrganizationContent({
     <div className="space-y-4">
       {state.error ? (
         <>
-          <AuthV2ErrorAlert message={copy.taskError} focusKey={state.error} />
+          <AuthV2ErrorAlert
+            message={
+              (state.clerkError && copy.clerkError(state.clerkError)) ??
+              copy.taskError
+            }
+            focusKey={`${state.error}:${state.clerkError?.clerkCode ?? ""}`}
+          />
           {state.invitations.length === 0 && !state.canCreateOrganization ? (
             <Button
               className="w-full"

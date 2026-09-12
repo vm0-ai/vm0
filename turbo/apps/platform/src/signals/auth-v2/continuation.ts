@@ -17,6 +17,10 @@ import { clerk$ } from "../auth.ts";
 import { ROUTES } from "../route-paths.ts";
 import { settle, withCleanup } from "../utils.ts";
 import type { AuthV2Navigation, AuthV2RouteMode } from "./navigation.ts";
+import {
+  normalizeClerkAuthError,
+  type AuthV2ClerkError,
+} from "./clerk-errors.ts";
 
 import {
   createAuthV2SecurityTaskCommand,
@@ -50,6 +54,7 @@ export type AuthV2ContinuationState =
       readonly invitations: readonly AuthV2ContinuationOrganization[];
       readonly canCreateOrganization: boolean;
       readonly error: "request-failed" | null;
+      readonly clerkError?: AuthV2ClerkError;
       readonly selectingOrganizationId: string | null;
       readonly status: "incomplete";
       readonly task: "choose-organization";
@@ -57,6 +62,7 @@ export type AuthV2ContinuationState =
   | { readonly status: "complete" }
   | {
       readonly reason: AuthV2ContinuationFailureReason;
+      readonly clerkError?: AuthV2ClerkError;
       readonly status: "failure";
     }
   | {
@@ -229,6 +235,9 @@ function createApplyOrganizationTaskCommand(
         }),
         canCreateOrganization,
         error: invitations.ok ? null : "request-failed",
+        clerkError: invitations.ok
+          ? undefined
+          : normalizeClerkAuthError(invitations.error),
         selectingOrganizationId: null,
         status: "incomplete",
         task: "choose-organization",
@@ -466,6 +475,7 @@ function createCompleteSessionCommand(
       if (!activation.ok) {
         set(atoms.state$, {
           reason: "activation-failed",
+          clerkError: normalizeClerkAuthError(activation.error),
           status: "failure",
         });
         return;
@@ -523,6 +533,7 @@ function createSelectOrganizationCommand(
       if (!activation.ok) {
         set(atoms.state$, {
           reason: "organization-activation-failed",
+          clerkError: normalizeClerkAuthError(activation.error),
           status: "failure",
         });
         return;
@@ -574,7 +585,7 @@ function createOrganizationRecoveryCommands(
       ) {
         return;
       }
-      set(atoms.state$, { ...current, error: null });
+      set(atoms.state$, { ...current, error: null, clerkError: undefined });
       const clerk = await get(clerk$);
       signal.throwIfAborted();
       if (clerk.session?.id !== get(atoms.sessionId$)) {
@@ -642,7 +653,11 @@ function createOrganizationRecoveryCommands(
             current.status === "incomplete" &&
             current.task === "choose-organization"
           ) {
-            set(atoms.state$, { ...current, error: "request-failed" });
+            set(atoms.state$, {
+              ...current,
+              error: "request-failed",
+              clerkError: normalizeClerkAuthError(result.error),
+            });
           }
         }
       },
