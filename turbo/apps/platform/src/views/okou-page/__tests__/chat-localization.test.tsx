@@ -163,6 +163,10 @@ function configureExistingChat(args: {
   readonly rows?: readonly ChatEventRow[];
   readonly title: string;
 }): void {
+  // Let real bootstrap load the user's existing locale once. The tested
+  // language change happens later in Settings.
+  context.mocks.browser.language(portuguese.locale);
+  context.mocks.data.userPreferences({ locale: portuguese.locale });
   configureNoBrowserSession();
   context.mocks.data.agents([{ agentId: AGENT_ID }]);
   context.mocks.data.userModelPreference({
@@ -308,7 +312,6 @@ test("A cancelled run keeps its meaning when the language changes", async () => 
 
   await setupPage({
     context,
-    locale: "pt-BR",
     path: `/chats/${THREAD_ID}`,
   });
 
@@ -347,7 +350,6 @@ test("Changing language translates the enabled composer controls", async () => {
 
   await setupPage({
     context,
-    locale: "pt-BR",
     path: `/chats/${THREAD_ID}`,
   });
   await expectLocalizedComposerAttributes(portuguese, true);
@@ -378,7 +380,6 @@ test("Changing language preserves the open conversation and draft", async () => 
 
   await setupPage({
     context,
-    locale: "pt-BR",
     path: `/chats/${THREAD_ID}`,
   });
 
