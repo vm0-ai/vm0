@@ -130,6 +130,9 @@ const MCP_PROTECTED_HEADER_NAMES = Object.freeze([
   "x-forwarded-for",
   "x-forwarded-host",
   "x-forwarded-proto",
+  // Both connector-intent names stay protected while the runner strips both:
+  // the canonical one, and the legacy one older CLI packages still send.
+  "x-okou-connector-intent",
   "x-vm0-connector-intent",
 ]);
 export const CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME = "access_token";
