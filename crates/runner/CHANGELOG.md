@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.191.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.190.8...runner-rs-v0.191.0) (2026-09-12)
+
+
+### Features
+
+* **ssh:** add managed sessions within a run ([#33674](https://github.com/vm0-ai/vm0/issues/33674)) ([45c6643](https://github.com/vm0-ai/vm0/commit/45c6643695cfd76617ae72e5fb4b42a437cd9a70))
+
+
+### Bug Fixes
+
+* **runner:** own usage retry delivery through shutdown ([#33675](https://github.com/vm0-ai/vm0/issues/33675)) ([f2016a4](https://github.com/vm0-ai/vm0/commit/f2016a4f77d3c783f0bc847ddf4cfa9ff0da043a))
+* **ssh:** wait for private key decoding capacity ([#33646](https://github.com/vm0-ai/vm0/issues/33646)) ([8451ce0](https://github.com/vm0-ai/vm0/commit/8451ce0e82e70cfeb16bb83441892c4022e38014))
+
+
+### Refactoring
+
+* **runner:** rename sandbox-internal and preview-only x-vm0 headers ([#33663](https://github.com/vm0-ai/vm0/issues/33663)) ([9375cec](https://github.com/vm0-ai/vm0/commit/9375cec4abaa342c41b17cc54275f9cb59031b64))
+* **ssh:** scope admission to eight requests per run ([#33631](https://github.com/vm0-ai/vm0/issues/33631)) ([13d35da](https://github.com/vm0-ai/vm0/commit/13d35da64779aa788565f075242278f8eee5cda0))
+
+
+### Performance Improvements
+
+* **runner:** bound connector diagnostic auth-header inspection ([#33676](https://github.com/vm0-ai/vm0/issues/33676)) ([65501ea](https://github.com/vm0-ai/vm0/commit/65501eaee44650b3a2c613464776b24c3a5acc5d))
+
 ## [0.190.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.190.7...runner-rs-v0.190.8) (2026-09-12)
 
 
