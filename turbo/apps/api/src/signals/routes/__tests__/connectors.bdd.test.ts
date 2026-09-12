@@ -797,7 +797,7 @@ describe("CONN-02: OAuth start and callback", () => {
 describe("CONN-02: OAuth device authorization", () => {
   it("returns 403 when the selected device-auth runtime method is unavailable", async () => {
     await installCatalogWithUnavailableMethods({
-      capabilityIdentityEnvName: "CALCOM_OAUTH_CLIENT_ID",
+      capabilityIdentityEnvName: "CAL_COM_OAUTH_CLIENT_ID",
       filteredAuthMethods: [
         {
           connectorSlug: "test-oauth-device",
