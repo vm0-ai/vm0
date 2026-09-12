@@ -74,6 +74,16 @@ API integration or crates layer rather than introducing a deployed test hook.
 
 ## Running runner E2E tests
 
+All `cli-e2e-*` jobs in `.github/workflows/turbo.yml` check out the event's
+immutable PR head SHA on `pull_request`, matching the preview API and CLI
+artifact. This applies to test discovery, account preparation, bootstrap,
+execution, report finalization, and cleanup. Do not use the implicit PR merge
+commit or a moving branch name for those checkouts: newer setup code can send
+requests that the deployed PR API does not support. Push and merge-group jobs
+continue to use `github.sha`, so merge-queue E2E still tests the queued revision.
+This rule does not change other jobs' checkout policies, including the App
+artifact's explicit merge-candidate build.
+
 The BATS files under `e2e/tests/03-runner` are CI-only and cannot be run from a
 local checkout. They depend on temporary Clerk organizations and API tokens,
 the pull request's deployed API and app previews, and the preview runner fleet
