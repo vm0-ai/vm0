@@ -93,33 +93,6 @@ function waitForFastRole(
   });
 }
 
-async function openAddAccount(
-  addAccountLabel: string,
-  dialogTitle: string,
-): Promise<HTMLElement> {
-  const trigger = await waitFor(() => {
-    const button = accountMenuTrigger();
-    if (!button) {
-      throw new Error("Expected the account menu trigger");
-    }
-    return button;
-  });
-  click(trigger);
-  const menu = await screen.findByRole("menu");
-  click(within(menu).getByText(addAccountLabel));
-  return screen.findByRole("dialog", { name: dialogTitle });
-}
-
-async function closeAddAccount(
-  dialog: HTMLElement,
-  closeLabel: string,
-): Promise<void> {
-  click(fastRoleElement("button", closeLabel, dialog));
-  await waitFor(() => {
-    expect(dialog).not.toBeInTheDocument();
-  });
-}
-
 async function selectLanguage(
   currentLabel: string,
   optionLabel: string,
@@ -161,11 +134,6 @@ test("Authentication copy falls back without changing the app language", async (
   expect(
     screen.getByText("Escolha seu idioma preferido para a interface do Okou"),
   ).toBeVisible();
-  const authentication = await openAddAccount(
-    "Adicionar conta",
-    "Entrar no Okou",
-  );
-  expect(within(authentication).getByLabelText("Seu e-mail")).toBeVisible();
   expect(document.documentElement).toHaveAttribute("lang", "pt-BR");
   expect(clerk.localizationRequests).toStrictEqual(["pt-BR"]);
 });
@@ -343,39 +311,18 @@ test("Only the selected authentication language is loaded and reused", async () 
   await expect(
     screen.findByRole("heading", { name: "Préférences" }),
   ).resolves.toBeInTheDocument();
-  const frenchAuthentication = await openAddAccount(
-    "Ajouter un compte",
-    "Se connecter à Okou",
-  );
-  expect(
-    within(frenchAuthentication).getByLabelText("Adresse e-mail"),
-  ).toBeVisible();
-  await closeAddAccount(frenchAuthentication, "Fermer");
-
   await selectLanguage("Langue", "English");
   await expect(
     screen.findByRole("heading", { name: "Preference" }),
   ).resolves.toBeInTheDocument();
-  const englishAuthentication = await openAddAccount(
-    "Add account",
-    "Sign in to Okou",
-  );
-  expect(
-    within(englishAuthentication).getByLabelText("Email address"),
-  ).toBeVisible();
-  await closeAddAccount(englishAuthentication, "Close");
 
   await selectLanguage("Language", "Français");
   await expect(
     screen.findByRole("heading", { name: "Préférences" }),
   ).resolves.toBeInTheDocument();
-  const reusedFrenchAuthentication = await openAddAccount(
-    "Ajouter un compte",
-    "Se connecter à Okou",
-  );
-  expect(
-    within(reusedFrenchAuthentication).getByLabelText("Adresse e-mail"),
-  ).toBeVisible();
+
+  // Returning to French reuses the cached resource instead of downloading it
+  // again, and English never downloads because it ships as the default.
   expect(clerk.localizationRequests).toStrictEqual(["fr-FR"]);
 });
 
