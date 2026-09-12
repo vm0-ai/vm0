@@ -1492,7 +1492,7 @@ describe("INT-01: Slack integration and Slack app routes", () => {
       {
         type: "app_mention",
         user: "UBDD_EVENT",
-        text: "@Zero retry",
+        text: "@Nova retry",
         ts: "1710000000.000200",
         channel: "CBDD_EVENT",
         channel_type: "channel",
@@ -7554,7 +7554,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
         agentId: "agt-bdd-agentphone",
         from: `sender-${randomUUID()}@example.test`,
         to: "+19039853128",
-        message: "group update without a Zero mention",
+        message: "group update without a Nova mention",
         conversationId: `group-${randomUUID()}`,
         isGroup: true,
         mentioned: false,
