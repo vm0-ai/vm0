@@ -967,27 +967,17 @@ async function runFirstCanonicalSlackPiTurn(
     channel: scenario.channelId,
     channel_type: "channel",
   });
-  let runId: string | undefined;
-  await expect
-    .poll(async () => {
-      const state = await integrations.readSlackTestState(scenario.teamId);
-      runId = state.recent_runs.find((run) => {
-        return run.promptPreview?.includes(prompt) === true;
-      })?.id;
-      return runId;
-    })
-    .toStrictEqual(expect.any(String));
+  // Webhook acknowledgement precedes the tracked Pi turn and its callbacks.
+  await flushWaitUntilForTest();
+  const state = await integrations.readSlackTestState(scenario.teamId);
+  const runId = state.recent_runs.find((run) => {
+    return run.promptPreview?.includes(prompt) === true;
+  })?.id;
   if (!runId) {
     throw new Error("Expected the first canonical Slack Pi run");
   }
-  const completedRunId = runId;
-  await expect
-    .poll(async () => {
-      return (await runs.readRun(scenario.actor, completedRunId)).status;
-    })
-    .toBe("completed");
-  await flushWaitUntilForTest();
-  return { prompt, runId: completedRunId };
+  expect((await runs.readRun(scenario.actor, runId)).status).toBe("completed");
+  return { prompt, runId };
 }
 
 async function expectFirstSlackPiExecution(args: {
@@ -1114,11 +1104,6 @@ async function claimContinuedSlackPiTurn(args: {
     channel: args.scenario.channelId,
     channel_type: "channel",
   });
-  await expect
-    .poll(() => {
-      return args.providerRequests.length;
-    })
-    .toBe(2);
   const runId = await pollSlackRun(args.scenario.runnerGroup);
   const claim = await runs.claimRunnerJob(runId, {
     capabilities: { piModelConfigGenerations: [1, 2] },
@@ -1226,26 +1211,17 @@ async function runSuccessfulContinuedSlackPiTurn(args: {
     channel: args.scenario.channelId,
     channel_type: "channel",
   });
-  let runId: string | undefined;
-  await expect
-    .poll(async () => {
-      const state = await integrations.readSlackTestState(args.scenario.teamId);
-      runId = state.recent_runs.find((run) => {
-        return run.promptPreview?.includes(prompt) === true;
-      })?.id;
-      return runId;
-    })
-    .toStrictEqual(expect.any(String));
-  if (!runId) {
+  await flushWaitUntilForTest();
+  const state = await integrations.readSlackTestState(args.scenario.teamId);
+  const completedRunId = state.recent_runs.find((run) => {
+    return run.promptPreview?.includes(prompt) === true;
+  })?.id;
+  if (!completedRunId) {
     throw new Error("Expected the continued canonical Slack Pi run");
   }
-  const completedRunId = runId;
-  await expect
-    .poll(async () => {
-      return (await runs.readRun(args.scenario.actor, completedRunId)).status;
-    })
-    .toBe("completed");
-  await flushWaitUntilForTest();
+  expect((await runs.readRun(args.scenario.actor, completedRunId)).status).toBe(
+    "completed",
+  );
 
   expect(args.providerRequests).toHaveLength(3);
   const providerInput = JSON.stringify(args.providerRequests[2]?.body);
