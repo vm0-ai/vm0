@@ -195,8 +195,23 @@ async fn idle_expiry_closes_the_socket_without_waiting_for_another_request() {
     let mut h = Harness::new(Reply::default()).await;
     h.runtime.ably_connected(true);
     let _resolve = h.resolve(h.credential(true)).await;
+    rpc(&h, "list", json!({})).await;
+    // Offset idle expiry from the dispatcher's periodic cleanup ticks.
+    tokio::time::pause();
+    tokio::time::advance(Duration::from_secs(10)).await;
+    tokio::time::resume();
     assert_eq!(terminal(&h.request(params()).await)["type"], "finished");
-    h.expire_idle().await;
+    tokio::time::pause();
+    tokio::time::advance(Duration::from_secs(51)).await;
+    tokio::time::resume();
+    // Drain the already-due periodic cleanup while this connection is still healthy.
+    rpc(&h, "list", json!({})).await;
+    assert_eq!(h.observed.closed.load(Ordering::SeqCst), 0);
+    tokio::time::pause();
+    tokio::time::advance(Duration::from_secs(10)).await;
+    tokio::time::resume();
+    // No guest request or periodic tick follows expiry; the transport timer must close it.
+    wait_for(|| h.observed.closed.load(Ordering::SeqCst) == 1).await;
     assert_eq!(terminal(&h.request(params()).await)["type"], "finished");
     assert_eq!(h.observed.auth.load(Ordering::SeqCst), 2);
     h.shutdown().await;
