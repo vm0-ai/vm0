@@ -2032,92 +2032,79 @@ describe("POST /api/billing/checkout", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it.each([false, true])(
-    "keeps a stored click separate from a later campaign during checkout (privacy receipt: %s)",
-    async (hasReceipt) => {
-      const receipt = randomUUID();
-      const fixture = await trackedSeed();
-      mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-      context.mocks.clerk.users.getUserList.mockResolvedValue({
-        data: [
-          {
-            id: fixture.userId,
-            privateMetadata: {
-              ...(hasReceipt ? { marketing_privacy_receipt: receipt } : {}),
-              signup_attribution: {
-                source_type: "paid",
-                gclid: "first-click",
-                gclid_present: "true",
-                utm_source: "google",
-                recorded_at: "2026-09-01T00:00:00.000Z",
-              },
+  it("keeps a stored click separate from a later campaign during checkout", async () => {
+    const fixture = await trackedSeed();
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    context.mocks.clerk.users.getUserList.mockResolvedValue({
+      data: [
+        {
+          id: fixture.userId,
+          privateMetadata: {
+            signup_attribution: {
+              source_type: "paid",
+              gclid: "first-click",
+              gclid_present: "true",
+              utm_source: "google",
+              recorded_at: "2026-09-01T00:00:00.000Z",
             },
           },
-        ],
-      });
-      context.mocks.stripe.customers.create.mockResolvedValue({
-        id: `cus_${randomUUID().slice(0, 8)}`,
-      });
-      context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
-        url: "https://checkout.stripe.com/session/first-touch",
-      });
-      const client = setupApp({ context, routes: billingCheckoutRoutes })(
-        billingCheckoutContract,
-      );
-      await accept(
-        client.create({
-          body: {
-            tier: "pro",
-            successUrl: `${APP_ORIGIN}/billing?billing=success`,
-            cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
-            adAttribution: {
-              gclid: "later-click",
-              vm0_campaign_id: "24220469665",
-              vm0_ad_group_id: "123456",
-              utm_campaign: "later-campaign",
-              ga_client_id: "123.456",
-            },
+        },
+      ],
+    });
+    context.mocks.stripe.customers.create.mockResolvedValue({
+      id: `cus_${randomUUID().slice(0, 8)}`,
+    });
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
+      url: "https://checkout.stripe.com/session/first-touch",
+    });
+    const client = setupApp({ context, routes: billingCheckoutRoutes })(
+      billingCheckoutContract,
+    );
+    await accept(
+      client.create({
+        body: {
+          tier: "pro",
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+          adAttribution: {
+            gclid: "later-click",
+            vm0_campaign_id: "24220469665",
+            vm0_ad_group_id: "123456",
+            utm_campaign: "later-campaign",
+            ga_client_id: "123.456",
           },
-          headers: { authorization: "Bearer clerk-session" },
-        }),
-        [200],
-      );
-      const expectedMetadata = {
-        ...(hasReceipt
-          ? {
-              marketing_privacy_receipt: receipt,
-              marketing_privacy_user_id: fixture.userId,
-            }
-          : {}),
-        orgId: fixture.orgId,
-        tier: "pro",
-        priceId: TEST_PRICE_PRO,
-        source_type: "paid",
-        gclid: "first-click",
-        gclid_present: "true",
-        utm_source: "google",
-        ga_client_id: "123.456",
-      };
-      expect(
-        context.mocks.stripe.checkout.sessions.create,
-      ).toHaveBeenCalledWith(
-        expect.objectContaining({
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const expectedMetadata = {
+      orgId: fixture.orgId,
+      tier: "pro",
+      priceId: TEST_PRICE_PRO,
+      source_type: "paid",
+      gclid: "first-click",
+      gclid_present: "true",
+      utm_source: "google",
+      ga_client_id: "123.456",
+    };
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expectedMetadata,
+        subscription_data: expect.objectContaining({
           metadata: expectedMetadata,
-          subscription_data: expect.objectContaining({
-            metadata: expectedMetadata,
-          }),
         }),
-      );
-      await expect(
-        readOrgAcquisitionAttributionFixture(fixture.orgId),
-      ).resolves.toMatchObject({
-        acquisitionGclid: "first-click",
-        acquisitionCampaignId: null,
-        acquisitionAdGroupId: null,
-        acquisitionCampaign: null,
-      });
-    },
-  );
+      }),
+    );
+    await expect(
+      readOrgAcquisitionAttributionFixture(fixture.orgId),
+    ).resolves.toMatchObject({
+      acquisitionGclid: "first-click",
+      acquisitionCampaignId: null,
+      acquisitionAdGroupId: null,
+      acquisitionCampaign: null,
+    });
+  });
 
   it.each(["legacy", "okou"])(
     "attaches %s ad attribution to Stripe checkout and subscription metadata",
@@ -21150,8 +21137,6 @@ describe("POST /api/billing/credit-checkout", () => {
         unrelated: "keep",
         impact_click_id: "partner-first",
         impact_click_at: capturedAt.toISOString(),
-        impact_privacy_receipt: randomUUID(),
-        impact_privacy_user_id: "user_previous_purchaser",
       },
     });
     context.mocks.stripe.customers.update.mockResolvedValue({ id: customerId });
@@ -21202,8 +21187,6 @@ describe("POST /api/billing/credit-checkout", () => {
           metadata: {
             impact_click_id: "partner-first",
             impact_click_at: capturedAt.toISOString(),
-            impact_privacy_receipt: randomUUID(),
-            impact_privacy_user_id: "user_previous_purchaser",
           },
         },
         { id: "sub_canceled_impact", status: "canceled", metadata: {} },
@@ -21226,8 +21209,6 @@ describe("POST /api/billing/credit-checkout", () => {
       metadata: {
         impact_click_id: impact.clickId,
         impact_click_at: impact.capturedAt,
-        impact_privacy_receipt: "",
-        impact_privacy_user_id: "",
       },
     });
     context.mocks.stripe.customers.retrieve.mockResolvedValue({
@@ -21259,8 +21240,6 @@ describe("POST /api/billing/credit-checkout", () => {
       metadata: {
         impact_click_id: "partner-next",
         impact_click_at: impact.capturedAt,
-        impact_privacy_receipt: "",
-        impact_privacy_user_id: "",
       },
     });
     expect(
@@ -21325,112 +21304,6 @@ describe("POST /api/billing/credit-checkout", () => {
       }),
     );
   });
-
-  it.each([
-    { sameClick: false, hasReceipt: false },
-    { sameClick: false, hasReceipt: true },
-    { sameClick: true, hasReceipt: false },
-    { sameClick: true, hasReceipt: true },
-  ])(
-    "replaces prior purchaser Impact proof during checkout (same click: $sameClick, receipt: $hasReceipt)",
-    async ({ sameClick, hasReceipt }) => {
-      const fixture = trackedSeed();
-      const capturedAt = new Date("2026-09-09T04:00:00.000Z");
-      mockNow(capturedAt);
-      const customerId = `cus_${randomUUID().slice(0, 8)}`;
-      await createStripeCustomerOrgForFixture(fixture, customerId);
-
-      const impact = {
-        clickId: "current-purchaser-click",
-        capturedAt: capturedAt.toISOString(),
-      };
-      const receipt = randomUUID();
-      context.mocks.clerk.users.getUserList.mockResolvedValue({
-        data: [
-          {
-            id: fixture.userId,
-            privateMetadata: {
-              impact_attribution: impact,
-              ...(hasReceipt ? { impact_privacy_receipt: receipt } : {}),
-            },
-          },
-        ],
-      });
-      const previousMetadata = {
-        impact_click_id: sameClick
-          ? impact.clickId
-          : "previous-purchaser-click",
-        impact_click_at: sameClick
-          ? impact.capturedAt
-          : new Date(capturedAt.getTime() - 60_000).toISOString(),
-        impact_privacy_receipt: randomUUID(),
-        impact_privacy_user_id: "user_previous_purchaser",
-      };
-      context.mocks.stripe.customers.retrieve.mockResolvedValue({
-        id: customerId,
-        metadata: previousMetadata,
-      });
-      context.mocks.stripe.subscriptions.list.mockResolvedValue({
-        data: [
-          { id: "sub_previous", status: "active", metadata: previousMetadata },
-          {
-            id: "sub_newer",
-            status: "active",
-            metadata: {
-              ...previousMetadata,
-              impact_click_at: new Date(
-                capturedAt.getTime() + 60_000,
-              ).toISOString(),
-            },
-          },
-          {
-            id: "sub_different_click",
-            status: "active",
-            metadata: {
-              ...previousMetadata,
-              impact_click_id: "different-click-at-the-same-time",
-              impact_click_at: impact.capturedAt,
-            },
-          },
-        ],
-        has_more: false,
-      });
-      context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
-        url: "https://checkout.stripe.com/session/impact-proof",
-      });
-
-      await accept(
-        setupApp({ context, routes: billingCheckoutRoutes })(
-          billingCheckoutContract,
-        ).create({
-          body: {
-            tier: "pro",
-            successUrl: `${APP_ORIGIN}/billing?billing=success`,
-            cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
-          },
-          headers: { authorization: "Bearer clerk-session" },
-        }),
-        [200],
-      );
-
-      const expectedMetadata = {
-        impact_click_id: impact.clickId,
-        impact_click_at: impact.capturedAt,
-        impact_privacy_receipt: hasReceipt ? receipt : "",
-        impact_privacy_user_id: hasReceipt ? fixture.userId : "",
-      };
-      expect(
-        context.mocks.stripe.customers.update,
-      ).toHaveBeenCalledExactlyOnceWith(customerId, {
-        metadata: expectedMetadata,
-      });
-      expect(
-        context.mocks.stripe.subscriptions.update,
-      ).toHaveBeenCalledExactlyOnceWith("sub_previous", {
-        metadata: expectedMetadata,
-      });
-    },
-  );
 
   it("snapshots the org Impact click on credit Checkout, invoice and PaymentIntent metadata", async () => {
     const fixture = await createSubscriptionOrg({ tier: "pro" });

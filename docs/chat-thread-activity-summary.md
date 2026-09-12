@@ -97,14 +97,14 @@ transport's `info` threshold. The shared logger and unrelated debug filtering
 are unchanged. Axiom events retain `source: api`, the stable message, and the
 following nested `fields`:
 
-| Message                        | Context                | Level                                                                                                                                                             | Safe fields besides context                                                                                                            |
-| ------------------------------ | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `Activity summary cache`       | `api:activity-summary` | info                                                                                                                                                              | `runId`, `outcome` (existing response status)                                                                                          |
-| `Activity summary attempt`     | `api:activity-summary` | info                                                                                                                                                              | `runId`                                                                                                                                |
-| `Activity summary completion`  | `api:activity-summary` | info for success/timeout/cancelled; warn for invalid_or_unconfigured and for a reported provider_failure; no record at any level for an absorbed provider_failure | `runId`, `outcome`, `durationMs`, `cooldownMs`; numeric `providerStatus` and the enumerated `reason` only for `OpenRouterRequestError` |
-| `Activity summary unavailable` | `api:activity-summary` | warn                                                                                                                                                              | `runId`, `outcome: storage_failed`                                                                                                     |
-| `Activity snapshot capture`    | `api:run-activity`     | info for written/unchanged and for an expected failure; warn otherwise                                                                                            | `runId`, `outcome`, `eventCount`; `stage` and `errorCode` on failure                                                                   |
-| `Activity snapshot cleanup`    | `api:run-activity`     | info on success; warn on failure                                                                                                                                  | `outcome`, `removed`, `retentionMs`; `errorCode` on failure                                                                            |
+| Message                        | Context                | Level                                                                                                                                                                | Safe fields besides context                                                                                                            |
+| ------------------------------ | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `Activity summary cache`       | `api:activity-summary` | info                                                                                                                                                                 | `runId`, `outcome` (existing response status)                                                                                          |
+| `Activity summary attempt`     | `api:activity-summary` | info                                                                                                                                                                 | `runId`                                                                                                                                |
+| `Activity summary completion`  | `api:activity-summary` | info for success/timeout/cancelled; warn for invalid_or_unconfigured; error for a reported provider_failure; no record at any level for an absorbed provider_failure | `runId`, `outcome`, `durationMs`, `cooldownMs`; numeric `providerStatus` and the enumerated `reason` only for `OpenRouterRequestError` |
+| `Activity summary unavailable` | `api:activity-summary` | warn                                                                                                                                                                 | `runId`, `outcome: storage_failed`                                                                                                     |
+| `Activity snapshot capture`    | `api:run-activity`     | info for written/unchanged and for an expected failure; warn otherwise                                                                                               | `runId`, `outcome`, `eventCount`; `stage` and `errorCode` on failure                                                                   |
+| `Activity snapshot cleanup`    | `api:run-activity`     | info on success; warn on failure                                                                                                                                     | `outcome`, `removed`, `retentionMs`; `errorCode` on failure                                                                            |
 
 Completion outcomes are `success`, `timeout`, `cancelled`, `provider_failure`,
 and `invalid_or_unconfigured`. A `provider_failure` also carries `reason`, the
@@ -124,12 +124,24 @@ recovery at the shared cooldown; `cancelled` means the request's own lifetime
 ended before the provider answered. Neither has an operator action, so a
 per-event `warn` only trains operators to ignore the record.
 
-A `provider_failure` with `reason: rate_limited` is absorbed the same way and
-emits no record at any level. The shared account is momentarily over its limit,
-the caller keeps its last usable phrase or the generic label, and the cooldown
-that record would have reported already bounds the retry, so there is nothing
-for an operator to do. Contract and configuration defects, and the provider
-failures that are not an absorbed rate limit, still reach an operator.
+A `provider_failure` is absorbed the same way, and emits no record at any level,
+whenever its `reason` is one the shared classifier calls transient:
+`rate_limited`, `upstream_timeout` or `provider_unavailable`. The provider is
+momentarily over its limit or unreachable, the caller keeps its last usable
+phrase or the generic label, and the cooldown that record would have reported
+already bounds the retry, so there is nothing for an operator to do. The set is
+the classifier's own, so a reason that stops counting as transient there stops
+being absorbed here. (`network` is in that set but cannot occur on this branch:
+a transport rejection is not an `OpenRouterRequestError`, so it becomes
+`invalid_or_unconfigured` instead.)
+
+Every other `provider_failure` reason is a real failure and records at `error`:
+`auth` and `invalid_request` are credential and request-contract defects, and a
+request error the classifier could not place records as `reason: unknown`.
+`unknown` stays unknown — it names no cause and implies nothing about the main
+run — but it is still reported, because nothing here shows it recovers on its
+own. `invalid_or_unconfigured` is a separate bucket and keeps its `warn`; its
+classification is resolved separately and that level is not a final policy.
 
 Deadline pressure is a rate, not an event. Read it from the attempt records,
 which count every generation, against the completions that are still emitted:
@@ -147,12 +159,13 @@ which count every generation, against the completions that are still emitted:
 
 Alerting on that rate is an operator decision and is not configured here.
 
-Absorbed rate limits are deliberately not counted anywhere. `attempts` minus the
-emitted completions is not that count: an attempt and its completion are written
-separately, so an instance that stops between them leaves the same residual. No
-replacement record or telemetry channel is added to recover the number, and the
-rate-limit counters of other auxiliary generations describe their own features,
-not this one.
+Absorbed provider failures are deliberately not counted anywhere. `attempts`
+minus the emitted completions is not that count: an attempt and its completion
+are written separately, so an instance that stops between them leaves the same
+residual. No replacement record or telemetry channel is added to recover the
+number, and the rate-limit counters of other auxiliary generations describe
+their own features, not this one. `provider` above therefore counts only the
+reported failures, which are exactly the ones at `error`.
 
 A failed capture is classified into a finite set instead of one opaque
 `write_failed`. `contended` (`55P03`) and `run_missing` (`23503`) are expected

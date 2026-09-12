@@ -1,3 +1,4 @@
+import { piMemoryPhase2SelectionDigest } from "@okouai/pi-agent-runtime/api";
 import { PI_MEMORY_ROOT } from "@okouai/api-contracts/contracts/runners";
 import { agentRuns } from "@okouai/db/runtime/agent-run";
 import { piMemoryPhase2Jobs } from "@okouai/db/schema/pi-memory-phase2-job";
@@ -15,7 +16,6 @@ import {
   claimPiMemoryPhase2Job,
   failPiMemoryPhase2Job,
   PI_MEMORY_PHASE2_LEASE_DURATION_MS,
-  piMemoryPhase2SelectionDigest,
   type ClaimedPiMemoryPhase2Job,
   type PiMemoryPhase2OwnerScope,
 } from "./pi-memory-phase2-job.service";

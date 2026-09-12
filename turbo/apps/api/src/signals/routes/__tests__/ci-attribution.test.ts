@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { acquisitionAttributionContract } from "@okouai/api-contracts/contracts/acquisition-attribution";
-import { privacyChoicesContract } from "@okouai/api-contracts/contracts/privacy-choices";
 import { describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -8,7 +7,6 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { nowDate } from "../../../lib/time";
 import { acquisitionAttributionRoutes } from "../acquisition-attribution";
-import { privacyChoicesRoutes } from "../privacy-choices";
 import { createRouteMocks } from "./helpers/route-test";
 
 const context = testContext();
@@ -121,32 +119,5 @@ describe("CI attribution", () => {
     mockOptionalEnv("OKOU_PREVIEW_JOB_REF", "pr-123");
     const response = await client().recordSignup({ body: { attribution } });
     expect(response.status).toBe(401);
-  });
-
-  it("still records the person's GPC choice in CI previews", async () => {
-    mockEnv("ENV", "preview");
-    mockOptionalEnv("OKOU_PREVIEW_JOB_REF", "pr-123");
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-    await accept(
-      client().recordSignup({
-        headers,
-        extraHeaders: { "sec-gpc": "1" },
-        body: { attribution },
-      }),
-      [200],
-    );
-    const privacy = await accept(
-      setupApp({ context, routes: privacyChoicesRoutes })(
-        privacyChoicesContract,
-      ).get({ headers }),
-      [200],
-    );
-    expect(privacy.body).toMatchObject({
-      source: "gpc",
-      advertisingAllowed: false,
-      marketingAnalyticsAllowed: false,
-    });
-    expect(context.mocks.clerk.users.getUserList).not.toHaveBeenCalled();
-    expect(context.mocks.clerk.users.updateUserMetadata).not.toHaveBeenCalled();
   });
 });

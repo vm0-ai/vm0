@@ -10,6 +10,7 @@ import {
 } from "@okouai/api-contracts/contracts/storages";
 import { parse as parseYaml } from "yaml";
 
+import { piMemoryPhase2SelectionDigest } from "./phase2-memory-selection";
 import {
   PI_MEMORY_PHASE2_MAX_CHANGED_SKILL_BYTES,
   PI_MEMORY_PHASE2_MAX_CHANGED_SKILL_FILE_BYTES,
@@ -18,7 +19,7 @@ import {
   PI_MEMORY_PHASE2_PREPARED_MAX_BYTES,
   PI_MEMORY_PHASE2_WORKSPACE_DIFF_MAX_BYTES,
   type PiMemoryPhase2BaseFile,
-  type PiMemoryPhase2ConsolidationArgs,
+  type PiMemoryPhase2LocalConsolidationArgs,
   type PiMemoryPhase2DiffSummary,
   type PiMemoryPhase2PreparedFile,
   type PiMemoryPhase2PreparedManifest,
@@ -35,7 +36,6 @@ export const PI_MEMORY_PHASE2_MAX_SELECTED_CANDIDATES = 256;
 export const PI_MEMORY_PHASE2_MAX_SELECTED_UTF8_BYTES = 21_036_800;
 export const PI_MEMORY_PHASE2_EVIDENCE_SLUG_MAX_BYTES = 48;
 
-const SELECTION_DIGEST_ENCODING = "vm0.pi-memory.phase2.selection.v1";
 const MANIFEST_DIGEST_ENCODING = "vm0.pi-memory.phase2.manifest.v1";
 const PI_EVIDENCE_PREFIX = "rollout_summaries/pi/";
 const MEMORY_FILE = "MEMORY.md";
@@ -48,17 +48,11 @@ const WINDOWS_DRIVE = /^[A-Za-z]:/u;
 const textDecoder = new TextDecoder("utf-8", { fatal: true });
 
 export interface SnapshotPhase2Input {
-  readonly orgId: string;
-  readonly userId: string;
   readonly memoryStorageId: string;
-  readonly claimedRevision: number;
-  readonly leaseToken: string;
   readonly baseFiles: readonly SnapshotBaseFile[];
   readonly selected: readonly SnapshotSelected[];
-  readonly model: Readonly<PiMemoryPhase2ConsolidationArgs["model"]>;
+  readonly model: Readonly<PiMemoryPhase2LocalConsolidationArgs["model"]>;
   readonly signal: AbortSignal;
-  readonly heartbeat: PiMemoryPhase2ConsolidationArgs["heartbeat"];
-  readonly onLifecycle: PiMemoryPhase2ConsolidationArgs["onLifecycle"];
   readonly selectionDigest: string;
   readonly baseTotalBytes: number;
 }
@@ -246,21 +240,6 @@ function snapshotBaseFiles(files: readonly PiMemoryPhase2BaseFile[]): {
   return { files: Object.freeze(snapshot), totalBytes };
 }
 
-function selectionDigest(selected: readonly SnapshotSelected[]): string {
-  const parts: Buffer[] = [uint32(selected.length)];
-  for (const candidate of selected) {
-    const session = Buffer.from(candidate.piSessionId, "utf8");
-    const history = Buffer.from(candidate.sourceHistoryHash, "utf8");
-    parts.push(
-      uint32(session.length),
-      session,
-      uint32(history.length),
-      history,
-    );
-  }
-  return framedHash(SELECTION_DIGEST_ENCODING, parts);
-}
-
 function assertSelectedCandidateShape(
   candidate: PiMemoryPhase2SelectedSnapshot,
 ): void {
@@ -340,8 +319,8 @@ function snapshotSelected(
 }
 
 function snapshotModel(
-  model: PiMemoryPhase2ConsolidationArgs["model"],
-): Readonly<PiMemoryPhase2ConsolidationArgs["model"]> {
+  model: PiMemoryPhase2LocalConsolidationArgs["model"],
+): Readonly<PiMemoryPhase2LocalConsolidationArgs["model"]> {
   return Object.freeze({
     provider: model.provider,
     baseUrl: model.baseUrl,
@@ -364,34 +343,21 @@ function snapshotModel(
 }
 
 export function snapshotPiMemoryPhase2Input(
-  args: PiMemoryPhase2ConsolidationArgs,
+  args: PiMemoryPhase2LocalConsolidationArgs,
   signal: AbortSignal,
 ): SnapshotPhase2Input {
-  if (
-    args.orgId.length === 0 ||
-    args.userId.length === 0 ||
-    args.memoryStorageId.length === 0 ||
-    args.leaseToken.length === 0 ||
-    !Number.isSafeInteger(args.claimedRevision) ||
-    args.claimedRevision < 0
-  ) {
+  if (args.memoryStorageId.length === 0) {
     throw new Phase2InputInvalidError();
   }
   const base = snapshotBaseFiles(args.baseFiles);
   const selected = snapshotSelected(args.selected);
   return Object.freeze({
-    orgId: args.orgId,
-    userId: args.userId,
     memoryStorageId: args.memoryStorageId,
-    claimedRevision: args.claimedRevision,
-    leaseToken: args.leaseToken,
     baseFiles: base.files,
     selected,
     model: snapshotModel(args.model),
     signal,
-    heartbeat: args.heartbeat,
-    onLifecycle: args.onLifecycle,
-    selectionDigest: selectionDigest(selected),
+    selectionDigest: piMemoryPhase2SelectionDigest(selected),
     baseTotalBytes: base.totalBytes,
   });
 }
@@ -930,19 +896,11 @@ export async function applyValidatedPiMemoryPhase2Result(args: {
 }): Promise<void> {
   try {
     const expectedBase = snapshotBaseFiles(args.baseFiles).files;
-    const mountedBefore = await inventoryFiles(args.memoryRoot);
-    const expectedBaseMap = new Map(
-      expectedBase.map((file) => {
-        return [file.path, file.bytes] as const;
-      }),
-    );
-    if (!mapsEqual(mountedBefore, expectedBaseMap)) {
-      throw new Phase2OutputInvalidError("base_mismatch");
-    }
-
+    // Keep our own authenticated bytes across filesystem awaits. Readonly
+    // metadata does not make a caller's Uint8Array immutable.
     const prepared = new Map<string, Buffer>();
     for (const file of args.files) {
-      const bytes = Buffer.from(file.contentBase64, "base64");
+      const bytes = Buffer.from(file.bytes);
       if (
         bytes.length !== file.size ||
         hashBytes(bytes) !== file.hash ||
@@ -953,6 +911,16 @@ export async function applyValidatedPiMemoryPhase2Result(args: {
         });
       }
       prepared.set(file.path, bytes);
+    }
+
+    const mountedBefore = await inventoryFiles(args.memoryRoot);
+    const expectedBaseMap = new Map(
+      expectedBase.map((file) => {
+        return [file.path, file.bytes] as const;
+      }),
+    );
+    if (!mapsEqual(mountedBefore, expectedBaseMap)) {
+      throw new Phase2OutputInvalidError("base_mismatch");
     }
 
     for (const path of mountedBefore.keys()) {
@@ -1122,7 +1090,7 @@ function manifestForFiles(
       path,
       hash,
       size: content.length,
-      contentBase64: content.toString("base64"),
+      bytes: Buffer.from(content),
     });
   });
   prepared.sort(comparePathHash);
