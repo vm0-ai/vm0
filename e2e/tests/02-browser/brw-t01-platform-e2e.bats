@@ -188,7 +188,7 @@ open_auth_form() {
   echo "# Navigating to $sign_up_url" >&3
   open_auth_form "$sign_up_url" \
     "Boolean(
-      document.querySelector('input[type=\"email\"]')
+      document.querySelector('input[name=\"emailAddress\"]')
       && document.querySelector('input[type=\"password\"]')
     )"
   dismiss_cookie_banner
@@ -231,7 +231,7 @@ open_auth_form() {
   echo "# Navigating to $sign_in_url" >&3
   open_auth_form "$sign_in_url" \
     "!window.location.pathname.includes('/sign-in')
-      || Boolean(document.querySelector('input[type=\"email\"]'))"
+      || Boolean(document.querySelector('input[name=\"identifier\"]'))"
 
   # Check if already signed in (redirected away from /sign-in)
   local current_url
