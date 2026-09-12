@@ -48,10 +48,7 @@ function setupAuthV1Page(mode: AuthV1PageMode) {
       return;
     }
     const signals = createAuthV1ClerkSignals(clerk);
-    set(
-      updatePage$,
-      createElement(AuthV1Page, { clerk, mode, ui: uiLoad.value, signals }),
-    );
+    set(updatePage$, createElement(AuthV1Page, { mode, signals }));
   });
 }
 

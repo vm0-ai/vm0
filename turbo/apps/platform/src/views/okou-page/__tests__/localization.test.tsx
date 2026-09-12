@@ -93,6 +93,11 @@ function waitForFastRole(
   });
 }
 
+function clerkProviderLocalization(): string | undefined {
+  return screen.getByTestId("clerk-provider-config").dataset
+    .clerkSignInStartActionLink;
+}
+
 async function selectLanguage(
   currentLabel: string,
   optionLabel: string,
@@ -311,15 +316,21 @@ test("Only the selected authentication language is loaded and reused", async () 
   await expect(
     screen.findByRole("heading", { name: "Préférences" }),
   ).resolves.toBeInTheDocument();
+  // Clerk takes `localization` only as a global option, so the app-level
+  // provider is what carries it to components opened outside the auth route.
+  expect(clerkProviderLocalization()).toBe("S'inscrire");
+
   await selectLanguage("Langue", "English");
   await expect(
     screen.findByRole("heading", { name: "Preference" }),
   ).resolves.toBeInTheDocument();
+  expect(clerkProviderLocalization()).toBe("Sign up");
 
   await selectLanguage("Language", "Français");
   await expect(
     screen.findByRole("heading", { name: "Préférences" }),
   ).resolves.toBeInTheDocument();
+  expect(clerkProviderLocalization()).toBe("S'inscrire");
 
   // Returning to French reuses the cached resource instead of downloading it
   // again, and English never downloads because it ships as the default.

@@ -133,6 +133,32 @@ test.each([
   },
 );
 
+test("the skeleton covers the page until the Clerk runtime resolves", async () => {
+  const clerkLoad = context.mocks.clerk().runtimePending();
+  const documents = navigation();
+
+  const pageReady = setupPage({
+    context,
+    host: "app.okou.ai",
+    path: `/desktop-auth/start?callbackScheme=${SCHEME}`,
+  });
+
+  // The app root mounts nothing before the runtime resolves, so publishing the
+  // page any earlier would replace the skeleton with a blank document.
+  const skeleton = await screen.findByTestId("app-skeleton");
+  expect(skeleton).not.toHaveAttribute("aria-hidden", "true");
+  expect(
+    screen.queryByRole("heading", { name: "Sign in to Desktop" }),
+  ).toBeNull();
+
+  clerkLoad.resolve();
+  await pageReady;
+
+  await waitFor(() => {
+    expect(documents).toStrictEqual([CALLBACK]);
+  });
+});
+
 test("signed-in entry goes straight to the callback", async () => {
   const documents = navigation();
   await page(`/desktop-auth/start?callbackScheme=${SCHEME}`);

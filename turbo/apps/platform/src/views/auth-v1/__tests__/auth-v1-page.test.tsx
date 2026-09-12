@@ -81,14 +81,8 @@ test("The hosted sign-in form renders with Google One Tap on the base route", as
     "aria-hidden",
     "true",
   );
-  expect(clerkProviderConfig()).toHaveAttribute(
-    "data-clerk-provider-router-push",
-    "function",
-  );
-  expect(clerkProviderConfig()).toHaveAttribute(
-    "data-clerk-provider-router-replace",
-    "function",
-  );
+  // The runtime registers the router at `clerk.load()`, so the app-level
+  // provider does not redeclare it. `clerk-bootstrap.test.ts` covers that.
   expect(
     document.querySelector("[data-auth-v1-legacy-clerk-css]"),
   ).not.toBeInTheDocument();
