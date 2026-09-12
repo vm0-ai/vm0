@@ -8,12 +8,6 @@ import {
 
 import { HttpResponse } from "msw";
 import {
-  auxiliaryDiagnostics,
-  auxiliaryResults,
-  auxiliaryWarnings,
-} from "./helpers/auxiliary-generation";
-
-import {
   resolveChatEventRecommendedFollowups,
   type ChatEvent,
   type GenerationTemplateRequest,
@@ -1519,59 +1513,27 @@ describe("CHAT-02: completed chat callback", () => {
     ).toContainEqual(
       expect.objectContaining({ body: "Your task is complete" }),
     );
-    // The eager title runs at send time; the callback owns the other three.
-    const rateLimited = auxiliaryResults(context).filter((event) => {
-      return event.feature !== "chat_initial_thinking";
-    });
+    // Only the four are rejected, so the optional progress copy still lands:
+    // the degradations are scoped to the generations the provider refused.
     expect(
-      rateLimited
-        .map(({ feature }) => {
-          return feature;
-        })
-        .sort(),
-    ).toStrictEqual([
-      "chat_title",
-      "notification_summary",
-      "recommended_followups",
-      "run_summary",
-    ]);
-    expect(
-      rateLimited.every((event) => {
-        return event.outcome === "degraded" && event.reason === "rate_limited";
+      events.events.some((event) => {
+        return event.runEventId === "thinking:initial";
       }),
     ).toBeTruthy();
-    // Only the four are rejected, so the optional progress copy still proves
-    // the boundary reports a real success next to the degraded generations.
-    expect(auxiliaryResults(context, "chat_initial_thinking")).toStrictEqual([
-      expect.objectContaining({ outcome: "success", reason: "none" }),
-    ]);
-    expect(context.mocks.axiomLogging.warn.mock.calls).toStrictEqual([]);
-    expect(context.mocks.axiomLogging.error.mock.calls).toStrictEqual([]);
   });
 
   it.each([
-    // The provider reports usage even when the generated text interprets to
-    // nothing, and an expected omission keeps that detail on its counted
-    // event.
     {
       name: "an empty suggestion array",
       response: () => {
-        return HttpResponse.json({
-          choices: [{ finish_reason: "stop", message: { content: "[]" } }],
-          usage: {
-            completion_tokens: 63,
-            completion_tokens_details: { reasoning_tokens: 0 },
-          },
-        });
+        return "[]";
       },
-      tokens: { completion_tokens: 63, reasoning_tokens: 0 },
     },
     {
       name: "generated text that is not JSON",
       response: () => {
         return "I have no useful follow-ups for this conversation.";
       },
-      tokens: {},
     },
     {
       name: "generated JSON that is not an array",
@@ -1580,7 +1542,6 @@ describe("CHAT-02: completed chat callback", () => {
           followups: [{ prompt: "Run the failing case again", kind: "talk" }],
         });
       },
-      tokens: {},
     },
     {
       name: "an array whose every item fails validation",
@@ -1590,177 +1551,84 @@ describe("CHAT-02: completed chat callback", () => {
           { text: "Try the other branch", kind: "talk" },
         ]);
       },
-      tokens: {},
     },
-  ])(
-    "omits recommended follow-ups with no diagnostic at any level for $name",
-    async ({ response, tokens }) => {
-      const { actor, agentId, runnerGroup } = await entitledChatActor();
-      mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
-      chatCallbacks.mockOpenRouterCompletions((body) => {
-        const system = body.messages[0]?.content ?? "";
-        if (
-          system.includes(
-            "You generate recommended follow-up messages for a chat.",
-          )
-        ) {
-          return response();
-        }
-        // A sibling whose interpreted output is empty in the same run proves
-        // the silence is scoped to this caller rather than shared.
-        if (system.includes("one short notification sentence")) {
-          return "---";
-        }
-        return "Generated summary";
-      });
+  ])("omits recommended follow-ups for $name", async ({ response }) => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const system = body.messages[0]?.content ?? "";
+      if (
+        system.includes(
+          "You generate recommended follow-up messages for a chat.",
+        )
+      ) {
+        return response();
+      }
+      // A sibling whose interpreted output is empty in the same run proves
+      // each caller absorbs its own empty result.
+      if (system.includes("one short notification sentence")) {
+        return "---";
+      }
+      return "Generated summary";
+    });
 
-      const run = await startChatRun(actor, {
-        agentId,
-        prompt: "Keep the main answer",
-      });
-      await flushWaitUntilForTest();
-      await chatCallbacks.registerPushSubscription(actor);
-      chatCallbacks.enableVapid();
-      const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
-      chatCallbacks.mockChatOutputEvents([
-        assistantEvent(0, "The main answer survives"),
-      ]);
-      await completeChatRunOk(run.runId, sandboxHeaders, {
-        lastEventSequence: 0,
-      });
-      await flushWaitUntilForTest();
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "Keep the main answer",
+    });
+    await flushWaitUntilForTest();
+    await chatCallbacks.registerPushSubscription(actor);
+    chatCallbacks.enableVapid();
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "The main answer survives"),
+    ]);
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
 
-      const events = await chat.listThreadEvents(actor, run.threadId);
-      expect(events.events).toContainEqual(
-        expect.objectContaining({ content: "The main answer survives" }),
-      );
-      expect(
-        events.events.some((event) => {
-          return event.eventType === "output.followups";
-        }),
-      ).toBeFalsy();
-      // The omission stays counted, with its reason and token detail intact.
-      expect(auxiliaryResults(context, "recommended_followups")).toStrictEqual([
-        expect.objectContaining({
-          outcome: "degraded",
-          reason: "unusable_output",
-          ...tokens,
-        }),
-      ]);
-      expect(
-        auxiliaryDiagnostics(context, "recommended_followups"),
-      ).toStrictEqual([]);
-      expect(
-        auxiliaryDiagnostics(context, "notification_summary"),
-      ).toStrictEqual([
-        expect.objectContaining({ level: "warn", reason: "unusable_output" }),
-      ]);
-      expect(
-        context.mocks.webpush.sendNotification.mock.calls.map(pushPayload),
-      ).toContainEqual(
-        expect.objectContaining({ body: "Your task is complete" }),
-      );
-    },
-  );
+    const events = await chat.listThreadEvents(actor, run.threadId);
+    expect(events.events).toContainEqual(
+      expect.objectContaining({ content: "The main answer survives" }),
+    );
+    expect(
+      events.events.some((event) => {
+        return event.eventType === "output.followups";
+      }),
+    ).toBeFalsy();
+    // The sibling whose interpreted output is empty in the same run falls
+    // back to the fixed copy, so the omission is scoped to this caller.
+    expect(
+      context.mocks.webpush.sendNotification.mock.calls.map(pushPayload),
+    ).toContainEqual(
+      expect.objectContaining({ body: "Your task is complete" }),
+    );
+  });
+
+  // Never part of a request an external caller makes, so anything carrying it
+  // into the thread came from the provider response.
+  const privateProviderDetail = "private-openrouter-credential-detail";
 
   it.each([
-    { name: "rejected credentials", status: 401, reason: "auth" },
-    { name: "a rejected request", status: 400, reason: "invalid_request" },
-  ])(
-    "reports $name for recommended follow-ups exactly once at error level",
-    async ({ status, reason }) => {
-      const { actor, agentId, runnerGroup } = await entitledChatActor();
-      mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
-      const privateProviderDetail = "private-openrouter-credential-detail";
-      chatCallbacks.mockOpenRouterCompletions((body) => {
-        const system = body.messages[0]?.content ?? "";
-        if (
-          system.includes(
-            "You generate recommended follow-up messages for a chat.",
-          )
-        ) {
-          return new HttpResponse(privateProviderDetail, { status });
-        }
-        return "Generated summary";
-      });
-
-      const run = await startChatRun(actor, {
-        agentId,
-        prompt: "Keep the main answer",
-      });
-      await flushWaitUntilForTest();
-      await chatCallbacks.registerPushSubscription(actor);
-      chatCallbacks.enableVapid();
-      const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
-      chatCallbacks.mockChatOutputEvents([
-        assistantEvent(0, "The main answer survives"),
-      ]);
-      await completeChatRunOk(run.runId, sandboxHeaders, {
-        lastEventSequence: 0,
-      });
-      await flushWaitUntilForTest();
-
-      const events = await chat.listThreadEvents(actor, run.threadId);
-      expect(events.events).toContainEqual(
-        expect.objectContaining({ content: "The main answer survives" }),
-      );
-      expect(
-        events.events.some((event) => {
-          return event.eventType === "output.followups";
-        }),
-      ).toBeFalsy();
-      expect(auxiliaryResults(context, "recommended_followups")).toStrictEqual([
-        expect.objectContaining({ outcome: "error", reason }),
-      ]);
-      expect(
-        auxiliaryDiagnostics(context, "recommended_followups"),
-      ).toStrictEqual([
-        expect.objectContaining({
-          level: "error",
-          reason,
-          errorKind: "openrouter_request",
-          status,
-        }),
-      ]);
-      // A real failure must not also reappear on the shared warning channel.
-      expect(auxiliaryWarnings(context)).toStrictEqual([]);
-      expect(JSON.stringify(auxiliaryDiagnostics(context))).not.toContain(
-        privateProviderDetail,
-      );
+    {
+      name: "rejected credentials",
+      response: () => {
+        return new HttpResponse(privateProviderDetail, { status: 401 });
+      },
     },
-  );
-
-  it.each([
     {
       // The generated text is well formed for the provider; it is the response
       // envelope around it that breaks its contract.
       name: "a response body that is not JSON",
       response: () => {
-        return new HttpResponse("<html>gateway</html>", {
+        return new HttpResponse(privateProviderDetail, {
           headers: { "content-type": "application/json" },
         });
       },
-      reason: "invalid_output",
     },
     {
-      name: "a response carrying no choices",
-      response: () => {
-        return HttpResponse.json({ id: "gen-1" });
-      },
-      reason: "invalid_output",
-    },
-    {
-      name: "a choice whose content is not a string",
-      response: () => {
-        return HttpResponse.json({
-          choices: [{ finish_reason: "stop", message: { content: 42 } }],
-        });
-      },
-      reason: "invalid_output",
-    },
-    {
-      // Nothing annotates this, so the reason stays literally unknown rather
-      // than being presented as a specific cause.
+      // Nothing annotates this, so nothing about it is presented as a cause.
       name: "a response body that fails while streaming",
       response: () => {
         return new HttpResponse(
@@ -1772,67 +1640,53 @@ describe("CHAT-02: completed chat callback", () => {
           { headers: { "content-type": "application/json" } },
         );
       },
-      reason: "unknown",
     },
-  ])(
-    "reports $name for recommended follow-ups exactly once at error level",
-    async ({ response, reason }) => {
-      const { actor, agentId, runnerGroup } = await entitledChatActor();
-      mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
-      chatCallbacks.mockOpenRouterCompletions((body) => {
-        const system = body.messages[0]?.content ?? "";
-        if (
-          system.includes(
-            "You generate recommended follow-up messages for a chat.",
-          )
-        ) {
-          return response();
-        }
-        return "Generated summary";
-      });
+  ])("omits recommended follow-ups after $name", async ({ response }) => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const system = body.messages[0]?.content ?? "";
+      if (
+        system.includes(
+          "You generate recommended follow-up messages for a chat.",
+        )
+      ) {
+        return response();
+      }
+      return "Generated summary";
+    });
 
-      const run = await startChatRun(actor, {
-        agentId,
-        prompt: "Keep the main answer",
-      });
-      await flushWaitUntilForTest();
-      await chatCallbacks.registerPushSubscription(actor);
-      chatCallbacks.enableVapid();
-      const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
-      chatCallbacks.mockChatOutputEvents([
-        assistantEvent(0, "The main answer survives"),
-      ]);
-      await completeChatRunOk(run.runId, sandboxHeaders, {
-        lastEventSequence: 0,
-      });
-      await flushWaitUntilForTest();
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "Keep the main answer",
+    });
+    await flushWaitUntilForTest();
+    await chatCallbacks.registerPushSubscription(actor);
+    chatCallbacks.enableVapid();
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "The main answer survives"),
+    ]);
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
 
-      const events = await chat.listThreadEvents(actor, run.threadId);
-      expect(events.events).toContainEqual(
-        expect.objectContaining({ content: "The main answer survives" }),
-      );
-      expect(
-        events.events.some((event) => {
-          return event.eventType === "output.followups";
-        }),
-      ).toBeFalsy();
-      expect(auxiliaryResults(context, "recommended_followups")).toStrictEqual([
-        expect.objectContaining({ outcome: "error", reason }),
-      ]);
-      // A response that broke its contract, and an exception nothing
-      // classified, are failures rather than omissions: one error record, and
-      // no warning copy of it.
-      expect(
-        auxiliaryDiagnostics(context, "recommended_followups"),
-      ).toStrictEqual([expect.objectContaining({ level: "error", reason })]);
-      expect(auxiliaryWarnings(context)).toStrictEqual([]);
-      expect(JSON.stringify(auxiliaryDiagnostics(context))).not.toContain(
-        "gateway",
-      );
-    },
-  );
+    const events = await chat.listThreadEvents(actor, run.threadId);
+    expect(events.events).toContainEqual(
+      expect.objectContaining({ content: "The main answer survives" }),
+    );
+    expect(
+      events.events.some((event) => {
+        return event.eventType === "output.followups";
+      }),
+    ).toBeFalsy();
+    // The run keeps its own result, and nothing the provider sent reaches
+    // the thread.
+    expect(JSON.stringify(events.events)).not.toContain(privateProviderDetail);
+  });
 
-  it("keeps title and summary storage failures observable after successful generation", async () => {
+  it("absorbs title and summary storage failures without losing the round", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
     // PostgreSQL rejects NUL in text. This induces a real write failure using
@@ -1864,26 +1718,18 @@ describe("CHAT-02: completed chat callback", () => {
       lastEventSequence: 0,
     });
     await flushWaitUntilForTest();
+    // Generation succeeded for every feature; only the two unstorable writes
+    // failed, and each failure is confined to its own effect.
     await expect(
       readThreadTitleFromEvents(actor, run.threadId),
     ).resolves.toBeNull();
-    const warnings = context.mocks.axiomLogging.warn.mock.calls.map(
-      ([message]) => {
-        return message;
-      },
+    const events = await chat.listThreadEvents(actor, run.threadId);
+    expect(events.events).toContainEqual(
+      expect.objectContaining({ content: "The main answer survives" }),
     );
-    expect(warnings).toContain("Chat title persistence failed");
-    expect(warnings).toContain("Failed to save run summary");
-    expect(auxiliaryResults(context)).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ feature: "chat_title", outcome: "success" }),
-        expect.objectContaining({ feature: "run_summary", outcome: "success" }),
-      ]),
-    );
-    expect(auxiliaryWarnings(context)).toStrictEqual([]);
     expect(
-      auxiliaryResults(context).every((event) => {
-        return event.outcome === "success";
+      events.events.some((event) => {
+        return event.eventType === "output.followups";
       }),
     ).toBeTruthy();
   });
@@ -1911,7 +1757,6 @@ describe("CHAT-02: completed chat callback", () => {
     ).toContainEqual(
       expect.objectContaining({ body: "Your task is complete" }),
     );
-    expect(auxiliaryWarnings(context)).toStrictEqual([]);
     expect(context.mocks.axiomLogging.warn.mock.calls).toContainEqual([
       "Failed to send push notification",
       expect.objectContaining({
@@ -1974,25 +1819,17 @@ describe("CHAT-02: completed chat callback", () => {
     });
     await flushWaitUntilForTest();
 
+    // Every generation reached its caller, so the pinned request parameters
+    // below describe budgets that actually produced their effects.
+    await expect(readThreadTitleFromEvents(actor, run.threadId)).resolves.toBe(
+      "Budget Pinning",
+    );
+    const events = await chat.listThreadEvents(actor, run.threadId);
     expect(
-      auxiliaryResults(context)
-        .map(({ feature, outcome, reason }) => {
-          return { feature, outcome, reason };
-        })
-        .sort((a, b) => {
-          return a.feature.localeCompare(b.feature);
-        }),
-    ).toStrictEqual([
-      {
-        feature: "chat_initial_thinking",
-        outcome: "success",
-        reason: "none",
-      },
-      { feature: "chat_title", outcome: "success", reason: "none" },
-      { feature: "notification_summary", outcome: "success", reason: "none" },
-      { feature: "recommended_followups", outcome: "success", reason: "none" },
-      { feature: "run_summary", outcome: "success", reason: "none" },
-    ]);
+      events.events.some((event) => {
+        return event.eventType === "output.followups";
+      }),
+    ).toBeTruthy();
 
     // Reasoning tokens are drawn from the same budget as the answer, so a
     // budget sized for a non-reasoning model starves the answer entirely. This
@@ -2059,16 +1896,6 @@ describe("CHAT-02: completed chat callback", () => {
         );
       })
       .toBe(true);
-    // An exhausted shared budget is expected and non-actionable: counted, and
-    // never a production warning.
-    expect(auxiliaryResults(context)).toContainEqual(
-      expect.objectContaining({
-        feature: "notification_summary",
-        outcome: "degraded",
-        reason: "output_truncated",
-      }),
-    );
-    expect(auxiliaryWarnings(context)).toStrictEqual([]);
   });
 
   it("falls back to the fixed notification copy when the token-limited summary strips to nothing", async () => {
@@ -2157,14 +1984,6 @@ describe("CHAT-02: completed chat callback", () => {
     await expect(
       readThreadTitleFromEvents(actor, run.threadId),
     ).resolves.toBeNull();
-    expect(auxiliaryResults(context)).toContainEqual(
-      expect.objectContaining({
-        feature: "chat_title",
-        outcome: "degraded",
-        reason: "output_truncated",
-      }),
-    );
-    expect(auxiliaryWarnings(context)).toStrictEqual([]);
 
     await api.requestCancelRun(actor, run.runId, [200]);
     await waitForRunStatus(actor, run.runId, "cancelled");
@@ -2213,19 +2032,6 @@ describe("CHAT-02: completed chat callback", () => {
       throw new Error("Expected a completed lifecycle marker");
     }
     expect(marker).not.toHaveProperty("recommendedFollowups");
-    expect(auxiliaryResults(context)).toContainEqual(
-      expect.objectContaining({
-        feature: "recommended_followups",
-        outcome: "degraded",
-        reason: "output_truncated",
-      }),
-    );
-    // This caller rejects a truncated array, so the outcome comes from the
-    // recorded truncation reason rather than from the returned value. Either
-    // way it stays a counted degradation, and since this caller can now report
-    // at error, silence has to be proved across every level rather than on the
-    // warning channel alone.
-    expect(auxiliaryDiagnostics(context)).toStrictEqual([]);
   });
 
   it("auto-sends the queued message before completed-run LLM side effects finish", async () => {

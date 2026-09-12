@@ -33,13 +33,6 @@ type Reason =
   | "unusable_output";
 
 /**
- * Severity a caller's actionable failures deserve. Only a caller that has
- * characterized its own outcomes can raise this, so the shared default stays
- * `warn` for features whose failure classification is not established.
- */
-type AuxiliaryFailureLevel = "warn" | "error";
-
-/**
  * Provider-outcome detail the generation closure observes and the boundary
  * cannot infer from the returned value. Token counts are integers, so they
  * carry no payload risk while showing how much of the shared thinking-plus-
@@ -151,7 +144,6 @@ function diagnose(
   reason: Reason,
   error: unknown,
   context: Readonly<{ runId?: string; threadId?: string }> | undefined,
-  level: AuxiliaryFailureLevel,
 ): void {
   const fields = {
     feature,
@@ -175,10 +167,6 @@ function diagnose(
         }
       : {}),
   };
-  if (level === "error") {
-    log.error("Auxiliary generation failed", fields);
-    return;
-  }
   log.warn("Auxiliary generation failed", fields);
 }
 
@@ -195,7 +183,6 @@ export async function generateAuxiliary<T>(
      * value only, never a thrown provider error.
      */
     readonly unusableOutput?: "expected";
-    readonly failureLevel?: AuxiliaryFailureLevel;
     readonly diagnosticContext?: Readonly<{
       runId?: string;
       threadId?: string;
@@ -204,11 +191,6 @@ export async function generateAuxiliary<T>(
   signal?: AbortSignal,
 ): Promise<T | undefined> {
   const startedAt = now();
-  // The caller's level applies to whatever this boundary already classifies as
-  // an error. It cannot reach an outcome that is counted silently: transient
-  // provider failures, truncation, an unexpected tool call, a cancellation and
-  // a caller's expected empty result never get here.
-  const failureLevel = args.failureLevel ?? "warn";
   const runId = args.diagnosticContext?.runId;
   let detail: AuxiliaryGenerationDetail | undefined;
   const result = await settle(
@@ -252,7 +234,6 @@ export async function generateAuxiliary<T>(
             "unusable_output",
             undefined,
             args.diagnosticContext,
-            failureLevel,
           );
         }
         recordResult({
@@ -282,13 +263,7 @@ export async function generateAuxiliary<T>(
             ? "degraded"
             : "error";
         if (outcome === "error") {
-          diagnose(
-            args.feature,
-            reason,
-            error,
-            args.diagnosticContext,
-            failureLevel,
-          );
+          diagnose(args.feature, reason, error, args.diagnosticContext);
         }
         const retryAfterMs = retryAfterMilliseconds(error);
         recordResult({
