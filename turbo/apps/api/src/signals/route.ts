@@ -1,3 +1,4 @@
+import { introVideoRenderRoutes } from "./routes/intro-video-render";
 import { cronMaterializePiResourceIndexesRoutes } from "./routes/cron-materialize-pi-resource-indexes";
 import { authMeRoutes } from "./routes/auth-me";
 import { cliAuthRoutes } from "./routes/cli-auth";
@@ -309,6 +310,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...avatarVideoRoutes,
   ...introVideoPresenterRoutes,
   ...introVideoAgentRoutes,
+  ...introVideoRenderRoutes,
   ...videoIoGenerateRoutes,
   ...logsRoutes,
   ...mailRoutes,
