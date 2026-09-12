@@ -13,6 +13,7 @@ import {
   mockPushBrowserSupport,
   setupPage,
 } from "./chat-lifecycle-test-helpers.ts";
+import { buildModelPolicy } from "./chat-composer-test-helpers.ts";
 import {
   assistantEvent,
   context,
@@ -217,10 +218,21 @@ test("Send a large image with a fallback-enabled text model", async () => {
       }
     | undefined;
   installRunChat({
+    selectedModel: "deepseek-v4-pro",
     onRunCreate(body) {
       sentMessage = { model: body.model, userMessage: body.userMessage };
     },
   });
+  context.mocks.data.orgModelPolicies([
+    buildModelPolicy({
+      model: "deepseek-v4-pro",
+      modelLabel: "DeepSeek V4 Pro",
+      isDefault: true,
+      defaultProviderType: "built-in",
+      credentialScope: "org",
+      modelProviderId: null,
+    }),
+  ]);
   context.mocks.upload.success({
     id: "large-image-upload",
     filename: "launch-board.png",

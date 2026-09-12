@@ -1015,6 +1015,25 @@ test("Add a GPT 6 Astra Codex subscription model route", async () => {
   expect(within(codexRow).getByText("ChatGPT (Codex)")).toBeInTheDocument();
 });
 
+test("Add DeepSeek V4.1 Flash as a built-in model", async () => {
+  mockAdminOrg();
+  context.mocks.data.orgModelProviders([]);
+  context.mocks.data.orgModelPolicies([]);
+  await openProvidersTab();
+
+  click(buttonByText("Add model"));
+  const dialog = screen.getByRole("dialog", { name: "Add model" });
+  await selectDialogModel("DeepSeek V4.1 Flash");
+  expect(radioByName(/Built-in/u, dialog)).toBeChecked();
+  click(buttonByText("Add model", dialog));
+
+  const modelRow = await screen.findByTestId(
+    "org-model-policy-row-deepseek-v4.1-flash",
+  );
+  expect(within(modelRow).getByText("DeepSeek V4.1 Flash")).toBeInTheDocument();
+  expect(within(modelRow).getByText("Built-in")).toBeInTheDocument();
+});
+
 test("Offer an upgrade for restricted Pro models", async () => {
   mockAdminOrg();
   mockBillingCapabilities({ supportByok: false, restrictedVm0Models: true });

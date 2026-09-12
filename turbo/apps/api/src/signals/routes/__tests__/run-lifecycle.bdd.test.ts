@@ -4,6 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { CLIENT_VERSION_HEADER } from "@okouai/api-contracts/contracts/client-headers";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+  getBuiltInApiModel,
   getModelProviderFirewall,
   getProviderRuntimeModel,
   getBuiltInConcreteProviderType,
@@ -8514,7 +8515,7 @@ describe("RUN-02: model provider selection and built-in admission", () => {
     expect(queue.body.concurrency.active).toBe(0);
   });
 
-  it("defaults limited-free runs to DeepSeek V4 Pro and rejects paid models", async () => {
+  it("defaults limited-free runs to DeepSeek V4.1 Flash and rejects paid models", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
@@ -8565,7 +8566,20 @@ describe("RUN-02: model provider selection and built-in admission", () => {
       await api.heartbeatRunner(runnerGroup);
       const claim = await api.claimRunnerJob(sent.body.runId);
       expect(claim.cliAgentType).toBe("codex");
-      expect(claim.environment).toMatchObject({ OPENAI_MODEL: model });
+      expect(claim.environment).toMatchObject({
+        OPENAI_MODEL: getBuiltInApiModel(model),
+      });
+      if (model === "deepseek-v4.1-flash") {
+        expect(claim.codexRuntimeConfig?.providerId).toBe("openrouter-codex");
+        expect(claim.codexRuntimeConfig?.modelCatalog?.models).toStrictEqual([
+          expect.objectContaining({
+            slug: "deepseek/deepseek-v4.1-flash",
+            context_window: 1_048_576,
+            input_modalities: ["text", "image"],
+            apply_patch_tool_type: null,
+          }),
+        ]);
+      }
       expect(claim.modelUsageProvider).toBe(model);
       await api.requestCancelRun(actor, sent.body.runId, [200]);
     }
@@ -8851,6 +8865,68 @@ describe("RUN-02: model provider selection and built-in admission", () => {
       await api.requestCancelRun(actor, sent.body.runId, [200]);
     },
   );
+
+  it("projects DeepSeek V4.1 Flash metadata for an OpenRouter workspace key", async () => {
+    const api = createRunsApi(context);
+    const chat = createChatFilesBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const { providerId } = await api.createOrgModelProvider(actor, {
+      type: "openrouter-codex",
+      secret: "openrouter-deepseek-v4-1-flash-key",
+    });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "deepseek-v4.1-flash",
+        isDefault: true,
+        defaultProviderType: "openrouter-codex",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
+
+    const sent = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        prompt: "use DeepSeek V4.1 Flash through OpenRouter",
+        model: "deepseek-v4.1-flash",
+      },
+      [201],
+    );
+    if (sent.status !== 201 || sent.body.runId === null) {
+      throw new Error("Expected DeepSeek V4.1 Flash to create a run");
+    }
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(sent.body.runId);
+
+    expect(claim.cliAgentType).toBe("codex");
+    expect(claim.environment).toMatchObject({
+      OPENAI_API_KEY: modelProviderPlaceholder(
+        "openrouter-codex",
+        "OPENROUTER_API_KEY",
+      ),
+      OPENAI_BASE_URL: "https://openrouter.ai/api/v1",
+      OPENAI_MODEL: "deepseek/deepseek-v4.1-flash",
+    });
+    expect(claim.codexRuntimeConfig).toMatchObject({
+      providerId: "openrouter-codex",
+      baseUrl: "https://openrouter.ai/api/v1",
+      wireApi: "responses",
+      modelCatalog: {
+        models: [
+          expect.objectContaining({
+            slug: "deepseek/deepseek-v4.1-flash",
+            context_window: 1_048_576,
+            input_modalities: ["text", "image"],
+            apply_patch_tool_type: null,
+          }),
+        ],
+      },
+    });
+    expect(claim.modelUsageProvider).toBe("deepseek-v4.1-flash");
+
+    await api.requestCancelRun(actor, sent.body.runId, [200]);
+  });
 
   it("offers image recognition only for image-unsupported models", async () => {
     const api = createRunsApi(context);

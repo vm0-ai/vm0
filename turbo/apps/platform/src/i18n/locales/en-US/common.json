@@ -5752,7 +5752,6 @@
         "welcomeThread": {
           "create": "Create welcome thread",
           "creating": "Creating…",
-          "defaultAgentNotReady": "Configure the workspace default agent, then try again.",
           "description": "Create a welcome chat with the introduction and examples.",
           "failed": "Could not create the welcome thread. Try again.",
           "title": "Welcome thread"

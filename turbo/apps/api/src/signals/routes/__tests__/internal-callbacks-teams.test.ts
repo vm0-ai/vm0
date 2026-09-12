@@ -948,86 +948,94 @@ describe("Teams chat callbacks", () => {
     );
   });
 
-  it("forks personal message threads without replacing the main session", async () => {
-    const teams = await setupConnectedTeamsActor();
-    const teamsApi = teamsApiMocks({ fixture: teams.fixture });
-    const rootActivityId = teamsFixtureExternalId(
-      teams.fixture,
-      "activity-personal-main",
-    );
-    const mainRunId = await dispatchTeamsPersonalRun({
-      fixture: teams.fixture,
-      activityId: rootActivityId,
-      text: "remember the main Teams DM context",
-    });
-    const mainClaim = await claimTeamsRun({
-      runnerGroup: teams.runnerGroup,
-      runId: mainRunId,
-    });
-    expect(mainClaim.resumeSession).toBeNull();
-    clearTeamsApiCalls(teamsApi);
-    const mainSessionId = await completeSandboxRun({
-      runId: mainRunId,
-      sandboxToken: mainClaim.sandboxToken,
-      exitCode: 0,
-    });
-
-    const threadRunId = await dispatchTeamsPersonalRun({
-      fixture: teams.fixture,
-      activityId: teamsFixtureExternalId(
+  it.each(["forked thread", "main session"] as const)(
+    "resumes the %s after forking a personal message thread",
+    async (target) => {
+      const teams = await setupConnectedTeamsActor();
+      const teamsApi = teamsApiMocks({ fixture: teams.fixture });
+      const rootActivityId = teamsFixtureExternalId(
         teams.fixture,
-        "activity-personal-thread-first",
-      ),
-      threadId: rootActivityId,
-      text: "open a personal message thread",
-    });
-    const threadClaim = await claimTeamsRun({
-      runnerGroup: teams.runnerGroup,
-      runId: threadRunId,
-    });
-    expect(threadClaim.resumeSession).toBeNull();
-    clearTeamsApiCalls(teamsApi);
-    const threadSessionId = await completeSandboxRun({
-      runId: threadRunId,
-      sandboxToken: threadClaim.sandboxToken,
-      exitCode: 0,
-    });
+        "activity-personal-main",
+      );
+      const mainRunId = await dispatchTeamsPersonalRun({
+        fixture: teams.fixture,
+        activityId: rootActivityId,
+        text: "remember the main Teams DM context",
+      });
+      const mainClaim = await claimTeamsRun({
+        runnerGroup: teams.runnerGroup,
+        runId: mainRunId,
+      });
+      expect(mainClaim.resumeSession).toBeNull();
+      clearTeamsApiCalls(teamsApi);
+      const mainSessionId = await completeSandboxRun({
+        runId: mainRunId,
+        sandboxToken: mainClaim.sandboxToken,
+        exitCode: 0,
+      });
 
-    const threadFollowUpRunId = await dispatchTeamsPersonalRun({
-      fixture: teams.fixture,
-      activityId: teamsFixtureExternalId(
-        teams.fixture,
-        "activity-personal-thread-follow-up",
-      ),
-      threadId: rootActivityId,
-      text: "continue the personal message thread",
-    });
-    const threadFollowUpClaim = await claimTeamsRun({
-      runnerGroup: teams.runnerGroup,
-      runId: threadFollowUpRunId,
-    });
-    expect(threadFollowUpClaim.resumeSession?.sessionId).toBe(threadSessionId);
-    clearTeamsApiCalls(teamsApi);
-    await completeSandboxRun({
-      runId: threadFollowUpRunId,
-      sandboxToken: threadFollowUpClaim.sandboxToken,
-      exitCode: 0,
-    });
+      const threadRunId = await dispatchTeamsPersonalRun({
+        fixture: teams.fixture,
+        activityId: teamsFixtureExternalId(
+          teams.fixture,
+          "activity-personal-thread-first",
+        ),
+        threadId: rootActivityId,
+        text: "open a personal message thread",
+      });
+      const threadClaim = await claimTeamsRun({
+        runnerGroup: teams.runnerGroup,
+        runId: threadRunId,
+      });
+      expect(threadClaim.resumeSession).toBeNull();
+      clearTeamsApiCalls(teamsApi);
+      const threadSessionId = await completeSandboxRun({
+        runId: threadRunId,
+        sandboxToken: threadClaim.sandboxToken,
+        exitCode: 0,
+      });
 
-    const returnToMainRunId = await dispatchTeamsPersonalRun({
-      fixture: teams.fixture,
-      activityId: teamsFixtureExternalId(
-        teams.fixture,
-        "activity-personal-main-return",
-      ),
-      text: "return to the main DM",
-    });
-    const returnToMainClaim = await claimTeamsRun({
-      runnerGroup: teams.runnerGroup,
-      runId: returnToMainRunId,
-    });
-    expect(returnToMainClaim.resumeSession?.sessionId).toBe(mainSessionId);
-  });
+      if (target === "forked thread") {
+        const threadFollowUpRunId = await dispatchTeamsPersonalRun({
+          fixture: teams.fixture,
+          activityId: teamsFixtureExternalId(
+            teams.fixture,
+            "activity-personal-thread-follow-up",
+          ),
+          threadId: rootActivityId,
+          text: "continue the personal message thread",
+        });
+        const threadFollowUpClaim = await claimTeamsRun({
+          runnerGroup: teams.runnerGroup,
+          runId: threadFollowUpRunId,
+        });
+        expect(threadFollowUpClaim.resumeSession?.sessionId).toBe(
+          threadSessionId,
+        );
+        clearTeamsApiCalls(teamsApi);
+        await completeSandboxRun({
+          runId: threadFollowUpRunId,
+          sandboxToken: threadFollowUpClaim.sandboxToken,
+          exitCode: 0,
+        });
+        return;
+      }
+
+      const returnToMainRunId = await dispatchTeamsPersonalRun({
+        fixture: teams.fixture,
+        activityId: teamsFixtureExternalId(
+          teams.fixture,
+          "activity-personal-main-return",
+        ),
+        text: "return to the main DM",
+      });
+      const returnToMainClaim = await claimTeamsRun({
+        runnerGroup: teams.runnerGroup,
+        runId: returnToMainRunId,
+      });
+      expect(returnToMainClaim.resumeSession?.sessionId).toBe(mainSessionId);
+    },
+  );
 
   it.each([
     "canonical input",

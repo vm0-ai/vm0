@@ -5760,7 +5760,6 @@
         "welcomeThread": {
           "create": "Willkommenschat erstellen",
           "creating": "Wird erstellt…",
-          "defaultAgentNotReady": "Konfiguriere den Standardagenten des Arbeitsbereichs und versuche es erneut.",
           "description": "Erstelle einen Willkommenschat mit einer Einführung und Beispielen.",
           "failed": "Der Willkommenschat konnte nicht erstellt werden. Versuche es erneut.",
           "title": "Willkommenschat"
