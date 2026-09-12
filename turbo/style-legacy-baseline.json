@@ -4,7 +4,6 @@
     "copied",
     "icon-tooltip-trigger",
     "language-mermaid",
-    "lucide",
     "mermaid-block",
     "mermaid-diagram-expand",
     "mermaid-diagram-image",
@@ -21,7 +20,6 @@
     "okou-composer",
     "okou-desktop-no-drag",
     "okou-desktop-titlebar-drag-region",
-    "okou-fixed-viewport-shell",
     "okou-managed-bottom-safe-area",
     "okou-markdown-card",
     "okou-mobile-fixed-safe-area",
@@ -61,7 +59,6 @@
     "owf-diagram-vertical-control",
     "owf-diagram-wrap",
     "table-wrapper",
-    "toaster",
     "wmde-markdown",
     "wmde-markdown-color"
   ],
@@ -114,48 +111,6 @@
         "selector": ".okou-managed-bottom-safe-area",
         "property": "padding-bottom",
         "value": "0",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-fixed-viewport-shell",
-        "property": "box-sizing",
-        "value": "border-box",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-fixed-viewport-shell",
-        "property": "height",
-        "value": "var(--okou-viewport-height)",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-fixed-viewport-shell",
-        "property": "min-height",
-        "value": "var(--okou-viewport-height)",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-fixed-viewport-shell",
-        "property": "max-height",
-        "value": "var(--okou-viewport-height)",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-fixed-viewport-shell",
-        "property": "overflow",
-        "value": "hidden",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-fixed-viewport-shell",
-        "property": "padding",
-        "value": "var(--sat) var(--sar) var(--sab) var(--sal)",
         "important": false
       },
       {
@@ -2919,8 +2874,7 @@
       "okou-app": 1
     },
     "apps/platform/src/views/browser-session/browser-session-page.tsx": {
-      "okou-app": 1,
-      "okou-fixed-viewport-shell": 1
+      "okou-app": 1
     },
     "apps/platform/src/views/components/icon-tooltip.tsx": {
       "icon-tooltip-trigger": 1
@@ -3122,7 +3076,6 @@
       "owf-diagram-wrap": 1
     },
     "apps/platform/src/views/queue-page/queue-drawer.tsx": {
-      "lucide": 1,
       "okou-border": 3
     },
     "apps/platform/src/views/shared-thread-page/shared-thread-page.tsx": {
@@ -3132,9 +3085,6 @@
     },
     "apps/platform/src/views/unsupported-browser-page.tsx": {
       "okou-app": 1
-    },
-    "packages/ui/src/components/ui/sonner.tsx": {
-      "toaster": 1
     },
     "packages/ui/src/components/ui/table.tsx": {
       "table-wrapper": 1

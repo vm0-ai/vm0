@@ -34,7 +34,7 @@ export function BrowserSessionPage() {
   const signals = useGet(browserSessionPageSignals$);
   return (
     <main
-      className="okou-app okou-fixed-viewport-shell fixed inset-0 flex min-h-0 flex-col bg-background"
+      className="okou-app fixed inset-0 flex h-[var(--okou-viewport-height)] max-h-[var(--okou-viewport-height)] min-h-0 flex-col overflow-hidden bg-background pt-[var(--sat)] pr-[var(--sar)] pb-[var(--sab)] pl-[var(--sal)]"
       data-testid="browser-session-page"
     >
       {signals ? (

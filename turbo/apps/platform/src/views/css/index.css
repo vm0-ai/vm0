@@ -199,15 +199,6 @@ body {
   padding-bottom: 0;
 }
 
-.okou-fixed-viewport-shell {
-  box-sizing: border-box;
-  height: var(--okou-viewport-height);
-  min-height: var(--okou-viewport-height);
-  max-height: var(--okou-viewport-height);
-  overflow: hidden;
-  padding: var(--sat) var(--sar) var(--sab) var(--sal);
-}
-
 @media (display-mode: standalone) {
   .okou-pwa-fixed-cover {
     bottom: calc(-1 * var(--sab));
