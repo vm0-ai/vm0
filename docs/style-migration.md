@@ -674,3 +674,64 @@ observations match in every capture. Both archives were anonymously downloaded
 and SHA-256 verified. This is bounded Chromium acceptance with controlled
 bootstrap, API and browser-media boundaries; no Agent run, purchase, connector,
 real microphone recording or real transcription occurred.
+
+## Sidebar structure and desktop/mobile shell batch
+
+This batch drains five `platform-shell` tokens from the sidebar: the mobile
+drawer's isolation and painted surface (`okou-mobile-sidebar`), its safe-area
+boundary (`okou-mobile-fixed-safe-area`), the expanded header's top inset
+(`okou-sidebar-header`), and the two native-shell window hints
+(`okou-desktop-titlebar-drag-region`, `okou-desktop-no-drag`). Eighteen
+declarations and six consumption sites in `sidebar.tsx` are removed; the two
+drag-region call sites become one local `DesktopTitlebarDragRegion` component
+rather than a shared class-name constant.
+
+Three retired conditions are reproduced in px rather than through Tailwind's
+`md:` / `max-md:` variants, which compile to `48rem`. A reader who changes the
+browser default font size moves a rem breakpoint but not the retired `767px` and
+`768px` ones, so the arbitrary `[@media(max-width:767px)]` and
+`[@media(min-width:768px)]` variants keep the boundary where it is. The
+`[data-desktop-shell]` ancestor is matched by attribute alone: qualifying it
+with `.okou-app` would register a new legacy class dependency against the
+shrink-only baseline.
+
+`-webkit-app-region` is a native window hint with no paint, so it is verified by
+computed style rather than pixels. `isolation: isolate` is also pixel-neutral in
+every reachable state, because `max-md:fixed` with `max-md:z-40` already makes
+the drawer a stacking context; it is retained because the retired rule set it.
+
+### okou-nav remains blocked
+
+`okou-nav` is in this batch's token list but is **not** drained, and the class
+stays on all three `aside` elements. Three of its seven declarations use
+`.okou-nav` only as a scoping ancestor for tokens this batch does not own:
+`.okou-app[data-gradient-color-themes] .okou-nav .okou-nav-copy`, the same rule
+for `.okou-nav-copy-muted`, and
+`.okou-app[data-gradient-color-themes] .okou-nav.okou-nav-rail`. Their consumers
+live in `sidebar-pinned.tsx`, `sidebar-threads.tsx` and `sidebar-upgrade.tsx`,
+and `okou-nav-rail` is not mapped to any manifest family at all. Removing the
+class would silently delete those three rules.
+
+The cost was measured rather than asserted. Draining `okou-nav` from the drawer
+and the rail across 144 states changed 5,996,649 pixels: the rail background
+falls off its `--okou-nav-rail` value and the nav copy loses
+`--okou-nav-foreground` / `--okou-nav-muted-foreground`. That damage is confined
+to the eight gradient palettes at about 749,580 pixels each. On the default
+palette — which is what production renders, because `GradientColorThemes` is
+`enabled: false` with no staff allowlist — all 16 states changed zero pixels
+with identical observations, confirming that the two production-live
+declarations (`.okou-nav { --color-sidebar-border }` and
+`:where([data-theme="dark"]) .okou-nav { --color-sidebar }`) duplicate values the
+`@theme` block and `.okou-app` already supply.
+
+So `okou-nav` drains only together with the rest of the `navigation` family, and
+`okou-nav-rail` needs a family assignment first. Ordering that work is a
+cross-batch decision, not a value this batch may choose.
+
+No batch entry was added to `turbo/style-migration-manifest.json`. Its schema
+asserts `batch.cases.length > 0` against case IDs registered in `caseFiles`, and
+no registered case covers the sidebar shell; the assertion was confirmed to fail
+for an entry with an empty `cases` array. Registering one would require a new
+deployed-preview runner with its App/API deployment and private TEST storage
+state. The `navigation` and `platform-shell` family entries already map every
+token in this batch, and both style checks pass.

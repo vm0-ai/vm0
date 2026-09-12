@@ -214,6 +214,19 @@ function AccountDropdownContainer({
   );
 }
 
+/* A spacer that only the native desktop shell sees: it reserves that shell's
+   titlebar height at the top of a sidebar column and hands the strip back to
+   the window manager as a drag handle. The browser never sets
+   `data-desktop-shell`, so the strip stays collapsed on the web. */
+function DesktopTitlebarDragRegion() {
+  return (
+    <div
+      aria-hidden="true"
+      className="hidden [@media(min-width:768px)]:[[data-desktop-shell]_&]:block [@media(min-width:768px)]:[[data-desktop-shell]_&]:h-(--okou-desktop-titlebar-height) [@media(min-width:768px)]:[[data-desktop-shell]_&]:shrink-0 [@media(min-width:768px)]:[[data-desktop-shell]_&]:[-webkit-app-region:drag]"
+    />
+  );
+}
+
 // --- Expanded mobile drawer ---
 
 function ExpandedSidebar() {
@@ -226,8 +239,17 @@ function ExpandedSidebar() {
         return $.appShell.sidebar.ariaLabel;
       })}
       className={cn(
-        "okou-nav okou-mobile-sidebar okou-mobile-fixed-safe-area h-full w-[300px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:h-auto max-md:shadow-xl",
+        "okou-nav h-full w-[300px] shrink-0 flex-col border-r border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:h-auto max-md:shadow-xl",
         "hidden data-[sidebar-expanded]:max-md:flex md:hidden",
+        // The drawer paints its own surface behind its content instead of on
+        // itself, so the fill can extend past the viewport in a standalone PWA
+        // without moving the content the safe-area padding positions.
+        'isolate before:pointer-events-none before:absolute before:inset-0 before:z-[-1] before:bg-sidebar before:content-[""] [@media(display-mode:standalone)]:before:bottom-[calc(-1*var(--sab))]',
+        // A fixed drawer escapes the page shell, so it owns its safe-area
+        // boundary. Both this and the paint above keep the retired rules' pixel
+        // breakpoint rather than Tailwind's rem one, so a non-default browser
+        // font size cannot move where they start applying.
+        "[@media(max-width:767px)]:box-border [@media(max-width:767px)]:pb-(--sab) [@media(max-width:767px)]:pl-(--sal) [@media(max-width:767px)]:pr-(--sar) [@media(max-width:767px)]:pt-(--sat)",
       )}
     >
       <ExpandedHeader />
@@ -246,9 +268,9 @@ function ExpandedHeader() {
     return $.appShell.sidebar.collapse;
   });
   return (
-    <div className="okou-sidebar-header shrink-0 px-2 pb-0">
-      <div className="okou-desktop-titlebar-drag-region" aria-hidden="true" />
-      <div className="okou-desktop-no-drag flex items-center justify-between gap-2 rounded-lg py-0.5">
+    <div className="shrink-0 px-2 pb-0 pt-1.5 [@media(min-width:768px)]:[[data-desktop-shell]_&]:pt-0">
+      <DesktopTitlebarDragRegion />
+      <div className="flex items-center justify-between gap-2 rounded-lg py-0.5 [-webkit-app-region:no-drag]">
         <div className="min-w-0 flex-1">
           <OrgSwitcher />
         </div>
@@ -634,7 +656,7 @@ function LabeledNavRail() {
   };
   return (
     <aside data-testid="labeled-nav-rail" className={RAIL_FRAME}>
-      <div className="okou-desktop-titlebar-drag-region" aria-hidden="true" />
+      <DesktopTitlebarDragRegion />
       <div className="mb-3 shrink-0">
         <OrgSwitcherCompact />
       </div>

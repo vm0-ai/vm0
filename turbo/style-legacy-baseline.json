@@ -25,13 +25,9 @@
     "okou-chat-frame",
     "okou-chat-skeleton-reveal",
     "okou-composer",
-    "okou-desktop-no-drag",
-    "okou-desktop-titlebar-drag-region",
     "okou-fixed-viewport-shell",
     "okou-managed-bottom-safe-area",
     "okou-markdown-card",
-    "okou-mobile-fixed-safe-area",
-    "okou-mobile-sidebar",
     "okou-nav",
     "okou-nav-copy",
     "okou-nav-copy-muted",
@@ -41,7 +37,6 @@
     "okou-nav-title-row",
     "okou-pwa-fixed-cover",
     "okou-shimmer-text",
-    "okou-sidebar-header",
     "okou-thinking-enter",
     "okou-thinking-spinner",
     "okou-thinking-spinner-frame",
@@ -177,132 +172,6 @@
         "selector": ".okou-pwa-fixed-cover",
         "property": "bottom",
         "value": "calc(-1*var(--sab))",
-        "important": false
-      },
-      {
-        "atRules": ["@media (max-width:767px)"],
-        "selector": ".okou-mobile-fixed-safe-area",
-        "property": "box-sizing",
-        "value": "border-box",
-        "important": false
-      },
-      {
-        "atRules": ["@media (max-width:767px)"],
-        "selector": ".okou-mobile-fixed-safe-area",
-        "property": "padding",
-        "value": "var(--sat) var(--sar) var(--sab) var(--sal)",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-mobile-sidebar",
-        "property": "isolation",
-        "value": "isolate",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-mobile-sidebar::before",
-        "property": "position",
-        "value": "absolute",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-mobile-sidebar::before",
-        "property": "z-index",
-        "value": "-1",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-mobile-sidebar::before",
-        "property": "inset",
-        "value": "0",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-mobile-sidebar::before",
-        "property": "background-color",
-        "value": "hsl(var(--sidebar))",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-mobile-sidebar::before",
-        "property": "content",
-        "value": "\"\"",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-mobile-sidebar::before",
-        "property": "pointer-events",
-        "value": "none",
-        "important": false
-      },
-      {
-        "atRules": ["@media (display-mode:standalone)"],
-        "selector": ".okou-mobile-sidebar::before",
-        "property": "bottom",
-        "value": "calc(-1*var(--sab))",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-sidebar-header",
-        "property": "padding-top",
-        "value": "0.375rem",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-desktop-titlebar-drag-region",
-        "property": "display",
-        "value": "none",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-desktop-no-drag",
-        "property": "-webkit-app-region",
-        "value": "no-drag",
-        "important": false
-      },
-      {
-        "atRules": ["@media (min-width:768px)"],
-        "selector": ".okou-app[data-desktop-shell] .okou-sidebar-header",
-        "property": "padding-top",
-        "value": "0",
-        "important": false
-      },
-      {
-        "atRules": ["@media (min-width:768px)"],
-        "selector": ".okou-app[data-desktop-shell] .okou-desktop-titlebar-drag-region",
-        "property": "display",
-        "value": "block",
-        "important": false
-      },
-      {
-        "atRules": ["@media (min-width:768px)"],
-        "selector": ".okou-app[data-desktop-shell] .okou-desktop-titlebar-drag-region",
-        "property": "flex-shrink",
-        "value": "0",
-        "important": false
-      },
-      {
-        "atRules": ["@media (min-width:768px)"],
-        "selector": ".okou-app[data-desktop-shell] .okou-desktop-titlebar-drag-region",
-        "property": "height",
-        "value": "var(--okou-desktop-titlebar-height)",
-        "important": false
-      },
-      {
-        "atRules": ["@media (min-width:768px)"],
-        "selector": ".okou-app[data-desktop-shell] .okou-desktop-titlebar-drag-region",
-        "property": "-webkit-app-region",
-        "value": "drag",
         "important": false
       },
       {
@@ -3292,15 +3161,10 @@
       "okou-nav-copy-muted": 1
     },
     "apps/platform/src/views/okou-page/sidebar.tsx": {
-      "okou-desktop-no-drag": 1,
-      "okou-desktop-titlebar-drag-region": 2,
-      "okou-mobile-fixed-safe-area": 1,
-      "okou-mobile-sidebar": 1,
       "okou-nav": 3,
       "okou-nav-copy": 4,
       "okou-nav-copy-muted": 2,
-      "okou-nav-copy-muted-hover": 1,
-      "okou-sidebar-header": 1
+      "okou-nav-copy-muted-hover": 1
     },
     "apps/platform/src/views/okou-page/tiptap-instructions-editor.tsx": {
       "okou-border": 1,
