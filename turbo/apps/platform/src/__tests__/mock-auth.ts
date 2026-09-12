@@ -55,7 +55,7 @@ export interface MockedMembership {
   };
 }
 
-export interface MockedClientSession {
+interface MockedClientSession {
   currentTask?: { readonly key: string };
   id: string;
   status?: string;
@@ -67,7 +67,7 @@ export interface MockedClientSession {
   };
 }
 
-interface MockedAuthV2Capabilities {
+interface MockedAuthCapabilities {
   readonly appleOAuth?: boolean;
   readonly googleOAuth?: boolean;
   readonly googleOneTapClientId?: string | null;
@@ -75,7 +75,7 @@ interface MockedAuthV2Capabilities {
   readonly passkey?: boolean;
 }
 
-export type MockedSignInFactor =
+type MockedSignInFactor =
   | { readonly strategy: "password" }
   | {
       readonly emailAddressId: string;
@@ -90,7 +90,7 @@ export type MockedSignInFactor =
     }
   | { readonly strategy: string };
 
-export interface MockedSignInResourceState {
+interface MockedSignInResourceState {
   readonly createdSessionId?: string | null;
   readonly identifier?: string | null;
   readonly isTransferable?: boolean;
@@ -101,7 +101,7 @@ export interface MockedSignInResourceState {
   readonly supportedSecondFactors?: readonly MockedSignInFactor[] | null;
 }
 
-export interface MockedSignUpResourceState {
+interface MockedSignUpResourceState {
   readonly createdSessionId?: string | null;
   readonly emailAddress?: string | null;
   readonly externalAccountError?: ClerkAPIError | null;
@@ -204,7 +204,7 @@ let internalMockedOrganization: {
 let internalMockedInvitations: MockedInvitation[] = [];
 let internalMockedMemberships: MockedMembership[] = [{ id: "org_default" }];
 let internalMockedClientSessions: MockedClientSession[] = [];
-let internalMockedAuthV2Capabilities: Required<MockedAuthV2Capabilities> = {
+let internalMockedAuthCapabilities: Required<MockedAuthCapabilities> = {
   appleOAuth: false,
   googleOAuth: false,
   googleOneTapClientId: null,
@@ -290,7 +290,7 @@ let internalMockedPasswordValidation: PasswordValidation = {
   strength: undefined,
 };
 
-export function mockSignInResource(state: MockedSignInResourceState): void {
+function mockSignInResource(state: MockedSignInResourceState): void {
   internalMockedSignInResourceState = {
     createdSessionId: state.createdSessionId ?? null,
     identifier: state.identifier ?? null,
@@ -305,7 +305,7 @@ export function mockSignInResource(state: MockedSignInResourceState): void {
   };
 }
 
-export function mockSignUpResource(state: MockedSignUpResourceState): void {
+function mockSignUpResource(state: MockedSignUpResourceState): void {
   internalMockedSignUpResourceState = {
     createdSessionId: state.createdSessionId ?? null,
     emailAddress: state.emailAddress ?? null,
@@ -331,7 +331,7 @@ export function mockSignUpResource(state: MockedSignUpResourceState): void {
   };
 }
 
-export function mockSignUpConfiguration(
+function mockSignUpConfiguration(
   configuration: MockedSignUpConfiguration,
 ): void {
   const attributes = configuration.attributes;
@@ -392,22 +392,15 @@ function mockSignUpPasswordValidation(validation: PasswordValidation): void {
   internalMockedPasswordValidation = validation;
 }
 
-export function mockAuthV2Capabilities(
-  capabilities: MockedAuthV2Capabilities,
-): void {
-  internalMockedAuthV2Capabilities = {
-    appleOAuth: capabilities.appleOAuth ?? false,
-    googleOAuth: capabilities.googleOAuth ?? false,
-    googleOneTapClientId: capabilities.googleOneTapClientId ?? null,
-    lastAuthenticationStrategy: capabilities.lastAuthenticationStrategy ?? null,
-    passkey: capabilities.passkey ?? false,
-  };
-}
-
 export function mockClerkLoaded(loaded: boolean): void {
   internalMockedClerkLoaded = loaded;
 }
 
+/**
+ * Clerk's transitive state: while `setActive()` navigates it publishes
+ * `session`, `user` and `organization` as `undefined` and emits the real
+ * values only afterwards. `undefined` means unknown, not signed out.
+ */
 export function mockClerkSessionTransitioning(transitioning: boolean): void {
   internalMockedClerkSessionTransitioning = transitioning;
   emitMockedClerkEvent();
@@ -493,61 +486,6 @@ export function mockUser(
   internalMockedSession = session;
 }
 
-interface MockedGoogleOneTapInitializeOptions {
-  readonly auto_select: boolean;
-  readonly callback: (response: { readonly credential?: string }) => void;
-  readonly cancel_on_tap_outside: boolean;
-  readonly client_id: string;
-  readonly itp_support: boolean;
-  readonly use_fedcm_for_prompt: boolean;
-}
-
-type MockedGoogleOneTapMomentCallback = (notification: {
-  getMomentType(): "dismissed" | "display" | "skipped";
-}) => void;
-
-let internalMockedGoogleOneTapCredential: string | null = null;
-let internalMockedGoogleOneTapCallback:
-  | MockedGoogleOneTapInitializeOptions["callback"]
-  | null = null;
-
-function defaultGoogleOneTapInitializeImpl(
-  options: MockedGoogleOneTapInitializeOptions,
-): void {
-  internalMockedGoogleOneTapCallback = options.callback;
-}
-
-function defaultGoogleOneTapPromptImpl(
-  callback: MockedGoogleOneTapMomentCallback,
-): void {
-  if (internalMockedGoogleOneTapCredential) {
-    internalMockedGoogleOneTapCallback?.({
-      credential: internalMockedGoogleOneTapCredential,
-    });
-    callback({ getMomentType: () => "dismissed" });
-    return;
-  }
-  callback({ getMomentType: () => "skipped" });
-}
-
-export const mockedGoogleOneTap = {
-  cancel: vi.fn<() => void>(),
-  initialize: vi.fn<typeof defaultGoogleOneTapInitializeImpl>(
-    defaultGoogleOneTapInitializeImpl,
-  ),
-  prompt: vi.fn<typeof defaultGoogleOneTapPromptImpl>(
-    defaultGoogleOneTapPromptImpl,
-  ),
-};
-
-export function mockGoogleOneTapCredential(credential: string | null): void {
-  internalMockedGoogleOneTapCredential = credential;
-  Object.defineProperty(globalThis, "google", {
-    configurable: true,
-    value: { accounts: { id: mockedGoogleOneTap } },
-  });
-}
-
 /**
  * Configure organization-related mock state for testing org selection.
  */
@@ -583,28 +521,13 @@ function clearMockedAuth() {
   internalMockedInvitations = [];
   internalMockedMemberships = [{ id: "org_default" }];
   internalMockedClientSessions = [];
-  internalMockedAuthV2Capabilities = {
+  internalMockedAuthCapabilities = {
     appleOAuth: false,
     googleOAuth: false,
     googleOneTapClientId: null,
     lastAuthenticationStrategy: null,
     passkey: false,
   };
-  internalMockedGoogleOneTapCredential = null;
-  internalMockedGoogleOneTapCallback = null;
-  Reflect.deleteProperty(globalThis, "google");
-  for (const script of document.querySelectorAll(
-    "script[data-auth-v2-google-one-tap]",
-  )) {
-    script.remove();
-  }
-  mockedGoogleOneTap.cancel.mockReset();
-  mockedGoogleOneTap.initialize.mockReset();
-  mockedGoogleOneTap.initialize.mockImplementation(
-    defaultGoogleOneTapInitializeImpl,
-  );
-  mockedGoogleOneTap.prompt.mockReset();
-  mockedGoogleOneTap.prompt.mockImplementation(defaultGoogleOneTapPromptImpl);
   internalMockedClerkLoadOptions = {};
   internalMockedClerkLoaded = true;
   internalMockedClerkSessionTransitioning = false;
@@ -617,6 +540,8 @@ function clearMockedAuth() {
   clerkStatusListeners.clear();
   mockedClerk.on = defaultClerkStatusOn;
   mockedClerk.off = defaultClerkStatusOff;
+  mockedClerk.openSignIn.mockReset();
+  mockedClerk.openSignIn.mockResolvedValue(undefined);
   mockedClerk.signOut.mockReset();
   mockedClerk.setActive.mockReset();
   mockedClerk.setActive.mockImplementation(defaultSetActiveImpl);
@@ -1205,9 +1130,15 @@ export const mockedClerk = {
     return internalMockedClerkLoaded ? "ready" : "loading";
   },
   get user() {
+    if (internalMockedClerkSessionTransitioning) {
+      return undefined;
+    }
     return internalMockedUser;
   },
   get organization() {
+    if (internalMockedClerkSessionTransitioning) {
+      return undefined;
+    }
     return internalMockedOrganization;
   },
   get session() {
@@ -1264,7 +1195,7 @@ export const mockedClerk = {
   signUpAuthenticateWithRedirect,
   client: {
     get lastAuthenticationStrategy() {
-      return internalMockedAuthV2Capabilities.lastAuthenticationStrategy;
+      return internalMockedAuthCapabilities.lastAuthenticationStrategy;
     },
     get sessions() {
       return internalMockedClientSessions;
@@ -1296,7 +1227,7 @@ export const mockedClerk = {
         },
         get googleOneTapClientId() {
           return (
-            internalMockedAuthV2Capabilities.googleOneTapClientId ?? undefined
+            internalMockedAuthCapabilities.googleOneTapClientId ?? undefined
           );
         },
         get privacyPolicyUrl() {
@@ -1310,21 +1241,21 @@ export const mockedClerk = {
         attributes: {
           ...internalMockedSignUpConfiguration.attributes,
           passkey: {
-            enabled: internalMockedAuthV2Capabilities.passkey,
+            enabled: internalMockedAuthCapabilities.passkey,
             required: false,
-            used_for_first_factor: internalMockedAuthV2Capabilities.passkey,
+            used_for_first_factor: internalMockedAuthCapabilities.passkey,
           },
         },
         authenticatableSocialStrategies: [
-          ...(internalMockedAuthV2Capabilities.appleOAuth
+          ...(internalMockedAuthCapabilities.appleOAuth
             ? (["oauth_apple"] as const)
             : []),
-          ...(internalMockedAuthV2Capabilities.googleOAuth
+          ...(internalMockedAuthCapabilities.googleOAuth
             ? (["oauth_google"] as const)
             : []),
         ],
         passkeySettings: {
-          show_sign_in_button: internalMockedAuthV2Capabilities.passkey,
+          show_sign_in_button: internalMockedAuthCapabilities.passkey,
         },
         passwordSettings: {
           allowed_special_characters: "",
@@ -1348,6 +1279,7 @@ export const mockedClerk = {
     };
   },
   handleRedirectCallback,
+  openSignIn: vi.fn<() => Promise<void>>(() => Promise.resolve()),
   signOut: vi.fn<BrowserClerk["signOut"]>(() => {
     return Promise.resolve();
   }),
