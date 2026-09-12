@@ -11,6 +11,24 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.889.1](https://github.com/vm0-ai/vm0/compare/app-v0.889.0...app-v0.889.1) (2026-09-12)
+
+
+### Refactoring
+
+* **platform:** route chat realtime invalidations directly ([#33586](https://github.com/vm0-ai/vm0/issues/33586)) ([a89a9b4](https://github.com/vm0-ai/vm0/commit/a89a9b45feb52774623ab2c2c9664ed5b18ccc7a))
+* **platform:** simplify activity summary polling ([#33577](https://github.com/vm0-ai/vm0/issues/33577)) ([b2dc30a](https://github.com/vm0-ai/vm0/commit/b2dc30a0f22d263c4ad0a4d7f764932e38fa3aeb))
+* remove expired deployment compatibility ([#33582](https://github.com/vm0-ai/vm0/issues/33582)) ([d5ae0e3](https://github.com/vm0-ai/vm0/commit/d5ae0e331d31465b7302bc63e1557420caf7358b))
+* **test:** replace the remaining retired-brand agent fixtures ([#33587](https://github.com/vm0-ai/vm0/issues/33587)) ([fee7c56](https://github.com/vm0-ai/vm0/commit/fee7c56bfb3f3b62bda69a1409dbc2486e937003))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.429.1
+    * @okouai/core bumped to 8.654.3
+
 ## [0.889.0](https://github.com/vm0-ai/vm0/compare/app-v0.888.0...app-v0.889.0) (2026-09-11)
 
 
