@@ -49,6 +49,7 @@ import {
 import {
   getModelProviderFirewall,
   getProviderRuntimeModel,
+  LIMITED_FREE1_DEFAULT_RUN_MODEL,
   type UpsertModelProviderRequest,
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   type ModelProviderType,
@@ -1768,9 +1769,13 @@ async function expectPiActivitySummaryBeforeGuestReplay(
     [200],
   );
   expect(activity.body).toMatchObject({
-    status: "fresh",
-    sourceSequence: activityEnabled ? 3 : null,
-    summarySequence: activityEnabled ? 3 : null,
+    status: "available",
+    messages: [
+      {
+        id: "Checking the CLI and preparing the note",
+        text: "Checking the CLI and preparing the note",
+      },
+    ],
   });
   if (activityEnabled) {
     expect(activityInput).toContain("okou --help");
@@ -7960,7 +7965,7 @@ describe("CHAT-02: model-first provider policies", () => {
       supportByok: false,
       restrictedVm0Models: false,
     });
-    await seedBuiltInModelKey("deepseek-v4-pro");
+    await seedBuiltInModelKey(LIMITED_FREE1_DEFAULT_RUN_MODEL);
     const byokDisabled = await chat.requestSendEvent(
       actor,
       {
@@ -7979,7 +7984,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const byokDisabledPolicies = await misc.listModelPolicies(actor);
     expect(byokDisabledPolicies.policies).toContainEqual(
       expect.objectContaining({
-        model: "deepseek-v4-pro",
+        model: LIMITED_FREE1_DEFAULT_RUN_MODEL,
         isDefault: true,
         defaultProviderType: "built-in",
         modelProviderId: null,
@@ -8028,7 +8033,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const restrictedPolicies = await misc.listModelPolicies(actor);
     expect(restrictedPolicies.policies).toContainEqual(
       expect.objectContaining({
-        model: "deepseek-v4-pro",
+        model: LIMITED_FREE1_DEFAULT_RUN_MODEL,
         isDefault: true,
         defaultProviderType: "built-in",
         modelProviderId: null,
@@ -22275,7 +22280,7 @@ describe("CHAT-02: initial thinking indicator", () => {
               text: "Preparing the visible checklist",
             },
           ],
-          status: "fresh",
+          status: "available",
           runId: run.runId,
         });
         expect(indicatorCalls).toStrictEqual(["summary"]);

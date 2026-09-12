@@ -180,12 +180,19 @@ API credential writers remain key-only until #33468 delivers reusable credential
 SSH is staff-only, so this work adds no legacy compatibility or reader-drain gate;
 see [fallback policy](fallback.md#2-features-behind-a-feature-switch-need-no-fallback).
 
-Per-sandbox admission is 2 requests and per-Runner admission is 16, before request
-parsing and JIT. Expensive key decoding uses 2 process-wide blocking slots.
-Cancelled blocking work and system DNS retain the actual accepted stream and its
-existing normal-operation/park reservation until they really finish. Cancelling
-a waiter does not release those resources prematurely. The dispatcher does not
-introduce an independent park counter.
+Each sandbox's current Run admits up to 8 concurrent SSH requests, before request
+parsing and JIT. There is no Runner-wide SSH request or connection admission cap;
+other Runs do not consume this quota. A new Run receives a fresh 8-slot quota.
+Slots cover admitted work through parsing, authority, DNS, authentication,
+execution and host cleanup, rather than only established connections. Aggregate
+socket, memory and network use can therefore grow with active Runs and outstanding
+cleanup from retired Runs. Expensive key decoding still uses 2 process-wide
+blocking slots; authority-cache and observation-report bounds remain separate.
+Cancelled blocking work and system DNS retain their original Run's capacity
+permits until they really finish. The dispatcher owns the guest stream and its existing
+normal-operation/park reservation independently. Once request I/O closes and the
+stream drops, host-only work no longer blocks guest park, while its capacity
+remains charged until actual completion. No independent park counter is added.
 
 Each stream retains at most 1 MiB output, coalesced into at most 16 KiB chunks,
 with periodic low-volume flushing. Both full streams fit the generic 24 KiB
@@ -199,8 +206,11 @@ Every external await observes Run/sandbox cancellation and the helper-coordinate
 
 The shared fresh/reused Run boundary installs the dispatcher before Agent work
 and cancels/joins it before cleanup. Dropping the Run also cancels it. A connected
-socket guard closes detached russh I/O, while that I/O retains the actual stream
-reservation until it exits. Telemetry contains only owned identifiers, fixed
+socket guard closes detached russh I/O, while that I/O retains host capacity
+until it exits. Shutdown joins request dispatch; it need not wait for remaining
+host-only cleanup before guest park. Run registration retirement and cancellation
+still prevent late work from connecting, authenticating or republishing old
+credentials after cancellation. Telemetry contains only owned identifiers, fixed
 outcomes, timing, byte counts, truncation and terminal-delivery state. Production
 fmt/Axiom sinks suppress raw russh/ssh-key/ssh-cipher diagnostics at every level.
 

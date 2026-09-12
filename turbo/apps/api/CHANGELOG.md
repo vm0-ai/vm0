@@ -8,6 +8,46 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.587.0](https://github.com/vm0-ai/vm0/compare/api-v1.586.1...api-v1.587.0) (2026-09-12)
+
+
+### Features
+
+* add deepseek v4.1 flash ([#33591](https://github.com/vm0-ai/vm0/issues/33591)) ([b7b8854](https://github.com/vm0-ai/vm0/commit/b7b885498764b690c4a194f86da198815daae4c9))
+* **voice:** enable google cloud routing by default for staff ([#33571](https://github.com/vm0-ai/vm0/issues/33571)) ([e14e650](https://github.com/vm0-ai/vm0/commit/e14e650f944b25fd7b0b0b10f486e0a33354f567))
+
+
+### Bug Fixes
+
+* reduce clerk ci traffic and restore blocking e2e checks ([#33554](https://github.com/vm0-ai/vm0/issues/33554)) ([71712e4](https://github.com/vm0-ai/vm0/commit/71712e49f2382ab3e090a37c28162e30c0759252))
+
+
+### Documentation
+
+* **testing:** forbid log assertions in api tests and gate log-noise fixes ([#33610](https://github.com/vm0-ai/vm0/issues/33610)) ([fe93e0f](https://github.com/vm0-ai/vm0/commit/fe93e0f17fe52b01a36df435e30b2641a581a9e9))
+
+
+### Refactoring
+
+* **api:** delete the unreachable callbackroute hmac module ([#33590](https://github.com/vm0-ai/vm0/issues/33590)) ([656fc51](https://github.com/vm0-ai/vm0/commit/656fc515a0a523c535917c2beed6ddf7949299fa)), closes [#33585](https://github.com/vm0-ai/vm0/issues/33585)
+* **api:** drop activity snapshot capture stage and failure classification ([#33611](https://github.com/vm0-ai/vm0/issues/33611)) ([89647d0](https://github.com/vm0-ai/vm0/commit/89647d09a8899a7a56636225e685ab85876f7fa9)), closes [#33596](https://github.com/vm0-ai/vm0/issues/33596)
+* **api:** remove the retired zero desktop auth callback schemes ([#33615](https://github.com/vm0-ai/vm0/issues/33615)) ([60653a2](https://github.com/vm0-ai/vm0/commit/60653a23fdb82dbe96a1aa2affcafdad8a8a1388))
+* **api:** remove the unreachable welcome thread replay path ([#33603](https://github.com/vm0-ai/vm0/issues/33603)) ([14922c4](https://github.com/vm0-ai/vm0/commit/14922c43abdffef73becad176b1898f7bae92cb5))
+* **api:** route activity-summary generation through the shared auxiliary boundary ([#33604](https://github.com/vm0-ai/vm0/issues/33604)) ([d3b9e82](https://github.com/vm0-ai/vm0/commit/d3b9e825b6f8ca1147aa9f868faa55654dc0e576))
+* **pi:** share model runtime bootstrap and document architecture ([#33593](https://github.com/vm0-ai/vm0/issues/33593)) ([02c63e7](https://github.com/vm0-ai/vm0/commit/02c63e73072c55003ee9f8106a4cff8ff4cf4da9))
+* **test:** replace retired-brand bot-name fixtures in teams and feishu suites ([#33592](https://github.com/vm0-ai/vm0/issues/33592)) ([7ef1854](https://github.com/vm0-ai/vm0/commit/7ef1854745a0e838cfe8d0d80aef247caad2dd65)), closes [#33588](https://github.com/vm0-ai/vm0/issues/33588)
+* **test:** replace the last retired-brand fixtures and close the chain ([#33605](https://github.com/vm0-ai/vm0/issues/33605)) ([c000d4b](https://github.com/vm0-ai/vm0/commit/c000d4bb342318e47ae3e5ba3186192d5cf890c3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.430.0
+    * @okouai/core bumped to 8.655.0
+    * @okouai/db bumped to 1.253.2
+    * @okouai/pi-agent-runtime bumped to 1.26.3
+
 ## [1.586.1](https://github.com/vm0-ai/vm0/compare/api-v1.586.0...api-v1.586.1) (2026-09-12)
 
 

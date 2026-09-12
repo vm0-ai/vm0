@@ -1,7 +1,10 @@
 import { PUBLIC_BRAND_PRESENTATION } from "@okouai/core/public-brand";
+import { useGet } from "ccstate-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
+import { clerkAuthErrorMessage } from "../../../i18n/clerk-auth-errors.ts";
+import { locale$ } from "../../../signals/locale.ts";
 import type {
   AuthV2SignUpError,
   AuthV2SignUpState,
@@ -9,13 +12,13 @@ import type {
 import type { AuthBrandContext } from "../../../signals/auth.ts";
 
 export interface AuthV2SignUpCopy {
+  readonly clerkError: (error: AuthV2SignUpError) => string | undefined;
   readonly accessNotAllowed: string;
   readonly alreadyHaveAccount: string;
   readonly appleMethod: string;
   readonly appleProvider: string;
   readonly back: string;
   readonly captchaError: string;
-  readonly captchaExpired: string;
   readonly captchaLoading: string;
   readonly captchaSubtitle: string;
   readonly captchaTitle: string;
@@ -215,9 +218,6 @@ function signUpTerminalCopy(
     captchaError: t(($) => {
       return $.auth.v2.signUp.captchaError;
     }),
-    captchaExpired: t(($) => {
-      return $.auth.v2.signUp.captchaExpired;
-    }),
     captchaLoading: t(($) => {
       return $.auth.v2.signUp.captchaLoading;
     }),
@@ -264,7 +264,26 @@ export function useAuthV2SignUpCopy(
   brandName: AuthBrandContext["brandName"],
 ): AuthV2SignUpCopy {
   const { t } = useTranslation();
+  const locale = useGet(locale$);
+  const clerkErrors = t(
+    ($) => {
+      return $.auth.v2.clerkErrors;
+    },
+    {
+      returnObjects: true,
+    },
+  );
   return {
+    clerkError: (error) => {
+      const code =
+        error.code === "rate-limited" ? "too_many_requests" : error.clerkCode;
+      return clerkAuthErrorMessage(clerkErrors, locale, {
+        code,
+        paramName: error.clerkParamName,
+        passwordError: error.passwordError,
+        signingInWithPassword: false,
+      });
+    },
     ...signUpDetailsCopy(t, brandName),
     ...signUpVerificationCopy(t, brandName),
     ...signUpTerminalCopy(t, brandName),
@@ -279,13 +298,9 @@ export function signUpErrorMessage(
     return copy.legalRequired;
   }
   if (error.code === "password-invalid") {
-    return copy.passwordInvalid;
+    return copy.clerkError(error) ?? copy.passwordInvalid;
   }
-  if (
-    error.field === "code" &&
-    (error.clerkCode?.toLowerCase().includes("expired") === true ||
-      error.clerkCode?.toLowerCase().includes("timeout") === true)
-  ) {
+  if (error.field === "code" && error.clerkCode === "verification_expired") {
     return copy.codeExpired;
   }
   if (error.clerkCode === "not_allowed_access") {
@@ -294,7 +309,7 @@ export function signUpErrorMessage(
   if (error.clerkCode === "user_banned") {
     return copy.userBanned;
   }
-  return copy.unknownError;
+  return copy.clerkError(error) ?? copy.unknownError;
 }
 
 export function signUpCardDescription(

@@ -160,7 +160,7 @@ const LAUNCH_GATED_DIRECT_OKOU_CASES: readonly LaunchGatedDirectOkouCase[] = [
   {
     connectorSlug: "cal-com",
     label: "Cal.com",
-    clientEnvPrefix: "CALCOM",
+    clientEnvPrefix: "CAL_COM",
     authorizationEndpoint: "https://app.cal.com/auth/oauth2/authorize",
     tokenUrl: "https://api.cal.com/v2/auth/oauth2/token",
     tokenResponse: {

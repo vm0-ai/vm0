@@ -139,10 +139,11 @@ async function openNeighboringChatPanes(mainThread: "current" | "newest") {
 }
 
 test("Move to a newer chat from the main pane without changing the side pane", async () => {
+  const user = userEvent.setup({ delay: null });
   const { current, side, newest } = await openNeighboringChatPanes("current");
   const mainComposer = composerIn(current.id);
   mainComposer.focus();
-  await userEvent.keyboard("{Control>}{Shift>}{ArrowUp}{/Shift}{/Control}");
+  await user.keyboard("{Control>}{Shift>}{ArrowUp}{/Shift}{/Control}");
 
   await waitFor(() => {
     expect(threadContainer(newest.id)).toBeVisible();
@@ -159,6 +160,7 @@ test("Move to a newer chat from the main pane without changing the side pane", a
 });
 
 test("Move to an older chat from the side pane without changing the main pane", async () => {
+  const user = userEvent.setup({ delay: null });
   const { current, side, newest } = await openNeighboringChatPanes("newest");
   expect(continuitySidebarLink(newest.id)).toHaveAttribute(
     "aria-current",
@@ -166,7 +168,7 @@ test("Move to an older chat from the side pane without changing the main pane", 
   );
   const sideContainer = threadContainer(side.id);
   sideContainer.focus();
-  await userEvent.keyboard("{Control>}{Shift>}{ArrowDown}{/Shift}{/Control}");
+  await user.keyboard("{Control>}{Shift>}{ArrowDown}{/Shift}{/Control}");
 
   await waitFor(() => {
     expect(threadContainer(current.id)).toBeVisible();

@@ -17,7 +17,6 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-import { logger } from "../../lib/log";
 import {
   ACTIVITY_RETENTION_MS,
   activityExcerpt,
@@ -51,7 +50,6 @@ import {
   type ActivityTx,
 } from "./run-activity-snapshot.service";
 
-const log = logger("api:activity-summary");
 const ATTEMPT_INTERVAL_MS = 15_000;
 // The lease must outlive one whole generation attempt. A completion that lands
 // after its own claim expired cannot write the shared cooldown, which silently
@@ -73,19 +71,7 @@ function emptyResponse(
   runId: string,
   status: "ineligible" | "unavailable",
 ): ActivitySummaryResponse {
-  return {
-    runId,
-    messages: [],
-    status,
-    sourceRevision: null,
-    summaryRevision: null,
-    sourceSequence: null,
-    summarySequence: null,
-    messageCursor: 0,
-    summaryMessageCursor: null,
-    summarizedAt: null,
-    retryAfterMs: status === "ineligible" ? 0 : FAILURE_COOLDOWN_MS,
-  };
+  return { runId, messages: [], status };
 }
 
 async function contextMessages(tx: ActivityTx, identity: ActivityRunIdentity) {
@@ -150,18 +136,10 @@ async function contextMessages(tx: ActivityTx, identity: ActivityRunIdentity) {
   };
 }
 
-function response(
-  row: ActivitySnapshot,
-  revision: string,
-  cursor: number,
-  clock: Date,
-): ActivitySummaryResponse {
-  const fresh = row.summary !== null && row.summaryRevision === revision;
-  const claimed = row.claimExpiresAt !== null && row.claimExpiresAt > clock;
-  const retryAfterMs = Math.max(
-    0,
-    (row.nextAttemptAt?.getTime() ?? 0) - clock.getTime(),
-  );
+// The stored batch is what the viewer shows. An empty batch while the first
+// generation is still pending is the same answer as a stored one: this is the
+// activity we can describe right now.
+function response(row: ActivitySnapshot): ActivitySummaryResponse {
   return {
     runId: row.runId,
     messages: row.summary
@@ -169,23 +147,7 @@ function response(
           return { id: text, text };
         })
       : [],
-    status: fresh
-      ? "fresh"
-      : claimed
-        ? "pending"
-        : retryAfterMs > 0
-          ? "cooldown"
-          : row.summary
-            ? "stale"
-            : "pending",
-    sourceRevision: revision,
-    summaryRevision: row.summaryRevision,
-    sourceSequence: row.entries.at(-1)?.sequence ?? null,
-    summarySequence: row.summarySequence,
-    messageCursor: cursor,
-    summaryMessageCursor: row.summaryMessageCursor,
-    summarizedAt: row.summarizedAt?.toISOString() ?? null,
-    retryAfterMs: fresh ? ATTEMPT_INTERVAL_MS : retryAfterMs,
+    status: "available",
   };
 }
 
@@ -226,9 +188,6 @@ async function claimSummary(db: Db, identity: ActivityRunIdentity) {
           activityRevision: "empty",
           summary: null,
           summaryRevision: null,
-          summarySequence: null,
-          summaryMessageCursor: null,
-          summarizedAt: null,
           claimId: null,
           claimRevision: null,
           claimExpiresAt: null,
@@ -247,9 +206,6 @@ async function claimSummary(db: Db, identity: ActivityRunIdentity) {
                 activityRevision: row.activityRevision,
                 summary: null,
                 summaryRevision: null,
-                summarySequence: null,
-                summaryMessageCursor: null,
-                summarizedAt: null,
                 claimId: null,
                 claimRevision: null,
                 claimExpiresAt: null,
@@ -265,7 +221,7 @@ async function claimSummary(db: Db, identity: ActivityRunIdentity) {
     ) {
       return {
         kind: "response" as const,
-        response: response(row, revision, context.cursor, row.clock),
+        response: response(row),
       };
     }
     // Leave enough retention for the whole claim/cooldown. Cleanup must not
@@ -302,12 +258,7 @@ async function claimSummary(db: Db, identity: ActivityRunIdentity) {
     if (!claimed) {
       return {
         kind: "response" as const,
-        response: emptyResponse(
-          identity.runId,
-          (await eligibleActivityRun(tx, identity))[0]
-            ? "unavailable"
-            : "ineligible",
-        ),
+        response: emptyResponse(identity.runId, "unavailable"),
       };
     }
     return { kind: "claim" as const, claimId, revision, row, context };
@@ -322,10 +273,6 @@ async function generateSummary(
   const claimed = await claimSummary(db, identity);
   if (claimed.kind === "response") {
     return claimed.response;
-  }
-  signal.throwIfAborted();
-  if (!(await eligibleActivityRun(db, identity))[0]) {
-    return emptyResponse(identity.runId, "ineligible");
   }
   signal.throwIfAborted();
   // Both the request's own end and this attempt's deadline cancel the
@@ -379,10 +326,6 @@ async function generateSummary(
     activityPhrases(generated.ok ? (generated.value ?? null) : null)?.join(
       "\n",
     ) ?? null;
-  const enabled = await activityEnabled(db, identity.orgId, identity.userId);
-  if (!enabled) {
-    return emptyResponse(identity.runId, "unavailable");
-  }
   await activityTransaction(db, async (tx) => {
     await tx
       .update(runActivitySnapshots)
@@ -391,13 +334,7 @@ async function generateSummary(
         claimRevision: null,
         claimExpiresAt: null,
         ...(phrase
-          ? {
-              summary: phrase,
-              summaryRevision: claimed.revision,
-              summarySequence: claimed.row.entries.at(-1)?.sequence ?? null,
-              summaryMessageCursor: claimed.context.cursor,
-              summarizedAt: activityClock,
-            }
+          ? { summary: phrase, summaryRevision: claimed.revision }
           : {
               nextAttemptAt: sql`${activityClock} + ${FAILURE_COOLDOWN_MS} * interval '1 millisecond'`,
             }),
@@ -415,20 +352,11 @@ async function generateSummary(
   });
   signal.throwIfAborted();
   return await activityTransaction(db, async (tx) => {
-    if (!(await eligibleActivityRun(tx, identity))[0]) {
-      return emptyResponse(identity.runId, "ineligible");
-    }
     const row = await lockActivitySnapshot(tx, identity.runId);
     if (row.expiresAt <= row.clock) {
       return emptyResponse(identity.runId, "unavailable");
     }
-    const context = await contextMessages(tx, identity);
-    return response(
-      row,
-      summaryRevision(row.activityRevision, context.cursor),
-      context.cursor,
-      row.clock,
-    );
+    return response(row);
   });
 }
 
@@ -457,30 +385,11 @@ export async function requestActivitySummary(
   if (!(await activityEnabled(db, identity.orgId, identity.userId))) {
     return { kind: "disabled" as const };
   }
-  const result = await settleIncludingAbort(
-    generateSummary(db, identity, signal),
-  );
-  signal.throwIfAborted();
-  if (!result.ok) {
-    log.warn("Activity summary unavailable", {
-      runId: identity.runId,
-      outcome: "storage_failed",
-    });
-  }
-  if (!(await eligibleActivityRun(db, identity))[0]) {
-    return {
-      kind: "summary" as const,
-      response: emptyResponse(identity.runId, "ineligible"),
-    };
-  }
-  if (!(await activityEnabled(db, identity.orgId, identity.userId))) {
-    return { kind: "disabled" as const };
-  }
-  signal.throwIfAborted();
+  // A storage failure is this service's own defect, not a degraded optional
+  // generation: it propagates to the app's standard error handling. The viewer
+  // treats a non-200 exactly as it treats `unavailable` and keeps its last batch.
   return {
     kind: "summary" as const,
-    response: result.ok
-      ? result.value
-      : emptyResponse(identity.runId, "unavailable"),
+    response: await generateSummary(db, identity, signal),
   };
 }

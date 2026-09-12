@@ -2189,6 +2189,40 @@ function modelProviderFirewallAuthMaps(
   return { secretConnectorMap, secretConnectorMetadataMap };
 }
 
+function resolveModelProviderCodexRuntimeConfig(args: {
+  readonly type: ModelProviderType;
+  readonly logicalModel: string | null;
+  readonly runtimeModel: string;
+  readonly environment: Readonly<Record<string, string>>;
+}): ModelProviderCodexRuntimeConfig | undefined {
+  const providerConfig = getModelProviderCodexRuntimeConfig(args.type);
+  if (providerConfig || !args.logicalModel || !args.runtimeModel) {
+    return providerConfig;
+  }
+  const modelCatalog = getModelProviderCodexCatalogForModel(
+    args.logicalModel,
+    args.runtimeModel,
+    args.type,
+  );
+  if (!modelCatalog) {
+    return undefined;
+  }
+  const baseUrl = args.environment.OPENAI_BASE_URL;
+  if (!baseUrl) {
+    throw new Error(`Missing OPENAI_BASE_URL for Codex provider ${args.type}`);
+  }
+  return {
+    providerId: args.type,
+    name: MODEL_PROVIDER_TYPES[args.type].label,
+    baseUrl,
+    envKey: "OPENAI_API_KEY",
+    requiresOpenaiAuth: false,
+    wireApi: "responses",
+    supportsWebsockets: false,
+    modelCatalog,
+  };
+}
+
 function modelProviderEnvironment(args: {
   readonly id: string | null;
   readonly type: ModelProviderType;
@@ -2228,7 +2262,12 @@ function modelProviderEnvironment(args: {
       .replaceAll("$secret", environmentSecret)
       .replaceAll("$model", runtimeModel);
   }
-  const codexRuntimeConfig = getModelProviderCodexRuntimeConfig(args.type);
+  const codexRuntimeConfig = resolveModelProviderCodexRuntimeConfig({
+    type: args.type,
+    logicalModel: model,
+    runtimeModel,
+    environment,
+  });
 
   return {
     id: args.id,
@@ -2559,34 +2598,12 @@ async function builtInModelProviderEnvironment(
     key.apiKey,
     route.upstreamModel,
   );
-  let codexRuntimeConfig = getModelProviderCodexRuntimeConfig(
-    route.providerType,
-  );
-  if (!codexRuntimeConfig) {
-    const modelCatalog = getModelProviderCodexCatalogForModel(
-      selectedModel,
-      route.upstreamModel,
-      route.providerType,
-    );
-    if (modelCatalog) {
-      const baseUrl = environment.OPENAI_BASE_URL;
-      if (!baseUrl) {
-        throw new Error(
-          `Missing OPENAI_BASE_URL for built-in Codex provider ${route.providerType}`,
-        );
-      }
-      codexRuntimeConfig = {
-        providerId: route.providerType,
-        name: MODEL_PROVIDER_TYPES[route.providerType].label,
-        baseUrl,
-        envKey: "OPENAI_API_KEY",
-        requiresOpenaiAuth: false,
-        wireApi: "responses",
-        supportsWebsockets: false,
-        modelCatalog,
-      };
-    }
-  }
+  const codexRuntimeConfig = resolveModelProviderCodexRuntimeConfig({
+    type: route.providerType,
+    logicalModel: selectedModel,
+    runtimeModel: route.upstreamModel,
+    environment,
+  });
 
   return {
     id: null,

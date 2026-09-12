@@ -286,13 +286,18 @@ export function AuthV2SecurityTaskContent({
   const error =
     state.error === "password-mismatch"
       ? signInCopy.passwordMismatch
-      : state.error === "password-invalid"
-        ? copy.passwordTaskError
-        : copy.taskError;
+      : ((state.clerkError &&
+          copy.clerkError(state.clerkError, state.passwordError)) ??
+        (state.error === "password-invalid"
+          ? copy.passwordTaskError
+          : copy.taskError));
   return (
     <div className="space-y-4">
       {state.error ? (
-        <AuthV2ErrorAlert focusKey={state.error} message={error} />
+        <AuthV2ErrorAlert
+          focusKey={`${state.error}:${state.clerkError?.clerkCode ?? ""}`}
+          message={error}
+        />
       ) : null}
       {state.task === "reset-password" ? (
         <PasswordResetStep

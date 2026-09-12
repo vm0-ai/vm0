@@ -6,6 +6,11 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import {
+  ClerkAPIResponseError,
+  ClerkOfflineError,
+  ClerkRuntimeError,
+} from "@clerk/shared/error";
 import { expect, test, vi } from "vitest";
 
 import {
@@ -20,6 +25,7 @@ import {
   mockedClerk,
   mockGoogleOneTapCredential,
   mockSignInResource,
+  mockSignUpConfiguration,
   type MockedClientSession,
   type MockedSignInFactor,
   type MockedSignInResourceState,
@@ -720,6 +726,9 @@ test("Password errors are safe, relevant, and cleared by a meaningful edit", asy
   fireEvent.submit(containingForm(passwordInput));
 
   const unrelatedAlert = await screen.findByRole("alert");
+  expect(unrelatedAlert).toHaveTextContent(
+    "Enter a valid email address or username.",
+  );
   expect(document.activeElement).toBe(unrelatedAlert);
   expectNoFieldErrorAssociation(passwordInput);
   expect(screen.queryByText("Private identifier provider detail.")).toBeNull();
@@ -733,6 +742,9 @@ test("Password errors are safe, relevant, and cleared by a meaningful edit", asy
 
   fireEvent.submit(containingForm(passwordInput));
   const passwordAlert = await screen.findByRole("alert");
+  expect(passwordAlert).toHaveTextContent(
+    "Incorrect password. Please try again.",
+  );
   expect(document.activeElement).toBe(passwordAlert);
   expectFieldErrorAssociation(passwordInput, passwordAlert);
   expect(screen.queryByText("Private password provider detail.")).toBeNull();
@@ -1265,7 +1277,7 @@ test("A passkey verification failure keeps recovery methods available", async ()
   click(passkey);
 
   await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
-    "This action couldn't be completed. Please try again later or contact support if this persists.",
+    "Passkey verification failed. Please try again or choose another sign-in method.",
   );
   expect(screen.queryByText(privateMessage)).not.toBeInTheDocument();
   expect(mockedClerk.signInAuthenticateWithPasskey).toHaveBeenCalledTimes(1);
@@ -1827,6 +1839,7 @@ test("An email lookup failure remains safe and retryable", async () => {
     .mockRejectedValueOnce({
       errors: [
         {
+          code: "form_identifier_not_found",
           longMessage: "We couldn't find an account with that identifier.",
           meta: { paramName: "identifier" },
         },
@@ -1847,7 +1860,7 @@ test("An email lookup failure remains safe and retryable", async () => {
 
   const alert = await screen.findByRole("alert");
   expect(alert).toHaveTextContent(
-    "This action couldn't be completed. Please try again later or contact support if this persists.",
+    "We couldn't find an account with those details. Check them or sign up.",
   );
   expect(document.activeElement).toBe(alert);
   expectFieldErrorAssociation(identifierInput, alert);
@@ -1872,6 +1885,275 @@ test("An email lookup failure remains safe and retryable", async () => {
   fireEvent.submit(containingForm(identifierInput));
   await expect(screen.findByLabelText("Password")).resolves.toBeVisible();
 });
+
+test.each([
+  {
+    name: "a temporarily locked account",
+    error: { errors: [{ code: "user_locked", message: "Private detail" }] },
+    message:
+      "Your account is temporarily locked after too many failed attempts. Please try again later.",
+  },
+  {
+    name: "a failed network request",
+    error: new ClerkRuntimeError("Private detail", { code: "network_error" }),
+    message: "Unable to connect. Check your internet connection and try again.",
+  },
+  {
+    name: "missing SSO account details",
+    error: new ClerkAPIResponseError("Private detail", {
+      status: 422,
+      data: [
+        {
+          code: "enterprise_sso_user_attribute_missing",
+          message: "Private detail",
+        },
+      ],
+    }),
+    message:
+      "Your identity provider did not provide the required account details. Please contact your organization administrator.",
+  },
+  {
+    name: "a rate-limited response regardless of its error code",
+    error: {
+      status: 429,
+      errors: [
+        { code: "unexpected_rate_limit_code", message: "Private detail" },
+      ],
+    },
+    message: "Too many attempts. Please wait a moment before trying again.",
+  },
+  {
+    name: "an unknown Clerk error",
+    error: {
+      errors: [
+        { code: "unrecognized_provider_error", longMessage: "Private detail" },
+      ],
+    },
+    message:
+      "This action couldn't be completed. Please try again later or contact support if this persists.",
+  },
+  {
+    name: "a non-Clerk error",
+    error: new Error("Private detail"),
+    message:
+      "This action couldn't be completed. Please try again later or contact support if this persists.",
+  },
+])(
+  "Sign-in explains $name without displaying provider details",
+  async ({ error, message }) => {
+    mockedClerk.clientSignInCreate.mockRejectedValue(error);
+    await setupSignInPage({ status: "needs_identifier" });
+    const input = await screen.findByLabelText("Email address");
+    await fill(input, "person@example.com");
+    fireEvent.submit(containingForm(input));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(message);
+    expect(alert).toHaveFocus();
+    expectFieldErrorAssociation(input, alert);
+    expect(screen.queryByText("Private detail")).not.toBeInTheDocument();
+  },
+);
+
+test.each([
+  {
+    locale: "en-US",
+    label: "Email address",
+    paramName: "email_address",
+    message: "Enter a valid email address.",
+  },
+  {
+    locale: "ja-JP",
+    label: "メールアドレス",
+    paramName: "email_address",
+    message: "メールアドレスの形式が正しくありません。",
+  },
+  {
+    locale: "ja-JP",
+    label: "メールアドレス",
+    paramName: "identifier",
+    message: "有効なメールアドレスまたはユーザー名を入力してください。",
+  },
+] as const)(
+  "Sign-in localizes $paramName errors in $locale",
+  async ({ locale, label, paramName, message }) => {
+    context.mocks.browser.languages([locale]);
+    mockedClerk.clientSignInCreate.mockRejectedValue({
+      errors: [
+        {
+          code: "form_param_format_invalid",
+          meta: { paramName },
+        },
+      ],
+    });
+    await setupSignInPage({ status: "needs_identifier" });
+    const input = await screen.findByLabelText(label);
+    await fill(input, "invalid-address");
+    fireEvent.submit(containingForm(input));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(message);
+    expectFieldErrorAssociation(input, alert);
+  },
+);
+
+test("Clerk's combined credential error does not claim the account is missing", async () => {
+  mockIdentifierSubmission([passwordFactor()]);
+  mockedClerk.signInAttemptFirstFactor.mockRejectedValue({
+    errors: [
+      {
+        code: "form_password_or_identifier_incorrect",
+        meta: { paramName: "password" },
+      },
+    ],
+  });
+  await setupSignInPage({ status: "needs_identifier" });
+  await submitIdentifier("person@example.com");
+  const input = await screen.findByLabelText("Password");
+  await fill(input, "wrong-password");
+  fireEvent.submit(containingForm(input));
+
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(
+    "Incorrect email address, username, or password. Please try again.",
+  );
+  expectFieldErrorAssociation(input, alert);
+});
+
+test.each([
+  {
+    status: "needs_first_factor",
+    label: "Password",
+    message:
+      "This password has been found as part of a breach and can not be used, please reset your password.",
+  },
+  {
+    status: "needs_new_password",
+    label: "New password",
+    message:
+      "This password has been found as part of a breach and can not be used, please try another password instead.",
+  },
+])(
+  "A breached password has actionable copy during $status",
+  async ({ status, label, message }) => {
+    mockIdentifierSubmission([passwordFactor()]);
+    const error = {
+      errors: [
+        { code: "form_password_pwned", meta: { paramName: "password" } },
+      ],
+    };
+    mockedClerk.signInAttemptFirstFactor.mockRejectedValue(error);
+    mockedClerk.signInResetPassword.mockRejectedValue(error);
+    await setupSignInPage({
+      status: status === "needs_first_factor" ? "needs_identifier" : status,
+      supportedFirstFactors: [passwordFactor()],
+    });
+    if (status === "needs_first_factor") {
+      await submitIdentifier("person@example.com");
+    }
+    const input = await screen.findByLabelText(label);
+    await fill(input, "breached-password");
+    if (status === "needs_new_password") {
+      await fill(
+        screen.getByLabelText("Confirm password"),
+        "breached-password",
+      );
+    }
+    fireEvent.submit(containingForm(input));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(message);
+    expectFieldErrorAssociation(input, alert);
+  },
+);
+
+test.each([
+  {
+    name: "the configured minimum before other requirements",
+    codes: ["form_password_no_number", "form_password_length_too_short"],
+    message: "Your password must contain 12 or more characters.",
+  },
+  {
+    name: "the configured maximum",
+    codes: ["form_password_length_too_long"],
+    message: "Your password must contain less than 16 characters.",
+  },
+  {
+    name: "multiple missing requirements",
+    codes: [
+      "form_password_no_lowercase",
+      "form_password_no_uppercase",
+      "form_password_no_special_char",
+    ],
+    message:
+      "Your password must contain a lowercase letter, an uppercase letter, and a special character.",
+  },
+  {
+    name: "reusing the current password",
+    codes: ["form_new_password_matches_current"],
+    message: "New password cannot be the same as the current password.",
+  },
+])("Password reset explains $name", async ({ codes, message }) => {
+  mockSignUpConfiguration({
+    passwordSettings: { min_length: 12, max_length: 16 },
+  });
+  mockedClerk.signInResetPassword.mockRejectedValue({
+    errors: codes.map((code) => {
+      return {
+        code,
+        meta: { paramName: "password" },
+        longMessage: "Private provider detail",
+      };
+    }),
+  });
+  await setupSignInPage({ status: "needs_new_password" });
+  const input = await screen.findByLabelText("New password");
+  await fill(input, "invalid-password");
+  await fill(screen.getByLabelText("Confirm password"), "invalid-password");
+  fireEvent.submit(containingForm(input));
+
+  const alert = await screen.findByRole("alert");
+  expect(alert).toHaveTextContent(message);
+  expect(alert).toHaveFocus();
+  expectFieldErrorAssociation(input, alert);
+  expect(screen.queryByText("Private provider detail")).not.toBeInTheDocument();
+});
+
+test.each([
+  {
+    name: "a security-check timeout",
+    error: { errors: [{ code: "protect_check_timed_out" }] },
+    message: "Verification didn't complete in time. Please try again.",
+  },
+  {
+    name: "a Clerk runtime timeout",
+    error: {
+      code: "clerk_runtime_load_timeout",
+      message: "Private SDK timeout detail",
+    },
+    message:
+      "Sign-in took too long to load. Please refresh the page and try again.",
+  },
+])(
+  "Sign-in explains $name without expiring the verification code",
+  async ({ error, message }) => {
+    mockIdentifierSubmission([emailCodeFactor()]);
+    mockedClerk.signInAttemptFirstFactor.mockRejectedValue(error);
+    await setupSignInPage({ status: "needs_identifier" });
+    await submitIdentifier("person@example.com");
+    const input = await openVerificationCodeStep(
+      "Email code to p***@example.com",
+      "Check your email",
+    );
+    await fill(input, "123456");
+    fireEvent.submit(containingForm(input));
+
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      message,
+    );
+    expect(input).toBeEnabled();
+  },
+);
 
 test("Okou account suspension errors use safe branded support information", async () => {
   mockedClerk.clientSignInCreate.mockRejectedValue({
@@ -1987,3 +2269,116 @@ test("An unsupported first factor does not block an available password method", 
     password: "My password 123!",
   });
 });
+
+test.each([
+  {
+    locale: "pt-BR",
+    emailLabel: "Seu e-mail",
+    passwordLabel: "Senha",
+    offline:
+      "Parece que você está sem conexão. Reconecte-se e tente novamente.",
+    rateLimited:
+      "Muitas tentativas. Aguarde um momento antes de tentar novamente.",
+  },
+  {
+    locale: "ja-JP",
+    emailLabel: "メールアドレス",
+    passwordLabel: "パスワード",
+    offline: "オフラインのようです。接続を回復して、もう一度お試しください。",
+    rateLimited:
+      "試行回数が多すぎます。しばらく待ってから、もう一度お試しください。",
+  },
+  {
+    locale: "ko-KR",
+    emailLabel: "이메일 주소",
+    passwordLabel: "비밀번호",
+    offline:
+      "인터넷에 연결되어 있지 않은 것 같습니다. 다시 연결한 후 시도해 주세요.",
+    rateLimited:
+      "시도 횟수가 너무 많습니다. 잠시 기다린 후 다시 시도해 주세요.",
+  },
+  {
+    locale: "id-ID",
+    emailLabel: "Alamat email",
+    passwordLabel: "Kata sandi",
+    offline:
+      "Sepertinya Anda sedang offline. Sambungkan kembali ke internet dan coba lagi.",
+    rateLimited:
+      "Terlalu banyak percobaan. Tunggu sebentar sebelum mencoba lagi.",
+  },
+  {
+    locale: "de-DE",
+    emailLabel: "E-Mail-Adresse",
+    passwordLabel: "Passwort",
+    offline:
+      "Du scheinst offline zu sein. Stelle die Verbindung wieder her und versuche es erneut.",
+    rateLimited:
+      "Zu viele Versuche. Bitte warte einen Moment, bevor du es erneut versuchst.",
+  },
+  {
+    locale: "es-ES",
+    emailLabel: "Correo electrónico",
+    passwordLabel: "Contraseña",
+    offline:
+      "Parece que no tienes conexión. Vuelve a conectarte e inténtalo de nuevo.",
+    rateLimited:
+      "Demasiados intentos. Espera un momento antes de volver a intentarlo.",
+  },
+  {
+    locale: "it-IT",
+    emailLabel: "Indirizzo email",
+    passwordLabel: "Password",
+    offline: "Sembra che tu sia offline. Ripristina la connessione e riprova.",
+    rateLimited: "Troppi tentativi. Attendi un momento prima di riprovare.",
+  },
+  {
+    locale: "fr-FR",
+    emailLabel: "Adresse e-mail",
+    passwordLabel: "Mot de passe",
+    offline:
+      "Vous semblez être hors ligne. Rétablissez la connexion et réessayez.",
+    rateLimited:
+      "Trop de tentatives. Veuillez patienter un instant avant de réessayer.",
+  },
+  {
+    locale: "hi-IN",
+    emailLabel: "ईमेल पता",
+    passwordLabel: "पासवर्ड",
+    offline:
+      "लगता है आप ऑफ़लाइन हैं। इंटरनेट से दोबारा जुड़ें और फिर से कोशिश करें।",
+    rateLimited:
+      "बहुत अधिक प्रयास किए गए हैं। दोबारा कोशिश करने से पहले थोड़ी देर रुकें।",
+  },
+])(
+  "Sign-in explains offline and rate-limit errors in $locale and allows recovery",
+  async ({ locale, emailLabel, passwordLabel, offline, rateLimited }) => {
+    context.mocks.browser.languages([locale]);
+    mockIdentifierSubmission([passwordFactor()]);
+    mockedClerk.clientSignInCreate
+      .mockRejectedValueOnce(new ClerkOfflineError("Private provider detail"))
+      .mockRejectedValueOnce(
+        new ClerkAPIResponseError("Private provider detail", {
+          status: 429,
+          data: [],
+        }),
+      );
+    await setupSignInPage({ status: "needs_identifier" });
+    const email = await screen.findByLabelText(emailLabel);
+    await fill(email, "person@example.com");
+    fireEvent.submit(containingForm(email));
+    const offlineAlert = await screen.findByRole("alert");
+    expect(offlineAlert).toHaveTextContent(offline);
+    expect(offlineAlert).toHaveFocus();
+    expect(document.documentElement.lang).toBe(locale);
+
+    fireEvent.submit(containingForm(email));
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(rateLimited);
+    });
+    expect(document.body).not.toHaveTextContent("Private provider detail");
+
+    fireEvent.submit(containingForm(email));
+    await expect(screen.findByLabelText(passwordLabel)).resolves.toBeVisible();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  },
+);

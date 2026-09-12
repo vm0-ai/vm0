@@ -110,7 +110,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.CalComConnector]: {
     maintainer: "yuma@okou.ai",
     description: "Enable the Cal.com scheduling connector",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.CopperConnector]: {
     maintainer: "yuma@okou.ai",
@@ -373,6 +373,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Route Gemini voice transcription and polishing through Google Cloud instead of OpenRouter.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@okou.ai",

@@ -12,12 +12,12 @@ use std::{
     sync::{Arc, atomic::Ordering},
     time::Duration,
 };
-use tokio::net::TcpStream;
+use tokio::{net::TcpStream, sync::OwnedSemaphorePermit};
 
 use super::{
     FailureReason, Scope,
     authority::{Authority, PreparedAuth, PreparedCredential},
-    io::{GuestIo, Lease, SshSocket},
+    io::{GuestIo, SshSocket},
     output::{Output, RemoteExit, Stream},
 };
 use crate::ids::RunId;
@@ -26,7 +26,7 @@ pub(super) struct Execution {
     pub(super) authority: Arc<Authority>,
     pub(super) run: RunId,
     pub(super) connection: uuid::Uuid,
-    pub(super) lease: Arc<Lease>,
+    pub(super) lease: Arc<OwnedSemaphorePermit>,
     pub(super) credential: Arc<PreparedCredential>,
 }
 
@@ -175,7 +175,7 @@ impl Execution {
         }
         .await;
         // russh's handle does not abort its spawned I/O task on Drop. Closing
-        // the exact connected socket wakes it; its stream retains our lease
+        // the exact connected socket wakes it; its socket retains host capacity
         // until the library really releases the connection, even on cancellation.
         drop(socket_guard);
         let _ = scope.wait(session).await;

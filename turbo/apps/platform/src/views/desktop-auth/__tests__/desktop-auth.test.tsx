@@ -111,12 +111,7 @@ async function failed() {
   });
 }
 
-test.each([
-  "ai.okou.desktop",
-  "ai.okou.desktop.dev",
-  "ai.vm0.zero.desktop",
-  "ai.vm0.zero.desktop.dev",
-])(
+test.each(["ai.okou.desktop", "ai.okou.desktop.dev"])(
   "signed-out entry preserves explicit %s in the absolute Auth v2 callback",
   async (scheme) => {
     const documents = navigation();

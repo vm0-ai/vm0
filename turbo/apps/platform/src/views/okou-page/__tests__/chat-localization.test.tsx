@@ -46,6 +46,29 @@ interface ComposerCopy {
   readonly settings: string;
 }
 
+const portuguese = {
+  locale: "pt-BR",
+  message: "Mensagem",
+  placeholder: "Peça para automatizar fluxos de trabalho, gerenciar tarefas...",
+  attach: "Anexar",
+  send: "Enviar",
+  settings: "Configurações",
+  language: "Idioma",
+  close: "Fechar",
+  option: "Português (Brasil)",
+} as const satisfies ComposerCopy;
+const english = {
+  locale: "en-US",
+  message: "Message",
+  placeholder: "Ask me to automate workflows, manage tasks...",
+  attach: "Attach",
+  send: "Send",
+  settings: "Settings",
+  language: "Language",
+  close: "Close",
+  option: "English",
+} as const satisfies ComposerCopy;
+
 function actionName(element: HTMLElement): string {
   return (
     element.getAttribute("aria-label") ?? element.textContent?.trim() ?? ""
@@ -203,18 +226,23 @@ async function changeLanguage(
   });
 }
 
+function localizedComposer(copy: ComposerCopy): HTMLElement {
+  const editor = document.querySelector<HTMLElement>(
+    '[data-slot="chat-composer-card"] [contenteditable="true"]',
+  );
+  if (!editor) {
+    throw new Error("Composer editor not found");
+  }
+  expect(editor).toHaveAttribute("aria-label", copy.message);
+  return editor;
+}
+
 async function expectLocalizedComposerAttributes(
   copy: ComposerCopy,
   sendEnabled = false,
 ): Promise<HTMLElement> {
   const composer = await waitFor(() => {
-    const editor = document.querySelector<HTMLElement>(
-      '[data-slot="chat-composer-card"] [contenteditable="true"]',
-    );
-    if (!editor) {
-      throw new Error("Composer editor not found");
-    }
-    expect(editor).toHaveAttribute("aria-label", copy.message);
+    const editor = localizedComposer(copy);
     expect(editor).toHaveAttribute("placeholder", copy.placeholder);
     const root = editor.closest<HTMLElement>(
       "[data-slot='chat-composer-card']",
@@ -258,29 +286,6 @@ test("A cancelled run keeps its meaning when the language changes", async () => 
         parts: [{ type: "text", text: "Continue the active workflow" }],
       },
     },
-  };
-  const portuguese: ComposerCopy = {
-    locale: "pt-BR",
-    message: "Mensagem",
-    placeholder:
-      "Peça para automatizar fluxos de trabalho, gerenciar tarefas...",
-    attach: "Anexar",
-    send: "Enviar",
-    settings: "Configurações",
-    language: "Idioma",
-    close: "Fechar",
-    option: "Português (Brasil)",
-  };
-  const english: ComposerCopy = {
-    locale: "en-US",
-    message: "Message",
-    placeholder: "Ask me to automate workflows, manage tasks...",
-    attach: "Attach",
-    send: "Send",
-    settings: "Settings",
-    language: "Language",
-    close: "Close",
-    option: "English",
   };
   let stoppedRequest: ChatEventSendBody | undefined;
 
@@ -332,32 +337,37 @@ test("A cancelled run keeps its meaning when the language changes", async () => 
   expect(pathname()).toBe(`/chats/${THREAD_ID}`);
 });
 
+test("Changing language translates the enabled composer controls", async () => {
+  configureExistingChat({
+    draft: userMessage("Rascunho ainda não enviado"),
+    title: "Composer language",
+  });
+
+  await setupPage({
+    context,
+    locale: "pt-BR",
+    path: `/chats/${THREAD_ID}`,
+  });
+  await expectLocalizedComposerAttributes(portuguese, true);
+  await changeLanguage(portuguese, english);
+
+  const translatedComposer = await expectLocalizedComposerAttributes(
+    english,
+    true,
+  );
+  expect(translatedComposer).toHaveAttribute(
+    "placeholder",
+    english.placeholder,
+  );
+  const attach = await findAction("button", "Attach");
+  const send = await findAction("button", "Send");
+  expect(attach).toBeEnabled();
+  expect(send).toBeEnabled();
+});
+
 test("Changing language preserves the open conversation and draft", async () => {
   const title = "Planejamento semanal";
   const draft = "Rascunho ainda não enviado";
-  const portuguese: ComposerCopy = {
-    locale: "pt-BR",
-    message: "Mensagem",
-    placeholder:
-      "Peça para automatizar fluxos de trabalho, gerenciar tarefas...",
-    attach: "Anexar",
-    send: "Enviar",
-    settings: "Configurações",
-    language: "Idioma",
-    close: "Fechar",
-    option: "Português (Brasil)",
-  };
-  const english: ComposerCopy = {
-    locale: "en-US",
-    message: "Message",
-    placeholder: "Ask me to automate workflows, manage tasks...",
-    attach: "Attach",
-    send: "Send",
-    settings: "Settings",
-    language: "Language",
-    close: "Close",
-    option: "English",
-  };
 
   configureExistingChat({
     draft: userMessage(draft),
@@ -383,18 +393,9 @@ test("Changing language preserves the open conversation and draft", async () => 
 
   await changeLanguage(portuguese, english);
 
-  const translatedComposer = await expectLocalizedComposerAttributes(
-    english,
-    true,
-  );
-  expect(translatedComposer).toHaveAttribute(
-    "placeholder",
-    english.placeholder,
-  );
-  const attach = await findAction("button", "Attach");
-  const send = await findAction("button", "Send");
-  expect(attach).toBeEnabled();
-  expect(send).toBeEnabled();
+  const translatedComposer = await waitFor(() => {
+    return localizedComposer(english);
+  });
   expect(`${pathname()}${search()}`).toBe(originalUrl);
   expect(translatedComposer).toHaveTextContent(draft);
   const translatedTitleCopies = screen.getAllByText(title);

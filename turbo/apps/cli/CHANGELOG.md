@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.323.17](https://github.com/vm0-ai/vm0/compare/cli-v9.323.16...cli-v9.323.17) (2026-09-12)
+
+
+### Refactoring
+
+* **test:** replace retired-brand bot-name fixtures in teams and feishu suites ([#33592](https://github.com/vm0-ai/vm0/issues/33592)) ([7ef1854](https://github.com/vm0-ai/vm0/commit/7ef1854745a0e838cfe8d0d80aef247caad2dd65)), closes [#33588](https://github.com/vm0-ai/vm0/issues/33588)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.430.0
+    * @okouai/core bumped to 8.655.0
+    * @okouai/pi-agent-runtime bumped to 1.26.3
+
 ## [9.323.16](https://github.com/vm0-ai/vm0/compare/cli-v9.323.15...cli-v9.323.16) (2026-09-12)
 
 

@@ -21,28 +21,26 @@ not end eligibility. Responses use `Cache-Control: no-store`.
 The typed contract is `chatThreadActivitySummaryContract` in
 `@okouai/api-contracts/contracts/chat-thread-activity-summary`.
 
-| Field                                   | Meaning                                                                               |
-| --------------------------------------- | ------------------------------------------------------------------------------------- |
-| `runId`                                 | Requested and verified run identity                                                   |
-| `phrase`                                | One plain-text line, at most 60 grapheme clusters, or `null`                          |
-| `status`                                | `fresh`, `stale`, `pending`, `cooldown`, `ineligible`, or `unavailable`               |
-| `sourceRevision`                        | Opaque revision of the currently retained activity and visible-message cursor         |
-| `summaryRevision`                       | Actual revision read by the successful generation, or `null`                          |
-| `sourceSequence`, `summarySequence`     | Latest retained event sequence now and at generation, or `null` before tools/messages |
-| `messageCursor`, `summaryMessageCursor` | Canonical visible-message sequence now and at generation                              |
-| `summarizedAt`                          | UTC generation completion time, or `null`                                             |
-| `retryAfterMs`                          | Bounded delay before another useful request; fresh results suggest 15 seconds         |
+| Field      | Meaning                                                            |
+| ---------- | ------------------------------------------------------------------ |
+| `runId`    | Requested and verified run identity                                |
+| `messages` | At most four plain-text lines of at most 60 grapheme clusters each |
+| `status`   | `available`, `ineligible`, or `unavailable`                        |
+
+`available` is the stored batch, which is empty while the first generation is
+still pending. `ineligible` is an owned run that is queued, terminal, or not the
+thread's admitted run. `unavailable` means the evidence expired.
 
 Authentication/validation errors use the existing 400/401/403 error contract.
 Disabled accounts receive 403. Missing, inaccessible, or mismatched thread/run
 identities receive 404 without cache exposure. An owned but ineligible run
-receives 200 with `status: ineligible`, no phrase, and no generation. An optional
-storage failure returns `unavailable` without exposing the snapshot.
+receives 200 with `status: ineligible`, no messages, and no generation. A storage
+failure is this service's own defect and reaches the caller as a plain 500
+without exposing the snapshot.
 
-A cached phrase may be returned with a different current revision while a claim
-or cooldown prevents another attempt. Only `summaryRevision` identifies what
-that phrase describes. A delayed completion never claims to summarize newer
-activity. The response includes no raw tool arguments or activity entries.
+Generation provenance is not published: the response includes no revision,
+sequence, cursor, completion time, retry delay, raw tool arguments, or activity
+entries.
 
 ## Storage and concurrency
 
@@ -97,34 +95,20 @@ the shared `auxiliary_generation_result` Axiom event under
 the outcomes that boundary classifies as failures produce a diagnostic. The
 remaining records this feature writes are:
 
-| Message                        | Context                | Level                                                                  | Safe fields besides context                                          |
-| ------------------------------ | ---------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `Activity summary unavailable` | `api:activity-summary` | warn                                                                   | `runId`, `outcome: storage_failed`                                   |
-| `Activity snapshot capture`    | `api:run-activity`     | info for written/unchanged and for an expected failure; warn otherwise | `runId`, `outcome`, `eventCount`; `stage` and `errorCode` on failure |
-| `Activity snapshot cleanup`    | `api:run-activity`     | info on success; warn on failure                                       | `outcome`, `removed`, `retentionMs`; `errorCode` on failure          |
+| Message                            | Context            | Level | Safe fields besides context        |
+| ---------------------------------- | ------------------ | ----- | ---------------------------------- |
+| `Activity snapshot capture failed` | `api:run-activity` | warn  | `runId`, `eventCount`, `errorCode` |
+| `Activity snapshot cleanup failed` | `api:run-activity` | warn  | `errorCode`                        |
 
-A failed capture is classified into a finite set instead of one opaque
-`write_failed`. `contended` (`55P03`) and `run_missing` (`23503`) are expected
-consequences of concurrent delivery for one run, so they record at `info`;
-sustained unavailability is read by aggregating `fields.outcome`, not from a
-per-batch error level. `interrupted` (`57014`), `snapshot_missing` (the row
-vanished between the upsert and the locking read) and the residual
-`write_failed` keep `warn` because they need an owner. `fields.stage` is one of
-`begin`, `admission`, `lock`, `persist` or `commit`, where `begin` covers
-connection acquisition and the transaction's own timeout statements. Its
-companion `fields.errorCode` is the SQLSTATE class code alone — five characters,
+A contended capture (`55P03`) and a run deleted mid-flight (`23503`) are expected
+consequences of concurrent delivery for one run and stay silent; any other
+capture failure warns with the SQLSTATE class code alone — five characters,
 validated before it is published, and omitted when the driver reports no
-SQLSTATE. Driver messages, statement text, constraint details and bound
-parameters are never attached.
+SQLSTATE. Successful captures and cleanups record nothing. Driver messages,
+statement text, constraint details and bound parameters are never attached.
 
-Granularity is otherwise unchanged: one unavailable record for an optional
-summary storage failure, one capture record per relevant batch (including
-unchanged duplicates), and one cleanup record per maintenance operation
-(including zero removals). Disabled, irrelevant, and ineligible captures remain
-silent. `eventCount` counts the submitted batch, not new retained entries.
-Failed cleanup reports `removed: 0` with `outcome: failed`; that is not a
-successful empty cleanup. A skipped capture still drops that batch's evidence:
-the runner already holds its `200`, and no redelivery or retry is attempted.
+A skipped capture still drops that batch's evidence: the runner already holds
+its `200`, and no redelivery or retry is attempted.
 
 These records never contain prompts, phrases, messages, arguments, evidence,
 credentials, database-driver errors, or provider response bodies. Production
@@ -137,24 +121,19 @@ callback-ref AbortSignal and page lifecycle. Sidebar panels and unmounted routes
 do not request summaries. A visible, enabled viewer requests immediately for the
 latest eligible live run from the canonical event fold; the API independently
 verifies the admitted-run pointer and authorization. Subsequent requests use a
-15-second baseline and never precede `retryAfterMs`. Cooldown deadlines survive
-visibility changes. Each viewer serializes requests, including an aborted
+15-second interval. Each viewer serializes requests, including an aborted
 transport still settling after a ref change.
 
 Hiding, navigating away, unmounting, switching off, losing thread access, queuing,
 ending or replacing a run cancels demand and rejects late responses. An
-`ineligible`, 401, 403 or 404 response clears dynamic copy and stops retries for
-that run identity. An unavailable, malformed or failed optional response keeps
-the current run's last usable phrase (or the existing generic indicator) and
-backs off at least 60 seconds, stopping after three consecutive failures.
+`ineligible`, 401, 403 or 404 response clears dynamic copy for that run identity.
+An `unavailable`, malformed or failed response keeps the current run's last
+usable batch, or the existing generic indicator when it never had one.
 
-Cached `pending`, `cooldown` and `stale` phrases keep their actual
-`summaryRevision`, sequence, message cursor and completion time. Hashes are
-opaque; only monotonic summary provenance may replace current copy. Identical
-text preserves the mounted typewriter; changed text restarts it even after
-commentary or a completed animation. Run status remains the existing programmatic
-projection. All dynamic copy stays in transient page state, outside chat events,
-browser persistence, history and model context.
+Identical text preserves the mounted typewriter; changed text restarts it even
+after commentary or a completed animation. Run status remains the existing
+programmatic projection. All dynamic copy stays in transient page state, outside
+chat events, browser persistence, history and model context.
 
 Normal-send preparation suppresses automatic initial thinking for enabled
 owners through the shared gate used by both retained scheduling branches. The
