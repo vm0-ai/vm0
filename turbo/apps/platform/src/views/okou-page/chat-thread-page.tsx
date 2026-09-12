@@ -4011,7 +4011,7 @@ function RecommendedFollowupList({
             type="button"
             title={followup.prompt}
             className={cn(
-              "group relative flex text-left transition-colors",
+              "group flex text-left transition-colors",
               // A quick reply sizes to its own text, so a short suggestion
               // stays small and more than one fits on screen. The rail equalises
               // their heights, which is why the contents align to the top: a
@@ -4063,7 +4063,7 @@ function RecommendedFollowupList({
               aria-hidden
               size={16}
               className={cn(
-                "pointer-events-none absolute right-2 top-1/2 box-content -translate-y-1/2 bg-state-hover pl-3 text-muted-foreground/60 opacity-0 transition-[color,opacity] group-hover:text-foreground group-hover:opacity-100",
+                "pointer-events-none ml-3 shrink-0 text-muted-foreground/60 opacity-0 transition-[color,opacity] group-hover:text-foreground group-hover:opacity-100",
                 showFollowupCards && "hidden",
               )}
             />
