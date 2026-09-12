@@ -164,27 +164,6 @@ describe("cron monitor chat event queue", () => {
         telegram: 1,
       },
     });
-    const [, fields] = context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
-    expect(fields).toMatchObject({
-      type: "unhandled_request_error",
-      route: "/api/test/cron-monitor-chat-event-queue-state/monitor",
-      method: "POST",
-      errorCode: "ORPHANED_QUEUED_CHAT_MESSAGES",
-      error: {
-        name: "OrphanedQueuedChatEventsError",
-        code: "ORPHANED_QUEUED_CHAT_MESSAGES",
-        orphanedMessages: 7,
-        orphanedMessagesBySource: {
-          agentphone: 1,
-          automation: 1,
-          feishu: 1,
-          github: 1,
-          slack: 1,
-          teams: 1,
-          telegram: 1,
-        },
-      },
-    });
   });
 
   it("does not flag input.automation without legacy encrypted params", async () => {

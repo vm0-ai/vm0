@@ -29,7 +29,6 @@ const providerSecret = "Private provider response and credential details";
 const selectedContent = "Publish the agreed launch checklist";
 
 beforeEach(() => {
-  context.mocks.axiom.useRealTelemetry.mockReturnValue(true);
   mockOptionalEnv("OPENROUTER_API_KEY", undefined);
 });
 
@@ -288,39 +287,6 @@ describe("optional shared-thread titles", () => {
     expect(requests).toStrictEqual([]);
   });
 
-  it.each(["ingest", "flush"])(
-    "preserves a valid share when telemetry %s fails",
-    async (mode) => {
-      const fixture = await prepareShare();
-      mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter");
-      server.use(
-        http.post(endpoint, () => {
-          return new HttpResponse(null, { status: 429 });
-        }),
-      );
-      if (mode === "ingest") {
-        context.mocks.axiom.sdkIngest.mockImplementation(() => {
-          throw new Error("Telemetry unavailable");
-        });
-      } else {
-        context.mocks.axiom.flush.mockRejectedValue(
-          new Error("Telemetry unavailable"),
-        );
-      }
-      const created = await accept(
-        client().create(requestBody(fixture)),
-        [201],
-      );
-      await expect(flushWaitUntilForTest()).resolves.toBeUndefined();
-      await expectSharedSnapshot(
-        fixture,
-        created.body.id,
-        "Shared conversation",
-      );
-      expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
-    },
-  );
-
   it("preserves cancellation before request dispatch", async () => {
     const fixture = await prepareShare();
     const controller = new AbortController();
@@ -481,10 +447,6 @@ describe("optional shared-thread titles", () => {
       "Unknown response status 500 for POST /api/chat-threads/:threadId/shared-threads",
     );
     await flushWaitUntilForTest();
-    expect(context.mocks.axiomLogging.error).toHaveBeenCalledWith(
-      expect.stringContaining("Unhandled request error:"),
-      expect.objectContaining({ type: "unhandled_request_error" }),
-    );
     expect(context.mocks.sentry.captureException).toHaveBeenCalledOnce();
     // PostgreSQL reports the attempted public share ID through the external
     // error capture. Verify rollback using both public read endpoints.

@@ -157,18 +157,7 @@ const apiTestDiagnosticsSyntax = [
 // list may only shrink: never add a file to it. Delete the list, and the
 // ignores entry that spreads it, once the last file leaves.
 const apiTestDiagnosticsBaseline = [
-  "src/signals/routes/__tests__/chat-callbacks.bdd.test.ts",
-  "src/signals/routes/__tests__/chat-event-snapshot.test.ts",
-  "src/signals/routes/__tests__/chat-events.bdd.test.ts",
-  "src/signals/routes/__tests__/chat-threads.bdd.test.ts",
-  "src/signals/routes/__tests__/cron-monitor-chat-event-queue.test.ts",
-  "src/signals/routes/__tests__/cron-snapshot-chat-events.test.ts",
-  "src/signals/routes/__tests__/goal-schema-contraction.test.ts",
   "src/signals/routes/__tests__/helpers/projection-observations.ts",
-  "src/signals/routes/__tests__/run-lifecycle.bdd.test.ts",
-  "src/signals/routes/__tests__/shared-threads.test.ts",
-  "src/signals/routes/__tests__/test-runtime-state.test.ts",
-  "src/signals/routes/__tests__/webhooks-callbacks.bdd.test.ts",
 ];
 
 const productionRouteTestImportMessage =
