@@ -1513,7 +1513,12 @@ describe("GET/PUT /api/model-policies", () => {
       client.list({ headers: authHeaders() }),
       [200],
     );
-    const updates = toUpdate(listResponse.body).map((policy) => {
+    const updates = [
+      ...toUpdate(listResponse.body).filter((policy) => {
+        return policy.model !== "deepseek-v4-pro";
+      }),
+      makeBuiltInPolicy("deepseek-v4-pro"),
+    ].map((policy) => {
       if (policy.model !== "deepseek-v4-pro") {
         return policy;
       }
