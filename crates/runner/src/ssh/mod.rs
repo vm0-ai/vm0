@@ -208,10 +208,12 @@ impl SshRuntime {
                 sandbox_cancelled: accepted.cancelled,
                 deadline: Instant::now() + Duration::from_secs(60),
             };
-            let lease = Arc::new(Lease::new(accepted.stream, local, global));
+            let lease = Arc::new(Lease::new(local, global));
             let registration = Arc::clone(&registration);
             tasks.spawn(async move {
-                runtime.dispatch(lease, run, scope, registration).await;
+                runtime
+                    .dispatch(accepted.stream, lease, run, scope, registration)
+                    .await;
             });
         }
         cancel.cancel();
@@ -221,6 +223,7 @@ impl SshRuntime {
 
     async fn dispatch(
         self: Arc<Self>,
+        mut input: GuestIo,
         lease: Arc<Lease>,
         run: RunId,
         mut scope: Scope,
@@ -228,7 +231,6 @@ impl SshRuntime {
     ) {
         let _cancel_on_drop = scope.cancelled.clone().drop_guard();
         let started = Instant::now();
-        let mut input = GuestIo(Arc::clone(&lease));
         let request = scope.wait(runner_rpc_proto::read_request(&mut input)).await;
         let mut writer = ResponseWriter::new(input);
         let request = match request {
@@ -460,7 +462,8 @@ impl SshRuntime {
             command,
         } = request;
         // System DNS can own blocking resolver work after its waiter is dropped.
-        // This task retains the real stream/permits until resolution completes.
+        // Retain host capacity until resolution completes, independently of
+        // the guest stream and its park reservation.
         let network = Arc::clone(&self.network);
         let host = credential.host.clone();
         let port = credential.port;

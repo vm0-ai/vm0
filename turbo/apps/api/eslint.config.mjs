@@ -132,6 +132,9 @@ const apiTestExternalBehaviorMessage =
 const apiTestDirectDbImportMessage =
   "API tests must not import DB handles directly. Exercise setup and assertions through API endpoints; add a test route only when an external-behavior exception is justified.";
 
+const apiTestLoggerImportMessage =
+  "API tests must not observe the logger. Assert HTTP responses and effects instead; see docs/testing/testing-external-behavior.md.";
+
 const productionRouteTestImportMessage =
   "Production source must not import test-only routes. Mount required test fixture routes explicitly from tests through setupApp().";
 
@@ -199,6 +202,8 @@ const apiTestServiceImportPatterns = [
   "src/signals/services/*",
   "src/signals/services/**/*",
 ];
+
+const apiTestLoggerImportPatterns = ["**/lib/log", "**/lib/log.js"];
 
 export default [
   {
@@ -735,6 +740,9 @@ export default [
       // externally computed literals can pin the namespace, input order and
       // separator.
       "src/signals/services/__tests__/welcome-chat-thread-id.test.ts",
+      // The logger is the subject here, not a diagnostic: this suite covers the
+      // app factory's log wiring and flush ownership, which no route exposes.
+      "src/__tests__/app-factory.test.ts",
     ],
     rules: {
       "no-restricted-imports": [
@@ -758,6 +766,10 @@ export default [
             {
               group: apiTestDirectDbImportPatterns,
               message: apiTestDirectDbImportMessage,
+            },
+            {
+              group: apiTestLoggerImportPatterns,
+              message: apiTestLoggerImportMessage,
             },
           ],
         },
