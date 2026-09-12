@@ -233,14 +233,13 @@ describe("thread activity summary", () => {
     await enable(f.actor);
     const first = await summarize(f.actor, f.run);
     expect(first).toMatchObject({
-      status: "fresh",
+      status: "available",
       messages: [
         {
           id: "Preparing the launch checklist",
           text: "Preparing the launch checklist",
         },
       ],
-      sourceSequence: null,
     });
     expect(inputs[0]!.activity).toStrictEqual([]);
     await accept(request(bdd.user({ orgId: f.actor.orgId }), f.run), [404]);
@@ -266,7 +265,7 @@ describe("thread activity summary", () => {
     });
     const first = await summarize(f.actor, f.run);
     expect(first).toMatchObject({
-      status: "fresh",
+      status: "available",
       messages: messages.map((text) => {
         return { id: text, text };
       }),
@@ -302,7 +301,7 @@ describe("thread activity summary", () => {
       },
     ]);
     await expect(summarize(f.actor, f.run)).resolves.toMatchObject({
-      status: "fresh",
+      status: "available",
       messages: [
         {
           id: "Preparing the launch checklist",
@@ -364,7 +363,7 @@ describe("thread activity summary", () => {
         runId: next.body.runId,
         threadId: next.body.threadId,
       }),
-    ).resolves.toMatchObject({ status: "fresh", runId: next.body.runId });
+    ).resolves.toMatchObject({ status: "available", runId: next.body.runId });
     expect(inputs).toHaveLength(2);
   });
 
@@ -401,11 +400,14 @@ describe("thread activity summary", () => {
     const before = await chat.listThreadEvents(f.actor, f.run.threadId);
     const first = await summarize(f.actor, f.run);
     expect(first).toMatchObject({
-      status: "fresh",
-      sourceSequence: 1,
-      summarySequence: 1,
+      status: "available",
+      messages: [
+        {
+          id: "Preparing the launch checklist",
+          text: "Preparing the launch checklist",
+        },
+      ],
     });
-    expect(first.sourceRevision).toBe(first.summaryRevision);
     expect(JSON.stringify(inputs)).toContain("launch checklist");
     expect(JSON.stringify(inputs)).toContain("search");
     expect(JSON.stringify(inputs)).not.toContain("PRIVATE_");
@@ -429,19 +431,23 @@ describe("thread activity summary", () => {
         return entry.sequence;
       }),
     ).toStrictEqual([18, 19, 20]);
+    // A repeated tool call and a usage-only record are not new evidence; a
+    // relevant late event merges into the retained window behind them.
     await deliver(f, [
       tool(19),
       { type: "usage", sequenceNumber: 21, usage: { input_tokens: 300 } },
+      tool(17),
     ]);
-    expect((await summarize(f.actor, f.run)).sourceRevision).toBe(
-      first.sourceRevision,
-    );
-    await deliver(f, [tool(17)]);
-    const late = await summarize(f.actor, f.run);
-    expect(late.sourceRevision).not.toBe(first.sourceRevision);
-    expect(late.summaryRevision).toBe(first.summaryRevision);
+    await expect(summarize(f.actor, f.run)).resolves.toStrictEqual(first);
     expect(inputs).toHaveLength(1);
     // Time passage and expired process leases have no production mutation API.
+    await advanceRunActivityClockFixture(f.run.runId, 16_000);
+    await summarize(f.actor, f.run);
+    expect(
+      inputs[1]!.activity.map((entry) => {
+        return entry.sequence;
+      }),
+    ).toStrictEqual([17, 18, 19, 20]);
     await advanceRunActivityClockFixture(f.run.runId, 16_000);
     await deliver(
       f,
@@ -450,8 +456,8 @@ describe("thread activity summary", () => {
       }),
     );
     const bounded = await summarize(f.actor, f.run);
-    expect(bounded.status).toBe("fresh");
-    const activity = inputs[1]!.activity;
+    expect(bounded.status).toBe("available");
+    const activity = inputs[2]!.activity;
     expect(activity.length).toBeLessThanOrEqual(16);
     expect(
       Buffer.byteLength(JSON.stringify(activity), "utf8"),
@@ -464,7 +470,7 @@ describe("thread activity summary", () => {
     expect(activity.at(-1)?.sequence).toBe(59);
   });
 
-  it("shares one claim across callers and labels late results with their actual older revision", async () => {
+  it("shares one claim across concurrent callers", async () => {
     const f = await fixture();
     const entered = createDeferredPromise<void>(context.signal);
     const release = createDeferredPromise<string>(context.signal);
@@ -475,17 +481,15 @@ describe("thread activity summary", () => {
     const first = settleIncludingAbort(summarize(f.actor, f.run));
     await entered.promise;
     const concurrent = await Promise.all([
-      summarize(f.actor, f.run),
-      summarize(f.actor, f.run),
+      accept(request(f.actor, f.run), [200, 500]),
+      accept(request(f.actor, f.run), [200, 500]),
     ]);
     expect(
       concurrent.every((value) => {
-        // Concurrent followers may hit the production lock budget and degrade
-        // to unavailable. Neither outcome may publish a phrase or claim again.
-        return (
-          (value.status === "pending" || value.status === "unavailable") &&
-          value.messages.length === 0
-        );
+        // Concurrent followers may exhaust the production lock budget, which
+        // now answers 500 like any other storage failure. Neither outcome may
+        // publish a phrase or claim the run again.
+        return value.status === 500 || value.body.messages.length === 0;
       }),
     ).toBeTruthy();
     await deliver(f, [tool(0, "new activity while the provider is working")]);
@@ -494,10 +498,11 @@ describe("thread activity summary", () => {
     if (!outcome.ok) {
       throw outcome.error;
     }
-    const finished = outcome.value;
-    expect(finished.summarySequence).toBeNull();
-    expect(finished.sourceSequence).toBe(0);
-    expect(finished.summaryRevision).not.toBe(finished.sourceRevision);
+    // The single claim owner publishes its batch even though newer evidence
+    // arrived while it was generating.
+    expect(outcome.value.messages[0]?.text).toBe(
+      "Preparing the requested checklist",
+    );
     expect(inputs).toHaveLength(1);
   });
 
@@ -540,8 +545,11 @@ describe("thread activity summary", () => {
       [201],
     );
     await flushWaitUntilForTest();
-    const current = await summarize(f.actor, f.run);
-    expect(current.sourceRevision).toBe(first.sourceRevision);
+    // A queued message is not context yet, so the stored batch still describes
+    // the run even once the attempt interval has elapsed.
+    await advanceRunActivityClockFixture(f.run.runId, 16_000);
+    await expect(summarize(f.actor, f.run)).resolves.toStrictEqual(first);
+    expect(inputs).toHaveLength(1);
     const reserved = await runs.reserveRunnerActiveInputs(
       f.sandboxToken,
       f.run.runId,
@@ -554,10 +562,7 @@ describe("thread activity summary", () => {
       f.run.runId,
       reserved.deliveryId,
     );
-    const steered = await summarize(f.actor, f.run);
-    expect(steered.sourceRevision).not.toBe(first.sourceRevision);
-    expect(steered.summaryRevision).toBe(first.summaryRevision);
-    await advanceRunActivityClockFixture(f.run.runId, 16_000);
+    // Delivery makes the steering message visible context and invalidates it.
     await summarize(f.actor, f.run);
     expect(inputs).toHaveLength(2);
     expect(inputs[1]!.messages).toContainEqual({
@@ -593,7 +598,7 @@ describe("thread activity summary", () => {
       // The completion UPDATE fences the write, so the in-flight attempt reads
       // the row as stored: its own claim is still leased and no phrase landed.
       await expect(pending).resolves.toMatchObject({
-        status: "pending",
+        status: "available",
         messages: [],
       });
       if (action !== "delete") {
@@ -619,12 +624,7 @@ describe("thread activity summary", () => {
       return output;
     });
     const failed = await summarize(f.actor, f.run);
-    expect(failed).toMatchObject({
-      status: "cooldown",
-      messages: [],
-      summaryRevision: null,
-    });
-    expect(failed.retryAfterMs).toBeGreaterThan(50_000);
+    expect(failed).toMatchObject({ status: "available", messages: [] });
     await summarize(f.actor, f.run);
     expect(inputs).toHaveLength(1);
   });
@@ -690,13 +690,7 @@ describe("thread activity summary", () => {
     const absorbed = await summarize(f.actor, f.run);
     // The optional output is simply omitted; the response stays truthful and
     // the shared cooldown bounds recovery.
-    expect(absorbed).toMatchObject({
-      status: "cooldown",
-      messages: [],
-      summaryRevision: null,
-    });
-    expect(absorbed.retryAfterMs).toBeGreaterThan(50_000);
-    expect(absorbed.retryAfterMs).toBeLessThanOrEqual(60_000);
+    expect(absorbed).toMatchObject({ status: "available", messages: [] });
     // The cooldown really reached the database: no second provider call.
     await summarize(f.actor, f.run);
     expect(inputs).toHaveLength(1);
@@ -715,10 +709,7 @@ describe("thread activity summary", () => {
     // The attempt still claims, writes and rereads, so the caller degrades to
     // the stored phrase instead of to an empty batch.
     expect(degraded.messages).toStrictEqual(first.messages);
-    expect(degraded.summaryRevision).toBe(first.summaryRevision);
-    expect(degraded.status).toBe("cooldown");
-    expect(degraded.retryAfterMs).toBeGreaterThan(50_000);
-    expect(degraded.retryAfterMs).toBeLessThanOrEqual(60_000);
+    expect(degraded.status).toBe("available");
     expect(inputs).toHaveLength(1);
   });
 
@@ -734,13 +725,15 @@ describe("thread activity summary", () => {
     await advanceRunActivityClockFixture(f.run.runId, 16_000);
     const rejected = await summarize(f.actor, f.run);
     expect(rejected.messages).toStrictEqual(first.messages);
-    expect(rejected.summaryRevision).toBe(first.summaryRevision);
-    expect(rejected.retryAfterMs).toBeGreaterThan(50_000);
+    expect(inputs).toHaveLength(2);
+    // The failure cooldown outlasts the plain attempt interval.
+    await advanceRunActivityClockFixture(f.run.runId, 16_000);
+    await summarize(f.actor, f.run);
+    expect(inputs).toHaveLength(2);
     // The persisted cooldown expires and the next attempt publishes a phrase.
-    await advanceRunActivityClockFixture(f.run.runId, 61_000);
+    await advanceRunActivityClockFixture(f.run.runId, 45_000);
     const recovered = await summarize(f.actor, f.run);
     expect(recovered.messages[0]?.text).toBe("Preparing the launch checklist");
-    expect(recovered.summaryRevision).not.toBe(first.summaryRevision);
     expect(inputs).toHaveLength(3);
   });
 
@@ -848,7 +841,7 @@ describe("thread activity summary", () => {
   it("uses a shared cooldown when the model is unconfigured", async () => {
     const f = await fixture();
     const failed = await summarize(f.actor, f.run);
-    expect(failed).toMatchObject({ status: "cooldown", messages: [] });
+    expect(failed).toMatchObject({ status: "available", messages: [] });
     const inputs = provider();
     // The cooldown bounds the next provider call even when no summary exists
     // to fall back to, so restoring the key mid-cooldown generates nothing.
@@ -864,8 +857,7 @@ describe("thread activity summary", () => {
     });
     const result = await summarize(f.actor, f.run);
     release.resolve("Too late");
-    expect(result).toMatchObject({ status: "cooldown", messages: [] });
-    expect(result.retryAfterMs).toBeGreaterThan(50_000);
+    expect(result).toMatchObject({ status: "available", messages: [] });
     await summarize(f.actor, f.run);
     expect(inputs).toHaveLength(1);
   }, 15_000);
@@ -925,8 +917,7 @@ describe("thread activity summary", () => {
       },
     ]);
     await expect(summarize(f.actor, f.run)).resolves.toMatchObject({
-      status: "fresh",
-      sourceSequence: 1,
+      status: "available",
     });
     expect(inputs[0]!.activity[0]?.name).toBe("bash");
     expect(
@@ -950,10 +941,7 @@ describe("thread activity summary", () => {
     // Nothing was ever generated for this run, so the viewer keeps the generic
     // label its own fallback renders for an empty batch.
     expect(empty.messages).toStrictEqual([]);
-    expect(empty.status).toBe("cooldown");
-    expect(empty.summaryRevision).toBeNull();
-    expect(empty.retryAfterMs).toBeGreaterThan(50_000);
-    expect(empty.retryAfterMs).toBeLessThanOrEqual(60_000);
+    expect(empty.status).toBe("available");
     // The shared cooldown really reached the database: no second provider call.
     await summarize(f.actor, f.run);
     expect(inputs).toHaveLength(1);
@@ -962,7 +950,7 @@ describe("thread activity summary", () => {
     expect(recovered.messages[0]?.text).toBe(
       "Checking the current launch materials",
     );
-    expect(recovered.status).toBe("fresh");
+    expect(recovered.status).toBe("available");
     expect(inputs).toHaveLength(2);
   });
 
@@ -981,9 +969,6 @@ describe("thread activity summary", () => {
     await advanceRunActivityClockFixture(f.run.runId, 16_000);
     const failed = await summarize(f.actor, f.run);
     expect(failed.messages).toStrictEqual(first.messages);
-    expect(failed.summaryRevision).toBe(first.summaryRevision);
-    expect(failed.retryAfterMs).toBeGreaterThan(55_000);
-    expect(failed.retryAfterMs).toBeLessThanOrEqual(60_000);
     // The charged cooldown still bounds the next provider call.
     await summarize(f.actor, f.run);
     expect(inputs).toHaveLength(2);
@@ -1011,13 +996,11 @@ describe("thread activity summary", () => {
             { status: 504 },
           );
     });
-    const unavailable = await summarize(f.actor, f.run);
-    expect(unavailable.status).toBe("cooldown");
-    expect(unavailable.retryAfterMs).toBeGreaterThan(55_000);
-    expect(unavailable.retryAfterMs).toBeLessThanOrEqual(60_000);
+    const absorbed = await summarize(f.actor, f.run);
+    expect(absorbed).toMatchObject({ status: "available", messages: [] });
     await advanceRunActivityClockFixture(f.run.runId, 61_000);
     const timedOut = await summarize(f.actor, f.run);
-    expect(timedOut.status).toBe("cooldown");
+    expect(timedOut).toMatchObject({ status: "available", messages: [] });
     expect(inputs).toHaveLength(2);
   });
 
@@ -1048,10 +1031,7 @@ describe("thread activity summary", () => {
     const missed = await pending;
     // The caller keeps its last real phrase and a bounded, self-recovering wait.
     expect(missed.messages).toStrictEqual(first.messages);
-    expect(missed.status).toBe("cooldown");
-    expect(missed.summaryRevision).toBe(first.summaryRevision);
-    expect(missed.retryAfterMs).toBeGreaterThan(50_000);
-    expect(missed.retryAfterMs).toBeLessThanOrEqual(60_000);
+    expect(missed.status).toBe("available");
     expect(inputs).toHaveLength(2);
   });
 
@@ -1097,7 +1077,7 @@ describe("thread activity summary", () => {
     expect(inputs).toHaveLength(2);
   });
 
-  it("keeps normal publication working when a contended snapshot write is skipped and excludes expired evidence", async () => {
+  it("fails a contended snapshot read, keeps normal publication, and excludes expired evidence", async () => {
     const f = await fixture();
     const inputs = provider();
     await summarize(f.actor, f.run);
@@ -1121,10 +1101,9 @@ describe("thread activity summary", () => {
         },
       },
     ]);
-    await expect(summarize(f.actor, f.run)).resolves.toMatchObject({
-      status: "unavailable",
-      messages: [],
-    });
+    // A storage failure is this service's own defect, so it reaches the caller
+    // as a plain 500 instead of being relabelled as a degraded summary.
+    await accept(request(f.actor, f.run), [500]);
     held.release();
     await held.done;
     const page = await chat.listThreadEvents(f.actor, f.run.threadId);
@@ -1164,8 +1143,7 @@ describe("thread activity summary", () => {
     );
     await enable(f.actor);
     await expect(summarize(f.actor, f.run)).resolves.toMatchObject({
-      status: "fresh",
-      sourceSequence: null,
+      status: "available",
     });
     expect(inputs[1]!.activity).toStrictEqual([]);
   });

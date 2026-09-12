@@ -148,9 +148,6 @@ export const captureRunActivity$ = command(
               ? {
                   summary: null,
                   summaryRevision: null,
-                  summarySequence: null,
-                  summaryMessageCursor: null,
-                  summarizedAt: null,
                   claimId: null,
                   claimRevision: null,
                   claimExpiresAt: null,

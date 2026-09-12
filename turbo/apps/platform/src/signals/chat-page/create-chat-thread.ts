@@ -3670,10 +3670,6 @@ function createThinkingIndicatorSignals(
       }
       return {
         runId: eventId,
-        summaryRevision: eventId,
-        summarySequence: null,
-        summaryMessageCursor: null,
-        summarizedAt: null,
         messages: [
           ...new Set(
             text

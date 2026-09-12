@@ -1769,9 +1769,13 @@ async function expectPiActivitySummaryBeforeGuestReplay(
     [200],
   );
   expect(activity.body).toMatchObject({
-    status: "fresh",
-    sourceSequence: activityEnabled ? 3 : null,
-    summarySequence: activityEnabled ? 3 : null,
+    status: "available",
+    messages: [
+      {
+        id: "Checking the CLI and preparing the note",
+        text: "Checking the CLI and preparing the note",
+      },
+    ],
   });
   if (activityEnabled) {
     expect(activityInput).toContain("okou --help");
@@ -22276,7 +22280,7 @@ describe("CHAT-02: initial thinking indicator", () => {
               text: "Preparing the visible checklist",
             },
           ],
-          status: "fresh",
+          status: "available",
           runId: run.runId,
         });
         expect(indicatorCalls).toStrictEqual(["summary"]);
