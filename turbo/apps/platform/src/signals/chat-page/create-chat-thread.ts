@@ -3093,27 +3093,6 @@ function createRunTracking({
     await set(setupChatEvents$, signal);
     signal.throwIfAborted();
 
-    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
-    const onThreadDetailChanged$ = command(({ set }) => {
-      L.debug("onThreadDetailChanged$ fired", { threadId });
-      set(cancellationRecovery.reload$);
-      set(reloadConnectorAccountPreference$);
-      return false;
-    });
-
-    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
-    const onAutomationsChanged$ = command(({ set }) => {
-      set(automationSignals.headerAutomations.reload$);
-      return false;
-    });
-
-    // eslint-disable-next-line ccstate/no-command-in-command -- migrate this runtime callback to the static command graph
-    const onArtifactsChanged$ = command(({ set }) => {
-      L.debug("onArtifactsChanged$ fired", { threadId });
-      set(reloadArtifacts$);
-      return false;
-    });
-
     await Promise.all([
       set(syncHydratedEventTrees$, signal),
       set(subscribeBrowserSessions$, signal),
@@ -3122,10 +3101,15 @@ function createRunTracking({
         subscribeChatThreadRealtime$,
         {
           threadId,
+          invalidations: {
+            threadDetail: [
+              cancellationRecovery.reload$,
+              reloadConnectorAccountPreference$,
+            ],
+            automations: [automationSignals.headerAutomations.reload$],
+            artifacts: [reloadArtifacts$],
+          },
           handlers: {
-            onThreadDetailChanged$,
-            onAutomationsChanged$,
-            onArtifactsChanged$,
             onWorkflowsChanged$,
             onSubscribed$,
           },
