@@ -97,34 +97,21 @@ the shared `auxiliary_generation_result` Axiom event under
 the outcomes that boundary classifies as failures produce a diagnostic. The
 remaining records this feature writes are:
 
-| Message                        | Context                | Level                                                                  | Safe fields besides context                                          |
-| ------------------------------ | ---------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `Activity summary unavailable` | `api:activity-summary` | warn                                                                   | `runId`, `outcome: storage_failed`                                   |
-| `Activity snapshot capture`    | `api:run-activity`     | info for written/unchanged and for an expected failure; warn otherwise | `runId`, `outcome`, `eventCount`; `stage` and `errorCode` on failure |
-| `Activity snapshot cleanup`    | `api:run-activity`     | info on success; warn on failure                                       | `outcome`, `removed`, `retentionMs`; `errorCode` on failure          |
+| Message                            | Context                | Level | Safe fields besides context        |
+| ---------------------------------- | ---------------------- | ----- | ---------------------------------- |
+| `Activity summary unavailable`     | `api:activity-summary` | warn  | `runId`, `outcome: storage_failed` |
+| `Activity snapshot capture failed` | `api:run-activity`     | warn  | `runId`, `eventCount`, `errorCode` |
+| `Activity snapshot cleanup failed` | `api:run-activity`     | warn  | `errorCode`                        |
 
-A failed capture is classified into a finite set instead of one opaque
-`write_failed`. `contended` (`55P03`) and `run_missing` (`23503`) are expected
-consequences of concurrent delivery for one run, so they record at `info`;
-sustained unavailability is read by aggregating `fields.outcome`, not from a
-per-batch error level. `interrupted` (`57014`), `snapshot_missing` (the row
-vanished between the upsert and the locking read) and the residual
-`write_failed` keep `warn` because they need an owner. `fields.stage` is one of
-`begin`, `admission`, `lock`, `persist` or `commit`, where `begin` covers
-connection acquisition and the transaction's own timeout statements. Its
-companion `fields.errorCode` is the SQLSTATE class code alone — five characters,
+A contended capture (`55P03`) and a run deleted mid-flight (`23503`) are expected
+consequences of concurrent delivery for one run and stay silent; any other
+capture failure warns with the SQLSTATE class code alone — five characters,
 validated before it is published, and omitted when the driver reports no
-SQLSTATE. Driver messages, statement text, constraint details and bound
-parameters are never attached.
+SQLSTATE. Successful captures and cleanups record nothing. Driver messages,
+statement text, constraint details and bound parameters are never attached.
 
-Granularity is otherwise unchanged: one unavailable record for an optional
-summary storage failure, one capture record per relevant batch (including
-unchanged duplicates), and one cleanup record per maintenance operation
-(including zero removals). Disabled, irrelevant, and ineligible captures remain
-silent. `eventCount` counts the submitted batch, not new retained entries.
-Failed cleanup reports `removed: 0` with `outcome: failed`; that is not a
-successful empty cleanup. A skipped capture still drops that batch's evidence:
-the runner already holds its `200`, and no redelivery or retry is attempted.
+A skipped capture still drops that batch's evidence: the runner already holds
+its `200`, and no redelivery or retry is attempted.
 
 These records never contain prompts, phrases, messages, arguments, evidence,
 credentials, database-driver errors, or provider response bodies. Production
