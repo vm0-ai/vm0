@@ -37,11 +37,20 @@ import {
 
 const context = testContext();
 
-function createAuthWindow(): Window {
+function createAuthWindow(onNavigate?: (href: string) => void): Window {
   const authWindow = context.mocks.browser.authWindow();
+  let href = "";
   Object.defineProperty(authWindow, "location", {
     configurable: true,
-    value: { href: "" },
+    value: {
+      get href() {
+        return href;
+      },
+      set href(value: string) {
+        href = value;
+        onNavigate?.(value);
+      },
+    },
   });
   return authWindow;
 }
@@ -178,6 +187,49 @@ function manualMethod(args: {
     startOptions: [],
   };
 }
+
+test("Show Mercury disclosures before connecting an account", async () => {
+  mockConnectors(context, []);
+  mockPublicConnectorStatus(context, [
+    publicStatusItem({
+      connectorSlug: "mercury",
+      label: "Mercury",
+      authMethods: [
+        oauthMethod(),
+        manualMethod({
+          id: "api-token",
+          label: "API token",
+          fieldId: "token",
+          fieldLabel: "API token",
+          placeholder: "Enter your Mercury API token",
+        }),
+      ],
+    }),
+  ]);
+  await setupPage({
+    context,
+    path: "/connectors?keywords=mercury",
+  });
+
+  const card = await waitFor(() => {
+    return getConnectorCard("Mercury");
+  });
+  expect(
+    getConnectorAction("link", "Powered by Mercury", card),
+  ).toHaveAttribute("href", "https://mercury.com");
+  expect(card).toHaveTextContent(
+    "Mercury is a fintech company, not an FDIC-insured bank. Banking services provided through Choice Financial Group and Column N.A., Members FDIC.",
+  );
+
+  click(getConnectorAction("button", "Connect Mercury", card));
+  const dialog = await screen.findByRole("dialog", { name: "Mercury" });
+  expect(
+    getConnectorAction("link", "Powered by Mercury", dialog),
+  ).toHaveAttribute("href", "https://mercury.com");
+  expect(dialog).toHaveTextContent(
+    "Mercury is a fintech company, not an FDIC-insured bank. Banking services provided through Choice Financial Group and Column N.A., Members FDIC.",
+  );
+});
 
 async function openAwsWithCode(code: string): Promise<{
   readonly dialog: HTMLElement;
@@ -328,7 +380,15 @@ test("Add an account through OpenID", async () => {
       ],
     }),
   ]);
-  const authWindow = createAuthWindow();
+  const authorizationUrl = "https://openid.test/partner-steam/authorize";
+  const authWindow = createAuthWindow((href) => {
+    if (href !== authorizationUrl) {
+      return;
+    }
+    const connected = storeConnectedConnector(slug, "partner-openid");
+    completedAttempts.set(oauthAttemptId, connected.id);
+    context.mocks.ably.trigger("connector:changed", { connectorSlug: slug });
+  });
   context.mocks.browser.open(authWindow);
   context.mocks.api(connectorOpenIdStartContract.start, ({ body, respond }) => {
     expect(body).toMatchObject({
@@ -336,7 +396,7 @@ test("Add an account through OpenID", async () => {
       authMethod: "partner-openid",
     });
     return respond(200, {
-      authorizationUrl: "https://openid.test/partner-steam/authorize",
+      authorizationUrl,
       oauthAttemptId,
     });
   });
@@ -353,13 +413,12 @@ test("Add an account through OpenID", async () => {
   click(getConnectorAction("button", "Connect Partner Steam"));
 
   await waitFor(() => {
-    expect(authWindow.location.href).toBe(
-      "https://openid.test/partner-steam/authorize",
-    );
+    expect(authWindow.location.href).toBe(authorizationUrl);
   });
-  const connected = storeConnectedConnector(slug, "partner-openid");
-  completedAttempts.set(oauthAttemptId, connected.id);
-  context.mocks.ably.trigger("connector:changed", { connectorSlug: slug });
+  const naming = await screen.findByRole("dialog", {
+    name: "Name your Partner Steam account",
+  });
+  click(getConnectorAction("button", "Skip", naming));
   await waitFor(() => {
     expect(
       getConnectorAction("button", "Manage Partner Steam access"),
@@ -414,7 +473,7 @@ test("Authorize visible agents only for the first manual account", async () => {
   const researchId = "c0000000-0000-4000-a000-000000000002";
   mockConnectors(context, []);
   context.mocks.data.agents([
-    listAgent("c0000000-0000-4000-a000-000000000001", "Zero"),
+    listAgent("c0000000-0000-4000-a000-000000000001", "Nova"),
     listAgent(researchId, "Research Agent"),
   ]);
   mockPublicConnectorStatus(context, [
@@ -481,10 +540,10 @@ test("Authorize visible agents only for the first manual account", async () => {
   const access = await screen.findByRole("dialog", {
     name: "Manage Public Axiom access",
   });
-  click(getConnectorSwitch("Revoke Public Axiom access for Zero", access));
+  click(getConnectorSwitch("Revoke Public Axiom access for Nova", access));
   await waitFor(() => {
     expect(
-      getConnectorSwitch("Authorize Public Axiom access for Zero", access),
+      getConnectorSwitch("Authorize Public Axiom access for Nova", access),
     ).not.toBeChecked();
   });
   click(getConnectorAction("button", "Close", access));
@@ -513,7 +572,7 @@ test("Authorize visible agents only for the first manual account", async () => {
     name: "Manage Public Axiom access",
   });
   expect(
-    getConnectorSwitch("Authorize Public Axiom access for Zero", updatedAccess),
+    getConnectorSwitch("Authorize Public Axiom access for Nova", updatedAccess),
   ).not.toBeChecked();
   expect(
     getConnectorSwitch(
@@ -668,7 +727,7 @@ test("Enable a connector that needs no credentials", async () => {
   const researchId = "c0000000-0000-4000-a000-000000000002";
   mockConnectors(context, []);
   context.mocks.data.agents([
-    listAgent("c0000000-0000-4000-a000-000000000001", "Zero"),
+    listAgent("c0000000-0000-4000-a000-000000000001", "Nova"),
     listAgent(researchId, "Research Agent"),
   ]);
   mockPublicConnectorStatus(context, [
@@ -775,7 +834,7 @@ test("Complete OAuth only after the current attempt succeeds", async () => {
   const researchId = "c0000000-0000-4000-a000-000000000002";
   let listed = mockConnectors(context, []);
   context.mocks.data.agents([
-    listAgent("c0000000-0000-4000-a000-000000000001", "Zero"),
+    listAgent("c0000000-0000-4000-a000-000000000001", "Nova"),
     listAgent(researchId, "Research Agent"),
   ]);
   mockPublicConnectorStatus(context, [
@@ -831,7 +890,9 @@ test("Complete OAuth only after the current attempt succeeds", async () => {
     );
   });
 
-  context.mocks.ably.trigger("connector:changed", null);
+  context.mocks.ably.trigger("connector:changed", {
+    connectorSlug: "stripe",
+  });
   authWindow.close();
 
   await waitFor(() => {
@@ -888,7 +949,7 @@ test("Complete OAuth only after the current attempt succeeds", async () => {
   });
 });
 
-test("Name a newly added manual account", async () => {
+async function addManualAccountForNaming() {
   mockConnectors(context, []);
   const connectionId = crypto.randomUUID();
   let renamed: { readonly id: string; readonly name: string | null } | null =
@@ -946,14 +1007,30 @@ test("Name a newly added manual account", async () => {
     name: "Name your Ahrefs account",
   });
   const input = within(naming).getByLabelText("Account name");
+  return {
+    input,
+    naming,
+    connectionId,
+    getRenamed: () => {
+      return renamed;
+    },
+  };
+}
+
+test("A newly added manual account suggests its external identity without prefilling a name", async () => {
+  const { input } = await addManualAccountForNaming();
   expect(input).toHaveValue("");
   expect(input).toHaveAttribute("placeholder", "owner@example.com");
+});
 
+test("Save a name for the exact newly added manual account", async () => {
+  const { input, naming, connectionId, getRenamed } =
+    await addManualAccountForNaming();
   await fill(input, "Work");
   click(getConnectorAction("button", "Save", naming));
 
   await waitFor(() => {
-    expect(renamed).toStrictEqual({ id: connectionId, name: "Work" });
+    expect(getRenamed()).toStrictEqual({ id: connectionId, name: "Work" });
   });
 });
 

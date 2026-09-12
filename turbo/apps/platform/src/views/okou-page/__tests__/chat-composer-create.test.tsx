@@ -1,6 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
+import { agentDraftContract } from "@okouai/api-contracts/contracts/agent-draft";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@okouai/core";
 import {
@@ -368,14 +369,22 @@ test("Image mode sends when the model menu is still open", async () => {
   });
 });
 
-test.each([
+const createTemplateScenarios = [
   {
     mode: "image",
     commandLabel: "Create image",
     pickerLabel: "Add style",
     selectLabel: "Select template",
     previewLabel: "Preview template",
-    templates: ILLUSTRATION_TEMPLATE_ITEMS,
+    templates: ILLUSTRATION_TEMPLATE_ITEMS.map((template) => {
+      return {
+        ...template,
+        request: {
+          type: "illustration" as const,
+          selection: { illustrationStyleId: template.illustrationStyleId },
+        },
+      };
+    }),
   },
   {
     mode: "video",
@@ -383,7 +392,15 @@ test.each([
     pickerLabel: "Add template",
     selectLabel: "Select video template",
     previewLabel: "Preview video template",
-    templates: VIDEO_TEMPLATE_ITEMS,
+    templates: VIDEO_TEMPLATE_ITEMS.map((template) => {
+      return {
+        ...template,
+        request: {
+          type: "video" as const,
+          selection: { stylePresetId: template.id },
+        },
+      };
+    }),
   },
   {
     mode: "presentation",
@@ -391,32 +408,31 @@ test.each([
     pickerLabel: "Add template",
     selectLabel: "Select template",
     previewLabel: "Preview template",
-    templates: PRESENTATION_TEMPLATE_PICKER_ITEMS,
+    templates: PRESENTATION_TEMPLATE_PICKER_ITEMS.map((template) => {
+      return {
+        ...template,
+        request: {
+          type: "presentation" as const,
+          selection: {
+            templateId: template.templateId,
+            colorSystemId: template.colorSystemId ?? undefined,
+          },
+        },
+      };
+    }),
   },
-])(
-  "$commandLabel adds multiple templates, edits only the clicked chip, and sends every reference",
-  async ({
-    mode,
-    commandLabel,
-    pickerLabel,
-    selectLabel,
-    previewLabel,
-    templates,
-  }) => {
+] as const;
+
+test.each(createTemplateScenarios)(
+  "$commandLabel adds multiple templates without replacing the existing text or chip",
+  async ({ mode, commandLabel, pickerLabel, selectLabel, templates }) => {
     setupModels();
-    const submissions: UserMessageDocument[] = [];
-    mockChatLifecycle(context, {
-      onRunCreate: (body) => {
-        if (body.userMessage) {
-          submissions.push(body.userMessage);
-        }
-      },
-    });
+    mockChatLifecycle(context);
     const editor = await setupComposer();
     const user = userEvent.setup({ delay: null });
-    const [first, second, replacement] = templates;
-    if (!first || !second || !replacement) {
-      throw new Error(`Expected three ${mode} templates`);
+    const [first, second] = templates;
+    if (!first || !second) {
+      throw new Error(`Expected two ${mode} templates`);
     }
     await chooseCommand(editor, `Our launch /create ${mode}`, commandLabel);
     click(button(pickerLabel));
@@ -435,6 +451,71 @@ test.each([
       expect(chips).toHaveLength(2);
       expect(chips[0]).toHaveTextContent(first.title);
       expect(chips[1]).toHaveTextContent(second.title);
+    });
+    expect(editor).toHaveTextContent("Our launch");
+    expect(editor).toHaveTextContent("for the cover.");
+    expect(button(pickerLabel)).toBeInTheDocument();
+  },
+);
+
+test.each(createTemplateScenarios)(
+  "$commandLabel edits only the clicked draft template and sends every reference",
+  async ({
+    mode,
+    commandLabel,
+    pickerLabel,
+    selectLabel,
+    previewLabel,
+    templates,
+  }) => {
+    setupModels();
+    const submissions: UserMessageDocument[] = [];
+    mockChatLifecycle(context, {
+      onRunCreate: (body) => {
+        if (body.userMessage) {
+          submissions.push(body.userMessage);
+        }
+      },
+    });
+    const [first, second, replacement] = templates;
+    if (!first || !second || !replacement) {
+      throw new Error(`Expected three ${mode} templates`);
+    }
+    context.mocks.api(agentDraftContract.get, ({ respond }) => {
+      return respond(200, {
+        draftUserMessage: {
+          version: 1,
+          parts: [
+            { type: "text", text: "Our launch " },
+            {
+              type: "template",
+              titleSnapshot: first.title,
+              template: first.request,
+            },
+            { type: "text", text: " for the cover. " },
+            {
+              type: "template",
+              titleSnapshot: second.title,
+              template: second.request,
+            },
+          ],
+        },
+        draftAttachments: null,
+      });
+    });
+    const editor = await setupComposer();
+    await waitFor(() => {
+      expect(composerInlineTemplates()).toHaveLength(2);
+    });
+    const user = userEvent.setup({ delay: null });
+    await user.click(editor);
+    await user.paste(` /create ${mode}`);
+    const menu = await screen.findByTestId("slash-workflow-menu");
+    click(button(commandLabel, menu));
+    await waitFor(() => {
+      expect(screen.getByTestId("composer-create-mode")).toHaveTextContent(
+        commandLabel,
+      );
     });
 
     const firstChip = composerInlineTemplates()[0];
@@ -485,15 +566,16 @@ test("Multiple templates keep a generic toolbar label and all references survive
       }
     },
   });
-  const editor = await setupComposer();
+  await setupComposer();
   const user = userEvent.setup({ delay: null });
   const [first, second] = PRESENTATION_TEMPLATE_PICKER_ITEMS;
   if (!first || !second) {
     throw new Error("Expected two presentation templates");
   }
-  await selectTemplate(user, first);
-  await selectTemplate(user, second);
-  await user.click(editor);
+  await selectTemplate(first);
+  await selectTemplate(second);
+  // Page bootstrap can remount the editor while the template dialogs are open.
+  await user.click(await findComposerEditor());
   await user.paste(" /create presentation");
   const menu = await screen.findByTestId("slash-workflow-menu");
   click(button("Create presentation", menu));
@@ -524,7 +606,7 @@ test("Presentation adds another template when the draft already has one", async 
   if (!first || !second) {
     throw new Error("Expected two presentation templates");
   }
-  await selectTemplate(user, first);
+  await selectTemplate(first);
   await user.click(editor);
   await user.paste(" /create presentation");
   const menu = await screen.findByTestId("slash-workflow-menu");
@@ -590,7 +672,7 @@ test("Canceling and switching Create preserve slash text and template references
   if (!template) {
     throw new Error("Expected a presentation template");
   }
-  await selectTemplate(user, template);
+  await selectTemplate(template);
   await user.click(editor);
   await user.paste("Our launch /create");
   const menu = await screen.findByTestId("slash-workflow-menu");

@@ -5,7 +5,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
 import {
   accountSummary,
   builtinConnector,
@@ -53,10 +53,9 @@ async function loadComposer(): Promise<void> {
 }
 
 async function openConnectors(
-  user: ReturnType<typeof userEvent.setup>,
   container: ParentNode = document.body,
 ): Promise<void> {
-  await user.click(await findFastControl("button", "Connectors", container));
+  click(await findFastControl("button", "Connectors", container));
   await expect(
     findFastControl("button", "Add connectors"),
   ).resolves.toBeVisible();
@@ -92,7 +91,7 @@ function githubAccounts(count = 2) {
   });
 }
 
-test("Keep connector access scoped to each chat’s agent", async () => {
+async function openAgentScopedConnectors(pendingAuthorization: boolean) {
   const user = userEvent.setup({ delay: null });
   const otherAuthorization = context.mocks.deferred<void>();
   const fixture = installComposerConnectorFixture({
@@ -101,7 +100,9 @@ test("Keep connector access scoped to each chat’s agent", async () => {
       [SCOUT_AGENT_ID]: [],
       [OTHER_AGENT_ID]: [SLACK_SLUG],
     },
-    authorizationGates: { [OTHER_AGENT_ID]: otherAuthorization.promise },
+    authorizationGates: pendingAuthorization
+      ? { [OTHER_AGENT_ID]: otherAuthorization.promise }
+      : {},
     threads: [
       { id: SCOUT_THREAD_ID, title: "Scout chat", agentId: SCOUT_AGENT_ID },
       { id: OTHER_THREAD_ID, title: "Other chat", agentId: OTHER_AGENT_ID },
@@ -127,19 +128,32 @@ test("Keep connector access scoped to each chat’s agent", async () => {
   await expect(
     findFastControl("button", "Connectors", otherPane),
   ).resolves.toBeVisible();
-  await openConnectors(user, scoutPane);
+  return { user, fixture, scoutPane, otherPane, otherAuthorization };
+}
+
+test("A pending connector authorization does not borrow the other chat agent's access", async () => {
+  const { user, scoutPane, otherPane, otherAuthorization } =
+    await openAgentScopedConnectors(true);
+  await openConnectors(scoutPane);
   await expect(screen.findByLabelText("Add Slack")).resolves.toBeVisible();
   await user.keyboard("{Escape}");
-  await openConnectors(user, otherPane);
+  await openConnectors(otherPane);
   expect(screen.queryByLabelText("Remove Slack")).toBeNull();
   expect(screen.queryByLabelText("Add Slack")).toBeNull();
 
   otherAuthorization.resolve(undefined);
   await expect(screen.findByLabelText("Remove Slack")).resolves.toBeVisible();
+});
+
+test("Removing a connector updates only the selected chat agent's access", async () => {
+  const { user, fixture, scoutPane, otherPane } =
+    await openAgentScopedConnectors(false);
+  await openConnectors(otherPane);
+  await screen.findByLabelText("Remove Slack");
   await user.click(screen.getByLabelText("Remove Slack"));
   await expect(screen.findByLabelText("Add Slack")).resolves.toBeVisible();
   await user.keyboard("{Escape}");
-  await openConnectors(user, scoutPane);
+  await openConnectors(scoutPane);
   expect(screen.getByLabelText("Add Slack")).toBeVisible();
   expect(fixture.builtinAuthorizationUpdates).toStrictEqual([
     {
@@ -166,7 +180,7 @@ test("Carry a connector account choice into a new chat", async () => {
   });
 
   await loadComposer();
-  await openConnectors(user);
+  await openConnectors();
   const chooser = await openAccountChooser(
     user,
     "GitHub · Using default account: Work",
@@ -220,7 +234,7 @@ test("Preserve connector context across chats with the same agent", async () => 
   await setupPage({ context, path: `/chats/${SCOUT_THREAD_ID}` });
 
   await loadComposer();
-  await openConnectors(user);
+  await openConnectors();
   await expect(screen.findByLabelText("Remove GitHub")).resolves.toBeVisible();
   await user.click(await findFastControl("link", "Second Scout chat"));
   await waitFor(() => {
@@ -275,7 +289,7 @@ test("Choose an account for a custom MCP connector", async () => {
   });
 
   await loadComposer();
-  await openConnectors(user);
+  await openConnectors();
   const chooser = await openAccountChooser(
     user,
     "DeepWiki · Using default account: Team",
@@ -320,7 +334,7 @@ test("Keep the selected connector account visible during search", async () => {
   });
 
   await loadComposer();
-  await openConnectors(user);
+  await openConnectors();
   const chooser = await openAccountChooser(
     user,
     "GitHub · Selected account: Personal",
@@ -357,7 +371,7 @@ test("Choose which connector account a chat uses", async () => {
   });
 
   await loadComposer();
-  await openConnectors(user);
+  await openConnectors();
   let chooser = await openAccountChooser(
     user,
     "GitHub · Using default account: Work",
@@ -433,16 +447,16 @@ test("Keep connector access synchronized across split chats for the same agent",
   await expect(
     findFastControl("button", "Connectors", secondPane),
   ).resolves.toBeVisible();
-  await openConnectors(user, firstPane);
+  await openConnectors(firstPane);
   await expect(screen.findByLabelText("Remove Slack")).resolves.toBeVisible();
   await user.keyboard("{Escape}");
-  await openConnectors(user, secondPane);
+  await openConnectors(secondPane);
   await expect(screen.findByLabelText("Remove Slack")).resolves.toBeVisible();
 
   await user.click(screen.getByLabelText("Remove Slack"));
   await expect(screen.findByLabelText("Add Slack")).resolves.toBeVisible();
   await user.keyboard("{Escape}");
-  await openConnectors(user, firstPane);
+  await openConnectors(firstPane);
   expect(screen.getByLabelText("Add Slack")).toBeVisible();
   expect(fixture.builtinAuthorizationUpdates).toStrictEqual([
     {

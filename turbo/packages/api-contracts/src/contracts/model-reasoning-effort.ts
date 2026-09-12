@@ -8,6 +8,7 @@ const CODEX_REASONING_EFFORTS = [
   "high",
   "xhigh",
   "max",
+  "ultra",
 ] as const;
 const CLAUDE_CODE_EFFORTS = [
   "low",
@@ -35,9 +36,10 @@ export function getModelReasoningEfforts(
   switch (normalizeBuiltInModelId(bareModel ?? "")) {
     case "gpt-5.6-sol":
     case "gpt-5.6-terra":
-    case "gpt-5.6-luna":
     case "gpt-6-astra":
       return CODEX_REASONING_EFFORTS;
+    case "gpt-5.6-luna":
+      return ["low", "medium", "high", "xhigh", "max"];
     case "gpt-5.5":
       return ["low", "medium", "high", "xhigh"];
     case "claude-fable-5-1":

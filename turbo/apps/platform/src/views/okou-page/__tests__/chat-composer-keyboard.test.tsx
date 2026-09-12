@@ -146,7 +146,7 @@ test("Send with the Enter key preference", async () => {
     path: `/agents/${MESSAGE_EXPERIENCE_AGENT_ID}/chat`,
   });
 
-  let editor = await loadNewChatComposer();
+  const editor = await loadNewChatComposer();
   await fill(editor, "Prepare the launch summary");
   await user.keyboard("{Enter}");
   await waitFor(() => {
@@ -154,14 +154,39 @@ test("Send with the Enter key preference", async () => {
   });
   await expectSentPrompt("Prepare the launch summary");
   await expectAgentWorking();
+});
 
-  editor = await findComposer();
+test("Shift-Enter keeps an active chat's follow-up draft on two lines without sending", async () => {
+  const user = userEvent.setup({ delay: null });
+  const sentPrompts: string[] = [];
+  const threadId = "c0000000-0000-4000-a000-000000000055";
+  const runId = "c0000000-0000-4000-a000-000000000056";
+  context.mocks.data.userPreferences({ sendMode: "enter" });
+  installMessageExperienceChat({
+    threadId,
+    chatEvents: [
+      {
+        id: "active-keyboard-prompt",
+        role: "user",
+        content: "Prepare the launch summary",
+        runId,
+        createdAt: "2026-08-01T00:00:00Z",
+      },
+    ],
+    activeRunIds: [runId],
+    onSendRequest: ({ prompt }) => {
+      sentPrompts.push(prompt);
+    },
+  });
+  await setupPage({ context, path: `/chats/${threadId}` });
+  await expectAgentWorking();
+  const editor = await findComposer();
   await fill(editor, "Keep this draft");
   await user.keyboard("{Shift>}{Enter}{/Shift}");
   await user.keyboard("on two lines");
   expect(draftLines(editor)).toStrictEqual(["Keep this draft", "on two lines"]);
   expect(editor).toHaveFocus();
-  expect(sentPrompts).toStrictEqual(["Prepare the launch summary"]);
+  expect(sentPrompts).toStrictEqual([]);
 });
 
 test("Send with the command-key preference", async () => {

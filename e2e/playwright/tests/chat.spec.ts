@@ -80,65 +80,68 @@ test("dialog width caps preserve the sm breakpoint and shrink on narrow screens"
   await expect(dialog).toBeHidden();
 });
 
-test("artifact dialogs keep their panel and fullscreen controls inside safe areas", async ({
-  page,
-}) => {
-  await page.goto(appUrl);
-  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
-  await expect(page.getByTestId("chat-tagline")).toBeVisible({
-    timeout: 20_000,
-  });
+for (const scenario of [
+  { width: 402, height: 874, top: 62, right: 0, bottom: 34, left: 0 },
+  { width: 874, height: 402, top: 0, right: 62, bottom: 21, left: 62 },
+  { width: 390, height: 640, top: 59, right: 0, bottom: 34, left: 0 },
+  { width: 1920, height: 1200, top: 0, right: 0, bottom: 0, left: 0 },
+]) {
+  test(`artifact dialog controls stay inside safe areas at ${scenario.width}x${scenario.height}`, async ({
+    page,
+  }) => {
+    await page.goto(appUrl);
+    await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+    await expect(page.getByTestId("chat-tagline")).toBeVisible({
+      timeout: 20_000,
+    });
 
-  // The lane's disposable account owns this thread and is cleaned up by global teardown.
-  const [created] = await Promise.all([
-    page.waitForResponse(
-      (response) =>
-        response.request().method() === "POST" &&
-        new URL(response.url()).pathname === "/api/chat-threads",
-    ),
-    page.getByRole("button", { name: "New chat", exact: true }).last().click(),
-  ]);
-  expect(created.status()).toBe(201);
-  const thread: unknown = await created.json();
-  if (
-    typeof thread !== "object" ||
-    thread === null ||
-    !("id" in thread) ||
-    typeof thread.id !== "string"
-  ) {
-    throw new Error("Expected the created dialog-test thread id");
-  }
-  await expect(page).toHaveURL(new URL(`/chats/${thread.id}`, appUrl).href);
-  // Wait for the destination composer before attaching the owned fixture.
-  const threadPage = page.getByRole("region", {
-    name: "Chat thread",
-    exact: true,
-  });
-  await expect(
-    threadPage.getByRole("textbox", { name: "Message", exact: true }),
-  ).toBeEditable();
-  await threadPage
-    .locator('input[type="file"][multiple]')
-    .setInputFiles(await dialogImageFixture(page));
-  const imagePreview = threadPage.getByRole("button", {
-    name: "Open image preview for dialog-safe-area.png",
-    exact: true,
-  });
-  await expect(imagePreview).toBeEnabled({ timeout: 30_000 });
-  await imagePreview.click();
-  const dialog = page.getByTestId("attachment-lightbox");
-  await expect(dialog).toBeVisible();
-  const zoom = dialog.getByTestId("artifact-dialog-image-zoom-level");
-  await expect(zoom).toHaveText("100%");
-  await dialog.getByRole("button", { name: "Zoom in", exact: true }).click();
-  await expect(zoom).toHaveText("115%");
+    // The lane's disposable account owns this thread and is cleaned up by global teardown.
+    const [created] = await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          new URL(response.url()).pathname === "/api/chat-threads",
+      ),
+      page
+        .getByRole("button", { name: "New chat", exact: true })
+        .last()
+        .click(),
+    ]);
+    expect(created.status()).toBe(201);
+    const thread: unknown = await created.json();
+    if (
+      typeof thread !== "object" ||
+      thread === null ||
+      !("id" in thread) ||
+      typeof thread.id !== "string"
+    ) {
+      throw new Error("Expected the created dialog-test thread id");
+    }
+    await expect(page).toHaveURL(new URL(`/chats/${thread.id}`, appUrl).href);
+    // Wait for the destination composer before attaching the owned fixture.
+    const threadPage = page.getByRole("region", {
+      name: "Chat thread",
+      exact: true,
+    });
+    await expect(
+      threadPage.getByRole("textbox", { name: "Message", exact: true }),
+    ).toBeEditable();
+    await threadPage
+      .locator('input[type="file"][multiple]')
+      .setInputFiles(await dialogImageFixture(page));
+    const imagePreview = threadPage.getByRole("button", {
+      name: "Open image preview for dialog-safe-area.png",
+      exact: true,
+    });
+    await expect(imagePreview).toBeEnabled({ timeout: 30_000 });
+    await imagePreview.click();
+    const dialog = page.getByTestId("attachment-lightbox");
+    await expect(dialog).toBeVisible();
+    const zoom = dialog.getByTestId("artifact-dialog-image-zoom-level");
+    await expect(zoom).toHaveText("100%");
+    await dialog.getByRole("button", { name: "Zoom in", exact: true }).click();
+    await expect(zoom).toHaveText("115%");
 
-  for (const scenario of [
-    { width: 402, height: 874, top: 62, right: 0, bottom: 34, left: 0 },
-    { width: 874, height: 402, top: 0, right: 62, bottom: 21, left: 62 },
-    { width: 390, height: 640, top: 59, right: 0, bottom: 34, left: 0 },
-    { width: 1920, height: 1200, top: 0, right: 0, bottom: 0, left: 0 },
-  ]) {
     await page.setViewportSize({
       width: scenario.width,
       height: scenario.height,
@@ -218,21 +221,25 @@ test("artifact dialogs keep their panel and fullscreen controls inside safe area
       dialog.getByRole("button", { name: "Enter fullscreen", exact: true }),
     ).toBeVisible();
     await expect(zoom).toHaveText("115%");
-  }
 
-  // Native outside-press ownership must distinguish a drag from a deliberate click.
-  const panel = await dialog.boundingBox();
-  if (!panel) throw new Error("Expected the preview before testing dismissal");
-  await page.mouse.move(panel.x + panel.width / 2, panel.y + panel.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(5, 5);
-  await page.mouse.up();
-  await expect(dialog).toBeVisible();
-  await page.mouse.click(5, 5);
-  await expect(dialog).toBeHidden();
-});
+    // Native outside-press ownership must distinguish a drag from a deliberate click.
+    const panel = await dialog.boundingBox();
+    if (!panel)
+      throw new Error("Expected the preview before testing dismissal");
+    await page.mouse.move(
+      panel.x + panel.width / 2,
+      panel.y + panel.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(5, 5);
+    await page.mouse.up();
+    await expect(dialog).toBeVisible();
+    await page.mouse.click(5, 5);
+    await expect(dialog).toBeHidden();
+  });
+}
 
-test("short dialogs keep nested avatar and agent footer actions reachable by scrolling", async ({
+test("a short nested avatar dialog keeps its footer reachable by scrolling", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 640 });
@@ -272,7 +279,21 @@ test("short dialogs keep nested avatar and agent footer actions reachable by scr
   await expect(
     agent.getByRole("textbox", { name: "Name", exact: true }),
   ).toHaveValue("Safe area draft");
+});
 
+test("a short agent dialog keeps footer actions reachable after landscape reflow", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 640 });
+  await page.goto(new URL("/agents", appUrl).href);
+  await page.getByRole("button", { name: "New agent", exact: true }).click();
+  const agent = page.getByRole("dialog", {
+    name: "Create a new agent",
+    exact: true,
+  });
+  await agent
+    .getByRole("textbox", { name: "Name", exact: true })
+    .fill("Safe area draft");
   await page.setViewportSize({ width: 874, height: 402 });
   await page.evaluate(() => {
     const style = document.documentElement.style;

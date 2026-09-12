@@ -42,6 +42,7 @@ export function ConnectorEntryCard({
   indicator,
   status,
   trailingAction,
+  footer,
   action,
   interactive,
 }: {
@@ -52,6 +53,7 @@ export function ConnectorEntryCard({
   readonly indicator?: ReactNode;
   readonly status?: ReactNode;
   readonly trailingAction?: ReactNode;
+  readonly footer?: ReactNode;
   readonly action: ReactNode;
   readonly interactive: boolean;
 }) {
@@ -98,6 +100,11 @@ export function ConnectorEntryCard({
           {trailingAction}
         </div>
       )}
+      {footer ? (
+        <div className="relative z-20 border-t border-border/50 px-5 py-3">
+          {footer}
+        </div>
+      ) : null}
     </div>
   );
 }

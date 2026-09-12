@@ -51,12 +51,14 @@
 //! # Task totals and dimensions
 //!
 //! Each task that reaches a final success or failure result emits
-//! `storage_download` or `artifact_download`, respectively. The task total
-//! carries two bounded dimensions:
+//! `storage_download` for a storage archive or `artifact_download` for an
+//! artifact archive. The boolean `success` field records whether the task
+//! succeeded or failed. The task total also carries two bounded dimensions:
 //!
-//! - `outcome` identifies the URL kind and compressed-size classification. A
-//!   remote task uses `remote_*`, a local `file://` task uses `file_*`, and any
-//!   other URL uses `other_unknown`. The size suffixes are `zero`,
+//! - `outcome` identifies the URL kind and compressed-size classification,
+//!   independently of task success or failure. A remote task uses `remote_*`,
+//!   a local `file://` task uses `file_*`, and any other URL uses `other_unknown`.
+//!   The size suffixes are `zero`,
 //!   `lt_64_kib`, `64_kib_to_256_kib`, `256_kib_to_1_mib`, `1_mib_to_4_mib`,
 //!   `4_mib_to_16_mib`, `16_mib_to_64_mib`, and `64_mib_plus`; an unavailable
 //!   size is reported as `remote_unknown` or `file_unknown`.

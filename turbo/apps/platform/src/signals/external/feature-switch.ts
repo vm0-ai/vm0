@@ -141,6 +141,10 @@ export const modelPickerFlyoutEnabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.ModelPickerFlyout] ?? false;
 });
 
+export const chatReasoningEffortEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.ChatReasoningEffort];
+});
+
 export const codexFastModeEnabled$ = computed((get): boolean => {
   return isCodexFastModeEnabled({ overrides: get(featureSwitch$) });
 });
@@ -227,6 +231,7 @@ const refreshFeatureSwitchState$ = command(
       return;
     }
 
+    // eslint-disable-next-line ccstate/no-create-child-abort-controller -- migrate this lifetime to the ccstate signal hierarchy
     const requestController = createChildAbortController(signal);
     const abortIfIdentityChanged = () => {
       if (

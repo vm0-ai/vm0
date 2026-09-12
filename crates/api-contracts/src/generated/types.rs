@@ -1406,6 +1406,21 @@ pub mod runners {
                 /// Bounded zeroizing passphrase, preserving whitespace.
                 passphrase: Option<crate::SecretText<4096>>,
             },
+            /// Authorized current password credential handoff.
+            ResolvedPassword {
+                /// Current destination, private to Runner.
+                host: String,
+                /// Current destination port.
+                port: u64,
+                /// Current login identity.
+                username: String,
+                /// Current configuration generation.
+                generation: i64,
+                /// Existing pin, or first-use trust required.
+                learned_host_key: Option<ResolveResponseResolvedLearnedHostKey>,
+                /// Bounded zeroizing login password, preserving whitespace.
+                password: crate::SecretText<4096>,
+            },
         }
 
         impl<'de> serde::Deserialize<'de> for ResolveResponse {
@@ -1417,6 +1432,8 @@ pub mod runners {
                     Unavailable,
                     #[serde(rename = "resolved")]
                     Resolved,
+                    #[serde(rename = "resolved_password")]
+                    ResolvedPassword,
                 }
                 #[derive(serde::Deserialize)]
                 #[serde(field_identifier)]
@@ -1437,6 +1454,8 @@ pub mod runners {
                     PrivateKey,
                     #[serde(rename = "passphrase")]
                     Passphrase,
+                    #[serde(rename = "password")]
+                    Password,
                 }
                 struct Visitor;
                 impl<'de> serde::de::Visitor<'de> for Visitor {
@@ -1460,6 +1479,7 @@ pub mod runners {
                             None::<Option<ResolveResponseResolvedLearnedHostKey>>;
                         let mut private_key = None::<crate::SecretText<65536>>;
                         let mut passphrase = None::<Option<crate::SecretText<4096>>>;
+                        let mut password = None::<crate::SecretText<4096>>;
                         while let Some(field) = map.next_key::<Field>()? {
                             match field {
                                 Field::Outcome => {
@@ -1526,6 +1546,14 @@ pub mod runners {
                                     }
                                     passphrase = Some(map.next_value()?);
                                 }
+                                Field::Password => {
+                                    if password.is_some() {
+                                        return Err(serde::de::Error::custom(
+                                            "duplicate authority field",
+                                        ));
+                                    }
+                                    password = Some(map.next_value()?);
+                                }
                             }
                         }
                         match (
@@ -1537,10 +1565,19 @@ pub mod runners {
                             learned_host_key,
                             private_key,
                             passphrase,
+                            password,
                         ) {
-                            (Some(Kind::Unavailable), None, None, None, None, None, None, None) => {
-                                Ok(ResolveResponse::Unavailable)
-                            }
+                            (
+                                Some(Kind::Unavailable),
+                                None,
+                                None,
+                                None,
+                                None,
+                                None,
+                                None,
+                                None,
+                                None,
+                            ) => Ok(ResolveResponse::Unavailable),
                             (
                                 Some(Kind::Resolved),
                                 Some(host),
@@ -1550,6 +1587,7 @@ pub mod runners {
                                 Some(learned_host_key),
                                 Some(private_key),
                                 Some(passphrase),
+                                None,
                             ) => Ok(ResolveResponse::Resolved {
                                 host,
                                 port,
@@ -1558,6 +1596,24 @@ pub mod runners {
                                 learned_host_key,
                                 private_key,
                                 passphrase,
+                            }),
+                            (
+                                Some(Kind::ResolvedPassword),
+                                Some(host),
+                                Some(port),
+                                Some(username),
+                                Some(generation),
+                                Some(learned_host_key),
+                                None,
+                                None,
+                                Some(password),
+                            ) => Ok(ResolveResponse::ResolvedPassword {
+                                host,
+                                port,
+                                username,
+                                generation,
+                                learned_host_key,
+                                password,
                             }),
                             _ => Err(serde::de::Error::custom("invalid authority outcome fields")),
                         }

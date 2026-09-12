@@ -138,7 +138,7 @@ async function openComputerDownloadDialog(title: string): Promise<HTMLElement> {
   return await screen.findByRole("dialog", { name: title });
 }
 
-test("Choose cloud browsing or a local computer for a new chat", async () => {
+async function prepareCloudBrowserDefaults() {
   const sends: CapturedComputerSend[] = [];
   installNewComputerChat(sends, [
     computerHost({
@@ -147,10 +147,13 @@ test("Choose cloud browsing or a local computer for a new chat", async () => {
       status: "online",
     }),
   ]);
-
   await setupPage({ context, path: NEW_CHAT_PATH });
-
   await readyChat();
+  return { sends };
+}
+
+test("Show cloud browser and local computer defaults in a new chat", async () => {
+  await prepareCloudBrowserDefaults();
   await openComputerMenu();
   expect(screen.getByText("Cloud browser")).toBeVisible();
   expect(
@@ -159,9 +162,11 @@ test("Choose cloud browsing or a local computer for a new chat", async () => {
   expect(
     screen.getByRole("switch", { name: "Connect Studio Mac" }),
   ).not.toBeChecked();
+});
 
+test("Send a new chat with the default cloud browser", async () => {
+  const { sends } = await prepareCloudBrowserDefaults();
   await sendText("Research the launch market");
-
   const sent = await waitForComputerSend(sends, 1);
   expect(sent).toMatchObject({
     prompt: "Research the launch market",

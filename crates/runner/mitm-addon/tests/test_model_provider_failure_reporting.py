@@ -6,7 +6,7 @@ import json
 import threading
 import urllib.request
 import zlib
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import Future
 from pathlib import Path
 from typing import Literal
 from unittest.mock import patch
@@ -16,6 +16,7 @@ import zstandard
 from mitmproxy import http
 from mitmproxy.connection import ConnectionState
 from mitmproxy.flow import Error
+from mitmproxy.net.http import http1
 
 import body_decoding
 import flow_metadata_keys as metadata_keys
@@ -26,6 +27,7 @@ import usage.anthropic_messages as anthropic_messages
 import usage.model_json as model_json
 import usage.openai_responses as openai_responses
 from body_limits import STREAM_BUFFER_LIMIT
+from model_provider_failure_executor import FailureReportExecutor
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import jsonl_exists_after_flush, read_jsonl_entries_after_flush
 from tests.model_provider_flow_helpers import make_openai_responses_websocket_flow
@@ -39,6 +41,8 @@ from tests.thread_helpers import ThreadUnderTest, wait_for_event
 
 _REPORT_CAPACITY = 16
 _REPORT_WORKERS = 4
+_RETRY_AFTER_FIELD_LIMIT = 8 * 1024
+_RETRY_AFTER_VALUE_LIMIT = 8 * 1024
 
 
 def _make_flow(
@@ -211,17 +215,16 @@ def _assert_single_report_omission(
 
 def _restart_reporter_after_callbacks(model_provider_failure_api) -> None:
     """Reset reporting only after every executor callback has returned."""
-    original_shutdown = ThreadPoolExecutor.shutdown
+    original_shutdown = FailureReportExecutor.shutdown
 
     def shutdown_and_wait(
-        executor: ThreadPoolExecutor,
-        wait: bool = True,
+        executor: FailureReportExecutor,
         *,
-        cancel_futures: bool = False,
+        wait: bool,
     ) -> None:
-        original_shutdown(executor, wait=True, cancel_futures=cancel_futures)
+        original_shutdown(executor, wait=True)
 
-    with patch.object(ThreadPoolExecutor, "shutdown", shutdown_and_wait):
+    with patch.object(FailureReportExecutor, "shutdown", shutdown_and_wait):
         model_provider_failure.shutdown()
     model_provider_failure.reset_for_tests()
     model_provider_failure.configure_reporting(
@@ -666,7 +669,7 @@ def test_executor_submission_failure_reclaims_capacity(
     model_provider_failure.drain_reports_for_tests()
     proxy_log_path = tmp_path / "submit-failed.jsonl"
     with patch.object(
-        ThreadPoolExecutor,
+        FailureReportExecutor,
         "submit",
         side_effect=RuntimeError("executor shut down"),
     ):
@@ -769,20 +772,19 @@ def test_shutdown_cancels_queued_reports(
 
     assert model_provider_failure_api.wait_for_request_count(_REPORT_WORKERS)
 
-    original_shutdown = ThreadPoolExecutor.shutdown
+    original_shutdown = FailureReportExecutor.shutdown
 
     def observe_shutdown(
-        executor: ThreadPoolExecutor,
-        wait: bool = True,
+        executor: FailureReportExecutor,
         *,
-        cancel_futures: bool = False,
+        wait: bool,
     ) -> None:
-        original_shutdown(executor, wait=wait, cancel_futures=cancel_futures)
+        original_shutdown(executor, wait=wait)
         executor_shutdown_started.set()
 
     shutdown_thread = ThreadUnderTest(target=model_provider_failure.shutdown)
     try:
-        with patch.object(ThreadPoolExecutor, "shutdown", observe_shutdown):
+        with patch.object(FailureReportExecutor, "shutdown", observe_shutdown):
             shutdown_thread.start()
             wait_for_event(
                 executor_shutdown_started,
@@ -825,15 +827,14 @@ def test_shutdown_timeout_returns_with_running_reports_blocked(
 
     assert model_provider_failure_api.wait_for_request_count(_REPORT_WORKERS)
 
-    original_shutdown = ThreadPoolExecutor.shutdown
+    original_shutdown = FailureReportExecutor.shutdown
 
     def pause_after_executor_shutdown(
-        executor: ThreadPoolExecutor,
-        wait: bool = True,
+        executor: FailureReportExecutor,
         *,
-        cancel_futures: bool = False,
+        wait: bool,
     ) -> None:
-        original_shutdown(executor, wait=wait, cancel_futures=cancel_futures)
+        original_shutdown(executor, wait=wait)
         executor_shutdown_started.set()
         if not continue_shutdown.wait(timeout=1):
             raise AssertionError("failure reporter shutdown test did not release executor shutdown")
@@ -842,7 +843,7 @@ def test_shutdown_timeout_returns_with_running_reports_blocked(
     try:
         with (
             patch.object(model_provider_failure, "_REPORT_TIMEOUT_SECONDS", 0.01),
-            patch.object(ThreadPoolExecutor, "shutdown", pause_after_executor_shutdown),
+            patch.object(FailureReportExecutor, "shutdown", pause_after_executor_shutdown),
         ):
             shutdown_thread.start()
             wait_for_event(
@@ -886,6 +887,7 @@ def test_shutdown_timeout_returns_with_running_reports_blocked(
     ("status", "retry_after", "expected_kind", "expected_seconds"),
     [
         (429, "0", "rate_limit", 1),
+        (429, "000120", "rate_limit", 120),
         (503, "301", "provider_unavailable", 300),
         pytest.param(
             503,
@@ -893,6 +895,27 @@ def test_shutdown_timeout_returns_with_running_reports_blocked(
             "provider_unavailable",
             300,
             id="long-numeric-delay",
+        ),
+        pytest.param(
+            429,
+            "0" * (_RETRY_AFTER_VALUE_LIMIT - 3) + "120",
+            "rate_limit",
+            120,
+            id="leading-zeroes-at-value-limit",
+        ),
+        pytest.param(
+            503,
+            "9" * _RETRY_AFTER_VALUE_LIMIT,
+            "provider_unavailable",
+            300,
+            id="clamped-at-value-limit",
+        ),
+        pytest.param(
+            429,
+            "0" * _RETRY_AFTER_VALUE_LIMIT,
+            "rate_limit",
+            1,
+            id="zero-at-value-limit",
         ),
     ],
 )
@@ -923,9 +946,22 @@ def test_numeric_retry_after_is_clamped(
 @pytest.mark.parametrize(
     ("status", "retry_after_values", "expected_kind"),
     [
+        (429, (), "rate_limit"),
+        (429, ("",), "rate_limit"),
         (429, ("invalid",), "rate_limit"),
         (429, ("Fri, 21 Aug 2026 12:00:00 GMT",), "rate_limit"),
         (429, ("120", "121"), "rate_limit"),
+        (429, ("", "120"), "rate_limit"),
+        (429, (" 120",), "rate_limit"),
+        (429, ("120\t",), "rate_limit"),
+        (429, ("١٢٠",), "rate_limit"),
+        (429, ("120,121",), "rate_limit"),
+        pytest.param(
+            503,
+            ("9" * (_RETRY_AFTER_VALUE_LIMIT + 1),),
+            "provider_unavailable",
+            id="over-value-limit",
+        ),
         (401, ("120",), "authentication"),
     ],
 )
@@ -950,6 +986,159 @@ def test_unusable_retry_after_is_omitted(
     _finish_http_flow(flow, body=None, mitm_ctx=mitm_ctx)
 
     assert _reported_payloads(model_provider_failure_api) == [{"failureKind": expected_kind}]
+
+
+def _assert_retry_after_header_report(
+    flow: http.HTTPFlow,
+    model_provider_failure_api,
+    expected_payload: dict[str, object],
+) -> None:
+    assert flow.response is not None
+    fields = flow.response.headers.fields
+    model_provider_failure.admit_flow(flow)
+    original_native = http._native
+
+    def reject_oversized_conversion(value: bytes) -> str:
+        assert len(value) <= _RETRY_AFTER_VALUE_LIMIT, "decoded an oversized header value"
+        return original_native(value)
+
+    with patch.object(http, "_native", reject_oversized_conversion):
+        mitm_addon.responseheaders(flow)
+
+    assert _reported_payloads(model_provider_failure_api) == [expected_payload]
+    assert flow.response.headers.fields == fields
+    model_provider_failure.release_flow(flow)
+
+
+@pytest.mark.parametrize(
+    ("status", "failure_kind"), [(429, "rate_limit"), (503, "provider_unavailable")]
+)
+@pytest.mark.parametrize("padding", [b"0", b"\xff"], ids=["ascii", "non-utf8"])
+@pytest.mark.parametrize("copies", [1, 2], ids=["singleton", "duplicate"])
+def test_retry_after_http1_oversized_values_are_omitted_without_conversion(
+    tmp_path, real_flow, model_provider_failure_api, status, failure_kind, padding, copies
+):
+    flow = _make_flow(real_flow, tmp_path / "proxy.jsonl")
+    value = padding * (1024 * 1024) + b"120"
+    flow.response = http1.read_response_head(
+        [f"HTTP/1.1 {status} Error".encode(), *[b"Retry-After: " + value] * copies]
+    )
+
+    _assert_retry_after_header_report(
+        flow, model_provider_failure_api, {"failureKind": failure_kind}
+    )
+
+
+class _UninspectedRetryAfter(bytes):
+    def __bytes__(self) -> bytes:
+        raise AssertionError("copied an unusable Retry-After value")
+
+    def decode(self, encoding: str = "utf-8", errors: str = "strict") -> str:
+        raise AssertionError("decoded an unusable Retry-After value")
+
+    def isdigit(self) -> bool:
+        raise AssertionError("scanned an unusable Retry-After value")
+
+    def lstrip(self, chars: bytes | None = None) -> bytes:
+        raise AssertionError("stripped an unusable Retry-After value")
+
+    def strip(self, chars: bytes | None = None) -> bytes:
+        raise AssertionError("stripped an unusable Retry-After value")
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        pytest.param((_UninspectedRetryAfter(b"120"), b"121"), id="duplicate"),
+        pytest.param((_UninspectedRetryAfter(b""), b"120"), id="empty-first-duplicate"),
+        pytest.param(
+            (_UninspectedRetryAfter(b"0" * (_RETRY_AFTER_VALUE_LIMIT + 1)),), id="oversized"
+        ),
+    ],
+)
+def test_retry_after_rejects_unusable_values_before_inspection(
+    tmp_path, real_flow, model_provider_failure_api, values
+):
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        response_status=429,
+        response_headers=http.Headers((b"Retry-After", value) for value in values),
+    )
+
+    _assert_retry_after_header_report(
+        flow, model_provider_failure_api, {"failureKind": "rate_limit"}
+    )
+
+
+class _UnnormalizedRetryAfterName(bytes):
+    def lower(self) -> bytes:
+        raise AssertionError("normalized a header name before checking its budget")
+
+
+@pytest.mark.parametrize("field_count", [_RETRY_AFTER_FIELD_LIMIT, _RETRY_AFTER_FIELD_LIMIT + 1])
+def test_retry_after_header_field_budget(
+    tmp_path, real_flow, model_provider_failure_api, field_count
+):
+    fields = ((b"X-Padding", b""),) * (field_count - 1) + ((b"rEtRy-AfTeR", b"120"),)
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        response_status=429,
+        response_headers=http.Headers(fields),
+    )
+    expected: dict[str, object] = {"failureKind": "rate_limit"}
+    if field_count <= _RETRY_AFTER_FIELD_LIMIT:
+        expected["retryAfterSeconds"] = 120
+
+    _assert_retry_after_header_report(flow, model_provider_failure_api, expected)
+
+
+def test_retry_after_checks_late_duplicate_before_inspection(
+    tmp_path, real_flow, model_provider_failure_api
+):
+    fields = (
+        ((b"Retry-After", _UninspectedRetryAfter(b"120")),)
+        + ((b"X-Padding", b""),) * (_RETRY_AFTER_FIELD_LIMIT - 2)
+        + ((b"RETRY-AFTER", b"121"),)
+    )
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        response_status=429,
+        response_headers=http.Headers(fields),
+    )
+
+    _assert_retry_after_header_report(
+        flow, model_provider_failure_api, {"failureKind": "rate_limit"}
+    )
+
+
+@pytest.mark.parametrize("excess_fields", [False, True], ids=["oversized-name", "excess-fields"])
+def test_retry_after_response_hook_checks_budgets_before_normalizing_names(
+    tmp_path, real_flow, model_provider_failure_api, *, excess_fields
+):
+    fields = (
+        ((_UnnormalizedRetryAfterName(b"Retry-After"), b"120"),) * (_RETRY_AFTER_FIELD_LIMIT + 1)
+        if excess_fields
+        else ((_UnnormalizedRetryAfterName(b"X" * (1024 * 1024)), b""), (b"Retry-After", b"120"))
+    )
+    flow = _make_flow(
+        real_flow,
+        tmp_path / "proxy.jsonl",
+        response_status=429,
+        response_headers=http.Headers(fields),
+    )
+    expected: dict[str, object] = {"failureKind": "rate_limit"}
+    if not excess_fields:
+        expected["retryAfterSeconds"] = 120
+
+    _assert_retry_after_header_report(flow, model_provider_failure_api, expected)
+
+    assert flow.response.status_code == 429
+    assert flow.response.headers.fields == fields
+    assert response_stream(flow)(b"upstream-error") == b"upstream-error"
+    assert response_stream(flow)(b"") == b""
 
 
 def test_later_success_does_not_retract_report(
@@ -1017,10 +1206,10 @@ def test_bodyless_response_skips_usage_and_failure_observers(
 
 
 @pytest.mark.parametrize(
-    ("content_type", "body", "usage_finish_key"),
+    ("content_types", "body", "usage_finish_key"),
     [
         pytest.param(
-            "Text/Event-Stream; Charset=UTF-8",
+            (b"Text/Event-Stream; Charset=UTF-8",),
             b"event: error\n"
             b'data: {"type":"error","code":"server_error",'
             b'"message":"provider failed","param":null}\n\n',
@@ -1028,16 +1217,36 @@ def test_bodyless_response_skips_usage_and_failure_observers(
             id="parameterized-sse",
         ),
         pytest.param(
-            'application/json; profile="text/event-stream"',
+            (b'application/json; profile="text/event-stream"',),
             b'{"status":"failed","error":{"code":"server_error"}}',
             "model_json_usage_finish",
             id="sse-profile-lookalike",
         ),
         pytest.param(
-            "text/event-stream+json",
+            (b"text/event-stream+json",),
             b'{"status":"failed","error":{"code":"server_error"}}',
             "model_json_usage_finish",
             id="sse-suffix-lookalike",
+        ),
+        pytest.param(
+            (b"text/event-stream; pad=" + b"\xff" * (1024 * 1024),),
+            b"event: error\n"
+            b'data: {"type":"error","code":"server_error",'
+            b'"message":"provider failed","param":null}\n\n',
+            "model_sse_usage_finish",
+            id="oversized-parameterized-sse",
+        ),
+        pytest.param(
+            (b"text/event-stream; charset=utf-8", b"\xff" * (1024 * 1024)),
+            b'{"status":"failed","error":{"code":"server_error"}}',
+            "model_json_usage_finish",
+            id="repeated-content-type",
+        ),
+        pytest.param(
+            (b"text/event-stream" + b" " * (8 * 1024),),
+            b'{"status":"failed","error":{"code":"server_error"}}',
+            "model_json_usage_finish",
+            id="exhausted-media-type-prefix",
         ),
     ],
 )
@@ -1045,7 +1254,7 @@ def test_media_type_classification_is_shared_by_usage_and_failure_observers(
     tmp_path,
     real_flow,
     mitm_ctx,
-    content_type: str,
+    content_types: tuple[bytes, ...],
     body: bytes,
     usage_finish_key: str,
     model_provider_failure_api,
@@ -1055,13 +1264,22 @@ def test_media_type_classification_is_shared_by_usage_and_failure_observers(
         tmp_path / "proxy.jsonl",
         request_path="/v1/responses",
         response_body=body,
-        response_headers=header_map({"content-type": content_type}),
+        response_headers=http.Headers((b"Content-Type", value) for value in content_types),
     )
     flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
+    assert flow.response is not None
+    original_fields = flow.response.headers.fields
+    original_native = http._native
+
+    def reject_oversized_conversion(value: bytes) -> str:
+        assert len(value) <= 8 * 1024, "shared classifier decoded an oversized header"
+        return original_native(value)
 
     model_provider_failure.admit_flow(flow)
-    mitm_addon.responseheaders(flow)
+    with patch.object(http, "_native", reject_oversized_conversion):
+        mitm_addon.responseheaders(flow)
 
+    assert flow.response.headers.fields == original_fields
     assert usage_finish_key in flow.metadata
     other_usage_finish_key = (
         "model_json_usage_finish"

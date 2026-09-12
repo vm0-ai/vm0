@@ -3,8 +3,9 @@ import { VOICE_IO_POLISH_MAX_TEXT_CHARS } from "@okouai/api-contracts/contracts/
 import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
+import { logger } from "../../lib/log";
 import { readBoundedResponseText, safeJsonParse } from "../utils";
-import type { OpenRouterVoiceAudio } from "./openrouter-voice";
+import type { VoiceAudio } from "./voice-completion-types";
 import { requestVoiceProvider } from "./voice-provider-request";
 
 type TranscriptionModel = Extract<VoiceInputModel, { kind: "transcription" }>;
@@ -14,12 +15,7 @@ const transcriptionSchema = z.object({
   text: z.string().trim().max(VOICE_IO_POLISH_MAX_TEXT_CHARS),
 });
 
-export class VoiceTranscriptionRequestError extends Error {
-  constructor(readonly status: number) {
-    super("Voice transcription provider rejected the request");
-    this.name = "VoiceTranscriptionRequestError";
-  }
-}
+const L = logger("VoiceTranscription");
 
 export function isVoiceTranscriptionConfigured(
   model: TranscriptionModel,
@@ -31,7 +27,7 @@ export function isVoiceTranscriptionConfigured(
 
 export async function transcribeVoiceInputAudio(
   model: TranscriptionModel,
-  audio: OpenRouterVoiceAudio,
+  audio: VoiceAudio,
   signal: AbortSignal,
 ): Promise<string> {
   const elevenLabs = model.id === ELEVENLABS_MODEL;
@@ -71,7 +67,13 @@ export async function transcribeVoiceInputAudio(
     async (response) => {
       if (!response.ok) {
         await response.body?.cancel();
-        throw new VoiceTranscriptionRequestError(response.status);
+        L.warn("Voice transcription provider rejected the request", {
+          provider: elevenLabs ? "fal" : "openrouter",
+          model: model.id,
+          source: "http",
+          status: response.status,
+        });
+        throw new Error("Voice transcription provider rejected the request");
       }
       const body = await readBoundedResponseText(response, MAX_RESPONSE_BYTES);
       signal.throwIfAborted();

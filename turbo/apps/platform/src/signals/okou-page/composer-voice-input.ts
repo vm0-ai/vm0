@@ -150,9 +150,14 @@ function createVoiceDraftData(draftTarget: string) {
   );
   const capture = createVoiceDraftCaptureSignals();
   const captureError$ = state<unknown>(null);
+  const providerUnavailable$ = state<{
+    readonly recordingId: string;
+    readonly message: string;
+  } | null>(null);
   const state$ = computed(async (get): Promise<ComposerVoiceInputState> => {
     const active = get(capture.capture$);
     const captureError = get(captureError$);
+    const unavailable = get(providerUnavailable$);
     const restored = await settle(get(recording$));
     if (!restored.ok) {
       return {
@@ -167,7 +172,11 @@ function createVoiceDraftData(draftTarget: string) {
       message:
         captureError || restored.value?.sampleCount === 0
           ? voiceDraftStorageFailedMessage()
-          : undefined,
+          : unavailable && unavailable.recordingId === restored.value?.id
+            ? `${unavailable.message} ${i18n.t(($) => {
+                return $.chat.voice.retryReady;
+              })}`
+            : undefined,
     };
   });
   return {
@@ -177,6 +186,7 @@ function createVoiceDraftData(draftTarget: string) {
     restoreRecording$,
     capture,
     captureError$,
+    providerUnavailable$,
     state$,
   };
 }
@@ -190,7 +200,8 @@ function createVoiceDraftTranscription(
   readEditorContext$: Command<VoiceIoEditorContext, []>,
   lastAssistantMessage$: Computed<string | undefined>,
 ) {
-  const { recording$, storageKey$, ownedRecording$ } = data;
+  const { recording$, storageKey$, ownedRecording$, providerUnavailable$ } =
+    data;
   const incremental = createVoiceDraftTranscriptionSignals({
     storageKey$,
     readContext$: command(({ get, set }) => {
@@ -204,6 +215,7 @@ function createVoiceDraftTranscription(
     }),
   });
   const transcribe$ = command(async ({ get, set }, signal: AbortSignal) => {
+    set(providerUnavailable$, null);
     const recording = await get(recording$);
     signal.throwIfAborted();
     if (!recording) {
@@ -211,7 +223,19 @@ function createVoiceDraftTranscription(
     }
     const key = await get(storageKey$);
     signal.throwIfAborted();
-    const text = await set(incremental.transcribe$, signal);
+    const result = await set(incremental.transcribe$, signal);
+    signal.throwIfAborted();
+    if (result === undefined) {
+      return;
+    }
+    if (result.kind === "unavailable") {
+      set(providerUnavailable$, {
+        recordingId: recording.id,
+        message: result.message,
+      });
+      return;
+    }
+    const text = result.text;
     if (text === undefined) {
       return;
     }
@@ -420,6 +444,7 @@ function createVoiceActionBindings(
   const mount$ = onRef(
     command(async ({ set }, element: HTMLElement, signal: AbortSignal) => {
       set(element$, element);
+      // eslint-disable-next-line ccstate/no-create-child-abort-controller -- migrate this lifetime to the ccstate signal hierarchy
       set(internalOwner$, createChildAbortController(signal));
       signal.addEventListener(
         "abort",

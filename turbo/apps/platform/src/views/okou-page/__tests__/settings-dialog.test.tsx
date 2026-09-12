@@ -144,20 +144,28 @@ function buttonWithText(
   return button;
 }
 
-test("Offer only languages supported by the workspace", async () => {
+async function openSupportedLanguagePicker() {
   let preferences = createPreferences("pt-BR", ["en-US", "pt-BR", "de-DE"]);
   context.mocks.api(userPreferencesContract.get, ({ respond }) => {
     return respond(200, preferences);
   });
   context.mocks.api(userPreferencesContract.update, ({ body, respond }) => {
-    preferences = createPreferences(body.locale ?? "en-US", ["en-US"]);
+    preferences = {
+      ...preferences,
+      ...body,
+      supportedLocales:
+        body.locale === undefined ? preferences.supportedLocales : ["en-US"],
+    };
     return respond(200, preferences);
   });
 
   await openDialog("admin", "preference");
 
   click(await screen.findByRole("combobox", { name: "Idioma" }));
+}
 
+test("Offer only the workspace's supported languages", async () => {
+  await openSupportedLanguagePicker();
   const languageOptions = within(screen.getByRole("listbox")).getAllByRole(
     "option",
   );
@@ -168,6 +176,10 @@ test("Offer only languages supported by the workspace", async () => {
     }),
   ).toStrictEqual(["English", "Português (Brasil)", "Deutsch"]);
   expect(screen.queryByRole("option", { name: "Italiano" })).toBeNull();
+});
+
+test("Keep a saved single-language preference after closing and reopening Settings", async () => {
+  await openSupportedLanguagePicker();
   click(screen.getByRole("option", { name: "English" }));
 
   await waitFor(() => {

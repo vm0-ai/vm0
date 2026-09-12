@@ -88,10 +88,28 @@ Jobs that need one representative host use the deterministic selector:
 Runner image production resolves architecture groups, builds one runner image per
 configured group, and validates the manifest under that group's target triple.
 
+Runner binary cache reuse is target-specific. Prepare resolves small references
+for the current build-input digest; each image-build job downloads its own
+binary directly from the trusted R2 cache. GitHub cache metadata is a lookup
+index, not a second source of provenance validation for R2 objects. Cached
+binaries are not re-uploaded as a combined GitHub artifact.
+
+Targets without an available cache reference use the normal compile job and
+compiled GitHub artifact. After prepare selects a cache hit, its download is
+required: an unavailable object or failed download fails the image-build job.
+Compilation stays in the existing compile job. Publishing freshly compiled
+binaries to R2 remains optional.
+
 Crates host-bound tests resolve the same sanitized matrix and run architecture
 specific checks, including NBD COW tests, on matching metal. Jobs that need an
 actual host resolve the host subset inside the job instead of reading hosts from
 the matrix.
+
+Crates plans image validation with `validation-plan KEY` using the same
+deterministic host selection as `runner-build`. That job validates the entire
+selected architecture group; a parallel manifest matrix validates only the
+remaining groups. The full matrix still drives NBD COW and rootfs process tests.
+The CI gate requires both validation paths when applicable, including on reruns.
 
 Playwright uses the same metal inventory to bootstrap the runner exercised by
 the deployed product chat flow. Architecture-specific runner behavior remains

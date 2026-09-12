@@ -103,7 +103,7 @@ function AccountMenuSubscriptionsSkeleton() {
       {ACCOUNT_MENU_SUBSCRIPTION_PROVIDERS.map((provider, index) => {
         return (
           <div key={provider.type} className="flex flex-col gap-1.5">
-            {index > 0 && <div className="-mx-3 h-px bg-border" />}
+            {index > 0 && <div className="-mx-3 h-px bg-divider" />}
             <div className="h-3 w-20 animate-pulse rounded bg-muted/60" />
             {["fiveHour", "week"].map((kind) => {
               return (
@@ -165,7 +165,7 @@ function AccountMenuSubscriptionProviderSection({
         { provider: label },
       )}
     >
-      {divided && <div className="-mx-3 h-px bg-border" />}
+      {divided && <div className="-mx-3 h-px bg-divider" />}
       <h3 className="truncate text-xs font-medium leading-4 text-foreground">
         {label}
       </h3>

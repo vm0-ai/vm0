@@ -380,14 +380,16 @@ function mockInitialUsagePackPurchase(supportsFreeMembers?: boolean): void {
   });
 }
 
-async function openUsagePackPlanSelection(): Promise<{
+async function openUsagePackPlanSelection(
+  path = "/?settings=billing",
+): Promise<{
   choosePlanHeading: HTMLElement;
   proPlan: HTMLElement;
   teamPlan: HTMLElement;
 }> {
   await setupPage({
     context,
-    path: "/?settings=billing",
+    path,
     auth: {
       user: {
         id: "user_1",
@@ -528,7 +530,7 @@ test("Compare usage-pack plans before choosing one", async () => {
 });
 
 test.each(["pro", "team"] as const)(
-  "Default a new %s plan to the $20 member package",
+  "Default new '%s' member packages through 'checkout preview'",
   async (tier) => {
     mockInitialUsagePackPurchase(true);
     context.mocks.api(
@@ -555,12 +557,13 @@ test.each(["pro", "team"] as const)(
         });
       },
     );
-    const { proPlan, teamPlan } = await openUsagePackPlanSelection();
+    const { proPlan, teamPlan } = await openUsagePackPlanSelection(
+      "/agents?settings=billing",
+    );
     const plan = tier === "pro" ? proPlan : teamPlan;
     click(
       buttonByText(tier === "pro" ? "Start with Pro" : "Start with Team", plan),
     );
-
     const memberUsage = await screen.findByRole("group", {
       name: "Member usage",
     });
@@ -576,7 +579,6 @@ test.each(["pro", "team"] as const)(
       ).toHaveTextContent("21,234 credits · 6% off");
     }
     expect(buttonByText(upgradeLabel, orderSummary)).toBeEnabled();
-
     click(buttonByText(upgradeLabel, orderSummary));
     const confirmation = await screen.findByRole("dialog", {
       name: "Order summary",
@@ -587,7 +589,59 @@ test.each(["pro", "team"] as const)(
         screen.queryByRole("dialog", { name: "Order summary" }),
       ).not.toBeInTheDocument();
     });
+  },
+);
 
+test.each(["pro", "team"] as const)(
+  "Default new '%s' member packages through 'empty selection recovery'",
+  async (tier) => {
+    mockInitialUsagePackPurchase(true);
+    context.mocks.api(
+      billingUsagePackCheckoutContract.create,
+      ({ body, respond }) => {
+        expect(body).toMatchObject({
+          tier,
+          supportsInAppPreview: true,
+          memberUsagePacks: [
+            { memberId: "user_1", usagePackUsd: 20 },
+            { memberId: "user_2", usagePackUsd: 20 },
+            { memberId: "invitation_1", usagePackUsd: 20 },
+          ],
+        });
+        return respond(200, {
+          status: "preview",
+          purchaseType: "usage_pack",
+          tier,
+          immediateAmountCents: tier === "pro" ? 6000 : 22_000,
+          nextRecurringAmountCents: tier === "pro" ? 6000 : 22_000,
+          currency: "usd",
+          expiresAt: "2026-03-16T00:15:00Z",
+          previewToken: `usage-pack-${tier}-preview`,
+        });
+      },
+    );
+    const { proPlan, teamPlan } = await openUsagePackPlanSelection(
+      "/agents?settings=billing",
+    );
+    const plan = tier === "pro" ? proPlan : teamPlan;
+    click(
+      buttonByText(tier === "pro" ? "Start with Pro" : "Start with Team", plan),
+    );
+    const memberUsage = await screen.findByRole("group", {
+      name: "Member usage",
+    });
+    const orderSummary = screen.getByRole("region", {
+      name: "Order summary",
+    });
+    const upgradeLabel = tier === "pro" ? "Upgrade to Pro" : "Upgrade to Team";
+    for (const memberName of ["Alex Chen", "Sam Lee", "pending@example.com"]) {
+      expect(
+        within(memberUsage).getByRole("combobox", {
+          name: `Usage for ${memberName}`,
+        }),
+      ).toHaveTextContent("21,234 credits · 6% off");
+    }
+    expect(buttonByText(upgradeLabel, orderSummary)).toBeEnabled();
     for (const memberName of ["Alex Chen", "Sam Lee", "pending@example.com"]) {
       await selectMemberUsagePack(memberUsage, memberName, "No package");
     }
@@ -597,7 +651,6 @@ test.each(["pro", "team"] as const)(
         "Select a paid package for at least one member to continue.",
       ),
     ).toBeVisible();
-
     await selectMemberUsagePack(
       memberUsage,
       "Alex Chen",
@@ -1272,14 +1325,27 @@ test("Manage member packages on an Atom-granted plan", async () => {
   ).not.toBeInTheDocument();
 });
 
-test("Schedule and revise a legacy Team conversion", async () => {
+async function openLegacyTeamConversion(scheduled = false): Promise<void> {
   let migrationState: UsagePackMigrationStateResponse = {
     tier: "team",
-    targetTier: null,
-    status: "eligible",
-    migrationId: null,
+    targetTier: scheduled ? "team" : null,
+    status: scheduled ? "scheduled" : "eligible",
+    migrationId: scheduled ? "3ea4b7cf-d71e-45dc-8273-8bc8b9712490" : null,
     effectiveAt: "2026-09-01T00:00:00.000Z",
     hostedInvoiceUrl: null,
+    ...(scheduled
+      ? {
+          configuration: {
+            tier: "team" as const,
+            memberUsagePacks: [
+              { memberId: "user_1", usagePackUsd: 20 },
+              { memberId: "invitation_1", usagePackUsd: 50 },
+            ],
+            recurringAmountCents: 22_950,
+            currency: "usd",
+          },
+        }
+      : {}),
   };
   context.mocks.data.org({
     id: "org_1",
@@ -1458,6 +1524,10 @@ test("Schedule and revise a legacy Team conversion", async () => {
   });
 
   await screen.findByText("Team plan");
+}
+
+test("Schedule a legacy Team conversion after reviewing member packages", async () => {
+  await openLegacyTeamConversion();
   click(buttonByText("Compare all plans"));
   const choosePlanDialog = await screen.findByRole("dialog", {
     name: "Choose a plan",
@@ -1616,7 +1686,11 @@ test("Schedule and revise a legacy Team conversion", async () => {
     ),
   ).not.toBeInTheDocument();
   expect(screen.getByText("Legacy")).toBeInTheDocument();
+});
 
+test("Review and revise an already scheduled legacy Team conversion", async () => {
+  await openLegacyTeamConversion(true);
+  await screen.findByText("Switches to Team on Sep 1, 2026");
   click(buttonByText("Downgrade"));
   const unchangedChoosePlanDialog = await screen.findByRole("dialog", {
     name: "Choose a plan",

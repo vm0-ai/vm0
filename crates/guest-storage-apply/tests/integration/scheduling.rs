@@ -693,6 +693,65 @@ fn queued_independent_download_starts_when_slot_frees() {
     }
 }
 
+#[cfg(unix)]
+#[test]
+fn termination_with_active_and_pending_downloads_reaps_the_helper() {
+    for cancel_by_drop in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let (event_tx, event_rx) = mpsc::channel();
+        let release = ReleaseGate::new();
+        let observations = RequestObservations::new();
+        let numbered = create_numbered_storages(
+            &dir,
+            &event_tx,
+            |_| Some(release.waiter()),
+            observations.clone(),
+        )
+        .unwrap();
+        let execution = spawn_guest_storage_apply(
+            stringify!(termination_with_active_and_pending_downloads_reaps_the_helper),
+            &dir,
+            &numbered.storages,
+        )
+        .unwrap();
+        let child_id = execution.id().unwrap();
+        let started = wait_for_events(&event_rx, 4, REQUEST_START_TIMEOUT).unwrap();
+        assert_eq!(started.len(), 4);
+        assert_eq!(observations.active(), 4);
+
+        if cancel_by_drop {
+            drop(execution);
+        } else {
+            let error = execution
+                .wait_for_completion(
+                    stringify!(termination_with_active_and_pending_downloads_reaps_the_helper),
+                    Duration::ZERO,
+                    &release,
+                    &observations,
+                )
+                .unwrap_err();
+            assert!(error.contains("guest-storage-apply timed out"), "{error}");
+            assert!(error.contains("reap=completed with"), "{error}");
+        }
+        release.close();
+        observations
+            .wait_until_idle(RESPONDER_CLEANUP_TIMEOUT)
+            .unwrap();
+
+        process::verify_child_reaped(child_id).unwrap();
+        assert_eq!(observations.active(), 0);
+        assert_eq!(observations.max_active(), 4);
+        assert!(event_rx.try_iter().next().is_none());
+        for index in 0..5 {
+            assert!(
+                !dir.path()
+                    .join(format!("mount_{index}/file_{index}.txt"))
+                    .exists()
+            );
+        }
+    }
+}
+
 #[test]
 fn download_concurrency_cap_limits_initial_starts() {
     let dir = tempfile::tempdir().unwrap();

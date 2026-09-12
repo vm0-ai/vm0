@@ -39,7 +39,8 @@ const NETWORK_LOG_UPLOAD_ERROR_FIELD_MAX_CHARS: usize = 512;
 // Complement the per-request limits with finite per-run local, remote, and elapsed work.
 const NETWORK_LOG_UPLOAD_MAX_SOURCE_BYTES: u64 = 32 * 1024 * 1024;
 const NETWORK_LOG_UPLOAD_MAX_BATCHES: usize = 32;
-const NETWORK_LOG_UPLOAD_MAX_DURATION: Duration = Duration::from_secs(10);
+// Allow cumulative batch latency without extending HttpClient's per-request timeout.
+const NETWORK_LOG_UPLOAD_MAX_DURATION: Duration = Duration::from_secs(30);
 
 #[derive(Default)]
 struct UploadRejectionDetails {
@@ -1759,44 +1760,44 @@ mod tests {
     async fn upload_network_logs_uses_one_absolute_deadline() {
         let dir = tempfile::tempdir().unwrap();
         let path = network_log_file(&dir);
-        let logs = one_entry_per_batch_logs(3);
+        let logs = one_entry_per_batch_logs(5);
         tokio::fs::write(&path, network_log_content(&logs))
             .await
             .unwrap();
 
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let api_url = format!("http://{}", listener.local_addr().unwrap());
-        let first_received = Arc::new(tokio::sync::Notify::new());
-        let release_first = Arc::new(tokio::sync::Notify::new());
-        let second_received = Arc::new(tokio::sync::Notify::new());
-        let (second_request_id_sender, second_request_id_receiver) =
-            tokio::sync::oneshot::channel();
+        let batch_received = Arc::new(tokio::sync::Notify::new());
+        let release_batch = Arc::new(tokio::sync::Notify::new());
+        let final_received = Arc::new(tokio::sync::Notify::new());
+        let (final_request_id_sender, final_request_id_receiver) = tokio::sync::oneshot::channel();
         let server_task = {
-            let first_received = first_received.clone();
-            let release_first = release_first.clone();
-            let second_received = second_received.clone();
+            let batch_received = batch_received.clone();
+            let release_batch = release_batch.clone();
+            let final_received = final_received.clone();
             tokio::spawn(async move {
-                let (mut first, _) = listener.accept().await.unwrap();
-                let _ = read_http_request_body(&mut first).await;
-                first_received.notify_one();
-                release_first.notified().await;
-                first
-                    .write_all(
-                        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",
-                    )
-                    .await
-                    .unwrap();
-                drop(first);
+                for _ in 0..4 {
+                    let (mut stream, _) = listener.accept().await.unwrap();
+                    let _ = read_http_request_body(&mut stream).await;
+                    batch_received.notify_one();
+                    release_batch.notified().await;
+                    stream
+                        .write_all(
+                            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",
+                        )
+                        .await
+                        .unwrap();
+                }
 
-                let (mut second, _) = listener.accept().await.unwrap();
-                let second_request = read_http_request(&mut second).await;
-                second_request_id_sender
-                    .send(second_request.header(CLIENT_REQUEST_ID_HEADER).to_string())
+                let (mut final_stream, _) = listener.accept().await.unwrap();
+                let final_request = read_http_request(&mut final_stream).await;
+                final_request_id_sender
+                    .send(final_request.header(CLIENT_REQUEST_ID_HEADER).to_string())
                     .unwrap();
-                second_received.notify_one();
-                let hold_second = tokio::sync::Notify::new();
-                hold_second.notified().await;
-                drop(second);
+                final_received.notify_one();
+                let hold_final = tokio::sync::Notify::new();
+                hold_final.notified().await;
+                drop(final_stream);
             })
         };
 
@@ -1819,44 +1820,185 @@ mod tests {
             }
         });
 
-        tokio::select! {
-            () = first_received.notified() => {}
-            result = &mut upload => panic!("upload ended before first request: {result:#?}"),
+        let started_at = Instant::now();
+        for _ in 0..4 {
+            tokio::select! {
+                () = batch_received.notified() => {}
+                result = &mut upload => panic!("upload ended before expected request: {result:#?}"),
+            }
+            tokio::time::advance(Duration::from_secs(6)).await;
+            release_batch.notify_one();
         }
+        tokio::select! {
+            () = final_received.notified() => {}
+            result = &mut upload => panic!("upload ended before final request: {result:#?}"),
+        }
+        let final_request_id = final_request_id_receiver.await.unwrap();
         tokio::time::advance(Duration::from_secs(6)).await;
-        release_first.notify_one();
-        tokio::select! {
-            () = second_received.notified() => {}
-            result = &mut upload => panic!("upload ended before second request: {result:#?}"),
-        }
-        let second_request_id = second_request_id_receiver.await.unwrap();
-        clock_guard.abort();
-        let _ = clock_guard.await;
-        tokio::time::advance(Duration::from_secs(4)).await;
 
         let (_, events) = upload.await;
+        assert_eq!(started_at.elapsed(), Duration::from_secs(30));
+        clock_guard.abort();
+        let _ = clock_guard.await;
         server_task.abort();
         let _ = server_task.await;
 
         let truncation = captured_event(&events, "network log upload truncated");
-        let started = captured_batch_event(&events, "uploading network log batch", 2);
-        assert_batch_request_event(truncation, 2, "outcome_unknown");
+        let started = captured_batch_event(&events, "uploading network log batch", 5);
+        assert_eq!(truncation.level, tracing::Level::WARN);
+        assert_batch_request_event(truncation, 5, "outcome_unknown");
         assert_same_request_correlation(started, truncation);
         assert_eq!(
             event_field(truncation, "client_request_id"),
-            second_request_id
+            final_request_id
         );
         assert_event_field(truncation, "reason", "deadline");
-        assert_event_field(truncation, "attempted_batches", "2");
-        assert_event_field(truncation, "successful_batches", "1");
-        assert_event_field(truncation, "attempted_entries", "2");
-        assert_event_field(truncation, "uploaded_entries", "1");
+        assert_event_field(truncation, "attempted_batches", "5");
+        assert_event_field(truncation, "successful_batches", "4");
+        assert_event_field(truncation, "attempted_entries", "5");
+        assert_event_field(truncation, "uploaded_entries", "4");
         assert_event_field(truncation, "unconfirmed_entries", "1");
         assert_event_field(truncation, "remaining_source_bytes", "0");
         let uploaded = captured_event(&events, "uploaded network logs");
-        assert_event_field(uploaded, "batches", "1");
-        assert_event_field(uploaded, "count", "1");
+        assert_event_field(uploaded, "batches", "4");
+        assert_event_field(uploaded, "count", "4");
         assert!(!has_captured_event(&events, "network logs upload failed"));
+        assert!(path.exists());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn upload_network_logs_completes_slow_sequential_batches() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = network_log_file(&dir);
+        let logs = one_entry_per_batch_logs(3);
+        tokio::fs::write(&path, network_log_content(&logs))
+            .await
+            .unwrap();
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let http = HttpClient::new(HttpClientConfig {
+            api_url: format!("http://{}", listener.local_addr().unwrap()),
+            vercel_bypass: None,
+            client_session_id: "runner-session-test".to_string(),
+        })
+        .unwrap();
+        let received = Arc::new(tokio::sync::Notify::new());
+        let release = Arc::new(tokio::sync::Notify::new());
+        let server_task = {
+            let received = received.clone();
+            let release = release.clone();
+            tokio::spawn(async move {
+                for log in logs {
+                    let (mut stream, _) = listener.accept().await.unwrap();
+                    let body = read_http_request_body(&mut stream).await;
+                    let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                    assert_eq!(payload["networkLogs"], json!([log]));
+                    received.notify_one();
+                    release.notified().await;
+                    stream
+                        .write_all(
+                            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",
+                        )
+                        .await
+                        .unwrap();
+                }
+            })
+        };
+
+        let (_, events) = await_with_frozen_time(async {
+            let upload = capture_async_log_events(upload_network_logs(
+                &http,
+                RunId::nil(),
+                SANDBOX_TOKEN,
+                &path,
+            ));
+            tokio::pin!(upload);
+            let started_at = Instant::now();
+            for _ in 0..3 {
+                tokio::select! {
+                    () = received.notified() => {}
+                    result = &mut upload => panic!("upload ended before expected request: {result:#?}"),
+                }
+                tokio::time::advance(Duration::from_secs(6)).await;
+                release.notify_one();
+            }
+            let result = upload.await;
+            assert_eq!(started_at.elapsed(), Duration::from_secs(18));
+            result
+        })
+        .await;
+        server_task.await.unwrap();
+
+        let uploaded = captured_event(&events, "uploaded network logs");
+        assert_event_field(uploaded, "batches", "3");
+        assert_event_field(uploaded, "count", "3");
+        assert!(!has_captured_event(&events, "network log upload truncated"));
+        assert!(!has_captured_event(&events, "network logs upload failed"));
+        assert!(path.exists());
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn upload_network_logs_preserves_per_request_timeout() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = network_log_file(&dir);
+        tokio::fs::write(&path, network_log_content(&one_entry_per_batch_logs(2)))
+            .await
+            .unwrap();
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let http = HttpClient::new(HttpClientConfig {
+            api_url: format!("http://{}", listener.local_addr().unwrap()),
+            vercel_bypass: None,
+            client_session_id: "runner-session-test".to_string(),
+        })
+        .unwrap();
+        let received = Arc::new(tokio::sync::Notify::new());
+        let server_task = {
+            let received = received.clone();
+            tokio::spawn(async move {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let _ = read_http_request_body(&mut stream).await;
+                received.notify_one();
+                let mut byte = [0];
+                assert_eq!(stream.read(&mut byte).await.unwrap(), 0);
+                listener
+            })
+        };
+
+        let (_, events) = await_with_frozen_time(async {
+            let upload = capture_async_log_events(upload_network_logs(
+                &http,
+                RunId::nil(),
+                SANDBOX_TOKEN,
+                &path,
+            ));
+            tokio::pin!(upload);
+            let started_at = Instant::now();
+            tokio::select! {
+                () = received.notified() => {}
+                result = &mut upload => panic!("upload ended before request: {result:#?}"),
+            }
+            tokio::time::advance(Duration::from_secs(10)).await;
+            let result = upload.await;
+            assert_eq!(started_at.elapsed(), Duration::from_secs(10));
+            result
+        })
+        .await;
+        let listener = server_task.await.unwrap();
+        // Keep accepting through completion so a retry cannot hide behind connection refusal.
+        assert!(
+            tokio::time::timeout(Duration::from_millis(1), listener.accept())
+                .await
+                .is_err()
+        );
+
+        let failed = captured_batch_event(&events, "network logs upload failed", 1);
+        assert_eq!(failed.level, tracing::Level::WARN);
+        assert_batch_request_event(failed, 1, "transport_failure");
+        assert!(event_field(failed, "error").contains("timeout"));
+        assert!(!has_captured_event(&events, "network log upload truncated"));
+        assert!(!has_captured_event(&events, "uploaded network logs"));
+        assert!(path.exists());
     }
 
     #[tokio::test]

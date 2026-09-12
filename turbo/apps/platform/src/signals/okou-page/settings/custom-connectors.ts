@@ -186,6 +186,10 @@ const bumpReload$ = command(({ set }) => {
   });
 });
 
+export const retryCustomConnectors$ = command(({ set }) => {
+  set(bumpReload$);
+});
+
 const reloadCustomConnectorsFromRealtime$ = command(({ set }) => {
   set(bumpReload$);
   return false;

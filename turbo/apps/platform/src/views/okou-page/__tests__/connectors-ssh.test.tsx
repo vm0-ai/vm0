@@ -42,6 +42,8 @@ test.each([false, true])(
             host: "ssh.example.com",
             port: 22,
             username: "deploy",
+            credentialId: "d0000000-0000-4000-8000-000000000001",
+            credentialName: "Deployment login",
             generation: 1,
             learnedHostKey: null,
             createdAt: "2026-09-10T08:00:00.000Z",
@@ -224,11 +226,11 @@ test.each([0, 2])(
     expect(queryConnectorAction("link", "Manage SSH hosts")).toBeNull();
     click(getConnectorAction("button", "Filter connectors"));
     const categoryMenu = await screen.findByRole("menu");
-    click(getConnectorAction("menuitem", "Remote access1", categoryMenu));
+    click(getConnectorAction("menuitem", "Remote access", categoryMenu));
     await screen.findByRole("heading", { name: "Remote access" });
     expect(queryConnectorAction("link", "Manage SSH hosts")).not.toBeNull();
     expect(screen.queryByTestId("connector-category-grid")).toBeNull();
-    click(getConnectorAction("button", "Connectors"));
+    click(getConnectorAction("button", "Discover"));
     await screen.findByTestId("connector-shelf-communication-collaboration");
     expect(getConnectorAction("link", "Manage SSH hosts")).toBeInTheDocument();
   },
@@ -496,6 +498,8 @@ test("Returning from host management refreshes the SSH card after deleting the l
     host: "ssh.example.com",
     port: 22,
     username: "deploy",
+    credentialId: "d0000000-0000-4000-8000-000000000001",
+    credentialName: "Deployment login",
     generation: 1,
     learnedHostKey: null,
     createdAt: "2026-09-01T00:00:00Z",

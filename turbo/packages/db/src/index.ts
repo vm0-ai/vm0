@@ -1,6 +1,7 @@
 import * as runActivitySnapshotSchema from "./schema/run-activity-snapshot";
 import * as artifactShareSchema from "./schema/artifact-share";
 import * as userSchema from "./schema/user";
+import * as privacyChoiceSchema from "./schema/privacy-choice";
 import * as deviceCodesSchema from "./schema/device-codes";
 import * as cliTokensSchema from "./schema/cli-tokens";
 import * as desktopAuthHandoffCodeSchema from "./schema/desktop-auth-handoff-code";
@@ -137,12 +138,13 @@ import * as piMemoryPhase2JobSchema from "./schema/pi-memory-phase2-job";
 import * as piMemoryPhase2CheckpointSchema from "./schema/pi-memory-phase2-checkpoint";
 import * as piMemoryPublicationProvenanceSchema from "./schema/pi-memory-publication-provenance";
 import * as sshConnectionSchema from "./schema/ssh-connection";
-import * as sshConnectionCredentialSchema from "./schema/ssh-connection-credential";
+import * as sshCredentialSchema from "./schema/ssh-credential";
 import * as agentSshAccessSchema from "./schema/agent-ssh-access";
 
 export const schema = {
   ...runActivitySnapshotSchema,
   ...userSchema,
+  ...privacyChoiceSchema,
   ...artifactShareSchema,
   ...deviceCodesSchema,
   ...cliTokensSchema,
@@ -280,7 +282,7 @@ export const schema = {
   ...piMemoryPhase2CheckpointSchema,
   ...piMemoryPublicationProvenanceSchema,
   ...sshConnectionSchema,
-  ...sshConnectionCredentialSchema,
+  ...sshCredentialSchema,
   ...agentSshAccessSchema,
 };
 

@@ -260,8 +260,10 @@ function gatewayConnectionResponse(
   };
 }
 
-function mockGatewayConnectionLifecycle() {
-  let connections: ModelProviderConnectionResponse[] = [];
+function mockGatewayConnectionLifecycle(
+  initialConnections: ModelProviderConnectionResponse[] = [],
+) {
+  let connections = initialConnections;
   let updateSecret: string | undefined;
 
   context.mocks.api(
@@ -302,10 +304,61 @@ function mockGatewayConnectionLifecycle() {
   };
 }
 
+async function openExistingGateway(displayName: string, routed = false) {
+  mockAdminOrg();
+  context.mocks.data.orgModelProviders([]);
+  context.mocks.data.orgModelPolicies([
+    builtInPolicy(
+      "00000000-0000-4000-a000-000000000211",
+      "gpt-5.6-luna",
+      "GPT 5.6 Luna",
+      true,
+    ),
+    ...(routed
+      ? [
+          {
+            ...builtInPolicy(
+              "00000000-0000-4000-a000-000000000212",
+              "claude-sonnet-5",
+              "Claude Sonnet 5",
+              false,
+            ),
+            defaultProviderType: "custom-anthropic-messages" as const,
+            modelProviderSurfaceId: "00000000-0000-4000-a000-000000000301",
+          },
+        ]
+      : []),
+  ]);
+  const lifecycle = mockGatewayConnectionLifecycle([
+    gatewayConnectionResponse({
+      displayName,
+      surfaces: [
+        {
+          protocol: "anthropic-messages",
+          apiBaseUrl: "https://ai-gateway.vercel.sh",
+          authHeaderName: "Authorization",
+          authHeaderTemplate: "Bearer {{secret}}",
+          modelMappings: { "claude-sonnet-5": "anthropic/claude-sonnet-5" },
+        },
+      ],
+    }),
+  ]);
+  await openProvidersTab();
+  const heading = await screen.findByRole("heading", {
+    name: "Provider connections",
+  });
+  const section = heading.closest("section");
+  if (!(section instanceof HTMLElement)) {
+    throw new Error("Provider connections section not found");
+  }
+  await expect(within(section).findByText(displayName)).resolves.toBeVisible();
+  return { lifecycle, connectionsSection: section };
+}
+
 async function openProvidersTab(): Promise<void> {
   await setupPage({
     context,
-    path: "/?settings=model",
+    path: "/agents?settings=model",
   });
   await waitFor(() => {
     expect(
@@ -318,7 +371,7 @@ async function openProvidersTab(): Promise<void> {
 async function openModelSettings(): Promise<void> {
   await setupPage({
     context,
-    path: "/?settings=model",
+    path: "/agents?settings=model",
   });
   await waitFor(() => {
     expect(
@@ -563,7 +616,7 @@ test("Discard sensitive provider-connection drafts when Settings closes", async 
   expect(within(reopenedAddDialog).getByLabelText("API key")).toHaveValue("");
 });
 
-test("Add, edit, route through, and delete a workspace model gateway", async () => {
+async function openAddGatewayDialog() {
   mockAdminOrg();
   context.mocks.data.orgModelProviders([]);
   context.mocks.data.orgModelPolicies([
@@ -574,7 +627,7 @@ test("Add, edit, route through, and delete a workspace model gateway", async () 
       true,
     ),
   ]);
-  const lifecycle = mockGatewayConnectionLifecycle();
+  mockGatewayConnectionLifecycle();
 
   await openProvidersTab();
 
@@ -591,6 +644,11 @@ test("Add, edit, route through, and delete a workspace model gateway", async () 
   const addDialog = await screen.findByRole("dialog", {
     name: "Add model provider",
   });
+  return { addDialog, connectionsSection };
+}
+
+test("The workspace gateway form describes both supported request surfaces", async () => {
+  const { addDialog } = await openAddGatewayDialog();
   expect(
     within(addDialog).getByText(
       "Requests: https://ai-gateway.vercel.sh/v1/messages",
@@ -601,6 +659,10 @@ test("Add, edit, route through, and delete a workspace model gateway", async () 
       "Requests: https://ai-gateway.vercel.sh/v1/responses",
     ),
   ).toBeInTheDocument();
+});
+
+test("Add a workspace gateway without exposing its private key", async () => {
+  const { addDialog, connectionsSection } = await openAddGatewayDialog();
   await fill(within(addDialog).getByLabelText("API key"), "vck-test");
   click(buttonByText("Save changes", addDialog));
 
@@ -608,7 +670,11 @@ test("Add, edit, route through, and delete a workspace model gateway", async () 
     within(connectionsSection).findByText("Vercel AI Gateway"),
   ).resolves.toBeInTheDocument();
   expect(screen.queryByText("vck-test")).not.toBeInTheDocument();
+});
 
+test("Rename a workspace gateway and rotate its private API key", async () => {
+  const { lifecycle, connectionsSection } =
+    await openExistingGateway("Vercel AI Gateway");
   click(within(connectionsSection).getByLabelText("Gateway actions"));
   click(menuItemByText("Edit"));
   const editDialog = await screen.findByRole("dialog", {
@@ -635,7 +701,10 @@ test("Add, edit, route through, and delete a workspace model gateway", async () 
   expect(
     screen.getByTestId("org-model-policy-row-gpt-5.6-luna"),
   ).toBeInTheDocument();
+});
 
+test("Route a workspace model through an existing custom gateway", async () => {
+  await openExistingGateway("Vercel Edge Gateway");
   click(buttonByText("Add model"));
   await selectDialogModel("Claude Sonnet 5");
   const policyDialog = screen.getByRole("dialog", { name: "Add model" });
@@ -653,7 +722,17 @@ test("Add, edit, route through, and delete a workspace model gateway", async () 
       within(policyRow).getByText("Vercel Edge Gateway"),
     ).toBeInTheDocument();
   });
+});
 
+test("Deleting a gateway removes it from an already routed workspace model", async () => {
+  const { connectionsSection } = await openExistingGateway(
+    "Vercel Edge Gateway",
+    true,
+  );
+  const policyRow = await screen.findByTestId(
+    "org-model-policy-row-claude-sonnet-5",
+  );
+  await within(policyRow).findByText("Vercel Edge Gateway");
   click(within(connectionsSection).getByLabelText("Gateway actions"));
   click(menuItemByText("Delete"));
   const deleteDialog = await screen.findByRole("dialog", {
@@ -674,41 +753,33 @@ test("Add, edit, route through, and delete a workspace model gateway", async () 
   });
 });
 
-test("Offer only active models when adding a workspace route", async () => {
-  mockAdminOrg();
-  context.mocks.data.orgModelProviders([]);
-  context.mocks.data.orgModelPolicies([]);
-  await openProvidersTab();
+test.each([
+  { model: "GPT 5.6 Sol", active: true },
+  { model: "GPT 5.5", active: true },
+  { model: "Claude Sonnet 4.6", active: true },
+  { model: "Claude Opus 4.8", active: true },
+  { model: "DeepSeek V4 Flash", active: true },
+  { model: "DeepSeek V4 Pro", active: true },
+  { model: "Kimi K2.7 Code", active: false },
+  { model: "Claude Opus 4.7", active: false },
+])(
+  "Offer $model only when active while adding a workspace route",
+  async ({ model, active }) => {
+    mockAdminOrg();
+    context.mocks.data.orgModelProviders([]);
+    context.mocks.data.orgModelPolicies([]);
+    await openProvidersTab();
 
-  click(buttonByText("Add model"));
-  const dialog = screen.getByRole("dialog", { name: "Add model" });
-  click(within(dialog).getByRole("combobox"));
+    click(buttonByText("Add model"));
+    const dialog = screen.getByRole("dialog", { name: "Add model" });
+    click(within(dialog).getByRole("combobox"));
 
-  await expect(
-    screen.findByRole("option", { name: "GPT 5.6 Sol" }),
-  ).resolves.toBeInTheDocument();
-  await expect(
-    screen.findByRole("option", { name: "GPT 5.5" }),
-  ).resolves.toBeInTheDocument();
-  await expect(
-    screen.findByRole("option", { name: "Claude Sonnet 4.6" }),
-  ).resolves.toBeInTheDocument();
-  await expect(
-    screen.findByRole("option", { name: "Claude Opus 4.8" }),
-  ).resolves.toBeInTheDocument();
-  await expect(
-    screen.findByRole("option", { name: "DeepSeek V4 Flash" }),
-  ).resolves.toBeInTheDocument();
-  await expect(
-    screen.findByRole("option", { name: "DeepSeek V4 Pro" }),
-  ).resolves.toBeInTheDocument();
-  expect(
-    screen.queryByRole("option", { name: "Kimi K2.7 Code" }),
-  ).not.toBeInTheDocument();
-  expect(
-    screen.queryByRole("option", { name: "Claude Opus 4.7" }),
-  ).not.toBeInTheDocument();
-});
+    await screen.findByRole("option", { name: "GPT 5.6 Sol" });
+    expect(screen.queryAllByRole("option", { name: model })).toHaveLength(
+      active ? 1 : 0,
+    );
+  },
+);
 
 test("Limit free workspaces to eligible built-in models", async () => {
   mockAdminOrg();
@@ -750,6 +821,27 @@ test("Limit free workspaces to eligible built-in models", async () => {
   expect(within(deepseekRow).getByText("DeepSeek V4 Pro")).toBeInTheDocument();
 });
 
+test("Keep cloud onboarding hidden while native routes are supported", async () => {
+  await openAddApiKeyModelDialog();
+  const dialog = screen.getByRole("dialog", { name: "Add model" });
+  const provider = within(dialog)
+    .getAllByRole("combobox")
+    .find((element) => {
+      return element.textContent === "Anthropic";
+    });
+  if (!provider) {
+    throw new Error("Expected the selected Anthropic provider");
+  }
+  click(provider);
+  await expect(
+    screen.findByRole("option", { name: "Anthropic" }),
+  ).resolves.toBeVisible();
+  expect(screen.getByRole("option", { name: "OpenRouter" })).toBeVisible();
+  expect(
+    screen.queryByRole("option", { name: /Bedrock|Foundry/u }),
+  ).not.toBeInTheDocument();
+});
+
 test("Connect a workspace API key to a model route", async () => {
   await openAddApiKeyModelDialog();
   const dialog = screen.getByRole("dialog", { name: "Add model" });
@@ -771,7 +863,7 @@ test("Connect a workspace API key to a model route", async () => {
   expect(within(row).getByText("Anthropic")).toBeInTheDocument();
 });
 
-test("Rotate a workspace model API key", async () => {
+test("Reject an empty workspace model API key without replacing its provider", async () => {
   mockApiKeyModelRouteStory();
   await openProvidersTab();
 
@@ -791,6 +883,24 @@ test("Rotate a workspace model API key", async () => {
   click(buttonByText("Save changes"));
   expect(screen.getByText("API key is required")).toBeInTheDocument();
   expect(within(row).getByText("Anthropic")).toBeInTheDocument();
+});
+
+test("Rotate a workspace model API key without exposing the new secret", async () => {
+  mockApiKeyModelRouteStory();
+  await openProvidersTab();
+
+  const row = await screen.findByTestId("org-model-policy-row-claude-opus-4-8");
+  expect(within(row).getByText("Claude Opus 4.8")).toBeInTheDocument();
+  expect(within(row).getByText("Anthropic")).toBeInTheDocument();
+
+  click(within(row).getByLabelText("Actions for Claude Opus 4.8"));
+  click(menuItemByText("Edit model"));
+
+  await waitFor(() => {
+    expect(
+      screen.getByRole("dialog", { name: "Edit model" }),
+    ).toBeInTheDocument();
+  });
   await fill(
     screen.getByPlaceholderText("Enter your API key"),
     "  sk-ant-rotated  ",

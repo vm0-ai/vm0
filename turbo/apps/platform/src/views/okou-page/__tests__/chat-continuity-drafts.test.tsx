@@ -65,7 +65,7 @@ function composerFileInput(): HTMLInputElement {
   return input;
 }
 
-test("Keep each conversation's draft separate while navigating", async () => {
+async function editSeparateConversationDrafts() {
   const first = continuityThread(1, 1, "First draft conversation");
   const second = continuityThread(1, 2, "Second draft conversation");
   const secondServerDraft = continuityDraft([
@@ -88,7 +88,7 @@ test("Keep each conversation's draft separate while navigating", async () => {
   });
 
   const firstComposer = await messageComposer();
-  await userEvent.type(firstComposer, "First conversation follow-up");
+  await fill(firstComposer, "First conversation follow-up");
   expect(firstComposer).toHaveTextContent("First conversation follow-up");
 
   await openConversation(second.id);
@@ -98,16 +98,26 @@ test("Keep each conversation's draft separate while navigating", async () => {
     expect(document.body).toHaveTextContent("Keep this quoted requirement");
   });
   expect(secondComposer).not.toHaveTextContent("First conversation follow-up");
-  await userEvent.type(secondComposer, " and a separate note");
+  await userEvent
+    .setup({ delay: null })
+    .type(secondComposer, " and a separate note");
 
   await openConversation(first.id);
+  return { second };
+}
+
+test("Restore the first edited draft without leaking the other conversation's draft", async () => {
+  await editSeparateConversationDrafts();
   await waitFor(() => {
     expect(currentMessageComposer()).toHaveTextContent(
       "First conversation follow-up",
     );
   });
   expect(currentMessageComposer()).not.toHaveTextContent("a separate note");
+});
 
+test("Restore the second edited draft without leaking the other conversation's draft", async () => {
+  const { second } = await editSeparateConversationDrafts();
   await openConversation(second.id);
   await waitFor(() => {
     expect(currentMessageComposer()).toHaveTextContent("a separate note");
@@ -243,7 +253,7 @@ test("Restore a rich saved draft when a chat opens", async () => {
   expect(composer).toHaveTextContent("Preserve the launch date");
 });
 
-test("Save and clear typed drafts consistently", async () => {
+async function typePersistentDraft() {
   const target = continuityThread(4, 1, "Draft persistence target");
   const neighbor = continuityThread(4, 2, "Draft persistence neighbor");
   const workspace = installContinuityWorkspace(context, {
@@ -258,7 +268,7 @@ test("Save and clear typed drafts consistently", async () => {
   });
 
   const composer = await messageComposer();
-  await userEvent.type(composer, "Unsent launch checklist");
+  await fill(composer, "Unsent launch checklist");
   await waitFor(() => {
     expect(
       workspace.draftPatches.some((patch) => {
@@ -268,7 +278,11 @@ test("Save and clear typed drafts consistently", async () => {
       }),
     ).toBeTruthy();
   });
+  return { target, neighbor, workspace, composer };
+}
 
+test("Save a typed draft and restore it after navigating away", async () => {
+  const { target, neighbor } = await typePersistentDraft();
   await openConversation(neighbor.id);
   await openConversation(target.id);
   await waitFor(() => {
@@ -276,8 +290,15 @@ test("Save and clear typed drafts consistently", async () => {
       "Unsent launch checklist",
     );
   });
+});
 
-  const restoredComposer = await messageComposer();
+test("Clear a saved typed draft without restoring it on the next visit", async () => {
+  const {
+    target,
+    neighbor,
+    workspace,
+    composer: restoredComposer,
+  } = await typePersistentDraft();
   await userEvent.click(restoredComposer);
   await userEvent.keyboard("{Control>}a{/Control}{Backspace}");
   await waitFor(() => {

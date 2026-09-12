@@ -10,8 +10,17 @@ import { voiceIoQuotaContract } from "@okouai/api-contracts/contracts/voice-io-q
 import { userPreferencesRoutes } from "../user-preferences";
 import { voiceIoQuotaRoutes } from "../voice-io-quota";
 import { HttpResponse, http } from "msw";
+import {
+  mockGoogleVoice,
+  GOOGLE_STS_URL,
+  GOOGLE_IMPERSONATION_URL,
+  VERTEX_VOICE_URL,
+  vertexVoiceResponse,
+  type VertexVoiceRequest,
+} from "./helpers/google-voice";
 
 import { accept, testContext } from "../../../__tests__/test-context";
+import { stubTestVercelRuntimeToken } from "../../../__tests__/env-stub";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow } from "../../../lib/time";
@@ -27,46 +36,24 @@ import { voiceIoTranscribeRoutes } from "../voice-io-transcribe";
 const context = testContext();
 const mocks = createRouteMocks(context);
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+beforeEach(() => {
+  mockGoogleVoice();
+});
+afterEach(() => {
+  stubTestVercelRuntimeToken(undefined);
+});
 
-function recoveredVoiceResponse() {
-  return HttpResponse.json({
-    choices: [
-      {
-        finish_reason: "stop",
-        message: {
-          content: JSON.stringify({
-            transcript: "Recorded speech.",
-            polishedText: "Recorded speech.",
-            language: "en",
-          }),
-        },
-      },
-    ],
+function recoveredVoiceResponse(provider: "vertex" | "openrouter" = "vertex") {
+  const content = JSON.stringify({
+    transcript: "Recorded speech.",
+    polishedText: "Recorded speech.",
+    language: "en",
   });
-}
-
-interface OpenRouterRequest {
-  readonly model: string;
-  readonly reasoning?: {
-    readonly effort?: string;
-    readonly enabled?: boolean;
-  };
-  readonly messages: readonly {
-    readonly role: string;
-    readonly content:
-      | string
-      | readonly {
-          readonly type: string;
-          readonly text?: string;
-          readonly input_audio?: {
-            readonly data: string;
-            readonly format: string;
-          };
-        }[];
-  }[];
-  readonly response_format: {
-    readonly json_schema: { readonly name: string };
-  };
+  return provider === "vertex"
+    ? vertexVoiceResponse(content)
+    : HttpResponse.json({
+        choices: [{ finish_reason: "stop", message: { content } }],
+      });
 }
 
 function client() {
@@ -78,6 +65,16 @@ function client() {
 function preferencesClient() {
   return setupApp({ context, routes: userPreferencesRoutes })(
     userPreferencesContract,
+  );
+}
+
+async function selectGptAudio() {
+  await accept(
+    preferencesClient().update({
+      headers: { authorization: "Bearer clerk-session" },
+      body: { voiceInputModel: "openai/gpt-audio" },
+    }),
+    [200],
   );
 }
 
@@ -151,7 +148,7 @@ function form(
   return data;
 }
 
-async function enabledActor() {
+async function enabledActor(useGoogleCloud = true) {
   const actor = createBddApi(context).user();
   if (!actor.orgId) {
     throw new Error("Voice draft tests require an organization");
@@ -161,40 +158,406 @@ async function enabledActor() {
   await updateFeatureSwitchesForUser(
     context,
     { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
-    { [FeatureSwitchKey.VoiceInputV2]: true },
+    {
+      [FeatureSwitchKey.VoiceInputV2]: true,
+      ...(useGoogleCloud ? { [FeatureSwitchKey.VoiceGoogleCloud]: true } : {}),
+    },
   );
   return actor;
 }
 
-function requestAudioParts(request: OpenRouterRequest) {
-  const userMessage = request.messages[1];
-  if (!userMessage || typeof userMessage.content === "string") {
-    throw new Error("Expected a multimodal user message");
+function requestAudioParts(request: VertexVoiceRequest) {
+  const parts = request.contents[0]?.parts;
+  if (!parts) {
+    throw new Error("Expected native Google content");
   }
-  return userMessage.content;
-}
-
-function rejectDisabledReasoning(request: OpenRouterRequest) {
-  if (
-    request.reasoning?.effort === "none" ||
-    request.reasoning?.enabled === false
-  ) {
-    return HttpResponse.json(
-      {
-        error: {
-          message:
-            "Reasoning is mandatory for this endpoint and cannot be disabled.",
-          code: 400,
-          metadata: { provider_name: null },
-        },
-      },
-      { status: 400 },
-    );
-  }
-  return undefined;
+  return parts;
 }
 
 describe("voice input models and reference context", () => {
+  it.each([
+    { model: "google/gemini-2.5-flash-lite", tokens: 65_535, effort: "none" },
+    { model: "google/gemini-3.8-flash", tokens: 65_536, effort: "minimal" },
+  ] as const)(
+    "keeps $model on OpenRouter by default without Google credentials",
+    async ({ model, tokens, effort }) => {
+      await enabledActor(false);
+      mockOptionalEnv("GCP_LLM_PROJECT_ID", undefined);
+      mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      await accept(
+        preferencesClient().update({
+          headers: { authorization: "Bearer clerk-session" },
+          body: { voiceInputModel: model },
+        }),
+        [200],
+      );
+      let requestBody: unknown;
+      server.use(
+        http.post(OPENROUTER_URL, async ({ request }) => {
+          requestBody = await request.json();
+          return recoveredVoiceResponse("openrouter");
+        }),
+      );
+      const result = await accept(
+        client().segment({
+          headers: { authorization: "Bearer clerk-session" },
+          body: form([audioFile(1)]),
+        }),
+        [200],
+      );
+      expect(result.body.polishedText).toBe("Recorded speech.");
+      expect(requestBody).toMatchObject({
+        model,
+        max_tokens: tokens,
+        reasoning: { effort },
+        temperature: 0,
+        store: false,
+        response_format: { type: "json_schema" },
+        messages: [
+          expect.anything(),
+          {
+            role: "user",
+            content: expect.arrayContaining([
+              {
+                type: "input_audio",
+                input_audio: {
+                  format: "wav",
+                  data: Buffer.from(wavBytes(1)).toString("base64"),
+                },
+              },
+            ]),
+          },
+        ],
+      });
+    },
+  );
+
+  it("applies the Google override per request and switches back to OpenRouter when disabled", async () => {
+    const actor = await enabledActor(false);
+    if (!actor.orgId) {
+      throw new Error("Voice draft tests require an organization");
+    }
+    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    let googleRequests = 0;
+    let openRouterRequests = 0;
+    const content = JSON.stringify({
+      polishedText: "Recorded speech.",
+      language: "en",
+    });
+    server.use(
+      http.post(VERTEX_VOICE_URL, () => {
+        googleRequests += 1;
+        return vertexVoiceResponse(content);
+      }),
+      http.post(OPENROUTER_URL, () => {
+        openRouterRequests += 1;
+        return HttpResponse.json({
+          choices: [{ finish_reason: "stop", message: { content } }],
+        });
+      }),
+    );
+    for (const enabled of [false, true, false]) {
+      await updateFeatureSwitchesForUser(
+        context,
+        { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
+        { [FeatureSwitchKey.VoiceGoogleCloud]: enabled },
+      );
+      await accept(
+        client().segment({
+          headers: { authorization: "Bearer clerk-session" },
+          body: segmentForm([], "Recorded speech.", true, 1),
+        }),
+        [200],
+      );
+    }
+    expect(googleRequests).toBe(1);
+    expect(openRouterRequests).toBe(2);
+  });
+
+  describe("maximum-size voice upload", () => {
+    let wav: File;
+
+    beforeEach(async () => {
+      await enabledActor();
+      const pcm = wavBytes(1, 75);
+      const bytes = new Uint8Array(25 * 1024 * 1024);
+      bytes.set(pcm);
+      const view = new DataView(bytes.buffer);
+      view.setUint32(4, bytes.length - 8, true);
+      writeAscii(bytes, pcm.length, "JUNK");
+      view.setUint32(pcm.length + 4, bytes.length - pcm.length - 8, true);
+      wav = new File([bytes], "boundary.wav", { type: "audio/wav" });
+    });
+
+    it("accepts 25 MiB WAV with a base64-expanded native payload", async () => {
+      server.use(
+        http.post(VERTEX_VOICE_URL, async ({ request }) => {
+          // Smaller cases assert full JSON/audio contents. Count this large
+          // request as a stream instead of allocating another complete payload.
+          const reader = request.body?.getReader();
+          if (!reader) {
+            throw new Error("Expected a native Google request body");
+          }
+          const countBodyBytes = async () => {
+            let payloadBytes = 0;
+            while (true) {
+              const chunk = await reader.read();
+              if (chunk.done) {
+                return payloadBytes;
+              }
+              payloadBytes += chunk.value.byteLength;
+            }
+          };
+          const payloadBytes = await countBodyBytes().finally(() => {
+            reader.releaseLock();
+          });
+          expect(request.headers.get("content-type")).toBe("application/json");
+          expect(payloadBytes).toBeGreaterThan(4 * Math.ceil(wav.size / 3));
+          return vertexVoiceResponse(
+            JSON.stringify({ transcript: "Recorded speech.", language: "en" }),
+          );
+        }),
+      );
+      const result = await accept(
+        client().segment({
+          headers: { authorization: "Bearer clerk-session" },
+          body: segmentForm([wav], "", false, 75),
+        }),
+        [200],
+      );
+      expect(result.body).toStrictEqual({
+        transcript: "Recorded speech.",
+        language: "en",
+      });
+    });
+  });
+
+  it("rejects uploads above 25 MiB before any provider request", async () => {
+    await enabledActor();
+    const tooLarge = new File(
+      [new Uint8Array(25 * 1024 * 1024 + 1)],
+      "oversize.wav",
+      { type: "audio/wav" },
+    );
+    const result = await accept(
+      client().segment({
+        headers: { authorization: "Bearer clerk-session" },
+        body: segmentForm([tooLarge], "", false, 75),
+      }),
+      [400],
+    );
+    expect(result.body.error.message).toBe(
+      "Audio files are too large (max 25 MB)",
+    );
+  });
+
+  it.each(["openai/gpt-audio", "openai/gpt-audio-mini"] as const)(
+    "keeps %s audio on OpenRouter without Google configuration",
+    async (model) => {
+      mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      mockOptionalEnv("GCP_LLM_PROJECT_ID", undefined);
+      await enabledActor();
+      const headers = { authorization: "Bearer clerk-session" };
+      await accept(
+        preferencesClient().update({
+          headers,
+          body: { voiceInputModel: model },
+        }),
+        [200],
+      );
+      let calls = 0;
+      server.use(
+        http.post(
+          "https://openrouter.ai/api/v1/chat/completions",
+          async ({ request }) => {
+            calls += 1;
+            expect(request.headers.get("authorization")).toBe(
+              "Bearer test-openrouter-key",
+            );
+            const body: unknown = await request.json();
+            expect(body).toMatchObject({
+              model,
+              max_tokens: 16_384,
+              modalities: ["text"],
+              messages: [
+                {
+                  role: "system",
+                  content: expect.stringContaining("JSON schema:"),
+                },
+                {
+                  role: "user",
+                  content: [
+                    { type: "input_audio", input_audio: { format: "wav" } },
+                    { type: "text" },
+                  ],
+                },
+              ],
+            });
+            expect(body).not.toHaveProperty("reasoning");
+            expect(body).not.toHaveProperty("response_format");
+            return HttpResponse.json({
+              choices: [
+                {
+                  finish_reason: "stop",
+                  message: {
+                    content: JSON.stringify({
+                      transcript: "Recorded speech.",
+                      polishedText: "Recorded speech.",
+                      language: "en",
+                    }),
+                  },
+                },
+              ],
+            });
+          },
+        ),
+      );
+      await accept(
+        client().segment({ headers, body: form([audioFile(1)]) }),
+        [200],
+      );
+      expect(calls).toBe(1);
+    },
+  );
+
+  it("keeps ASR-only partial segments independent of Google and OpenRouter credentials", async () => {
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+    mockOptionalEnv("GCP_LLM_PROJECT_ID", undefined);
+    await enabledActor();
+    const headers = { authorization: "Bearer clerk-session" };
+    await accept(
+      preferencesClient().update({
+        headers,
+        body: { voiceInputModel: "fal-ai/elevenlabs/speech-to-text/scribe-v2" },
+      }),
+      [200],
+    );
+    let calls = 0;
+    server.use(
+      http.post(
+        "https://fal.run/fal-ai/elevenlabs/speech-to-text/scribe-v2",
+        () => {
+          calls += 1;
+          return HttpResponse.json({ text: "Recorded speech." });
+        },
+      ),
+    );
+    await accept(
+      client().segment({
+        headers,
+        body: segmentForm([audioFile(1)], "", false, 1),
+      }),
+      [200],
+    );
+    await accept(
+      client().segment({
+        headers,
+        body: segmentForm([audioFile(1)], "Recorded speech.", true, 2),
+      }),
+      [503],
+    );
+    expect(calls).toBe(1);
+  });
+
+  it.each([
+    { candidates: [] },
+    { promptFeedback: { blockReason: "SAFETY" }, candidates: [] },
+    {
+      candidates: [
+        {
+          finishReason: "MAX_TOKENS",
+          content: { parts: [{ text: "truncated" }] },
+        },
+      ],
+    },
+    {
+      candidates: [
+        {
+          finishReason: "STOP",
+          content: { parts: [{ text: "thinking only", thought: true }] },
+        },
+      ],
+    },
+    {
+      candidates: [
+        {
+          finishReason: "STOP",
+          content: {
+            parts: [
+              {
+                text: JSON.stringify({
+                  transcript: "Hello.",
+                  polishedText: "Hello.",
+                  language: "en",
+                  unexpected: true,
+                }),
+              },
+            ],
+          },
+        },
+      ],
+    },
+  ])("rejects unusable native candidates without retry: %j", async (body) => {
+    await enabledActor();
+    let calls = 0;
+    server.use(
+      http.post(VERTEX_VOICE_URL, () => {
+        calls += 1;
+        return HttpResponse.json(body);
+      }),
+    );
+    await accept(
+      client().segment({
+        headers: { authorization: "Bearer clerk-session" },
+        body: form([audioFile(1)]),
+      }),
+      [502],
+    );
+    expect(calls).toBe(1);
+  });
+
+  it("ignores thought parts and rejects an oversized native response", async () => {
+    await enabledActor();
+    const headers = { authorization: "Bearer clerk-session" };
+    server.use(
+      http.post(VERTEX_VOICE_URL, () => {
+        return HttpResponse.json({
+          candidates: [
+            {
+              finishReason: "STOP",
+              content: {
+                parts: [
+                  { text: "private reasoning", thought: true },
+                  {
+                    text: JSON.stringify({
+                      transcript: "Hello.",
+                      polishedText: "Hello.",
+                      language: "en",
+                    }),
+                  },
+                ],
+              },
+            },
+          ],
+        });
+      }),
+    );
+    const response = await accept(
+      client().segment({ headers, body: form([audioFile(1)]) }),
+      [200],
+    );
+    expect(response.body.transcript).toBe("Hello.");
+    server.use(
+      http.post(VERTEX_VOICE_URL, () => {
+        return new HttpResponse("x".repeat(1024 * 1024 + 1));
+      }),
+    );
+    await accept(
+      client().segment({ headers, body: form([audioFile(1)]) }),
+      [502],
+    );
+  });
+
   it("treats a dedicated transcription model's empty result as no speech", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     await enabledActor();
@@ -247,30 +610,53 @@ describe("voice input models and reference context", () => {
   it.each([
     {
       model: "google/gemini-2.5-flash-lite",
-      reasoning: "none",
-      maxTokens: 65_535,
+      native: "gemini-2.5-flash-lite",
+      location: "us-west1",
+      host: "us-west1-aiplatform.googleapis.com",
+      thinkingConfig: { thinkingBudget: 0 },
+      temperature: 0,
+      maxOutputTokens: 65_535,
     },
     {
       model: "google/gemini-3.1-flash-lite",
-      reasoning: "minimal",
-      maxTokens: 65_536,
+      native: "gemini-3.1-flash-lite",
+      location: "us",
+      host: "aiplatform.us.rep.googleapis.com",
+      thinkingConfig: { thinkingLevel: "MINIMAL" },
+      temperature: 0,
+      maxOutputTokens: 65_536,
     },
     {
       model: "google/gemini-3.6-flash",
-      reasoning: "minimal",
-      maxTokens: 65_536,
+      native: "gemini-3.6-flash",
+      location: "us",
+      host: "aiplatform.us.rep.googleapis.com",
+      thinkingConfig: { thinkingLevel: "MINIMAL" },
+      temperature: undefined,
+      maxOutputTokens: 65_536,
     },
     {
       model: "google/gemini-3.8-flash",
-      reasoning: "minimal",
-      maxTokens: 65_536,
+      native: "gemini-3.8-flash",
+      location: "us",
+      host: "aiplatform.us.rep.googleapis.com",
+      thinkingConfig: { thinkingLevel: "LOW" },
+      temperature: undefined,
+      maxOutputTokens: 65_536,
     },
-    { model: "openai/gpt-audio", reasoning: null, maxTokens: 16_384 },
-    { model: "openai/gpt-audio-mini", reasoning: null, maxTokens: 16_384 },
   ] as const)(
-    "uses the persisted $model preference for a non-staff user",
-    async ({ model, reasoning, maxTokens }) => {
-      mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    "uses the persisted $model preference through its native Google region without OpenRouter",
+    async ({
+      model,
+      native,
+      location,
+      host,
+      thinkingConfig,
+      temperature,
+      maxOutputTokens,
+    }) => {
+      mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+      const google = mockGoogleVoice();
       await enabledActor();
       const headers = { authorization: "Bearer clerk-session" };
       await accept(
@@ -282,24 +668,36 @@ describe("voice input models and reference context", () => {
       );
       const saved = await accept(preferencesClient().get({ headers }), [200]);
       expect(saved.body.voiceInputModel).toBe(model);
-      let providerRequest: unknown;
+      let calls = 0;
       server.use(
-        http.post(OPENROUTER_URL, async ({ request }) => {
-          providerRequest = await request.json();
-          return HttpResponse.json({
-            choices: [
-              {
-                finish_reason: "stop",
-                message: {
-                  content: JSON.stringify({
-                    transcript: "Ship on Monday.",
-                    polishedText: "Ship on Monday.",
-                    language: "en",
-                  }),
-                },
-              },
-            ],
+        http.post(VERTEX_VOICE_URL, async ({ request }) => {
+          calls += 1;
+          expect(request.url).toBe(
+            `https://${host}/v1/projects/${google.project}/locations/${location}/publishers/google/models/${native}:generateContent`,
+          );
+          expect(request.headers.get("authorization")).toBe(
+            "Bearer synthetic-google-token",
+          );
+          const body = (await request.json()) as VertexVoiceRequest;
+          expect(body.generationConfig).toMatchObject({
+            thinkingConfig,
+            maxOutputTokens,
+            responseMimeType: "application/json",
+            responseSchema: {
+              required: ["transcript", "polishedText", "language"],
+            },
           });
+          expect(body.generationConfig.temperature).toBe(temperature);
+          expect(body).not.toHaveProperty("model");
+          expect(body).not.toHaveProperty("messages");
+          expect(body).not.toHaveProperty("store");
+          return vertexVoiceResponse(
+            JSON.stringify({
+              transcript: "Ship on Monday.",
+              polishedText: "Ship on Monday.",
+              language: "en",
+            }),
+          );
         }),
       );
       const response = await accept(
@@ -307,18 +705,8 @@ describe("voice input models and reference context", () => {
         [200],
       );
       expect(response.body.polishedText).toBe("Ship on Monday.");
-      expect(providerRequest).toMatchObject({ model, max_tokens: maxTokens });
-      if (reasoning) {
-        expect(providerRequest).toMatchObject({
-          reasoning: { effort: reasoning },
-          response_format: { type: "json_schema" },
-        });
-      } else {
-        expect(providerRequest).not.toHaveProperty("reasoning");
-        expect(providerRequest).not.toHaveProperty("response_format");
-        expect(providerRequest).toMatchObject({ modalities: ["text"] });
-      }
       expect(response.headers.get("X-Voice-Input-Model")).toBeNull();
+      expect(calls).toBe(1);
     },
   );
 
@@ -364,17 +752,21 @@ describe("voice input models and reference context", () => {
             return HttpResponse.json({ text: "um ship Monday" });
           },
         ),
-        http.post(OPENROUTER_URL, async ({ request }) => {
+        http.post(VERTEX_VOICE_URL, async ({ request }) => {
           polishRequest = await request.json();
           return HttpResponse.json({
-            choices: [
+            candidates: [
               {
-                finish_reason: "stop",
-                message: {
-                  content: JSON.stringify({
-                    polishedText: "Ship Monday.",
-                    language: "en",
-                  }),
+                finishReason: "STOP",
+                content: {
+                  parts: [
+                    {
+                      text: JSON.stringify({
+                        polishedText: "Ship Monday.",
+                        language: "en",
+                      }),
+                    },
+                  ],
                 },
               },
             ],
@@ -400,7 +792,7 @@ describe("voice input models and reference context", () => {
           : { model, input_audio: { format: "wav" }, response_format: "json" },
       );
       expect(polishRequest).toMatchObject({
-        model: "google/gemini-3.1-flash-lite",
+        generationConfig: { thinkingConfig: { thinkingLevel: "MINIMAL" } },
       });
       expect(response.headers.get("X-Voice-Input-Model")).toBe(model);
       expect(response.headers.get("X-Voice-Polish-Model")).toBe(
@@ -442,18 +834,22 @@ describe("voice input models and reference context", () => {
     expect(reset.body.voiceInputModel).toBeNull();
     let providerRequest: unknown;
     server.use(
-      http.post(OPENROUTER_URL, async ({ request }) => {
+      http.post(VERTEX_VOICE_URL, async ({ request }) => {
         providerRequest = await request.json();
         return HttpResponse.json({
-          choices: [
+          candidates: [
             {
-              finish_reason: "stop",
-              message: {
-                content: JSON.stringify({
-                  transcript: "Hello.",
-                  polishedText: "Hello.",
-                  language: "en",
-                }),
+              finishReason: "STOP",
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify({
+                      transcript: "Hello.",
+                      polishedText: "Hello.",
+                      language: "en",
+                    }),
+                  },
+                ],
               },
             },
           ],
@@ -466,7 +862,7 @@ describe("voice input models and reference context", () => {
     );
     expect(response.body.polishedText).toBe("Hello.");
     expect(providerRequest).toMatchObject({
-      model: "google/gemini-3.1-flash-lite",
+      generationConfig: { thinkingConfig: { thinkingLevel: "MINIMAL" } },
     });
   });
 
@@ -481,24 +877,24 @@ describe("voice input models and reference context", () => {
         selected: "the previous scope",
         after: " before shipping version 1.5.",
       };
-      let providerRequest: OpenRouterRequest | undefined;
+      let providerRequest: VertexVoiceRequest | undefined;
       server.use(
-        http.post(OPENROUTER_URL, async ({ request }) => {
-          providerRequest = (await request.json()) as OpenRouterRequest;
-          const reasoningError = rejectDisabledReasoning(providerRequest);
-          if (reasoningError) {
-            return reasoningError;
-          }
+        http.post(VERTEX_VOICE_URL, async ({ request }) => {
+          providerRequest = (await request.json()) as VertexVoiceRequest;
           return HttpResponse.json({
-            choices: [
+            candidates: [
               {
-                finish_reason: "stop",
-                message: {
-                  content: JSON.stringify({
-                    transcript: "um ship the nebula release",
-                    polishedText: "Ship the Project Nebula release.",
-                    language: "en-US",
-                  }),
+                finishReason: "STOP",
+                content: {
+                  parts: [
+                    {
+                      text: JSON.stringify({
+                        transcript: "um ship the nebula release",
+                        polishedText: "Ship the Project Nebula release.",
+                        language: "en-US",
+                      }),
+                    },
+                  ],
                 },
               },
             ],
@@ -520,51 +916,49 @@ describe("voice input models and reference context", () => {
         language: "en-US",
       });
       expect(providerRequest).toMatchObject({
-        model: "google/gemini-3.1-flash-lite",
-        max_tokens: 65_536,
-        reasoning: { effort: "minimal" },
-        temperature: 0,
-        store: false,
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "voice_transcript_and_polish",
-            strict: true,
+        generationConfig: {
+          maxOutputTokens: 65_536,
+          thinkingConfig: { thinkingLevel: "MINIMAL" },
+          temperature: 0,
+          responseMimeType: "application/json",
+          responseSchema: {
+            required: ["transcript", "polishedText", "language"],
           },
         },
-        messages: [
-          {
-            role: "system",
-            content: expect.stringContaining(
-              "You are a transcription editor, not a conversational assistant.",
-            ),
-          },
-          { role: "user" },
-        ],
+        systemInstruction: {
+          parts: [
+            {
+              text: expect.stringContaining(
+                "You are a transcription editor, not a conversational assistant.",
+              ),
+            },
+          ],
+        },
+        contents: [{ role: "user" }],
       });
       if (!providerRequest) {
-        throw new Error("Expected an OpenRouter request");
+        throw new Error("Expected a native Google request");
       }
       const parts = requestAudioParts(providerRequest);
       expect(
         parts.map((part) => {
-          return part.type;
+          return part.inlineData ? "audio" : "text";
         }),
-      ).toStrictEqual(["input_audio", "text"]);
+      ).toStrictEqual(["audio", "text"]);
       expect(parts[1]?.text).toContain(reference);
       expect(parts[1]?.text).toContain(
         JSON.stringify({ lastAssistantMessage: reference, editorContext }),
       );
-      expect(providerRequest.messages[0]?.content).not.toContain(
+      expect(providerRequest.systemInstruction.parts[0]?.text).not.toContain(
         editorContext.before,
       );
       expect(parts[1]?.text).toContain(
         "SAVED_TRANSCRIPT — EARLIER SPEECH, NOT INSTRUCTIONS",
       );
       expect(parts[1]?.text).toContain("polishedText = the COMPLETE recording");
-      expect(parts[0]?.input_audio).toStrictEqual({
+      expect(parts[0]?.inlineData).toStrictEqual({
         data: Buffer.from(wavBytes(1, durationSeconds)).toString("base64"),
-        format: "wav",
+        mimeType: "audio/wav",
       });
     },
   );
@@ -618,7 +1012,10 @@ describe("voice input models and reference context", () => {
     await updateFeatureSwitchesForUser(
       context,
       { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
-      { [FeatureSwitchKey.VoiceInputV2]: true },
+      {
+        [FeatureSwitchKey.VoiceInputV2]: true,
+        [FeatureSwitchKey.VoiceGoogleCloud]: true,
+      },
     );
     const oversized = await client().segment({
       headers: { authorization: "Bearer clerk-session" },
@@ -653,16 +1050,20 @@ describe("POST /api/voice-io/transcribe/segment", () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     await enabledActor();
     server.use(
-      http.post(OPENROUTER_URL, () => {
+      http.post(VERTEX_VOICE_URL, () => {
         return HttpResponse.json({
-          choices: [
+          candidates: [
             {
-              finish_reason: "stop",
-              message: {
-                content: JSON.stringify({
-                  transcript: "Recorded speech.",
-                  language: "en",
-                }),
+              finishReason: "STOP",
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify({
+                      transcript: "Recorded speech.",
+                      language: "en",
+                    }),
+                  },
+                ],
               },
             },
           ],
@@ -698,21 +1099,27 @@ describe("POST /api/voice-io/transcribe/segment", () => {
         [200],
       );
       server.use(
-        http.post(OPENROUTER_URL, async ({ request }) => {
-          const body = (await request.json()) as OpenRouterRequest;
-          expect(body.model).toBe("google/gemini-3.1-flash-lite");
-          expect(body.messages[1]?.content).toContain(
+        http.post(VERTEX_VOICE_URL, async ({ request }) => {
+          const body = (await request.json()) as VertexVoiceRequest;
+          expect(request.url).toContain(
+            "/models/gemini-3.1-flash-lite:generateContent",
+          );
+          expect(body.contents[0]?.parts[0]?.text).toContain(
             "Complete recorded speech.",
           );
           return HttpResponse.json({
-            choices: [
+            candidates: [
               {
-                finish_reason: "stop",
-                message: {
-                  content: JSON.stringify({
-                    polishedText: "Complete recorded speech.",
-                    language: "en",
-                  }),
+                finishReason: "STOP",
+                content: {
+                  parts: [
+                    {
+                      text: JSON.stringify({
+                        polishedText: "Complete recorded speech.",
+                        language: "en",
+                      }),
+                    },
+                  ],
                 },
               },
             ],
@@ -740,17 +1147,21 @@ describe("POST /api/voice-io/transcribe/segment", () => {
       mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
       await enabledActor();
       server.use(
-        http.post(OPENROUTER_URL, () => {
+        http.post(VERTEX_VOICE_URL, () => {
           return HttpResponse.json({
-            choices: [
+            candidates: [
               {
-                finish_reason: "stop",
-                message: {
-                  content: JSON.stringify({
-                    transcript: "[NO_SPEECH]",
-                    ...(final ? { polishedText: "[NO_SPEECH]" } : {}),
-                    language: "und",
-                  }),
+                finishReason: "STOP",
+                content: {
+                  parts: [
+                    {
+                      text: JSON.stringify({
+                        transcript: "[NO_SPEECH]",
+                        ...(final ? { polishedText: "[NO_SPEECH]" } : {}),
+                        language: "und",
+                      }),
+                    },
+                  ],
                 },
               },
             ],
@@ -800,17 +1211,21 @@ describe("POST /api/voice-io/transcribe/segment", () => {
       mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
       await enabledActor();
       server.use(
-        http.post(OPENROUTER_URL, () => {
+        http.post(VERTEX_VOICE_URL, () => {
           return HttpResponse.json({
-            choices: [
+            candidates: [
               {
-                finish_reason: "stop",
-                message: {
-                  content: JSON.stringify({
-                    transcript,
-                    polishedText,
-                    language: "en",
-                  }),
+                finishReason: "STOP",
+                content: {
+                  parts: [
+                    {
+                      text: JSON.stringify({
+                        transcript,
+                        polishedText,
+                        language: "en",
+                      }),
+                    },
+                  ],
                 },
               },
             ],
@@ -834,17 +1249,21 @@ describe("POST /api/voice-io/transcribe/segment", () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     await enabledActor();
     server.use(
-      http.post(OPENROUTER_URL, () => {
+      http.post(VERTEX_VOICE_URL, () => {
         return HttpResponse.json({
-          choices: [
+          candidates: [
             {
-              finish_reason: "stop",
-              message: {
-                content: JSON.stringify({
-                  transcript: "[NO_SPEECH]",
-                  polishedText: "Use LaunchPad for this release.",
-                  language: "und",
-                }),
+              finishReason: "STOP",
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify({
+                      transcript: "[NO_SPEECH]",
+                      polishedText: "Use LaunchPad for this release.",
+                      language: "und",
+                    }),
+                  },
+                ],
               },
             },
           ],
@@ -863,17 +1282,21 @@ describe("POST /api/voice-io/transcribe/segment", () => {
     await enabledActor();
     const invented = "x".repeat(200);
     server.use(
-      http.post(OPENROUTER_URL, () => {
+      http.post(VERTEX_VOICE_URL, () => {
         return HttpResponse.json({
-          choices: [
+          candidates: [
             {
-              finish_reason: "stop",
-              message: {
-                content: JSON.stringify({
-                  transcript: invented,
-                  polishedText: `Earlier speech. ${invented}`,
-                  language: "en",
-                }),
+              finishReason: "STOP",
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify({
+                      transcript: invented,
+                      polishedText: `Earlier speech. ${invented}`,
+                      language: "en",
+                    }),
+                  },
+                ],
               },
             },
           ],
@@ -890,7 +1313,10 @@ describe("POST /api/voice-io/transcribe/segment", () => {
     expect(response.body.error.code).toBe("VOICE_TRANSCRIPTION_FAILED");
   });
 
-  it("counts one free-tier recording only after finalization, including a failed final attempt", async () => {
+  it.each([
+    "unfinished segments",
+    "a failed final attempt followed by a successful retry",
+  ])("counts free-tier recordings correctly for %s", async (phase) => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     const actor = await enabledActor();
     if (!actor.orgId) {
@@ -910,49 +1336,61 @@ describe("POST /api/voice-io/transcribe/segment", () => {
     };
     let failFinal = true;
     server.use(
-      http.post(OPENROUTER_URL, async ({ request }) => {
-        const body = (await request.json()) as OpenRouterRequest;
-        const polishing = typeof body.messages[1]?.content === "string";
+      http.post(VERTEX_VOICE_URL, async ({ request }) => {
+        const body = (await request.json()) as VertexVoiceRequest;
+        const polishing = body.contents[0]?.parts.every((part) => {
+          return part.inlineData === undefined;
+        });
         if (polishing && failFinal) {
           return new HttpResponse(null, { status: 503 });
         }
         return HttpResponse.json({
-          choices: [
+          candidates: [
             {
-              finish_reason: "stop",
-              message: {
-                content: JSON.stringify(
-                  polishing
-                    ? {
-                        polishedText: "First part. Second part.",
-                        language: "en",
-                      }
-                    : { transcript: "Recorded part.", language: "en" },
-                ),
+              finishReason: "STOP",
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify(
+                      polishing
+                        ? {
+                            polishedText: "First part. Second part.",
+                            language: "en",
+                          }
+                        : { transcript: "Recorded part.", language: "en" },
+                    ),
+                  },
+                ],
               },
             },
           ],
         });
       }),
     );
-    await accept(
-      client().segment({
-        headers,
-        body: segmentForm([audioFile(1, 60)], "", false, 60),
-      }),
-      [200],
-    );
-    await accept(
-      client().segment({
-        headers,
-        body: segmentForm([audioFile(2, 60)], "First part.", false, 120),
-      }),
-      [200],
-    );
-    await expect(readQuota()).resolves.toMatchObject({
-      allowed: true,
-      count: 0,
-    });
+    if (phase === "unfinished segments") {
+      await accept(
+        client().segment({
+          headers,
+          body: segmentForm([audioFile(1, 60)], "", false, 60),
+        }),
+        [200],
+      );
+      await accept(
+        client().segment({
+          headers,
+          body: segmentForm([audioFile(2, 60)], "First part.", false, 120),
+        }),
+        [200],
+      );
+      await expect(readQuota()).resolves.toMatchObject({
+        allowed: true,
+        count: 0,
+      });
+      return;
+    }
+
+    // Finalization receives the accumulated transcript from the client; it
+    // does not depend on server-owned state from the earlier segment requests.
     await accept(
       client().segment({
         headers,
@@ -990,16 +1428,20 @@ describe("POST /api/voice-io/transcribe/segment", () => {
       credits: 10_000,
     });
     server.use(
-      http.post(OPENROUTER_URL, () => {
+      http.post(VERTEX_VOICE_URL, () => {
         return HttpResponse.json({
-          choices: [
+          candidates: [
             {
-              finish_reason: "stop",
-              message: {
-                content: JSON.stringify({
-                  transcript: "New speech.",
-                  language: "en",
-                }),
+              finishReason: "STOP",
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify({
+                      transcript: "New speech.",
+                      language: "en",
+                    }),
+                  },
+                ],
               },
             },
           ],
@@ -1051,28 +1493,34 @@ describe("POST /api/voice-io/transcribe/segment", () => {
   it("uses the saved prefix as context and combines only the final segment with whole-recording polish", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     await enabledActor();
-    const inputs: OpenRouterRequest[] = [];
+    const inputs: VertexVoiceRequest[] = [];
     server.use(
-      http.post(OPENROUTER_URL, async ({ request }) => {
-        const body = (await request.json()) as OpenRouterRequest;
+      http.post(VERTEX_VOICE_URL, async ({ request }) => {
+        const body = (await request.json()) as VertexVoiceRequest;
         inputs.push(body);
         const finishing =
-          body.response_format.json_schema.name ===
-          "voice_transcript_and_polish";
+          body.generationConfig.responseSchema?.required.includes(
+            "polishedText",
+          );
         return HttpResponse.json({
-          choices: [
+          candidates: [
             {
-              finish_reason: "stop",
-              message: {
-                content: JSON.stringify(
-                  finishing
-                    ? {
-                        transcript: "Send it tomorrow.",
-                        polishedText: "LaunchPad is ready. Send it tomorrow.",
-                        language: "en",
-                      }
-                    : { transcript: "LaunchPad is ready.", language: "en" },
-                ),
+              finishReason: "STOP",
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify(
+                      finishing
+                        ? {
+                            transcript: "Send it tomorrow.",
+                            polishedText:
+                              "LaunchPad is ready. Send it tomorrow.",
+                            language: "en",
+                          }
+                        : { transcript: "LaunchPad is ready.", language: "en" },
+                    ),
+                  },
+                ],
               },
             },
           ],
@@ -1109,24 +1557,23 @@ describe("POST /api/voice-io/transcribe/segment", () => {
       language: "en",
     });
     expect(inputs).toHaveLength(2);
-    expect(inputs[0]?.messages[0]?.content).toContain(
+    expect(inputs[0]?.systemInstruction.parts[0]?.text).toContain(
       "ONLY newly spoken content",
     );
-    expect(inputs[1]?.messages[0]?.content).toContain(
+    expect(inputs[1]?.systemInstruction.parts[0]?.text).toContain(
       "ONLY newly spoken content",
     );
-    expect(inputs[1]?.messages[0]?.content).toContain(
+    expect(inputs[1]?.systemInstruction.parts[0]?.text).toContain(
       "overlapping boundary exactly once",
     );
     expect(requestAudioParts(inputs[1]!)).toContainEqual(
       expect.objectContaining({
-        type: "text",
         text: expect.stringContaining("LaunchPad is ready."),
       }),
     );
     expect(
       requestAudioParts(inputs[1]!).filter((part) => {
-        return part.type === "input_audio";
+        return part.inlineData !== undefined;
       }),
     ).toHaveLength(1);
   });
@@ -1135,26 +1582,32 @@ describe("POST /api/voice-io/transcribe/segment", () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     await enabledActor();
     server.use(
-      http.post(OPENROUTER_URL, async ({ request }) => {
-        const body = (await request.json()) as OpenRouterRequest;
-        const content = body.messages[1]?.content;
+      http.post(VERTEX_VOICE_URL, async ({ request }) => {
+        const body = (await request.json()) as VertexVoiceRequest;
+        const textOnly = body.contents[0]?.parts.every((part) => {
+          return part.inlineData === undefined;
+        });
         return HttpResponse.json({
-          choices: [
+          candidates: [
             {
-              finish_reason: "stop",
-              message: {
-                content: JSON.stringify(
-                  typeof content === "string"
-                    ? {
-                        polishedText: "Keep the earlier speech.",
-                        language: "en",
-                      }
-                    : {
-                        transcript: "[NO_SPEECH]",
-                        polishedText: "Keep the earlier speech.",
-                        language: "en",
-                      },
-                ),
+              finishReason: "STOP",
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify(
+                      textOnly
+                        ? {
+                            polishedText: "Keep the earlier speech.",
+                            language: "en",
+                          }
+                        : {
+                            transcript: "[NO_SPEECH]",
+                            polishedText: "Keep the earlier speech.",
+                            language: "en",
+                          },
+                    ),
+                  },
+                ],
               },
             },
           ],
@@ -1200,18 +1653,24 @@ describe("POST /api/voice-io/transcribe/segment", () => {
           return HttpResponse.json({ text: "Second part." });
         },
       ),
-      http.post(OPENROUTER_URL, async ({ request }) => {
-        const body = (await request.json()) as OpenRouterRequest;
-        expect(body.messages[1]?.content).toContain("First part. Second part.");
+      http.post(VERTEX_VOICE_URL, async ({ request }) => {
+        const body = (await request.json()) as VertexVoiceRequest;
+        expect(body.contents[0]?.parts[0]?.text).toContain(
+          "First part. Second part.",
+        );
         return HttpResponse.json({
-          choices: [
+          candidates: [
             {
-              finish_reason: "stop",
-              message: {
-                content: JSON.stringify({
-                  polishedText: "First part. Second part.",
-                  language: "en",
-                }),
+              finishReason: "STOP",
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify({
+                      polishedText: "First part. Second part.",
+                      language: "en",
+                    }),
+                  },
+                ],
               },
             },
           ],
@@ -1256,26 +1715,33 @@ describe("POST /api/voice-io/transcribe/segment", () => {
             });
           },
         ),
-        http.post(OPENROUTER_URL, async ({ request }) => {
-          const body = (await request.json()) as OpenRouterRequest;
-          expect(body.messages[0]?.content).toContain("only the new content");
-          expect(body.messages[1]?.content).toContain(
+        http.post(VERTEX_VOICE_URL, async ({ request }) => {
+          const body = (await request.json()) as VertexVoiceRequest;
+          expect(body.systemInstruction.parts[0]?.text).toContain(
+            "only the new content",
+          );
+          expect(body.contents[0]?.parts[0]?.text).toContain(
             "===== SAVED_TRANSCRIPT =====\nLaunchPad is ready.",
           );
           return HttpResponse.json({
-            choices: [
+            candidates: [
               {
-                finish_reason: "stop",
-                message: {
-                  content: JSON.stringify({
-                    transcript: "Send it tomorrow.",
-                    ...(final
-                      ? {
-                          polishedText: "LaunchPad is ready. Send it tomorrow.",
-                        }
-                      : {}),
-                    language: "en",
-                  }),
+                finishReason: "STOP",
+                content: {
+                  parts: [
+                    {
+                      text: JSON.stringify({
+                        transcript: "Send it tomorrow.",
+                        ...(final
+                          ? {
+                              polishedText:
+                                "LaunchPad is ready. Send it tomorrow.",
+                            }
+                          : {}),
+                        language: "en",
+                      }),
+                    },
+                  ],
                 },
               },
             ],
@@ -1338,17 +1804,21 @@ describe("POST /api/voice-io/transcribe/segment", () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     await enabledActor();
     server.use(
-      http.post(OPENROUTER_URL, () => {
+      http.post(VERTEX_VOICE_URL, () => {
         return HttpResponse.json({
-          choices: [
+          candidates: [
             {
-              finish_reason: "stop",
-              message: {
-                content: JSON.stringify({
-                  transcript: "[NO_SPEECH]",
-                  polishedText: "[NO_SPEECH]",
-                  language: "und",
-                }),
+              finishReason: "STOP",
+              content: {
+                parts: [
+                  {
+                    text: JSON.stringify({
+                      transcript: "[NO_SPEECH]",
+                      polishedText: "[NO_SPEECH]",
+                      language: "und",
+                    }),
+                  },
+                ],
               },
             },
           ],
@@ -1374,10 +1844,117 @@ describe("voice provider capacity recovery", () => {
     context.mocks.signalTimers.delay.mockResolvedValue(undefined);
   });
 
-  it.each([429, 503])(
-    "recovers HTTP %i without error signals and counts the recording once",
-    async (status) => {
+  it.each([GOOGLE_STS_URL, GOOGLE_IMPERSONATION_URL, VERTEX_VOICE_URL])(
+    "returns provider-unavailability for a connection failure at %s",
+    async (url) => {
+      await enabledActor();
+      let calls = 0;
+      server.use(
+        http.post(url, () => {
+          calls += 1;
+          return HttpResponse.error();
+        }),
+      );
+      const response = await accept(
+        client().segment({
+          headers: { authorization: "Bearer clerk-session" },
+          body: form([audioFile(1)]),
+        }),
+        [503],
+      );
+      expect(response.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+      expect(calls).toBe(1);
+    },
+  );
+
+  it("reports invalid structured Google output without logging its transcript", async () => {
+    await enabledActor();
+    server.use(
+      http.post(VERTEX_VOICE_URL, () => {
+        return vertexVoiceResponse(
+          JSON.stringify({
+            transcript: "private transcript without required fields",
+          }),
+        );
+      }),
+    );
+    const response = await accept(
+      client().segment({
+        headers: { authorization: "Bearer clerk-session" },
+        body: form([audioFile(1)]),
+      }),
+      [502],
+    );
+    expect(response.body.error.code).toBe("VOICE_TRANSCRIPTION_FAILED");
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledExactlyOnceWith(
+      "Google voice request rejected",
+      expect.objectContaining({
+        reason: "invalid_output",
+        operation: "voice_transcript_and_polish",
+        status: 502,
+      }),
+    );
+    expect(
+      JSON.stringify(context.mocks.axiomLogging.warn.mock.calls),
+    ).not.toContain("private transcript");
+  });
+
+  it.each([
+    {
+      name: "HTTP 429",
+      provider: "vertex" as const,
+      failure: () => {
+        return new HttpResponse(null, { status: 429 });
+      },
+    },
+    {
+      name: "HTTP 503",
+      provider: "vertex" as const,
+      failure: () => {
+        return new HttpResponse(null, { status: 503 });
+      },
+    },
+    {
+      name: "HTTP 200 with a top-level capacity error",
+      provider: "openrouter" as const,
+      failure: () => {
+        return HttpResponse.json({
+          error: { code: 429, metadata: { error_type: "rate_limit_exceeded" } },
+        });
+      },
+    },
+    {
+      name: "HTTP 200 with an explicit code and no typed metadata",
+      provider: "openrouter" as const,
+      failure: () => {
+        return HttpResponse.json({ error: { code: 503 } });
+      },
+    },
+    {
+      name: "HTTP 200 with a failed completion and partial output",
+      provider: "openrouter" as const,
+      failure: () => {
+        return HttpResponse.json({
+          choices: [
+            {
+              finish_reason: "error",
+              error: {
+                code: 502,
+                metadata: { error_type: "provider_unavailable" },
+              },
+              message: { content: "Partial output must not be used" },
+            },
+          ],
+        });
+      },
+    },
+  ])(
+    "recovers $name without error signals and counts the recording once",
+    async ({ failure, provider }) => {
       const actor = await enabledActor();
+      if (provider === "openrouter") {
+        await selectGptAudio();
+      }
       if (!actor.orgId) {
         throw new Error("Expected an organization");
       }
@@ -1388,12 +1965,15 @@ describe("voice provider capacity recovery", () => {
       });
       const requests: string[] = [];
       server.use(
-        http.post(OPENROUTER_URL, async ({ request }) => {
-          requests.push(await request.text());
-          return requests.length === 1
-            ? new HttpResponse(null, { status })
-            : recoveredVoiceResponse();
-        }),
+        http.post(
+          provider === "vertex" ? VERTEX_VOICE_URL : OPENROUTER_URL,
+          async ({ request }) => {
+            requests.push(await request.text());
+            return requests.length === 1
+              ? failure()
+              : recoveredVoiceResponse(provider);
+          },
+        ),
       );
       const headers = { authorization: "Bearer clerk-session" };
       const result = await accept(
@@ -1413,16 +1993,101 @@ describe("voice provider capacity recovery", () => {
       expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
       expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
         "Voice provider request recovered",
-        expect.objectContaining({ attempts: 2, provider: "openrouter" }),
+        expect.objectContaining({ attempts: 2, provider }),
       );
     },
   );
+
+  it("shares the attempt budget across HTTP and completion failures", async () => {
+    await enabledActor();
+    await selectGptAudio();
+    let attempts = 0;
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        attempts += 1;
+        if (attempts === 1) {
+          return new HttpResponse(null, { status: 503 });
+        }
+        return attempts <= 3
+          ? HttpResponse.json({
+              error: {
+                code: 429,
+                message: "private provider details",
+                metadata: {
+                  error_type: "rate_limit_exceeded",
+                  raw: "private audio context",
+                },
+              },
+            })
+          : recoveredVoiceResponse("openrouter");
+      }),
+    );
+    const response = await accept(
+      client().segment({
+        headers: { authorization: "Bearer clerk-session" },
+        body: form([audioFile(1)]),
+      }),
+      [503],
+    );
+    expect(response.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+    expect(attempts).toBe(3);
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledExactlyOnceWith(
+      "Voice provider recovery exhausted",
+      expect.objectContaining({
+        source: "completion",
+        status: 429,
+        errorType: "rate_limit_exceeded",
+        attempts: 3,
+      }),
+    );
+    expect(
+      JSON.stringify(context.mocks.axiomLogging.warn.mock.calls),
+    ).not.toContain("private");
+  });
+
+  it.each([
+    { code: 401, metadata: { error_type: "authentication" } },
+    { code: 502, metadata: { error_type: "authentication" } },
+    { code: 400, metadata: { error_type: "invalid_request" } },
+    { code: 502, metadata: { error_type: "unmapped" } },
+    { code: 502, metadata: { error_type: "unexpected/provider/type" } },
+    { metadata: { error_type: "provider_unavailable" } },
+  ])("keeps non-recoverable body error %j actionable", async (error) => {
+    await enabledActor();
+    await selectGptAudio();
+    let attempts = 0;
+    server.use(
+      http.post(OPENROUTER_URL, () => {
+        attempts += 1;
+        return attempts === 1
+          ? HttpResponse.json({ error })
+          : recoveredVoiceResponse("openrouter");
+      }),
+    );
+    const response = await accept(
+      client().segment({
+        headers: { authorization: "Bearer clerk-session" },
+        body: form([audioFile(1)]),
+      }),
+      [502],
+    );
+    expect(response.body.error.code).toBe("VOICE_TRANSCRIPTION_FAILED");
+    expect(attempts).toBe(1);
+    expect(context.mocks.signalTimers.delay).not.toHaveBeenCalled();
+    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledExactlyOnceWith(
+      "OpenRouter voice completion rejected",
+      expect.objectContaining({
+        source: "completion",
+        model: expect.any(String),
+      }),
+    );
+  });
 
   it("ends persistent capacity failures after three attempts with actionable reporting", async () => {
     await enabledActor();
     let attempts = 0;
     server.use(
-      http.post(OPENROUTER_URL, () => {
+      http.post(VERTEX_VOICE_URL, () => {
         attempts += 1;
         return attempts <= 3
           ? new HttpResponse(null, { status: 429 })
@@ -1464,7 +2129,7 @@ describe("voice provider capacity recovery", () => {
       });
       let available = false;
       server.use(
-        http.post(OPENROUTER_URL, () => {
+        http.post(VERTEX_VOICE_URL, () => {
           if (available) {
             return recoveredVoiceResponse();
           }
@@ -1491,7 +2156,7 @@ describe("voice provider capacity recovery", () => {
     await enabledActor();
     let attempts = 0;
     server.use(
-      http.post(OPENROUTER_URL, () => {
+      http.post(VERTEX_VOICE_URL, () => {
         attempts += 1;
         return attempts === 1
           ? new HttpResponse(null, {
@@ -1519,7 +2184,7 @@ describe("voice provider capacity recovery", () => {
     mockNow(started);
     let attempts = 0;
     server.use(
-      http.post(OPENROUTER_URL, () => {
+      http.post(VERTEX_VOICE_URL, () => {
         attempts += 1;
         if (attempts > 1) {
           mockNow(started + 15_000);
@@ -1550,7 +2215,7 @@ describe("voice provider capacity recovery", () => {
     const retryStarted = createDeferredPromise<void>(context.signal);
     let attempts = 0;
     server.use(
-      http.post(OPENROUTER_URL, async ({ request }) => {
+      http.post(VERTEX_VOICE_URL, async ({ request }) => {
         attempts += 1;
         if (attempts === 1) {
           return new HttpResponse(null, { status: 429 });
@@ -1587,71 +2252,82 @@ describe("voice provider capacity recovery", () => {
     );
   });
 
-  it("keeps the recovery deadline active while reading a successful response body", async () => {
-    await enabledActor();
-    mockNow(new Date("2026-09-09T08:00:00Z"));
-    const deadline = new AbortController();
-    context.mocks.abortSignal.timeout.mockImplementation((milliseconds) => {
-      return milliseconds === 15_000 ? deadline.signal : undefined;
-    });
-    const reading = createDeferredPromise<void>(context.signal);
-    let attempts = 0;
-    server.use(
-      http.post(OPENROUTER_URL, ({ request }) => {
-        attempts += 1;
-        if (attempts === 1) {
-          return new HttpResponse(null, { status: 429 });
-        }
-        const body = new ReadableStream<Uint8Array>(
-          {
-            start(controller) {
-              request.signal.addEventListener(
-                "abort",
-                () => {
-                  controller.error(
-                    new DOMException("Body aborted", "AbortError"),
+  it.each(["http", "completion"])(
+    "keeps the %s recovery deadline active while reading a response body",
+    async (source) => {
+      await enabledActor();
+      if (source === "completion") {
+        await selectGptAudio();
+      }
+      mockNow(new Date("2026-09-09T08:00:00Z"));
+      const deadline = new AbortController();
+      context.mocks.abortSignal.timeout.mockImplementation((milliseconds) => {
+        return milliseconds === 15_000 ? deadline.signal : undefined;
+      });
+      const reading = createDeferredPromise<void>(context.signal);
+      let attempts = 0;
+      server.use(
+        http.post(
+          source === "http" ? VERTEX_VOICE_URL : OPENROUTER_URL,
+          ({ request }) => {
+            attempts += 1;
+            if (attempts === 1) {
+              return source === "http"
+                ? new HttpResponse(null, { status: 429 })
+                : HttpResponse.json({ error: { code: 429 } });
+            }
+            const body = new ReadableStream<Uint8Array>(
+              {
+                start(controller) {
+                  request.signal.addEventListener(
+                    "abort",
+                    () => {
+                      controller.error(
+                        new DOMException("Body aborted", "AbortError"),
+                      );
+                    },
+                    { once: true },
                   );
                 },
-                { once: true },
-              );
-            },
-            pull() {
-              reading.resolve();
-            },
+                pull() {
+                  reading.resolve();
+                },
+              },
+              { highWaterMark: 0 },
+            );
+            return new HttpResponse(body, {
+              headers: { "Content-Type": "application/json" },
+            });
           },
-          { highWaterMark: 0 },
-        );
-        return new HttpResponse(body, {
-          headers: { "Content-Type": "application/json" },
-        });
-      }),
-    );
-    const pending = client().segment({
-      headers: { authorization: "Bearer clerk-session" },
-      body: form([audioFile(1)]),
-    });
-    await reading.promise;
-    deadline.abort(
-      new DOMException("Recovery deadline reached", "TimeoutError"),
-    );
-    const response = await accept(pending, [503]);
-    expect(response.body.error.code).toBe("PROVIDER_UNAVAILABLE");
-    expect(attempts).toBe(2);
-    expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalledWith(
-      "Voice provider request recovered",
-      expect.anything(),
-    );
-    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledExactlyOnceWith(
-      "Voice provider recovery exhausted",
-      expect.objectContaining({ status: 429, attempts: 2 }),
-    );
-  });
+        ),
+      );
+      const pending = client().segment({
+        headers: { authorization: "Bearer clerk-session" },
+        body: form([audioFile(1)]),
+      });
+      await reading.promise;
+      deadline.abort(
+        new DOMException("Recovery deadline reached", "TimeoutError"),
+      );
+      const response = await accept(pending, [503]);
+      expect(response.body.error.code).toBe("PROVIDER_UNAVAILABLE");
+      expect(attempts).toBe(2);
+      expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalledWith(
+        "Voice provider request recovered",
+        expect.anything(),
+      );
+      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledExactlyOnceWith(
+        "Voice provider recovery exhausted",
+        expect.objectContaining({ status: 429, attempts: 2 }),
+      );
+    },
+  );
 
   it("keeps provider authentication errors non-retryable and actionable", async () => {
     await enabledActor();
     let attempts = 0;
     server.use(
-      http.post(OPENROUTER_URL, () => {
+      http.post(VERTEX_VOICE_URL, () => {
         attempts += 1;
         return attempts === 1
           ? new HttpResponse(null, { status: 401 })
@@ -1669,7 +2345,7 @@ describe("voice provider capacity recovery", () => {
     expect(attempts).toBe(1);
     expect(context.mocks.signalTimers.delay).not.toHaveBeenCalled();
     expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-      "OpenRouter voice request rejected",
+      "Google voice request rejected",
       expect.objectContaining({ status: 401 }),
     );
   });
@@ -1677,8 +2353,8 @@ describe("voice provider capacity recovery", () => {
   it("keeps an invalid successful response as a genuine transcription failure", async () => {
     await enabledActor();
     server.use(
-      http.post(OPENROUTER_URL, () => {
-        return HttpResponse.json({ choices: [] });
+      http.post(VERTEX_VOICE_URL, () => {
+        return HttpResponse.json({ candidates: [] });
       }),
     );
     const response = await accept(
@@ -1706,7 +2382,7 @@ describe("voice provider capacity recovery", () => {
     });
     let attempts = 0;
     server.use(
-      http.post(OPENROUTER_URL, () => {
+      http.post(VERTEX_VOICE_URL, () => {
         attempts += 1;
         return new HttpResponse(null, { status: 429 });
       }),
@@ -1778,55 +2454,51 @@ describe("voice provider capacity recovery", () => {
     },
   );
 
-  it("retries failed polish without repeating successful dedicated ASR", async () => {
-    await enabledActor();
-    const headers = { authorization: "Bearer clerk-session" };
-    await accept(
-      preferencesClient().update({
-        headers,
-        body: { voiceInputModel: "qwen/qwen3-asr-1.7b" },
-      }),
-      [200],
-    );
-    let asrAttempts = 0;
-    let polishAttempts = 0;
-    server.use(
-      http.post("https://openrouter.ai/api/v1/audio/transcriptions", () => {
-        asrAttempts += 1;
-        return asrAttempts === 1
-          ? HttpResponse.json({ text: "Recorded speech." })
-          : new HttpResponse(null, { status: 400 });
-      }),
-      http.post(OPENROUTER_URL, () => {
-        polishAttempts += 1;
-        return polishAttempts === 1
-          ? new HttpResponse(null, { status: 503 })
-          : HttpResponse.json({
-              choices: [
-                {
-                  finish_reason: "stop",
-                  message: {
-                    content: JSON.stringify({
-                      polishedText: "Recorded speech.",
-                      language: "en",
-                    }),
-                  },
-                },
-              ],
-            });
-      }),
-    );
-    const response = await accept(
-      client().segment({ headers, body: form([audioFile(1)]) }),
-      [200],
-    );
-    expect(response.body).toStrictEqual({
-      transcript: "Recorded speech.",
-      polishedText: "Recorded speech.",
-      language: "en",
-    });
-    expect(asrAttempts).toBe(1);
-    expect(polishAttempts).toBe(2);
-    expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
-  });
+  it.each([429, 503])(
+    "retries Google polish HTTP %i without repeating successful dedicated ASR",
+    async (status) => {
+      await enabledActor();
+      const headers = { authorization: "Bearer clerk-session" };
+      await accept(
+        preferencesClient().update({
+          headers,
+          body: { voiceInputModel: "qwen/qwen3-asr-1.7b" },
+        }),
+        [200],
+      );
+      let asrAttempts = 0;
+      let polishAttempts = 0;
+      server.use(
+        http.post("https://openrouter.ai/api/v1/audio/transcriptions", () => {
+          asrAttempts += 1;
+          return asrAttempts === 1
+            ? HttpResponse.json({ text: "Recorded speech." })
+            : new HttpResponse(null, { status: 400 });
+        }),
+        http.post(VERTEX_VOICE_URL, () => {
+          polishAttempts += 1;
+          return polishAttempts === 1
+            ? new HttpResponse(null, { status })
+            : vertexVoiceResponse(
+                JSON.stringify({
+                  polishedText: "Recorded speech.",
+                  language: "en",
+                }),
+              );
+        }),
+      );
+      const response = await accept(
+        client().segment({ headers, body: form([audioFile(1)]) }),
+        [200],
+      );
+      expect(response.body).toStrictEqual({
+        transcript: "Recorded speech.",
+        polishedText: "Recorded speech.",
+        language: "en",
+      });
+      expect(asrAttempts).toBe(1);
+      expect(polishAttempts).toBe(2);
+      expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
+    },
+  );
 });

@@ -125,6 +125,7 @@ test.each(targets)(
 test.each(targets)(
   "Reuse an unfinished $target recording in the forward dialog without replacing it",
   async ({ name, path }) => {
+    // eslint-disable-next-line ccstate/no-create-child-abort-controller -- migrate this lifetime to the ccstate signal hierarchy
     const initialPage = createChildAbortController(context.signal);
     installVoiceBoundaries();
     context.mocks.browser.voiceInput({ rms: 0.12 });

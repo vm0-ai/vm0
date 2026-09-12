@@ -2,6 +2,7 @@
 //! representation without changing the complete local normalized event.
 
 mod common;
+use common::delivery_image;
 
 use base64::Engine as _;
 use guest_agent::masker::SecretMasker;
@@ -46,6 +47,32 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
         RUN_ID,
         Duration::ZERO,
     )?;
+    let small_image = format!(
+        "data:image/png;base64,{}",
+        delivery_image::png_base64(1, 1)?
+    );
+    let half_image = format!(
+        "data:image/png;base64,{}",
+        delivery_image::png_base64(1024, 512)?
+    );
+    let large_image = format!(
+        "data:image/png;base64,{}",
+        delivery_image::png_base64(1024, 1024)?
+    );
+    let image = |url: &str| serde_json::json!({"type":"input_image","image_url":url});
+    let image_items = serde_json::json!([
+        {"type":"functionCallOutput","id":"small-image","name":"read","output":[image(&small_image)]},
+        {"type":"functionCallOutput","id":"large-image","name":"read","namespace":"tools","output":[image(&large_image)]},
+        {"type":"functionCallOutput","id":"aggregate-images","name":"read","output":[image(&half_image),image(&half_image),image(&small_image)]},
+        {"type":"functionCallOutput","id":"structure-output","name":"read","namespace":"tools","output":std::iter::once(image(&half_image)).chain(std::iter::repeat_n(serde_json::json!({"type":"input_text","text":"bounded-content"}),100_000)).collect::<Vec<_>>()},
+        {"type":"commandExecution","id":"failed-command","command":"false","status":"failed","exitCode":7,"durationMs":42,"aggregatedOutput":format!("failed-output-head-{}-failed-output-tail", "x".repeat(MAX_REQUEST_BYTES))}
+    ]);
+    let items_path = tmp.path().join("delivery-items.json");
+    std::fs::write(&items_path, serde_json::to_vec(&image_items)?)?;
+    runtime.config.user_env.insert(
+        "MOCK_CODEX_DELIVERY_ITEMS_PATH".into(),
+        items_path.to_string_lossy().into_owned(),
+    );
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
     let _system_log = common::SystemLogOverrideGuard::set(runtime.paths.system_log_file());
     let encoded_secret = base64::engine::general_purpose::STANDARD.encode(SECRET);
@@ -60,7 +87,7 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
 
     assert_eq!(result.exit_code, common::CLEAN_EXIT);
     assert!(result.control_error.is_none());
-    assert_eq!(result.last_event_sequence, Some(11));
+    assert_eq!(result.last_event_sequence, Some(16));
 
     server
         .wait_for_quiet(Duration::from_millis(50), Duration::from_secs(5))
@@ -90,13 +117,13 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
                 .unwrap_or_default()
         })
         .collect::<Vec<_>>();
-    assert_eq!(delivered.len(), 12);
+    assert_eq!(delivered.len(), 17);
     assert_eq!(
         delivered
             .iter()
             .map(|event| event["sequenceNumber"].as_u64())
             .collect::<Vec<_>>(),
-        (0..12).map(Some).collect::<Vec<_>>()
+        (0..17).map(Some).collect::<Vec<_>>()
     );
 
     for item_id in [
@@ -226,6 +253,57 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
         .ok_or("normal warning was not delivered")?;
     assert_eq!(warning["message"], "codex-mock warning 999");
 
+    let failed = delivered_item(&delivered, "failed-command")?;
+    assert_eq!(failed["item"]["status"], "failed");
+    assert_eq!(failed["item"]["exit_code"], 7);
+    assert_eq!(failed["item"]["duration_ms"], 42);
+    assert_eq!(failed["item"]["command"], "false");
+    assert!(
+        failed["item"]["aggregated_output"]
+            .as_str()
+            .is_some_and(|text| text.starts_with("failed-output-head-")
+                && text.ends_with("-failed-output-tail")
+                && text.contains(DELIVERY_MARKER))
+    );
+
+    let small = delivered_item(&delivered, "small-image")?;
+    assert_eq!(
+        small["item"]["output"],
+        serde_json::json!([image(&small_image)])
+    );
+    let large = delivered_item(&delivered, "large-image")?;
+    assert_eq!(large["item"]["name"], "read");
+    assert_eq!(large["item"]["namespace"], "tools");
+    assert_eq!(
+        large["item"]["output"],
+        serde_json::json!([{"type":"input_text","text":"[image omitted for delivery]"}])
+    );
+    let aggregate = delivered_item(&delivered, "aggregate-images")?;
+    assert_eq!(
+        aggregate["item"]["output"],
+        serde_json::json!([
+            {"type":"input_text","text":"[image omitted for delivery]"},image(&half_image),image(&small_image)
+        ])
+    );
+    let structure = delivered_item(&delivered, "structure-output")?;
+    assert_eq!(structure["item"]["name"], "read");
+    assert_eq!(structure["item"]["namespace"], "tools");
+    assert_eq!(
+        structure["item"]["output"],
+        serde_json::json!([{"type":"input_text","text":FALLBACK_MARKER},{"type":"input_text","text":"[image omitted for delivery]"}])
+    );
+    assert_eq!(
+        std::fs::read(&items_path)?,
+        serde_json::to_vec(&image_items)?
+    );
+    let history = common::read_codex_session_history_events_for_runtime(&runtime)?;
+    let inputs = history
+        .iter()
+        .filter(|event| event["type"] == "mock.app_server.input")
+        .collect::<Vec<_>>();
+    assert_eq!(inputs.len(), 1);
+    assert_eq!(inputs[0]["text"], runtime.config.prompt);
+    assert!(!serde_json::to_string(&history)?.contains("for delivery"));
     let local_events = read_jsonl(runtime.paths.agent_log_file())?;
     let local_agent = delivered_item(&local_events, "oversized-agent-message")?;
     let local_text = local_agent["item"]["text"]
@@ -257,12 +335,22 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
             }))
     );
 
+    assert_eq!(
+        delivered_item(&local_events, "large-image")?["item"]["output"],
+        serde_json::json!([image(&large_image)])
+    );
     let system_log = std::fs::read_to_string(runtime.paths.system_log_file())?;
     assert_eq!(
         system_log
             .matches("Codex event reduced for delivery")
             .count(),
-        8
+        12
+    );
+    assert!(
+        system_log
+            .lines()
+            .filter(|line| line.contains("Codex event reduced for delivery"))
+            .all(|line| line.contains("[INFO]"))
     );
     assert!(system_log.contains("event_type=turn.plan.updated"));
     assert!(system_log.contains("fallback=true"));

@@ -4,6 +4,10 @@ The production application remains the existing `vm0-kms-prod` IAM user.
 GitHub Actions uses a separate OIDC role for ciphertext rewrap. No new access
 keys or static operator credentials are required.
 
+The production backfill is complete. Follow the
+[permanent retirement plan](permanent-retirement.md) for retained recovery
+dependencies and isolated snapshot inspection before scheduling old-key deletion.
+
 ## One-time IAM prerequisite
 
 An AWS administrator must provision or reconcile this exact role in account
@@ -149,13 +153,26 @@ The two independent jobs reuse existing production credentials:
   `/var/lib/vm0-runner/runners/v{version}/proxy-registry.json`, including retained
   production release directories. It does not install a program, restart a
   service, unregister a sandbox, or decrypt a secret. Only aggregate outer-key
-  counts leave each host. PR and staging directories are excluded.
+  counts and sanitized failure metadata leave each host. PR and staging
+  directories are excluded. A missing registry also collects directory-entry
+  count, whether only a regular `runner.yaml` remains, exact systemd service
+  properties, and a count of `runner` command lines mentioning the version.
+  Config contents and process command lines never leave the host. The check
+  uses `systemctl show` and `ps`; it does not invoke runner maintenance commands
+  that can clean state. These observations aid review and do not convert a
+  missing registry into a successful or zero-key inventory.
 - Recovery inventory makes GET requests to the production Neon project's
   metadata, branch list, snapshot list and production backup schedule. It does
   not request a database connection URI or connect to PostgreSQL. It reports
   configured history-window overlap and counts every retained snapshot as
   requiring key review: snapshot creation time does not prove which historical
-  LSN was captured. Other branches are counted without inspecting their data.
+  LSN was captured. Snapshot evidence contains an ID fingerprint, production
+  branch match, reported snapshot timestamp/LSN, creation time, expiration, and
+  sanitized backup schedule. Names and raw snapshot IDs are omitted. Missing
+  snapshot points and expirations remain explicitly unreported; an expiration
+  in the past does not prove deletion while the snapshot is still listed.
+  These fields describe recovery metadata, not successful decryption or a
+  tested restore. Other branches are counted without inspecting their data.
 
 The workflow needs no new AWS credentials, IAM roles or KMS grants. It retains
 sanitized reports for 30 days. Failed SSH, unreadable or changing files, unknown

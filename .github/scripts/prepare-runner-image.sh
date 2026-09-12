@@ -76,6 +76,7 @@ EXPECTED_BINARY_INPUT_DIGEST="$EXPECTED_BINARY_INPUT_DIGEST" \
   "${SCRIPT_DIR}/runner-binary-cache.sh" fresh-validate >/dev/null
 
 runner_sha=$(jq -r '.runnerSha256' "$FRESH_METADATA_PATH")
+runner_size=$(jq -r '.runnerSizeBytes' "$FRESH_METADATA_PATH")
 guest_sha_json=$(jq -c '.guestSha256' "$FRESH_METADATA_PATH")
 
 prepare_host() {
@@ -177,10 +178,49 @@ REMOTE_SCRIPT
     return 1
   fi
 
-  local tmp_runner="${BIN_DIR}/runner.${head_sha}.${host_index}.tmp"
-  if ! ssh "$remote" sudo install -m 755 /dev/stdin "${tmp_runner}" < "$RUNNER_PATH"; then
-    return 1
-  fi
+  local tmp_runner upload_attempt upload_status upload_started upload_elapsed
+  local tmp_template="${BIN_DIR}/runner.${head_sha}.${host_index}.tmp.XXXXXX"
+  for upload_attempt in 1 2; do
+    # A failed SSH client can leave a remote writer alive. Never let a retry
+    # share its candidate with that writer; existing job-directory cleanup owns
+    # abandoned candidates, which are never eligible for publication.
+    if tmp_runner=$(ssh "$remote" bash -s -- "$tmp_template" <<'REMOTE_SCRIPT'
+set -euo pipefail
+sudo mktemp "$1"
+REMOTE_SCRIPT
+    ); then
+      :
+    else
+      upload_status=$?
+      echo "runner upload candidate allocation failed: host=${host} attempt=${upload_attempt}/2 status=${upload_status}" >&2
+      return "$upload_status"
+    fi
+
+    upload_started=$SECONDS
+    echo "runner upload started: host=${host} attempt=${upload_attempt}/2 expected_bytes=${runner_size} candidate=${tmp_runner}"
+    # Bound only the binary stream (not GC/build or global SSH behavior). Two
+    # stalled uploads still fit within the unchanged 20-minute image job budget.
+    # Reopen stdin on every attempt so the successful candidate gets all bytes.
+    if OKOU_CLOUDFLARE_SSH_OPERATION_TIMEOUT_SECONDS=120 \
+      ssh "$remote" sudo install -m 755 /dev/stdin "${tmp_runner}" < "$RUNNER_PATH"; then
+      echo "runner upload completed: host=${host} attempt=${upload_attempt}/2 elapsed_seconds=$((SECONDS - upload_started))"
+      break
+    else
+      upload_status=$?
+    fi
+
+    upload_elapsed=$((SECONDS - upload_started))
+    echo "runner upload failed: host=${host} attempt=${upload_attempt}/2 status=${upload_status} elapsed_seconds=${upload_elapsed} expected_bytes=${runner_size} candidate=${tmp_runner}" >&2
+    case "$upload_status" in
+      124|141|255) ;; # Operation timeout, broken pipe, or SSH transport failure.
+      *) return "$upload_status" ;;
+    esac
+    if [ "$upload_attempt" -eq 2 ]; then
+      return "$upload_status"
+    fi
+    echo "retrying runner upload on ${host} in 5s with a fresh candidate" >&2
+    sleep 5
+  done
 
   if ! ssh "$remote" bash -s -- "${tmp_runner}" "${BIN_DIR}/runner" "${runner_sha}" <<'REMOTE_SCRIPT'
 set -euo pipefail

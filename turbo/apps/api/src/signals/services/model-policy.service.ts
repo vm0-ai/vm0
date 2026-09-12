@@ -1,3 +1,4 @@
+import { isCloudModelMappingValid } from "@okouai/api-contracts/contracts/cloud-model-mapping";
 import { command } from "ccstate";
 import { and, eq, inArray, notInArray } from "drizzle-orm";
 import {
@@ -49,6 +50,7 @@ type OrgModelPolicyRow = Omit<
 };
 
 interface ProviderRouteInfo {
+  readonly selectedModel: string | null;
   readonly id: string;
   readonly userId: string;
   readonly type: ModelProviderType;
@@ -414,6 +416,7 @@ async function listOrgProviderRoutes(
       id: modelProviders.id,
       userId: modelProviders.userId,
       type: modelProviders.type,
+      selectedModel: modelProviders.selectedModel,
     })
     .from(modelProviders)
     .where(
@@ -425,7 +428,16 @@ async function listOrgProviderRoutes(
 
   return rows.flatMap((row) => {
     const type = parseProviderType(row.type);
-    return type ? [{ id: row.id, userId: row.userId, type }] : [];
+    return type
+      ? [
+          {
+            id: row.id,
+            userId: row.userId,
+            type,
+            selectedModel: row.selectedModel,
+          },
+        ]
+      : [];
   });
 }
 
@@ -524,6 +536,7 @@ async function validateOrgProviderRoute(
     .select({
       id: modelProviders.id,
       type: modelProviders.type,
+      selectedModel: modelProviders.selectedModel,
       userId: modelProviders.userId,
     })
     .from(modelProviders)
@@ -538,6 +551,15 @@ async function validateOrgProviderRoute(
 
   if (!provider || provider.userId !== ORG_SENTINEL_USER_ID) {
     return "Selected provider is not configured for this workspace";
+  }
+  if (
+    !isCloudModelMappingValid(
+      policy.defaultProviderType,
+      policy.model,
+      provider.selectedModel,
+    )
+  ) {
+    return "Cloud route requires an explicit compatible saved deployment or profile";
   }
   if (provider.type !== policy.defaultProviderType) {
     return "Selected provider type does not match the route";
@@ -677,6 +699,13 @@ function getRouteStatus(params: {
     return {
       status: "missing_provider",
       reason: "The selected workspace provider is missing.",
+    };
+  }
+  if (!isCloudModelMappingValid(providerType, model, provider.selectedModel)) {
+    return {
+      status: "invalid",
+      reason:
+        "The saved cloud deployment or profile is not mapped to this model.",
     };
   }
   return { status: "valid", reason: null };

@@ -299,6 +299,51 @@ export default [
     },
   },
   {
+    files: ["src/signals/services/morning-brief-enrollment-worker.service.ts"],
+    rules: {
+      // Only a first attempt, a changed error, or an actual install reaches
+      // this record, so it is bounded by enrollment progress rather than by
+      // cron ticks. Axiom's default transport drops debug events, and the
+      // skipped reasons are the only evidence that enrollment ran and chose
+      // not to install.
+      "api/no-logger-info": [
+        "error",
+        { allowedMessages: ["Morning Brief enrollment changed"] },
+      ],
+    },
+  },
+  {
+    files: ["src/signals/routes/webhooks-clerk.ts"],
+    rules: {
+      // One record per organization-membership creation. Failures already
+      // reach Axiom at warn; the succeeded and skipped outcomes must survive
+      // the info default too, or a silent dataset is indistinguishable from a
+      // working one.
+      "api/no-logger-info": [
+        "error",
+        { allowedMessages: ["Morning Brief membership provisioning outcome"] },
+      ],
+    },
+  },
+  {
+    files: ["src/signals/routes/user-preferences.ts"],
+    rules: {
+      // Both records fire on the timezone initialize call, which an
+      // authenticated session invokes once. They share their details object
+      // with the warn branch beside them, so retaining them at info adds no
+      // field that Axiom does not already receive on failure.
+      "api/no-logger-info": [
+        "error",
+        {
+          allowedMessages: [
+            "Morning Brief timezone provisioning outcome",
+            "Morning Brief initialization outcome",
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ["src/signals/routes/webhooks-built-in-generations.ts"],
     rules: {
       "api/no-logger-info": [

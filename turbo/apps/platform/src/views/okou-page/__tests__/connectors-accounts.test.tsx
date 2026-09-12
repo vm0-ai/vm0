@@ -25,6 +25,8 @@ import {
   mockConnectors,
   mockGithubAccounts,
   mockOAuthCompletions,
+  mockPublicConnectorStatus,
+  publicStatusItem,
   queryConnectorAction,
 } from "./connector-page-test-helpers.ts";
 
@@ -47,7 +49,7 @@ function accountActions(container: ParentNode): HTMLElement[] {
 
 function builtinAccount(args: {
   readonly id: string;
-  readonly slug?: "github" | "stripe";
+  readonly slug?: "github" | "mercury" | "stripe";
   readonly authMethod?: string;
   readonly displayName: string | null;
   readonly isDefault: boolean;
@@ -165,6 +167,83 @@ test("Show when every connector account needs attention", async () => {
     return getConnectorCard("GitHub");
   });
   expect(within(card).getByText("2/2 need attention")).toBeInTheDocument();
+});
+
+test("Show Mercury disclosures while managing its accounts", async () => {
+  const [connector] = mockConnectors(context, [
+    { connectorSlug: "mercury", externalUsername: "Not A Real Company Inc." },
+  ]);
+  if (!connector) {
+    throw new Error("Expected Mercury connector");
+  }
+  const account = builtinAccount({
+    id: connector.id,
+    slug: "mercury",
+    displayName: "Sandbox",
+    isDefault: true,
+    externalUsername: "Not A Real Company Inc.",
+  });
+  mockPublicConnectorStatus(context, [
+    publicStatusItem({
+      connectorSlug: "mercury",
+      label: "Mercury",
+      connected: true,
+      connectionStatus: "connected",
+      connection: {
+        id: connector.id,
+        authMethod: "oauth",
+        externalUsername: "Not A Real Company Inc.",
+        externalEmail: null,
+        reconnectReason: null,
+      },
+    }),
+  ]);
+  context.mocks.api(connectorAccountsContract.summaries, ({ respond }) => {
+    return respond(200, {
+      summaries: [
+        {
+          target: account.target,
+          accountCount: 1,
+          attentionCount: 0,
+          defaultConnection: account,
+        },
+      ],
+    });
+  });
+  context.mocks.api(connectorAccountsContract.connections, ({ respond }) => {
+    return respond(200, { connections: [account], nextCursor: null });
+  });
+  await setupPage({ context, path: "/connectors?keywords=mercury" });
+
+  const card = await waitFor(() => {
+    return getConnectorCard("Mercury");
+  });
+  expect(
+    getConnectorAction("link", "Powered by Mercury", card),
+  ).toHaveAttribute("href", "https://mercury.com");
+
+  click(getConnectorAction("button", "Manage Mercury accounts", card));
+  const manager = await screen.findByRole("dialog", {
+    name: "Manage Mercury accounts",
+  });
+  expect(
+    getConnectorAction("link", "Powered by Mercury", manager),
+  ).toHaveAttribute("href", "https://mercury.com");
+  expect(manager).toHaveTextContent(
+    "Mercury is a fintech company, not an FDIC-insured bank. Banking services provided through Choice Financial Group and Column N.A., Members FDIC.",
+  );
+
+  click(getConnectorAction("button", "Close", manager));
+  await waitFor(() => {
+    expect(manager).not.toBeInTheDocument();
+  });
+  click(getConnectorAction("button", "Manage Mercury access", card));
+  const access = await screen.findByRole("dialog", {
+    name: "Manage Mercury access",
+  });
+  expect(
+    getConnectorAction("link", "Powered by Mercury", access),
+  ).toHaveAttribute("href", "https://mercury.com");
 });
 
 test("Distinguish unavailable account information from no accounts", async () => {
@@ -469,7 +548,7 @@ test("Discard a pending account deletion when its manager closes", async () => {
     name: "Manage GitHub accounts",
   });
   click(accountActions(first)[0] ?? first);
-  click(getConnectorAction("menuitem", "Delete"));
+  click(getConnectorAction("menuitem", "Disconnect"));
   await waitFor(() => {
     return expect(impactStarted).toBeTruthy();
   });
@@ -485,7 +564,7 @@ test("Discard a pending account deletion when its manager closes", async () => {
   impactReady.resolve();
 
   await waitFor(() => {
-    expect(screen.queryByText("Delete Work?")).not.toBeInTheDocument();
+    expect(screen.queryByText("Disconnect Work?")).not.toBeInTheDocument();
   });
 });
 
@@ -802,11 +881,8 @@ test("Reconnect the selected non-default account after cancellation", async () =
 
   authWindow = createAuthWindow();
   context.mocks.browser.open(authWindow);
-  const connectorChangedSubscribe = context.mocks.ably.deferNextSubscribe();
   click(getConnectorAction("button", "Reconnect", connect));
 
-  await connectorChangedSubscribe.started;
-  connectorChangedSubscribe.attach();
   await waitFor(() => {
     expect(authWindow.location.href).toBe(
       "https://oauth.test/stripe/authorize",
@@ -850,7 +926,7 @@ test("Reconnect the selected non-default account after cancellation", async () =
   expect(within(workRow).queryByText("Reconnect required")).toBeNull();
 });
 
-test("Rename and delete a specific connector account", async () => {
+test("Rename and disconnect a specific connector account", async () => {
   const [connector] = mockConnectors(context, [
     { connectorSlug: "github", externalUsername: "octocat" },
   ]);
@@ -978,18 +1054,18 @@ test("Rename and delete a specific connector account", async () => {
   );
   click(
     await waitFor(() => {
-      return getConnectorAction("menuitem", "Delete");
+      return getConnectorAction("menuitem", "Disconnect");
     }),
   );
   const confirmation = await screen.findByRole("dialog", {
-    name: "Delete octocat?",
+    name: "Disconnect octocat?",
   });
   expect(
     within(confirmation).getByText(
-      "2 threads will return to default inheritance.",
+      "This disconnects the account from Okou. 2 threads will return to default inheritance. The provider account will not be deleted.",
     ),
   ).toBeInTheDocument();
-  click(getConnectorAction("button", "Delete account", confirmation));
+  click(getConnectorAction("button", "Disconnect account", confirmation));
   await waitFor(() => {
     expect(within(manager).getByText("No accounts found")).toBeInTheDocument();
     expect(getConnectorAction("button", "Add account", manager)).toBeEnabled();

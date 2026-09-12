@@ -151,7 +151,7 @@ test.each(["pending", "cooldown", 500] as const)(
   },
 );
 
-test("The fallback follows a saved language change and stays stable when reopening the thread", async () => {
+async function openPendingActivitySummary() {
   installActiveRun();
   context.mocks.api(
     chatThreadActivitySummaryContract.summarize,
@@ -162,14 +162,20 @@ test("The fallback follows a saved language change and stays stable when reopeni
 
   await setupPage({ context, path: RUN_PATH, featureSwitches });
   await expect(screen.findByText("Thinking...")).resolves.toBeVisible();
+}
 
+test("The pending summary fallback stays stable when reopening the thread", async () => {
+  await openPendingActivitySummary();
   click(await findLink("Agents"));
   await expect(
     screen.findByRole("heading", { name: "Agents" }),
   ).resolves.toBeVisible();
   click(await findLink("Run conversation"));
   await expect(screen.findByText("Thinking...")).resolves.toBeVisible();
+});
 
+test("The pending summary fallback follows a saved language change", async () => {
+  await openPendingActivitySummary();
   click(await findButton("Test User"));
   const menu = await screen.findByRole("menu");
   const settings = queryAllByRoleFast("menuitem", menu).find((item) => {
@@ -185,28 +191,54 @@ test("The fallback follows a saved language change and stays stable when reopeni
   expect(screen.queryByText("Thinking...")).not.toBeInTheDocument();
 });
 
-test("Authoritative switch hydration starts demand in the mounted thread", async () => {
-  installActiveRun();
+test("Authoritative switch hydration waits for a chat event before starting demand", async () => {
+  const events = installActiveRun();
   const featureResponse = createDeferredPromise<void>(context.signal);
+  const featureResponseReturned = createDeferredPromise<void>(context.signal);
   context.mocks.api(featureSwitchesContract.get, async ({ respond }) => {
     await featureResponse.promise;
-    return respond(200, {
+    const response = respond(200, {
       switches: featureSwitches,
       effectiveSwitches: featureSwitches,
     });
+    featureResponseReturned.resolve(undefined);
+    return response;
   });
+  let eventPublished = false;
+  let requestedBeforeEvent = false;
   context.mocks.api(
     chatThreadActivitySummaryContract.summarize,
     ({ respond }) => {
-      return respond(200, summary({ status: "pending", messages: [] }));
+      if (!eventPublished) {
+        requestedBeforeEvent = true;
+      }
+      return respond(200, summary());
     },
   );
 
   await setupPage({ context, path: RUN_PATH });
   await expect(screen.findByText(LEGACY_FALLBACK)).resolves.toBeVisible();
 
-  featureResponse.resolve(undefined);
+  await act(async () => {
+    featureResponse.resolve(undefined);
+    await featureResponseReturned.promise;
+  });
   await expect(screen.findByText("Thinking...")).resolves.toBeVisible();
+  expect(requestedBeforeEvent).toBeFalsy();
+  expect(screen.queryByText(PREPARATION)).not.toBeInTheDocument();
+
+  eventPublished = true;
+  events.push(
+    thinkingEvent({
+      id: "hydrated-thinking",
+      runId: RUN_ID,
+      seqId: 2,
+      text: "Preparing the original response",
+    }),
+  );
+  publishRunUpdate();
+
+  await expect(screen.findByText(PREPARATION)).resolves.toBeVisible();
   expect(screen.queryByText(LEGACY_FALLBACK)).not.toBeInTheDocument();
 });
 

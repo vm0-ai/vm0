@@ -45,7 +45,7 @@ import threading
 import urllib.error
 import urllib.parse
 from collections.abc import Callable
-from concurrent.futures import Future, ThreadPoolExecutor, wait
+from concurrent.futures import Future, wait
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
@@ -58,7 +58,7 @@ import openai_responses_events
 import platform_api
 import runtime_url_parsing
 from logging_utils import log_proxy_entry
-from thread_pool import start_thread_pool
+from model_provider_failure_executor import FailureReportExecutor
 from usage.json_selective import JsonSelectiveExtractor
 from usage.model_http import (
     FAILURE_SCALAR_FIELDS,
@@ -92,6 +92,10 @@ _FLOW_STATE = "_model_provider_failure_flow_state"
 _RESPONSE_FINISH = "_model_provider_failure_response_finish"
 _MAX_JSON_WORK_UNITS = 65_536
 _MAX_RETRY_AFTER_SECONDS = 300
+_RETRY_AFTER_NAME = b"retry-after"
+_MAX_RETRY_AFTER_FIELDS = 8 * 1024
+# Preserve long numeric delays while bounding the optional hint's synchronous work.
+_MAX_RETRY_AFTER_VALUE_BYTES = 8 * 1024
 # Allow API cold starts while keeping best-effort reporting and shutdown bounded.
 _REPORT_TIMEOUT_SECONDS = 10
 _REPORT_WORKERS = 4
@@ -180,7 +184,7 @@ _report_condition = threading.Condition(_report_lock)
 _report_api_url = ""
 _report_bearer_credential = ""
 _report_slots = threading.BoundedSemaphore(_MAX_PENDING_REPORTS)
-_report_executor: ThreadPoolExecutor | None = None
+_report_executor: FailureReportExecutor | None = None
 _reporter_shut_down = False
 _report_futures: set[Future[int]] = set()
 
@@ -606,7 +610,9 @@ def shutdown() -> None:
 
     Reports still queued in the executor are cancelled. Reports already running get at most
     ``_REPORT_TIMEOUT_SECONDS`` to finish; cancellation or timeout may leave a failure report
-    undelivered, so proxy shutdown does not wait indefinitely for it.
+    undelivered. Plain daemon workers are not joined at interpreter exit, so a
+    stalled DNS or network call cannot extend that exit beyond this drain window.
+    Running calls are not interrupted and may finish if the process remains alive.
     """
     global _reporter_shut_down
     configure_reporting(api_url="", bearer_credential="")
@@ -615,7 +621,7 @@ def shutdown() -> None:
         executor = _report_executor
         _reporter_shut_down = True
     if executor is not None:
-        executor.shutdown(wait=False, cancel_futures=True)
+        executor.shutdown(wait=False)
     running = tuple(future for future in pending if not future.cancelled())
     if running:
         wait(running, timeout=_REPORT_TIMEOUT_SECONDS)
@@ -779,13 +785,23 @@ def _failure_kind_from_http_status(status: int, firewall_name: str) -> FailureKi
 def _retry_after_seconds(status: int, headers: http.Headers) -> int | None:
     if status not in (_HTTP_STATUS_TOO_MANY_REQUESTS, _HTTP_STATUS_SERVICE_UNAVAILABLE):
         return None
-    values = headers.get_all("Retry-After")
-    if len(values) != 1 or not values[0].isascii() or not values[0].isdigit():
+    fields = headers.fields
+    if len(fields) > _MAX_RETRY_AFTER_FIELDS:
         return None
-    digits = values[0].lstrip("0")
+    value: bytes | None = None
+    for name, raw_value in fields:
+        if len(name) != len(_RETRY_AFTER_NAME) or name.lower() != _RETRY_AFTER_NAME:
+            continue
+        if value is not None or len(raw_value) > _MAX_RETRY_AFTER_VALUE_BYTES:
+            return None
+        value = raw_value
+    # Validate only after bounded cardinality inspection, without decoding or trimming OWS.
+    if value is None or not value.isdigit():
+        return None
+    digits = value.lstrip(b"0")
     if not digits:
         return 1
-    maximum = str(_MAX_RETRY_AFTER_SECONDS)
+    maximum = str(_MAX_RETRY_AFTER_SECONDS).encode("ascii")
     if len(digits) > len(maximum) or (len(digits) == len(maximum) and digits > maximum):
         return _MAX_RETRY_AFTER_SECONDS
     return int(digits)
@@ -917,16 +933,10 @@ def _enqueue_report(flow: http.HTTPFlow, run_id: str, failure: Failure) -> None:
             try:
                 if _report_executor is None:
                     omission_reason = "worker_start_failed"
-                    _report_executor = start_thread_pool(
-                        max_workers=_REPORT_WORKERS,
-                        thread_name_prefix="model-provider-failure",
-                    )
+                    _report_executor = FailureReportExecutor(max_workers=_REPORT_WORKERS)
                 omission_reason = "reporter_shut_down"
                 future = _report_executor.submit(
-                    _post_report,
-                    report_url,
-                    bearer_credential,
-                    content,
+                    lambda: _post_report(report_url, bearer_credential, content),
                 )
             except RuntimeError:
                 pass

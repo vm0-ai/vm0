@@ -4,7 +4,7 @@ import {
   type MorningBriefPreferenceResponse,
 } from "@okouai/api-contracts/contracts/morning-brief-preference";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, test, vi } from "vitest";
 
 import {
   click,
@@ -166,6 +166,7 @@ describe("unified preference settings", () => {
     context.mocks.api(morningBriefPreferenceContract.get, ({ respond }) => {
       return respond(200, {
         enabled: false,
+        status: "paused",
         nextRunAt: null,
         timezone: "Asia/Shanghai",
         unavailableReason: null,
@@ -193,6 +194,7 @@ describe("unified preference settings", () => {
     context.mocks.api(morningBriefPreferenceContract.get, ({ respond }) => {
       return respond(200, {
         enabled: true,
+        status: "enabled",
         nextRunAt,
         timezone: "Asia/Shanghai",
         unavailableReason: null,
@@ -235,6 +237,7 @@ describe("unified preference settings", () => {
     const captured: boolean[] = [];
     let preference: MorningBriefPreferenceResponse = {
       enabled: false,
+      status: "paused",
       nextRunAt: null,
       timezone: "Asia/Shanghai",
       unavailableReason: null,
@@ -266,6 +269,7 @@ describe("unified preference settings", () => {
         }
         preference = {
           enabled: true,
+          status: "enabled",
           nextRunAt: "2030-01-02T23:00:00.000Z",
           timezone: "Asia/Shanghai",
           unavailableReason: null,
@@ -303,4 +307,70 @@ describe("unified preference settings", () => {
       expect(retry).toBeEnabled();
     });
   });
+});
+
+test("shows pending Morning Brief enrollment, accepts cancellation, and receives completion through realtime", async () => {
+  let preference: MorningBriefPreferenceResponse = {
+    enabled: true,
+    status: "preparing",
+    nextRunAt: null,
+    timezone: "Asia/Shanghai",
+    unavailableReason: "missing-data-source",
+  };
+  context.mocks.api(morningBriefPreferenceContract.get, ({ respond }) => {
+    return respond(200, preference);
+  });
+  context.mocks.api(
+    morningBriefPreferenceContract.update,
+    ({ body, respond }) => {
+      preference = {
+        ...preference,
+        enabled: body.enabled,
+        status: body.enabled ? "preparing" : "paused",
+      };
+      return respond(200, preference);
+    },
+  );
+  await setupPage({ context, path: "/agents?settings=preference" });
+  const card = await screen.findByTestId("morning-brief-preference");
+  await expect(
+    within(card).findByText(
+      "Connect Gmail, Google Calendar, GitHub, or Slack to start receiving your brief.",
+    ),
+  ).resolves.toBeVisible();
+  const toggle = within(card).getByRole("switch", { name: "Morning brief" });
+  expect(toggle).toBeChecked();
+  expect(toggle).toBeEnabled();
+  click(toggle);
+  await waitFor(() => {
+    expect(
+      within(card).getByRole("switch", { name: "Morning brief" }),
+    ).not.toBeChecked();
+  });
+  click(within(card).getByRole("switch", { name: "Morning brief" }));
+  await waitFor(() => {
+    expect(
+      within(card).getByRole("switch", { name: "Morning brief" }),
+    ).toBeChecked();
+  });
+  preference = {
+    ...preference,
+    status: "enabled",
+    unavailableReason: null,
+    nextRunAt: "2030-01-02T23:00:00.000Z",
+  };
+  await waitFor(() => {
+    expect(
+      context.mocks.ably.hasSubscription("morningBriefChanged"),
+    ).toBeTruthy();
+  });
+  context.mocks.ably.trigger("morningBriefChanged");
+  await waitFor(() => {
+    expect(within(card).getByText(/Next brief/)).toBeVisible();
+  });
+  expect(
+    within(card).queryByText(
+      "Connect Gmail, Google Calendar, GitHub, or Slack to start receiving your brief.",
+    ),
+  ).toBeNull();
 });

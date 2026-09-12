@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.89.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.89.4...guest-agent-v0.89.5) (2026-09-11)
+
+
+### Refactoring
+
+* **api:** make pi api-first transitions explicit ([#33580](https://github.com/vm0-ai/vm0/issues/33580)) ([de15084](https://github.com/vm0-ai/vm0/commit/de15084436e6936d2a7338cd75d916f11cdd81e7))
+
+## [0.89.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.89.3...guest-agent-v0.89.4) (2026-09-11)
+
+
+### Bug Fixes
+
+* **guest-agent:** bound pi and codex event delivery ([#33532](https://github.com/vm0-ai/vm0/issues/33532)) ([c42da19](https://github.com/vm0-ai/vm0/commit/c42da19f700479f51954f2012106a211fe4f97c6))
+
+## [0.89.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.89.2...guest-agent-v0.89.3) (2026-09-11)
+
+## [0.89.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.89.1...guest-agent-v0.89.2) (2026-09-11)
+
+## [0.89.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.89.0...guest-agent-v0.89.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **guest-agent:** keep oom evidence waits off tokio workers ([#33396](https://github.com/vm0-ai/vm0/issues/33396)) ([0c7a535](https://github.com/vm0-ai/vm0/commit/0c7a535c995853acc1226a0c9815baecc3f0b870))
+
+## [0.89.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.88.3...guest-agent-v0.89.0) (2026-09-11)
+
+
+### Features
+
+* **chat:** add native reasoning effort controls ([#33016](https://github.com/vm0-ai/vm0/issues/33016)) ([f649925](https://github.com/vm0-ai/vm0/commit/f649925cbb81c11ee5b66d32bcc6072fc2fe80c2))
+
 ## [0.88.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.88.2...guest-agent-v0.88.3) (2026-09-10)
 
 ## [0.88.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.88.1...guest-agent-v0.88.2) (2026-09-10)

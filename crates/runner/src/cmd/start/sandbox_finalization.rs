@@ -2566,6 +2566,7 @@ mod tests {
         sandbox.push_exec_result(Ok(ExecResult::new(
             0,
             serde_json::to_vec(&SessionHistorySidecarExportMetadata {
+                timings: Default::default(),
                 representation: WorkspaceSessionHistorySidecarRepresentation::Raw,
                 encoded_size: next_history.len() as u64,
             })

@@ -1,7 +1,19 @@
+import {
+  PI_NATIVE_CREDENTIAL_PLACEHOLDER,
+  piNativeCatalogModelSchema,
+  piModelConfigV4Schema,
+  piNativeInferenceUrl,
+} from "@okouai/api-contracts/contracts/pi-native";
+import { piNativeFirewall } from "@okouai/api-contracts/contracts/pi-native-firewall";
 import { chatThreadActivitySummaryContract } from "@okouai/api-contracts/contracts/chat-thread-activity-summary";
 import { chatThreadActivitySummaryRoutes } from "../chat-threads-activity-summary";
 import { createHash, randomUUID } from "node:crypto";
-import { gzipSync, zstdCompressSync, zstdDecompressSync } from "node:zlib";
+import {
+  crc32,
+  gzipSync,
+  zstdCompressSync,
+  zstdDecompressSync,
+} from "node:zlib";
 import {
   readGoalQueueStateFixture,
   seedGoalForRunFixture,
@@ -36,6 +48,8 @@ import {
 } from "@okouai/api-contracts/contracts/model-provider-routes";
 import {
   getModelProviderFirewall,
+  getProviderRuntimeModel,
+  type UpsertModelProviderRequest,
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   type ModelProviderType,
   type SupportedRunModel,
@@ -382,6 +396,7 @@ const GPT_USAGE_PRICING = [
   });
 });
 type PiApiFirstTurnUsageProvider =
+  | z.infer<typeof piNativeCatalogModelSchema>
   | "deepseek-v4-flash"
   | "deepseek-v4-pro"
   | PiGptBddModel;
@@ -794,7 +809,11 @@ async function createGptUsagePricingResolution(): Promise<
 async function createPiApiFirstTurnUsagePricingResolution(
   provider: PiApiFirstTurnUsageProvider,
 ): Promise<UsagePricingFixture["resolution"]> {
-  if (provider !== "deepseek-v4-flash" && provider !== "deepseek-v4-pro") {
+  if (
+    GPT_PI_BDD_MODELS.some((model) => {
+      return model === provider;
+    })
+  ) {
     return await createGptUsagePricingResolution();
   }
   const pricing = await createUsagePricingFixture({
@@ -925,7 +944,11 @@ async function configureBuiltInPiModelOnOpenRouter(
 ): Promise<<T>(work: () => Promise<T>) => Promise<T>> {
   await seedBuiltInModelCandidateKeys(context, selectedModel);
   const primary = await resolveBuiltInModelRouteFixture(context, selectedModel);
-  if (!primary || primary.provider_type === "openrouter-codex") {
+  const openRouterType = piNativeCatalogModelSchema.safeParse(selectedModel)
+    .success
+    ? "openrouter-api-key"
+    : "openrouter-codex";
+  if (!primary || primary.provider_type === openRouterType) {
     throw new Error(`Expected a primary managed route for ${selectedModel}`);
   }
   const unavailableCandidate = {
@@ -940,7 +963,7 @@ async function configureBuiltInPiModelOnOpenRouter(
         context,
         selectedModel,
       );
-      if (!fallback || fallback.provider_type !== "openrouter-codex") {
+      if (!fallback || fallback.provider_type !== openRouterType) {
         throw new Error(`Expected an OpenRouter fallback for ${selectedModel}`);
       }
     },
@@ -2172,95 +2195,113 @@ describe("CHAT-02: thread connector account selection", () => {
     );
   });
 
-  it("uses the current default connector account without persisting an override", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    if (!actor.orgId) {
-      throw new Error("Expected an organization-scoped chat actor");
-    }
-    const connection = await connectors.connectManualGrant(
-      actor,
-      "openai",
-      "api-token",
-      { apiKey: "thread-selected-openai-key" },
-      agentId,
-    );
-
-    context.mocks.ably.publish.mockClear();
-    const run = await sendChatRun(actor, {
-      agentId,
-      prompt: "Use my OpenAI connector account",
-    });
-    const { claim, sandboxHeaders } = await claimChatRun(
-      runnerGroup,
-      run.runId,
-    );
-    expect(claim.secretConnectorMetadataMap?.OPENAI_TOKEN).toMatchObject({
-      sourceId: connection.id,
-    });
-
-    const selections = await accept(
-      chatThreadConnectorSelectionsClient().get({
-        headers: sessionHeaders(actor),
-        params: { id: run.threadId },
-      }),
-      [200],
-    );
-    expect(selections.body.selections).toStrictEqual([]);
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadDetailChanged:${run.threadId}`,
-      null,
-    );
-
-    await completeChatRunOk(run.runId, sandboxHeaders);
-    await flushWaitUntilForTest();
-    await api.enableAgentConnectors(actor, agentId, []);
-    const unauthorizedResponse = await chat.requestSendEvent(
-      actor,
-      {
+  it.each(["revocation", "reauthorization"] as const)(
+    "uses the default connector account across %s without an override",
+    async (transition) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      if (!actor.orgId) {
+        throw new Error("Expected an organization-scoped chat actor");
+      }
+      const connection = await connectors.connectManualGrant(
+        actor,
+        "openai",
+        "api-token",
+        { apiKey: "thread-selected-openai-key" },
         agentId,
-        threadId: run.threadId,
-        prompt: "Continue while OpenAI is unauthorized",
-      },
-      [201],
-    );
-    if (unauthorizedResponse.status !== 201) {
-      throw new Error("Expected the unauthorized-connector send to succeed");
-    }
-    if (!unauthorizedResponse.body.runId) {
-      throw new Error("Expected the unauthorized-connector run to start");
-    }
-    const unauthorized = {
-      runId: unauthorizedResponse.body.runId,
-      threadId: unauthorizedResponse.body.threadId,
-    };
-    const unauthorizedClaim = await claimChatRun(
-      runnerGroup,
-      unauthorized.runId,
-    );
-    expect(
-      unauthorizedClaim.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
-    ).toBeUndefined();
-    await completeChatRunOk(
-      unauthorized.runId,
-      unauthorizedClaim.sandboxHeaders,
-    );
-    await flushWaitUntilForTest();
+      );
 
-    await api.enableAgentConnectors(actor, agentId, ["openai"]);
-    const reauthorized = await sendChatRun(actor, {
-      agentId,
-      threadId: run.threadId,
-      prompt: "Continue after OpenAI is authorized again",
-    });
-    const reauthorizedClaim = await claimChatRun(
-      runnerGroup,
-      reauthorized.runId,
-    );
-    expect(
-      reauthorizedClaim.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
-    ).toMatchObject({ sourceId: connection.id });
-    await cancelChatRun(actor, reauthorized.runId);
-  });
+      let threadId: string;
+      if (transition === "revocation") {
+        context.mocks.ably.publish.mockClear();
+        const authorized = await sendChatRun(actor, {
+          agentId,
+          prompt: "Use my OpenAI connector account",
+        });
+        const { claim, sandboxHeaders } = await claimChatRun(
+          runnerGroup,
+          authorized.runId,
+        );
+        expect(claim.secretConnectorMetadataMap?.OPENAI_TOKEN).toMatchObject({
+          sourceId: connection.id,
+        });
+
+        const selections = await accept(
+          chatThreadConnectorSelectionsClient().get({
+            headers: sessionHeaders(actor),
+            params: { id: authorized.threadId },
+          }),
+          [200],
+        );
+        expect(selections.body.selections).toStrictEqual([]);
+        expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+          `chatThreadDetailChanged:${authorized.threadId}`,
+          null,
+        );
+
+        await completeChatRunOk(authorized.runId, sandboxHeaders);
+        await flushWaitUntilForTest();
+        threadId = authorized.threadId;
+      } else {
+        const thread = await chat.createThread(actor, {
+          agentId,
+          title: "Connector reauthorization",
+        });
+        threadId = thread.id;
+      }
+
+      await api.enableAgentConnectors(actor, agentId, []);
+      const unauthorizedResponse = await chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId,
+          prompt: "Continue while OpenAI is unauthorized",
+        },
+        [201],
+      );
+      if (unauthorizedResponse.status !== 201) {
+        throw new Error("Expected the unauthorized-connector send to succeed");
+      }
+      if (!unauthorizedResponse.body.runId) {
+        throw new Error("Expected the unauthorized-connector run to start");
+      }
+      const unauthorized = {
+        runId: unauthorizedResponse.body.runId,
+        threadId: unauthorizedResponse.body.threadId,
+      };
+      const unauthorizedClaim = await claimChatRun(
+        runnerGroup,
+        unauthorized.runId,
+      );
+      expect(
+        unauthorizedClaim.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
+      ).toBeUndefined();
+      await completeChatRunOk(
+        unauthorized.runId,
+        unauthorizedClaim.sandboxHeaders,
+      );
+      await flushWaitUntilForTest();
+
+      if (transition === "revocation") {
+        return;
+      }
+
+      await api.enableAgentConnectors(actor, agentId, ["openai"]);
+      const reauthorized = await sendChatRun(actor, {
+        agentId,
+        threadId,
+        prompt: "Continue after OpenAI is authorized again",
+      });
+      const reauthorizedClaim = await claimChatRun(
+        runnerGroup,
+        reauthorized.runId,
+      );
+      expect(
+        reauthorizedClaim.claim.secretConnectorMetadataMap?.OPENAI_TOKEN,
+      ).toMatchObject({ sourceId: connection.id });
+      await cancelChatRun(actor, reauthorized.runId);
+    },
+  );
 
   it("does not persist connector overrides during concurrent first sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -2735,18 +2776,7 @@ function sessionHeaders(actor: ApiTestUser): {
 /** Org-admin model provider upsert through the public route. */
 async function upsertOrgModelProvider(
   actor: ApiTestUser,
-  body: {
-    readonly type:
-      | "anthropic-api-key"
-      | "deepseek"
-      | "openai-api-key"
-      | "openrouter-api-key"
-      | "openrouter-codex"
-      | "vercel-ai-gateway"
-      | "vercel-ai-gateway-codex"
-      | "built-in";
-    readonly secret?: string;
-  },
+  body: UpsertModelProviderRequest,
 ): Promise<{ readonly providerId: string; readonly created: boolean }> {
   const response = await accept(
     modelProvidersClient().upsert({
@@ -3101,8 +3131,8 @@ async function postThreadPiAutomationEvent(args: {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "X-VM0-Timestamp": String(timestamp),
-      "X-VM0-Signature": computeHmacSignature(
+      "X-Okou-Timestamp": String(timestamp),
+      "X-Okou-Signature": computeHmacSignature(
         rawBody,
         args.webhookSecret,
         timestamp,
@@ -3867,8 +3897,9 @@ describe("CHAT-02: interrupting active chat runs", () => {
 });
 
 describe("CHAT effort: thread configuration", () => {
-  it("keeps requested and saved effort closed until native rollout is complete", async () => {
-    const { actor, agentId, providerId } = await entitledChatActor();
+  it("applies requested and saved native effort through the existing claim protocol", async () => {
+    const { actor, agentId, providerId, runnerGroup } =
+      await entitledChatActor();
     await api.updateOrgModelPolicies(
       actor,
       (["claude-sonnet-5", "claude-opus-4-8"] as const).map((model) => {
@@ -3891,30 +3922,32 @@ describe("CHAT effort: thread configuration", () => {
     await chat.updateThreadModelSelection(actor, thread.id, "claude-sonnet-5", {
       reasoningEffort: "high",
     });
-    const saved = await chat.requestSendEvent(
-      actor,
-      { agentId, threadId: thread.id, prompt: "Use saved effort" },
-      [400],
-    );
-    expect(saved.body).toMatchObject({
-      error: {
-        message:
-          "Reasoning effort execution is not available yet. Restore the model default to run this message.",
-      },
+    const saved = await sendChatRun(actor, {
+      agentId,
+      threadId: thread.id,
+      prompt: "Use saved effort",
     });
-    const explicit = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        prompt: "New explicit effort",
-        runOptions: { reasoningEffort: "low" },
-      },
-      [400],
+    const savedClaim = await claimChatRun(runnerGroup, saved.runId);
+    expect(savedClaim.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
+      "high",
     );
-    expect(explicit.body).toMatchObject({ error: { code: "BAD_REQUEST" } });
-    expect(
-      (await chat.listThreadEvents(actor, thread.id)).events,
-    ).toStrictEqual([]);
+    await cancelChatRun(actor, saved.runId, savedClaim.sandboxHeaders);
+
+    const explicit = await sendChatRun(actor, {
+      agentId,
+      prompt: "New explicit effort",
+      runOptions: { reasoningEffort: "extra" },
+    });
+    const explicitClaim = await claimChatRun(runnerGroup, explicit.runId);
+    // Storage and dispatch retain the user's Claude name. The guest maps it.
+    expect(explicitClaim.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
+      "extra",
+    );
+    await expect(
+      chat.readThreadMetadata(actor, explicit.threadId),
+    ).resolves.toMatchObject({ reasoningEffort: "extra" });
+    await cancelChatRun(actor, explicit.runId, explicitClaim.sandboxHeaders);
+
     const reset = await sendChatRun(actor, {
       agentId,
       threadId: thread.id,
@@ -3922,26 +3955,43 @@ describe("CHAT effort: thread configuration", () => {
       model: "claude-opus-4-8",
       runOptions: { reasoningEffort: null },
     });
+    const resetClaim = await claimChatRun(runnerGroup, reset.runId);
+    expect(resetClaim.claim.platformEnvironment).not.toHaveProperty(
+      "OKOU_REASONING_EFFORT",
+    );
     expect(
       (await chat.readThreadMetadata(actor, thread.id)).reasoningEffort ?? null,
     ).toBeNull();
     await expect(
       chat.readThreadMetadata(actor, thread.id),
     ).resolves.toMatchObject({ selectedModel: "claude-opus-4-8" });
-    await cancelChatRun(actor, reset.runId);
+    await cancelChatRun(actor, reset.runId, resetClaim.sandboxHeaders);
   }, 90_000);
 
   it.each([
-    { model: "gpt-5.6-sol", providerType: "openai-api-key" },
-    { model: "claude-sonnet-5", providerType: "anthropic-api-key" },
+    {
+      model: "gpt-5.6-sol",
+      effort: "high",
+      pi: true,
+      providerType: "openai-api-key",
+      error:
+        "Reasoning effort selection is not supported by this execution route. Restore the model default to run this message.",
+    },
+    {
+      model: "claude-sonnet-5",
+      effort: "ultracode",
+      pi: false,
+      providerType: "anthropic-api-key",
+      error:
+        "Ultracode execution is not available yet. Choose another effort level or restore the model default.",
+    },
   ] as const)(
-    "keeps queued $model effort closed even when the feature switch is enabled",
-    async ({ model, providerType }) => {
+    "rejects unavailable $model $effort before queue admission",
+    async ({ model, effort, pi, providerType, error }) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
-      chatCallbacks.failIfChatCallbackRouteIsFetched();
       const { providerId } = await upsertOrgModelProvider(actor, {
         type: providerType,
-        secret: "test-staged-effort-key",
+        secret: "test-native-effort-key",
       });
       await api.updateOrgModelPolicies(actor, [
         {
@@ -3954,28 +4004,65 @@ describe("CHAT effort: thread configuration", () => {
       ]);
       await authDeviceSupport.updateFeatureSwitches(actor, {
         [FeatureSwitchKey.ChatReasoningEffort]: true,
+        [FeatureSwitchKey.PiLoop]: pi,
+      });
+      const thread = await chat.createThread(actor, {
+        agentId,
+        title: "Unsupported effort route",
+        model,
+      });
+      for (const saved of [false, true]) {
+        if (saved) {
+          await chat.updateThreadModelSelection(actor, thread.id, model, {
+            reasoningEffort: effort,
+          });
+        }
+        const result = await chat.requestSendEvent(
+          actor,
+          {
+            agentId,
+            threadId: thread.id,
+            prompt: "Do not silently ignore effort",
+            ...(saved ? {} : { runOptions: { reasoningEffort: effort } }),
+          },
+          [400],
+        );
+        expect(result.body).toMatchObject({ error: { message: error } });
+        expect(
+          (await chat.listThreadEvents(actor, thread.id)).events,
+        ).toStrictEqual([]);
+      }
+      // A queued input must re-check the current route and effort, too.
+      await authDeviceSupport.updateFeatureSwitches(actor, {
         [FeatureSwitchKey.PiLoop]: false,
+      });
+      await chat.updateThreadModelSelection(actor, thread.id, model, {
+        reasoningEffort: null,
       });
       const active = await sendChatRun(actor, {
         agentId,
-        prompt: "Default effort remains executable during rollout",
+        threadId: thread.id,
+        prompt: "Hold the queue before changing effort",
       });
       const activeClaim = await claimChatRun(runnerGroup, active.runId);
       const clientEventId = randomUUID();
-      const prompt = "Do not launch explicit effort before native rollout";
+      const queuedPrompt = "Reject unsupported effort at queued launch";
       const queued = await chat.requestSendEvent(
         actor,
-        { agentId, threadId: active.threadId, prompt, clientEventId },
+        { agentId, threadId: thread.id, clientEventId, prompt: queuedPrompt },
         [201],
       );
       expect(queued.body).toMatchObject({ runId: null });
-      await chat.updateThreadModelSelection(actor, active.threadId, model, {
-        reasoningEffort: "high",
+      await chat.updateThreadModelSelection(actor, thread.id, model, {
+        reasoningEffort: effort,
+      });
+      await authDeviceSupport.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.PiLoop]: pi,
       });
       await cancelChatRun(actor, active.runId, activeClaim.sandboxHeaders);
       const terminal = await waitForThreadMessages(
         actor,
-        active.threadId,
+        thread.id,
         (events) => {
           return userMessages(events).some((event) => {
             return (
@@ -3994,106 +4081,110 @@ describe("CHAT effort: thread configuration", () => {
       );
       expect(
         (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
-          return run.prompt === prompt;
+          return run.prompt === queuedPrompt;
         }),
       ).toHaveLength(0);
-      await expect(
-        chat.readThreadMetadata(actor, active.threadId),
-      ).resolves.toMatchObject({ reasoningEffort: "high" });
     },
     90_000,
   );
 
-  it("uses current thread settings and rollout state when a queued message starts", async () => {
-    const { actor, agentId, providerId, runnerGroup } =
-      await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-    await authDeviceSupport.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ChatReasoningEffort]: true,
-    });
-    await api.updateOrgModelPolicies(
-      actor,
-      (["claude-sonnet-5", "claude-opus-4-8"] as const).map((model) => {
-        return {
-          model,
-          isDefault: model === "claude-sonnet-5",
-          defaultProviderType: "anthropic-api-key",
-          credentialScope: "org",
-          modelProviderId: providerId,
-        };
-      }),
-    );
-    const active = await sendChatRun(actor, { agentId, prompt: "Active task" });
-    const activeClaim = await claimChatRun(runnerGroup, active.runId);
-    const clientEventId = randomUUID();
-    const queued = await chat.requestSendEvent(
-      actor,
-      {
+  it.each([true, false])(
+    "uses current thread settings when a queued message starts with rollout %s",
+    async (enabled) => {
+      const { actor, agentId, providerId, runnerGroup } =
+        await entitledChatActor();
+      chatCallbacks.failIfChatCallbackRouteIsFetched();
+      await authDeviceSupport.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.ChatReasoningEffort]: true,
+      });
+      await api.updateOrgModelPolicies(
+        actor,
+        (["claude-sonnet-5", "claude-opus-4-8"] as const).map((model) => {
+          return {
+            model,
+            isDefault: model === "claude-sonnet-5",
+            defaultProviderType: "anthropic-api-key",
+            credentialScope: "org",
+            modelProviderId: providerId,
+          };
+        }),
+      );
+      const active = await sendChatRun(actor, {
         agentId,
-        threadId: active.threadId,
-        prompt: "Read the current thread settings at launch",
-        clientEventId,
-        runOptions: { reasoningEffort: null },
-      },
-      [201],
-    );
-    expect(queued.body).toMatchObject({ runId: null });
-    await chat.updateThreadModelSelection(
-      actor,
-      active.threadId,
-      "claude-opus-4-8",
-      { reasoningEffort: "high" },
-    );
-    const retry = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        threadId: active.threadId,
-        prompt: "Read the current thread settings at launch",
-        clientEventId,
-        runOptions: { reasoningEffort: "high" },
-      },
-      [201],
-    );
-    expect(retry.body).toStrictEqual(queued.body);
-    await authDeviceSupport.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.ChatReasoningEffort]: false,
-    });
-    await cancelChatRun(actor, active.runId, activeClaim.sandboxHeaders);
-    const messages = await waitForThreadMessages(
-      actor,
-      active.threadId,
-      (items) => {
-        return userMessages(items).some((message) => {
-          return (
-            message.revokesEventId === clientEventId &&
-            typeof message.runId === "string"
-          );
-        });
-      },
-    );
-    const promoted = userMessages(messages.events).find((message) => {
-      return message.revokesEventId === clientEventId;
-    });
-    if (!promoted?.runId || promoted.eventType !== "input.prompt") {
-      throw new Error("Expected queued input to launch");
-    }
-    expect(promoted.userMessage.parts).toContainEqual({
-      type: "model",
-      selectedModel: "claude-opus-4-8",
-    });
-    const claimed = await claimChatRun(runnerGroup, promoted.runId);
-    expect(claimed.claim.platformEnvironment).not.toHaveProperty(
-      "OKOU_REASONING_EFFORT",
-    );
-    await expect(
-      chat.readThreadMetadata(actor, active.threadId),
-    ).resolves.toMatchObject({
-      selectedModel: "claude-opus-4-8",
-      reasoningEffort: "high",
-    });
-    await cancelChatRun(actor, promoted.runId, claimed.sandboxHeaders);
-  }, 90_000);
+        prompt: "Active task",
+      });
+      const activeClaim = await claimChatRun(runnerGroup, active.runId);
+      const clientEventId = randomUUID();
+      const queued = await chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: active.threadId,
+          prompt: "Read the current thread settings at launch",
+          clientEventId,
+          runOptions: { reasoningEffort: null },
+        },
+        [201],
+      );
+      expect(queued.body).toMatchObject({ runId: null });
+      await chat.updateThreadModelSelection(
+        actor,
+        active.threadId,
+        "claude-opus-4-8",
+        { reasoningEffort: "high" },
+      );
+      const retry = await chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: active.threadId,
+          prompt: "Read the current thread settings at launch",
+          clientEventId,
+          runOptions: { reasoningEffort: "high" },
+        },
+        [201],
+      );
+      expect(retry.body).toStrictEqual(queued.body);
+      await authDeviceSupport.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.ChatReasoningEffort]: enabled,
+      });
+      await cancelChatRun(actor, active.runId, activeClaim.sandboxHeaders);
+      const messages = await waitForThreadMessages(
+        actor,
+        active.threadId,
+        (items) => {
+          return userMessages(items).some((message) => {
+            return (
+              message.revokesEventId === clientEventId &&
+              typeof message.runId === "string"
+            );
+          });
+        },
+      );
+      const promoted = userMessages(messages.events).find((message) => {
+        return message.revokesEventId === clientEventId;
+      });
+      if (!promoted?.runId || promoted.eventType !== "input.prompt") {
+        throw new Error("Expected queued input to launch");
+      }
+      expect(promoted.userMessage.parts).toContainEqual({
+        type: "model",
+        selectedModel: "claude-opus-4-8",
+      });
+      const claimed = await claimChatRun(runnerGroup, promoted.runId);
+      expect(claimed.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
+        enabled ? "high" : undefined,
+      );
+      await expect(
+        chat.readThreadMetadata(actor, active.threadId),
+      ).resolves.toMatchObject({
+        selectedModel: "claude-opus-4-8",
+        reasoningEffort: "high",
+      });
+      await cancelChatRun(actor, promoted.runId, claimed.sandboxHeaders);
+    },
+    90_000,
+  );
 
   it("ignores saved effort while disabled without erasing it on normal or explicit-model sends", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -4142,20 +4233,19 @@ describe("CHAT effort: thread configuration", () => {
     await authDeviceSupport.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.ChatReasoningEffort]: true,
     });
-    const enabled = await chat.requestSendEvent(
-      actor,
-      { agentId, threadId: thread.id, prompt: "Saved effort is active again" },
-      [400],
-    );
-    expect(enabled.body).toMatchObject({
-      error: {
-        message:
-          "Reasoning effort execution is not available yet. Restore the model default to run this message.",
-      },
+    const enabled = await sendChatRun(actor, {
+      agentId,
+      threadId: thread.id,
+      prompt: "Saved effort is active again",
     });
+    const enabledClaim = await claimChatRun(runnerGroup, enabled.runId);
+    expect(enabledClaim.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
+      "high",
+    );
+    await cancelChatRun(actor, enabled.runId, enabledClaim.sandboxHeaders);
   }, 90_000);
 
-  it("preserves Fast while effort execution remains closed", async () => {
+  it("preserves Fast when resetting effort and sending an Ultra override", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await authDeviceSupport.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.ChatReasoningEffort]: true,
@@ -4205,25 +4295,177 @@ describe("CHAT effort: thread configuration", () => {
       "OKOU_REASONING_EFFORT",
     );
     await cancelChatRun(actor, sent.runId, claimed.sandboxHeaders);
-    const explicit = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        threadId: thread.id,
-        prompt: "Keep explicit effort closed during native rollout",
-        runOptions: { reasoningEffort: "low" },
-      },
-      [400],
-    );
-    expect(explicit.body).toMatchObject({
-      error: {
-        message:
-          "Reasoning effort execution is not available yet. Restore the model default to run this message.",
-      },
+    const explicit = await sendChatRun(actor, {
+      agentId,
+      threadId: thread.id,
+      prompt: "Change effort and retain Fast",
+      runOptions: { reasoningEffort: "ultra" },
     });
-    const metadata = await chat.readThreadMetadata(actor, thread.id);
-    expect(metadata.reasoningEffort ?? null).toBeNull();
-    expect(metadata.serviceTier).toBe("priority");
+    const explicitClaim = await claimChatRun(runnerGroup, explicit.runId);
+    expect(explicitClaim.claim.platformEnvironment).toMatchObject({
+      OKOU_CODEX_SERVICE_TIER: "fast",
+      OKOU_REASONING_EFFORT: "ultra",
+    });
+    await expect(
+      chat.readThreadMetadata(actor, thread.id),
+    ).resolves.toMatchObject({
+      reasoningEffort: "ultra",
+      serviceTier: "priority",
+    });
+    await cancelChatRun(actor, explicit.runId, explicitClaim.sandboxHeaders);
+  }, 90_000);
+});
+
+describe("CHAT effort: automation launches", () => {
+  async function startAutomation() {
+    const scenario = await entitledChatActor({}, "pro");
+    const { actor, agentId, runnerGroup } = scenario;
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ChatReasoningEffort]: true,
+      [FeatureSwitchKey.PiLoop]: false,
+    });
+    const workflowId = await createWorkflowsBddApi(context).createWorkflow(
+      actor,
+      { agentId, name: "native-effort" },
+    );
+    const created = await accept(
+      threadPiAutomationsClient().create({
+        headers: sessionHeaders(actor),
+        params: { workflowId },
+        body: { schedule: { type: "loop", intervalSeconds: 3600 } },
+      }),
+      [201],
+    );
+    const started = await accept(
+      threadPiAutomationsClient().run({
+        headers: sessionHeaders(actor),
+        params: { id: created.body.id },
+      }),
+      [201],
+    );
+    const threadId = started.body.chatThreadId;
+    const runId = await lastThreadPiAutomationRun(actor, threadId);
+    const claimed = await claimChatRun(runnerGroup, runId);
+    expect(claimed.claim.platformEnvironment).not.toHaveProperty(
+      "OKOU_REASONING_EFFORT",
+    );
+    return {
+      ...scenario,
+      threadId,
+      runId,
+      claimed,
+      automationId: created.body.id,
+    };
+  }
+
+  it.each([true, false])(
+    "uses the latest thread effort and rollout state for a queued automation (enabled=%s)",
+    async (enabled) => {
+      const { actor, runnerGroup, threadId, runId, claimed, automationId } =
+        await startAutomation();
+      await chat.updateThreadModelSelection(
+        actor,
+        threadId,
+        "claude-sonnet-5",
+        {
+          reasoningEffort: "extra",
+        },
+      );
+      const queued = await accept(
+        threadPiAutomationsClient().run({
+          headers: sessionHeaders(actor),
+          params: { id: automationId },
+        }),
+        [201],
+      );
+      expect(queued.body.runId).toBeNull();
+      await chat.updateThreadModelSelection(
+        actor,
+        threadId,
+        "claude-sonnet-5",
+        {
+          reasoningEffort: "high",
+        },
+      );
+      await authDeviceSupport.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.ChatReasoningEffort]: enabled,
+      });
+      await completeChatRunOk(runId, claimed.sandboxHeaders, {
+        cliAgentType: "claude-code",
+      });
+      await flushWaitUntilForTest();
+      const nextRunId = await lastThreadPiAutomationRun(actor, threadId);
+      expect(nextRunId).not.toBe(runId);
+      const next = await claimChatRun(runnerGroup, nextRunId);
+      expect(next.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
+        enabled ? "high" : undefined,
+      );
+      await expect(
+        chat.readThreadMetadata(actor, threadId),
+      ).resolves.toMatchObject({
+        reasoningEffort: "high",
+      });
+      await cancelChatRun(actor, nextRunId, next.sandboxHeaders);
+    },
+    90_000,
+  );
+
+  it("rejects unsupported effort at the automation launch entry point", async () => {
+    const { actor, threadId, runId, claimed, automationId } =
+      await startAutomation();
+    await completeChatRunOk(runId, claimed.sandboxHeaders, {
+      cliAgentType: "claude-code",
+    });
+    await flushWaitUntilForTest();
+    for (const route of [
+      {
+        model: "claude-sonnet-5",
+        effort: "ultracode",
+        pi: false,
+        providerType: "anthropic-api-key",
+        error:
+          "Ultracode execution is not available yet. Choose another effort level or restore the model default.",
+      },
+      {
+        model: "gpt-5.6-sol",
+        effort: "high",
+        pi: true,
+        providerType: "openai-api-key",
+        error:
+          "Reasoning effort selection is not supported by this execution route. Restore the model default to run this message.",
+      },
+    ] as const) {
+      const { providerId } = await upsertOrgModelProvider(actor, {
+        type: route.providerType,
+        secret: "test-workflow-effort-key",
+      });
+      await api.updateOrgModelPolicies(actor, [
+        {
+          model: route.model,
+          isDefault: true,
+          defaultProviderType: route.providerType,
+          credentialScope: "org",
+          modelProviderId: providerId,
+        },
+      ]);
+      await authDeviceSupport.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.PiLoop]: route.pi,
+      });
+      await chat.updateThreadModelSelection(actor, threadId, route.model, {
+        reasoningEffort: route.effort,
+      });
+      const rejected = await accept(
+        threadPiAutomationsClient().run({
+          headers: sessionHeaders(actor),
+          params: { id: automationId },
+        }),
+        [400],
+      );
+      expect(rejected.body).toMatchObject({ error: { message: route.error } });
+      await expect(lastThreadPiAutomationRun(actor, threadId)).resolves.toBe(
+        runId,
+      );
+    }
   }, 90_000);
 });
 
@@ -6880,14 +7122,14 @@ async function expectPiApiFirstTurnTerminalWithoutOutput(
   actor: ApiTestUser,
   run: { readonly runId: string; readonly threadId: string },
   status: "failed" | "cancelled",
+  failureMessage = "[PI_API_MODEL_OUTPUT_INCOMPLETE] Pi API first-turn model output is incomplete",
 ): Promise<void> {
   const terminal = await api.readRun(actor, run.runId);
   expect(terminal).toMatchObject({
     status,
     ...(status === "failed"
       ? {
-          error:
-            "[PI_API_MODEL_OUTPUT_INCOMPLETE] Pi API first-turn model output is incomplete",
+          error: failureMessage,
         }
       : {}),
   });
@@ -6918,6 +7160,9 @@ function uploadedPiS3Object(objectKey: string): Buffer | undefined {
       candidate.constructor?.name === "PutObjectCommand" &&
       piS3ObjectKey(candidate) === objectKey
     ) {
+      if (typeof candidate.input?.Body === "string") {
+        return Buffer.from(candidate.input.Body, "utf8");
+      }
       if (!(candidate.input?.Body instanceof Uint8Array)) {
         throw new Error(
           `Expected uploaded Pi S3 object bytes for ${objectKey}`,
@@ -6977,6 +7222,7 @@ async function completeSandboxFirstPiRun(args: {
   readonly actor: ApiTestUser;
   readonly answer: string;
   readonly outputTokens?: number;
+  readonly nativeModel?: z.infer<typeof piNativeCatalogModelSchema>;
   readonly checkpointObjects: Map<string, Buffer>;
   readonly claim: Awaited<ReturnType<typeof claimChatRun>>;
   readonly prompt: string;
@@ -6997,9 +7243,9 @@ async function completeSandboxFirstPiRun(args: {
   session.appendMessage({
     role: "assistant",
     content: [{ type: "text", text: args.answer }],
-    api: "openai-responses",
-    provider: "openai",
-    model: "gpt-5.6-terra",
+    api: args.nativeModel ? "anthropic-messages" : "openai-responses",
+    provider: args.nativeModel ? "anthropic" : "openai",
+    model: args.nativeModel ?? "gpt-5.6-terra",
     usage: {
       input: 0,
       output: args.outputTokens ?? 0,
@@ -8427,16 +8673,17 @@ describe("CHAT-02: model-first provider policies", () => {
     for (const [name, snapshot] of rejectedSnapshots) {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const orgId = requireOrgId(actor);
-      await updateFeatureSwitchesForUser(
-        context,
-        { ...actor, orgId },
-        { [FeatureSwitchKey.PiLoop]: true },
-      );
       const run = await sendChatRun(actor, {
         agentId,
         prompt: `decode ${name} through the completion webhook`,
       });
       const claimed = await claimChatRun(runnerGroup, run.runId);
+      // Decode historical carriers with the current cohort enabled at completion.
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        { [FeatureSwitchKey.PiLoop]: true },
+      );
       await setRunLaunchSnapshotFixture(run.runId, snapshot);
       const completionOptions = frameworkMatchingCompletionOptions(
         run.threadId,
@@ -8458,16 +8705,17 @@ describe("CHAT-02: model-first provider policies", () => {
     for (const [name, snapshot] of admittedSnapshots) {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const orgId = requireOrgId(actor);
-      await updateFeatureSwitchesForUser(
-        context,
-        { ...actor, orgId },
-        { [FeatureSwitchKey.PiLoop]: true },
-      );
       const run = await sendChatRun(actor, {
         agentId,
         prompt: `decode ${name} through the completion webhook`,
       });
       const claimed = await claimChatRun(runnerGroup, run.runId);
+      // Decode historical carriers with the current cohort enabled at completion.
+      await updateFeatureSwitchesForUser(
+        context,
+        { ...actor, orgId },
+        { [FeatureSwitchKey.PiLoop]: true },
+      );
       await setRunLaunchSnapshotFixture(run.runId, snapshot);
       const completionOptions = frameworkMatchingCompletionOptions(
         run.threadId,
@@ -14771,6 +15019,57 @@ describe("CHAT-02: model-first provider policies", () => {
     });
   }, 90_000);
 
+  it("keeps a raw API usage failure terminal before aborting its private attempt", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockPiResourceArchiveDownloads();
+    let modelCalls = 0;
+    server.use(
+      http.post("https://api.openai.com/v1/responses", () => {
+        modelCalls += 1;
+        return nativeCodexSseResponse(
+          piResponsesTextSse(
+            "invalid usage must not authorize H0 replay",
+            modelCalls,
+            {
+              input_tokens: 1.5,
+              output_tokens: 3,
+              total_tokens: 4.5,
+            },
+          ),
+        );
+      }),
+    );
+    const objects = mockPiCheckpointObjectStore();
+    const { anchor, anchorClaim, run, usagePricingResolution } =
+      await queueCapabilityProvenPiRun({
+        actor,
+        agentId,
+        runnerGroup,
+        prompt: "reject invalid provider usage without retrying the prompt",
+      });
+    await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
+      usagePricingResolution,
+    });
+    await waitForRunStatus(actor, run.runId, "failed");
+    await flushWaitUntilForTest();
+    expect(modelCalls).toBe(1);
+    expectNoPiApiFirstTurnArtifacts(run.runId, objects);
+    await expectPiApiFirstTurnTerminalWithoutOutput(
+      actor,
+      run,
+      "failed",
+      "[PI_API_MODEL_FAILED] Pi API first turn failed",
+    );
+    await expectNoBuiltInModelUsage(run.runId);
+    expect(context.mocks.axiomLogging.info).not.toHaveBeenCalledWith(
+      "Pi API first-turn outcome",
+      expect.objectContaining({
+        runId: run.runId,
+        outcome: "sandbox_retry_started",
+      }),
+    );
+  }, 90_000);
+
   it.each(["H1 commit", "H1 deadline", "handoff publication"] as const)(
     "keeps a genuine %s failure terminal without replaying H0",
     async (stage) => {
@@ -15039,9 +15338,14 @@ describe("CHAT-02: model-first provider policies", () => {
     90_000,
   );
 
-  it.each(["identity", "gzip", "zstd"] as const)(
-    "saves large Pi %s history and transfers the next turn without API history or resource IO",
-    async (encoding) => {
+  it.each([
+    { encoding: "identity", responseLost: false },
+    { encoding: "gzip", responseLost: false },
+    { encoding: "zstd", responseLost: false },
+    { encoding: "identity", responseLost: true },
+  ] as const)(
+    "saves large Pi $encoding history without API history or resource IO (publication response lost: $responseLost)",
+    async ({ encoding, responseLost }) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const checkpointObjects = mockPiCheckpointObjectStore();
       let modelCalls = 0;
@@ -15204,6 +15508,44 @@ describe("CHAT-02: model-first provider policies", () => {
       await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
         status: "completed",
       });
+      if (responseLost) {
+        const deadline = new AbortController();
+        onTestFinished(() => {
+          deadline.abort();
+        });
+        // An object-store response can be lost after the manifest is visible.
+        // Expire the real attempt signal exactly at that external boundary.
+        context.mocks.abortSignal.timeout.mockImplementation((milliseconds) => {
+          return milliseconds > API_FIRST_TURN_OWNERSHIP_BUDGET_MS - 1000 &&
+            milliseconds <= API_FIRST_TURN_OWNERSHIP_BUDGET_MS
+            ? deadline.signal
+            : undefined;
+        });
+        const send = context.mocks.s3.send.getMockImplementation();
+        if (!send) {
+          throw new Error("Expected the checkpoint object store");
+        }
+        context.mocks.s3.send.mockImplementation(async (command: unknown) => {
+          const candidate = command as PiCheckpointS3Command;
+          const stored = await send(command);
+          if (
+            candidate.constructor?.name === "PutObjectCommand" &&
+            piS3ObjectKey(candidate)?.endsWith("/manifest.json")
+          ) {
+            expect(
+              checkpointObjects.has(piS3ObjectKey(candidate) ?? ""),
+            ).toBeTruthy();
+            deadline.abort(
+              new DOMException(
+                "Manifest response lost at ownership deadline",
+                "TimeoutError",
+              ),
+            );
+            throw deadline.signal.reason;
+          }
+          return stored;
+        });
+      }
       const callsBeforeResume = context.mocks.s3.send.mock.calls.length;
       const resumed = await sendChatRun(
         actor,
@@ -15217,10 +15559,14 @@ describe("CHAT-02: model-first provider policies", () => {
       );
       await flushWaitUntilForTest();
       const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${resumed.runId}/manifest.json`;
+      // Terminal cleanup removes the failed run's object. The captured write
+      // still proves that ownership publication happened before its response
+      // was lost; the normal transfer retains its currently readable object.
+      const publishedManifest = responseLost
+        ? uploadedPiS3Object(manifestKey)
+        : checkpointObjects.get(manifestKey);
       const manifest = piApiFirstTurnManifestSchema.parse(
-        JSON.parse(
-          checkpointObjects.get(manifestKey)?.toString("utf8") ?? "{}",
-        ),
+        JSON.parse(publishedManifest?.toString("utf8") ?? "{}"),
       );
       expect(manifest).toMatchObject({
         schemaVersion: 4,
@@ -15259,6 +15605,28 @@ describe("CHAT-02: model-first provider policies", () => {
           `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${resumed.runId}/session.jsonl`,
         ),
       ).toBeFalsy();
+      if (responseLost) {
+        await waitForRunStatus(actor, resumed.runId, "failed");
+        await expectPiApiFirstTurnTerminalWithoutOutput(
+          actor,
+          resumed,
+          "failed",
+          "[PI_API_FIRST_TURN_DEADLINE_EXCEEDED] Pi API first-turn deadline elapsed",
+        );
+        expect(
+          context.mocks.s3.send.mock.calls
+            .slice(callsBeforeResume)
+            .filter(([command]) => {
+              const candidate = command as PiCheckpointS3Command;
+              return (
+                candidate.constructor?.name === "PutObjectCommand" &&
+                piS3ObjectKey(candidate) === manifestKey
+              );
+            }),
+        ).toHaveLength(1);
+        await api.requestClaimRunnerJob(true, resumed.runId, [404]);
+        return;
+      }
       const resumedClaim = await claimChatRun(runnerGroup, resumed.runId);
       expect(resumedClaim.claim.resumeSession).toMatchObject({
         sessionId: run.threadId,
@@ -17576,7 +17944,7 @@ describe("CHAT-02: model-first provider policies", () => {
       providerType: "deepseek",
     },
   ] as const)(
-    "keeps direct $name BYOK out of Pi execution",
+    "keeps direct $name BYOK on Codex while PiLoop is disabled",
     async ({ model, providerType }) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -17584,7 +17952,7 @@ describe("CHAT-02: model-first provider policies", () => {
       await updateFeatureSwitchesForUser(
         context,
         { ...actor, orgId },
-        { [FeatureSwitchKey.PiLoop]: true },
+        { [FeatureSwitchKey.PiLoop]: false },
       );
       const { providerId } = await upsertOrgModelProvider(actor, {
         type: providerType,
@@ -25574,17 +25942,17 @@ describe("CHAT-02: default assistant identity", () => {
     await cancelChatRun(actor, promoted.runId);
 
     mockEnv("APP_URL", "https://preview.example.test");
-    const customZero = await bdd.createAgent(actor, {
-      displayName: "Zero",
+    const customAgent = await bdd.createAgent(actor, {
+      displayName: "Nova",
       visibility: "private",
     });
     const customRun = await sendChatRun(actor, {
-      agentId: customZero.agentId,
+      agentId: customAgent.agentId,
       prompt: "keep my custom name",
     });
     const customPrompt = (await api.readRun(actor, customRun.runId))
       .appendSystemPrompt;
-    expect(customPrompt).toContain("Your name is Zero.");
+    expect(customPrompt).toContain("Your name is Nova.");
     expect(customPrompt).not.toContain("Your name is Okou.");
     const customClaim = await claimChatRun(runnerGroup, customRun.runId);
     await expectRunAppContext({
@@ -25865,7 +26233,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     const grantedRun = await api.readRun(actor, granted.runId);
     expect(grantedRun.appendSystemPrompt).toContain("# Computer Use");
     expect(grantedRun.appendSystemPrompt).toContain(
-      "Computer Use is enabled for this run on Zero Desktop.",
+      "Computer Use is enabled for this run on BDD Desktop.",
     );
     expect(grantedRun.appendSystemPrompt).not.toContain(hostId);
     const grantedClaim = await claimChatRun(runnerGroup, granted.runId);
@@ -25915,7 +26283,7 @@ describe("CHAT-02/FILE-03: computer-use host grants", () => {
     });
     const staleRun = await api.readRun(actor, staleGranted.runId);
     expect(staleRun.appendSystemPrompt).toContain(
-      "Computer Use is enabled for this run on Zero Desktop.",
+      "Computer Use is enabled for this run on BDD Desktop.",
     );
     clearMockNow();
     const staleClaim = await claimChatRun(runnerGroup, staleGranted.runId);
@@ -28505,5 +28873,1335 @@ describe("CHAT-02: run image model snapshot", () => {
 
     await cancelChatRun(actor, first.runId);
     await cancelChatRun(actor, resumed.runId);
+  }, 90_000);
+});
+
+function configureNativeCliArtifact(): string {
+  const commit = "a".repeat(40);
+  const url = `https://static.okou.io/okou-cli/${commit}/package.tgz`;
+  mockEnv("PI_MEMORY_STAGE1_IDLE_DELAY_MS", 60_000);
+  mockEnv("GIT_COMMIT_SHA", commit);
+  mockEnv("CLI_PKG_URL", url);
+  return url;
+}
+
+function nativeMessagesResponse(model: string, answer: string, tool = false) {
+  const events = [
+    {
+      type: "message_start",
+      message: {
+        id: randomUUID(),
+        type: "message",
+        role: "assistant",
+        model,
+        content: [],
+        stop_reason: null,
+        usage: {
+          input_tokens: 5,
+          output_tokens: 0,
+          cache_read_input_tokens: 3,
+          cache_creation_input_tokens: 2,
+        },
+      },
+    },
+    {
+      type: "content_block_start",
+      index: 0,
+      content_block: { type: "thinking", thinking: "" },
+    },
+    {
+      type: "content_block_delta",
+      index: 0,
+      delta: { type: "thinking_delta", thinking: "route-bound reasoning" },
+    },
+    {
+      type: "content_block_delta",
+      index: 0,
+      delta: { type: "signature_delta", signature: "route-bound-signature" },
+    },
+    { type: "content_block_stop", index: 0 },
+    {
+      type: "content_block_start",
+      index: 1,
+      content_block: tool
+        ? { type: "tool_use", id: randomUUID(), name: "read", input: {} }
+        : { type: "text", text: "" },
+    },
+    {
+      type: "content_block_delta",
+      index: 1,
+      delta: tool
+        ? {
+            type: "input_json_delta",
+            partial_json: '{"path":"/home/user/workspace/AGENTS.md"}',
+          }
+        : { type: "text_delta", text: answer },
+    },
+    { type: "content_block_stop", index: 1 },
+    {
+      type: "message_delta",
+      delta: { stop_reason: tool ? "tool_use" : "end_turn" },
+      usage: { output_tokens: 3 },
+    },
+    { type: "message_stop" },
+  ];
+  return new HttpResponse(
+    events
+      .map((event) => {
+        return `event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`;
+      })
+      .join(""),
+    { headers: { "content-type": "text/event-stream" } },
+  );
+}
+
+function nativeBedrockResponse(tool = false) {
+  function frame(event: string, payload: unknown): Buffer {
+    const headers = Buffer.concat(
+      Object.entries({
+        ":message-type": "event",
+        ":event-type": event,
+        ":content-type": "application/json",
+      }).map(([name, value]) => {
+        const length = Buffer.alloc(2);
+        length.writeUInt16BE(Buffer.byteLength(value));
+        return Buffer.concat([
+          Buffer.from([name.length]),
+          Buffer.from(name),
+          Buffer.from([7]),
+          length,
+          Buffer.from(value),
+        ]);
+      }),
+    );
+    const body = Buffer.from(JSON.stringify(payload));
+    const prefix = Buffer.alloc(12);
+    prefix.writeUInt32BE(16 + headers.length + body.length);
+    prefix.writeUInt32BE(headers.length, 4);
+    prefix.writeUInt32BE(crc32(prefix.subarray(0, 8)), 8);
+    const data = Buffer.concat([prefix, headers, body]);
+    const checksum = Buffer.alloc(4);
+    checksum.writeUInt32BE(crc32(data));
+    return Buffer.concat([data, checksum]);
+  }
+  return new HttpResponse(
+    new Uint8Array(
+      Buffer.concat([
+        frame("messageStart", { role: "assistant" }),
+        ...(tool
+          ? [
+              frame("contentBlockStart", {
+                contentBlockIndex: 0,
+                start: {
+                  toolUse: { toolUseId: "native-bedrock-tool", name: "read" },
+                },
+              }),
+            ]
+          : []),
+        frame("contentBlockDelta", {
+          contentBlockIndex: 0,
+          delta: tool
+            ? { toolUse: { input: '{"path":"README.md"}' } }
+            : { text: "Exact Bedrock deployment answer" },
+        }),
+        frame("contentBlockStop", { contentBlockIndex: 0 }),
+        frame("messageStop", { stopReason: tool ? "tool_use" : "end_turn" }),
+        frame("metadata", {
+          usage: {
+            inputTokens: 5,
+            outputTokens: 3,
+            cacheReadInputTokens: 3,
+            cacheWriteInputTokens: 2,
+            totalTokens: 13,
+          },
+        }),
+      ]),
+    ),
+    {
+      headers: {
+        "content-type": "application/vnd.amazon.eventstream",
+        "x-amzn-requestid": "selected-bedrock-response",
+      },
+    },
+  );
+}
+
+async function completeNativeToolHandoff({
+  actor,
+  agentId,
+  run,
+  claim,
+  objects,
+  prefix,
+  model,
+  surfaceId,
+  requests,
+}: {
+  actor: ApiTestUser;
+  agentId: string;
+  run: Awaited<ReturnType<typeof sendChatRun>>;
+  claim: Awaited<ReturnType<typeof api.claimRunnerJob>>;
+  objects: Map<string, Buffer>;
+  prefix: string;
+  model: "claude-sonnet-4-6";
+  surfaceId: string | null;
+  requests: readonly { body: unknown }[];
+}): Promise<void> {
+  const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
+  const activeInput = "include this native active input exactly once";
+  const activeInputEventId = randomUUID();
+  await chat.requestSendEvent(
+    actor,
+    {
+      agentId,
+      threadId: run.threadId,
+      prompt: activeInput,
+      clientEventId: activeInputEventId,
+    },
+    [201],
+  );
+  const reserved = await api.reserveRunnerActiveInputs(
+    claim.sandboxToken,
+    run.runId,
+  );
+  if (reserved.outcome !== "reserved") {
+    throw new Error("Expected native active input ownership");
+  }
+  await expect(
+    api.reserveRunnerActiveInputs(claim.sandboxToken, run.runId),
+  ).resolves.toStrictEqual(reserved);
+  await expect(
+    api.recordRunnerActiveInputDelivery(
+      claim.sandboxToken,
+      run.runId,
+      reserved.deliveryId,
+    ),
+  ).resolves.toStrictEqual({ outcome: "delivered" });
+  const h1 = objects.get(`${prefix}/session.jsonl`);
+  const manifestBytes = objects.get(`${prefix}/manifest.json`);
+  if (!h1 || !manifestBytes) {
+    throw new Error("Expected native handoff history");
+  }
+  const manifest = piApiFirstTurnManifestSchema.parse(
+    JSON.parse(manifestBytes.toString("utf8")),
+  );
+  const history = MemoryPiSession.fromJsonl(h1.toString("utf8"));
+  const assistant = history.buildSessionContext().messages.at(-1);
+  if (assistant?.role !== "assistant") {
+    throw new Error("Expected native pending assistant");
+  }
+  const tool = assistant.content.find((block) => {
+    return block.type === "toolCall";
+  });
+  if (tool?.type !== "toolCall") {
+    throw new Error("Expected native pending tool");
+  }
+  history.appendMessage({
+    role: "toolResult",
+    toolCallId: tool.id,
+    toolName: tool.name,
+    content: [
+      { type: "text", text: "native tool result" },
+      {
+        type: "image",
+        mimeType: "image/png",
+        data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1ZkAAAAASUVORK5CYII=",
+      },
+    ],
+    isError: false,
+    timestamp: 2,
+  });
+  history.appendMessage({
+    role: "user",
+    content: activeInput,
+    timestamp: 3,
+  });
+  history.appendMessage({
+    ...assistant,
+    content: [{ type: "text", text: "Native sandbox completion" }],
+    stopReason: "stop",
+    timestamp: 3,
+  });
+  const h2 = history.toJsonl();
+  const hash = createHash("sha256").update(h2).digest("hex");
+  await webhooks.requestAgentCheckpointPrepareHistory(
+    {
+      runId: run.runId,
+      hash,
+      rawSize: Buffer.byteLength(h2),
+      encodedSize: Buffer.byteLength(h2),
+      encoding: "identity",
+    },
+    sandboxHeaders,
+    [200],
+  );
+  objects.set(
+    `${env("R2_USER_STORAGES_BUCKET_NAME")}/blobs/${hash}.blob`,
+    Buffer.from(h2),
+  );
+  const sequence = manifest.sandboxEventSequenceStart;
+  await webhooks.requestAgentEvents(
+    {
+      runId: run.runId,
+      events: [
+        {
+          type: "assistant",
+          sequenceNumber: sequence,
+          message: {
+            content: [{ type: "text", text: "Native sandbox completion" }],
+          },
+        },
+        {
+          type: "result",
+          sequenceNumber: sequence + 1,
+          result: "Native sandbox completion",
+        },
+      ],
+    },
+    sandboxHeaders,
+    [200],
+  );
+  await webhooks.requestAgentComplete(
+    {
+      runId: run.runId,
+      exitCode: 0,
+      lastEventSequence: sequence + 1,
+      checkpoint: {
+        cliAgentType: "pi",
+        cliAgentSessionId: run.threadId,
+        cliAgentSessionHistoryHash: hash,
+      },
+    },
+    sandboxHeaders,
+    [200],
+  );
+  await waitForRunStatus(actor, run.runId, "completed");
+  await flushWaitUntilForTest();
+  await expectExactPrivatePiMemoryAdmission({
+    orgId: requireOrgId(actor),
+    userId: actor.userId,
+    runId: run.runId,
+  });
+  await api.updateOrgModelPolicies(actor, [
+    {
+      model,
+      isDefault: true,
+      defaultProviderType: "custom-anthropic-messages",
+      credentialScope: "org",
+      modelProviderId: null,
+      modelProviderSurfaceId: surfaceId,
+    },
+  ]);
+  await authDeviceSupport.updateFeatureSwitches(actor, {
+    [FeatureSwitchKey.PiLoop]: true,
+  });
+  const resumed = await sendChatRun(actor, {
+    agentId,
+    threadId: run.threadId,
+    prompt: "continue with the native tool image and accepted input",
+  });
+  await expect
+    .poll(() => {
+      return objects.has(
+        `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${resumed.runId}/manifest.json`,
+      );
+    })
+    .toBe(true);
+  await flushWaitUntilForTest();
+  expect(JSON.stringify(requests[1]?.body)).toContain("image/png");
+  expect(JSON.stringify(requests[1]?.body)).toContain(activeInput);
+  expect(JSON.stringify(requests[1]?.body)).toContain("route-bound-signature");
+  await cancelChatRun(actor, resumed.runId);
+}
+
+describe("shared native Pi route activation", () => {
+  it.each([
+    {
+      type: "deepseek",
+      model: "deepseek-v4-flash",
+      url: "https://api.deepseek.com/responses",
+    },
+    {
+      type: "deepseek",
+      model: "deepseek-v4-pro",
+      url: "https://api.deepseek.com/responses",
+    },
+    {
+      type: "openrouter-codex",
+      model: "deepseek-v4-flash",
+      url: "https://openrouter.ai/api/v1/responses",
+    },
+    {
+      type: "openrouter-codex",
+      model: "deepseek-v4-pro",
+      url: "https://openrouter.ai/api/v1/responses",
+    },
+  ] as const)(
+    "launches canonical $type $model Responses and continues the owned Pi session",
+    async ({ type, model, url }) => {
+      const { actor, agentId } = await entitledChatActor();
+      const { providerId } = await upsertOrgModelProvider(actor, {
+        type,
+        secret: "selected-deepseek-key",
+      });
+      await api.updateOrgModelPolicies(actor, [
+        {
+          model,
+          isDefault: true,
+          defaultProviderType: type,
+          credentialScope: "org",
+          modelProviderId: providerId,
+        },
+      ]);
+      await authDeviceSupport.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.PiLoop]: true,
+      });
+      mockPiResourceArchiveDownloads();
+      mockPiCheckpointObjectStore();
+      const requests: unknown[] = [];
+      server.use(
+        http.post(url, async ({ request }) => {
+          expect(request.headers.get("authorization")).toBe(
+            "Bearer selected-deepseek-key",
+          );
+          requests.push(await request.json());
+          return new HttpResponse(
+            piResponsesTextSse("DeepSeek BYOK answer", requests.length),
+            { headers: { "content-type": "text/event-stream" } },
+          );
+        }),
+      );
+      const first = await sendChatRun(actor, {
+        agentId,
+        model,
+        prompt: "remember the selected DeepSeek route",
+      });
+      await waitForRunStatus(actor, first.runId, "completed");
+      await flushWaitUntilForTest();
+      const second = await sendChatRun(actor, {
+        agentId,
+        threadId: first.threadId,
+        prompt: "continue with the same history",
+      });
+      await waitForRunStatus(actor, second.runId, "completed");
+      await flushWaitUntilForTest();
+      expect(requests).toHaveLength(2);
+      expect(requests[0]).toMatchObject({
+        model: getProviderRuntimeModel(type, model),
+      });
+      expect(JSON.stringify(requests[1])).toContain(
+        "remember the selected DeepSeek route",
+      );
+      await expectNoBuiltInModelUsage(first.runId);
+      await expectNoBuiltInModelUsage(second.runId);
+    },
+    90_000,
+  );
+
+  it.each(piNativeCatalogModelSchema.options)(
+    "runs built-in %s API-first with native billing and exact session continuation",
+    async (model) => {
+      const { actor, agentId } = await entitledChatActor();
+      configureNativeCliArtifact();
+      await configureBuiltInPiModel(actor, model);
+      await authDeviceSupport.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.PiLoop]: true,
+      });
+      const pricing = await createPiApiFirstTurnUsagePricingResolution(model);
+      mockPiResourceArchiveDownloads();
+      const objects = mockPiCheckpointObjectStore();
+      const requests: unknown[] = [];
+      server.use(
+        http.post(
+          "https://api.anthropic.com/v1/messages",
+          async ({ request }) => {
+            expect(request.headers.get("x-api-key")).toBeTruthy();
+            expect(request.headers.get("authorization")).toBeNull();
+            requests.push(await request.json());
+            return nativeMessagesResponse(model, "Native Claude answer");
+          },
+        ),
+      );
+      const first = await sendChatRun(
+        actor,
+        { agentId, model, prompt: "retain this Claude native preference" },
+        pricing,
+      );
+      await waitForRunStatus(actor, first.runId, "completed");
+      await flushWaitUntilForTest();
+      await expectExactPrivatePiMemoryAdmission({
+        orgId: requireOrgId(actor),
+        userId: actor.userId,
+        runId: first.runId,
+      });
+      const second = await sendChatRun(
+        actor,
+        {
+          agentId,
+          threadId: first.threadId,
+          prompt: "continue the native session",
+        },
+        pricing,
+      );
+      await waitForRunStatus(actor, second.runId, "completed");
+      await flushWaitUntilForTest();
+      expect(requests).toHaveLength(2);
+      expect(requests[0]).toMatchObject({ model });
+      expect(JSON.stringify(requests[1])).toContain(
+        "retain this Claude native preference",
+      );
+      expect(JSON.stringify(requests[1])).toContain("route-bound-signature");
+      for (const run of [first, second]) {
+        await expectPiApiUsage(run.runId, model, "", {
+          input: 5,
+          output: 3,
+          cacheRead: 3,
+          cacheCreation: 2,
+        });
+        await api.requestClaimRunnerJob(true, run.runId, [404], {
+          capabilities: { piModelConfigGenerations: [4] },
+        });
+      }
+      expect(
+        [...objects.values()].some((value) => {
+          return value.toString("utf8").includes(first.threadId);
+        }),
+      ).toBeTruthy();
+    },
+    90_000,
+  );
+
+  it.each([
+    "anthropic-api-key",
+    "openrouter-api-key",
+    "vercel-ai-gateway",
+    "custom-anthropic-messages",
+    "azure-foundry",
+  ] as const)(
+    "hands off $0 with the same native route, frozen auth and capable claims",
+    async (type) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      const cliUrl = configureNativeCliArtifact();
+      const model = "claude-sonnet-4-6";
+      const secret = "selected-native-key";
+      const upstreamModel =
+        type === "azure-foundry" || type === "custom-anthropic-messages"
+          ? "production-deployment"
+          : getProviderRuntimeModel(type, model);
+      let providerId: string | null = null;
+      let surfaceId: string | null = null;
+      if (type === "custom-anthropic-messages") {
+        const created = await accept(
+          modelProviderConnectionsClient().create({
+            headers: sessionHeaders(actor),
+            body: {
+              displayName: "Native selected surface",
+              secret,
+              surfaces: [
+                {
+                  protocol: "anthropic-messages",
+                  apiBaseUrl: "https://native-gateway.example.com",
+                  authHeaderName: "X-Provider-Key",
+                  authHeaderTemplate: "Custom {{secret}}",
+                  modelMappings: { [model]: upstreamModel },
+                },
+              ],
+            },
+          }),
+          [201],
+        );
+        surfaceId = created.body.surfaces[0]?.id ?? null;
+      } else {
+        const created = await upsertOrgModelProvider(
+          actor,
+          type === "azure-foundry"
+            ? {
+                type,
+                authMethod: "api-key",
+                selectedModel: upstreamModel,
+                secrets: {
+                  ANTHROPIC_FOUNDRY_API_KEY: secret,
+                  ANTHROPIC_FOUNDRY_RESOURCE: "native-resource",
+                },
+              }
+            : { type, secret },
+        );
+        providerId = created.providerId;
+      }
+      await api.updateOrgModelPolicies(actor, [
+        {
+          model,
+          isDefault: true,
+          defaultProviderType: type,
+          credentialScope: "org",
+          modelProviderId: providerId,
+          modelProviderSurfaceId: surfaceId,
+        },
+      ]);
+      await authDeviceSupport.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.PiLoop]: true,
+      });
+      mockPiResourceArchiveDownloads();
+      const objects = mockPiCheckpointObjectStore();
+      const urls = {
+        "anthropic-api-key": "https://api.anthropic.com/v1/messages",
+        "openrouter-api-key": "https://openrouter.ai/api/v1/messages",
+        "vercel-ai-gateway": "https://ai-gateway.vercel.sh/v1/messages",
+        "custom-anthropic-messages":
+          "https://native-gateway.example.com/v1/messages",
+        "azure-foundry":
+          "https://native-resource.services.ai.azure.com/anthropic/v1/messages",
+      };
+      const requests: {
+        body: unknown;
+        auth: string | null;
+        key: string | null;
+        custom: string | null;
+      }[] = [];
+      server.use(
+        http.post(urls[type], async ({ request }) => {
+          requests.push({
+            body: await request.json(),
+            auth: request.headers.get("authorization"),
+            key: request.headers.get("x-api-key"),
+            custom: request.headers.get("x-provider-key"),
+          });
+          return nativeMessagesResponse(upstreamModel, "", true);
+        }),
+      );
+      const run = await sendChatRun(actor, {
+        agentId,
+        model,
+        prompt: "read the workspace with the selected native route",
+      });
+      const prefix = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${run.runId}`;
+      await expect
+        .poll(() => {
+          return objects.has(`${prefix}/manifest.json`);
+        })
+        .toBe(true);
+      await flushWaitUntilForTest();
+      expect(requests).toHaveLength(1);
+      const bearer =
+        type === "openrouter-api-key" || type === "vercel-ai-gateway";
+      expect(requests[0]).toMatchObject({
+        body: { model: upstreamModel },
+        auth: bearer ? `Bearer ${secret}` : null,
+        key:
+          type === "anthropic-api-key" || type === "azure-foundry"
+            ? secret
+            : null,
+        custom:
+          type === "custom-anthropic-messages" ? `Custom ${secret}` : null,
+      });
+      if (type !== "custom-anthropic-messages") {
+        await upsertOrgModelProvider(
+          actor,
+          type === "azure-foundry"
+            ? {
+                type,
+                authMethod: "api-key",
+                secrets: {
+                  ANTHROPIC_FOUNDRY_API_KEY: "rotated-native-secret",
+                  ANTHROPIC_FOUNDRY_RESOURCE: "rotated-resource",
+                },
+              }
+            : { type, secret: "rotated-native-secret" },
+        );
+      }
+      await configureBuiltInPiModel(actor, model);
+      await authDeviceSupport.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.PiLoop]: false,
+      });
+      await api.heartbeatRunner(runnerGroup);
+      await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
+        status: "pending",
+      });
+      await api.requestClaimRunnerJob(true, run.runId, [400], {
+        capabilities: undefined,
+      });
+      await api.requestClaimRunnerJob(true, run.runId, [404], {
+        capabilities: { piModelConfigGenerations: [1, 2, 3] },
+      });
+      const result = await api.requestClaimRunnerJob(true, run.runId, [200], {
+        capabilities: { piModelConfigGenerations: [1, 2, 3, 4] },
+      });
+
+      if (result.status !== 200) {
+        throw new Error("Expected native-capable claim");
+      }
+      const claim = result.body;
+      const config = piModelConfigV4Schema.parse(claim.piModelConfig);
+      expect(config).toMatchObject({
+        route: type,
+        catalogModel: model,
+        model: upstreamModel,
+        credentialOwner: "organization",
+        billingOwner: "user",
+      });
+      expect(piNativeInferenceUrl(config)).toBe(urls[type]);
+      expect(claim.cliAgentType).toBe("pi");
+      expect(claim.piSessionId).toBe(run.threadId);
+      expect(claim.platformEnvironment.CLI_PKG_URL).toBe(cliUrl);
+      expect(claimEnvironment(claim).OKOU_PI_NATIVE_API_KEY).toBe(
+        PI_NATIVE_CREDENTIAL_PLACEHOLDER,
+      );
+      expect(JSON.stringify(claim)).not.toContain(secret);
+      expect(claim.billableFirewalls).toStrictEqual([]);
+      const expectedFirewall = piNativeFirewall(config);
+      expect(claim.firewalls).toContainEqual({
+        kind: "inline",
+        firewall: expect.objectContaining({
+          name: expectedFirewall.name,
+          apis: expectedFirewall.apis,
+        }),
+      });
+      if (!claim.encryptedSecrets || config.dialect !== "anthropic-messages") {
+        throw new Error("Expected encrypted native Messages credentials");
+      }
+      const binding = config.credentialBindings[0];
+      if (!binding) {
+        throw new Error("Missing native binding");
+      }
+      const header = binding.credentialHeader;
+      const auth = await createFirewallApi(context).requestFirewallAuth(
+        { authorization: `Bearer ${claim.sandboxToken}` },
+        {
+          encryptedSecrets: claim.encryptedSecrets,
+          authHeaders: {
+            [header.name]: header.valueTemplate.replace(
+              "{{secret}}",
+              secretTemplate(binding.secretName),
+            ),
+          },
+        },
+        [200],
+      );
+      expect(auth.body).toMatchObject({
+        headers: {
+          [header.name]: header.valueTemplate.replace("{{secret}}", secret),
+        },
+        resolvedSecrets: [binding.secretName],
+      });
+      await expectNoBuiltInModelUsage(run.runId);
+      const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
+      if (type === "custom-anthropic-messages") {
+        await completeNativeToolHandoff({
+          actor,
+          agentId,
+          run,
+          claim,
+          objects,
+          prefix,
+          model,
+          surfaceId,
+          requests,
+        });
+      } else {
+        await cancelChatRun(actor, run.runId, sandboxHeaders);
+      }
+      await webhooks.requestAgentComplete(
+        { runId: run.runId, exitCode: 0 },
+        sandboxHeaders,
+        [200],
+      );
+      await flushWaitUntilForTest();
+      const terminal = (
+        await chat.listThreadEvents(actor, run.threadId)
+      ).events.filter((event) => {
+        return (
+          "runId" in event &&
+          event.runId === run.runId &&
+          isChatRunTerminalEventType(event.eventType)
+        );
+      });
+      expect(terminal).toHaveLength(1);
+      await expectNoBuiltInModelUsage(run.runId);
+      expect(requests).toHaveLength(
+        type === "custom-anthropic-messages" ? 2 : 1,
+      );
+    },
+    90_000,
+  );
+  it.each(["api-key", "access-keys", "temporary-access-keys"] as const)(
+    "uses only the configured Bedrock %s region, profile and credential bundle",
+    async (mode) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      configureNativeCliArtifact();
+      const model = "claude-sonnet-4-6";
+      const profile =
+        "arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/production";
+      const { providerId } = await upsertOrgModelProvider(actor, {
+        type: "aws-bedrock",
+        authMethod: mode === "api-key" ? "api-key" : "access-keys",
+        selectedModel: profile,
+        secrets:
+          mode === "api-key"
+            ? {
+                AWS_BEARER_TOKEN_BEDROCK: "selected-bedrock-bearer",
+                AWS_REGION: "us-east-1",
+              }
+            : {
+                AWS_ACCESS_KEY_ID: "AKIASELECTED",
+                AWS_SECRET_ACCESS_KEY: "selected-aws-secret",
+                AWS_REGION: "us-east-1",
+                ...(mode === "temporary-access-keys"
+                  ? { AWS_SESSION_TOKEN: "selected-session-token" }
+                  : {}),
+              },
+      });
+      await api.updateOrgModelPolicies(actor, [
+        {
+          model,
+          isDefault: true,
+          defaultProviderType: "aws-bedrock",
+          credentialScope: "org",
+          modelProviderId: providerId,
+        },
+      ]);
+      await authDeviceSupport.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.PiLoop]: true,
+      });
+      mockPiResourceArchiveDownloads();
+      const objects = mockPiCheckpointObjectStore();
+      let requests = 0;
+      server.use(
+        http.post(
+          "https://bedrock-runtime.us-east-1.amazonaws.com/*",
+          async ({ request }) => {
+            requests += 1;
+            expect(decodeURIComponent(new URL(request.url).pathname)).toBe(
+              `/model/${profile}/converse-stream`,
+            );
+            expect(request.headers.get("x-api-key")).toBeNull();
+            if (mode === "api-key") {
+              expect(request.headers.get("authorization")).toBe(
+                "Bearer selected-bedrock-bearer",
+              );
+            } else {
+              expect(request.headers.get("authorization")).toContain(
+                "Credential=AKIASELECTED/",
+              );
+            }
+            expect(request.headers.get("x-amz-security-token")).toBe(
+              mode === "temporary-access-keys"
+                ? "selected-session-token"
+                : null,
+            );
+            await expect(request.json()).resolves.toMatchObject({
+              messages: expect.any(Array),
+            });
+            return nativeBedrockResponse(requests === 2);
+          },
+        ),
+      );
+      const first = await sendChatRun(actor, {
+        agentId,
+        model,
+        prompt: "use the explicit Bedrock profile",
+      });
+      await waitForRunStatus(actor, first.runId, "completed");
+      await flushWaitUntilForTest();
+      await expectNoBuiltInModelUsage(first.runId);
+      await expectExactPrivatePiMemoryAdmission({
+        orgId: requireOrgId(actor),
+        userId: actor.userId,
+        runId: first.runId,
+      });
+      expect(requests).toBe(1);
+      const second = await sendChatRun(actor, {
+        agentId,
+        threadId: first.threadId,
+        prompt: "continue with a tool on the same Bedrock profile",
+      });
+      await expect
+        .poll(() => {
+          return objects.has(
+            `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${second.runId}/manifest.json`,
+          );
+        })
+        .toBe(true);
+      await flushWaitUntilForTest();
+      await upsertOrgModelProvider(actor, {
+        type: "aws-bedrock",
+        authMethod: "api-key",
+        secrets: {
+          AWS_BEARER_TOKEN_BEDROCK: "rotated-bedrock-key",
+          AWS_REGION: "us-west-2",
+        },
+      });
+      await api.heartbeatRunner(runnerGroup);
+      await api.requestClaimRunnerJob(true, second.runId, [404], {
+        capabilities: { piModelConfigGenerations: [1, 2, 3] },
+      });
+      const claim = await api.claimRunnerJob(second.runId, {
+        capabilities: { piModelConfigGenerations: [4] },
+      });
+      const config = piModelConfigV4Schema.parse(claim.piModelConfig);
+      expect(config).toMatchObject({
+        route: "aws-bedrock",
+        catalogModel: model,
+        model: profile,
+        region: "us-east-1",
+        authMode: mode === "api-key" ? "bearer" : "sigv4",
+      });
+      for (const binding of config.credentialBindings) {
+        expect(claimEnvironment(claim)[binding.environment]).toBe(
+          PI_NATIVE_CREDENTIAL_PLACEHOLDER,
+        );
+      }
+      for (const key of [
+        "AWS_REGION",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+        "AWS_BEARER_TOKEN_BEDROCK",
+      ]) {
+        expect(claimEnvironment(claim)).not.toHaveProperty(key);
+      }
+      expect(JSON.stringify(claim)).not.toMatch(
+        /selected-bedrock-bearer|AKIASELECTED|selected-aws-secret|selected-session-token|rotated-bedrock-key/u,
+      );
+      const auth = piNativeFirewall(config).apis[0]?.auth;
+      if (!auth || !claim.encryptedSecrets) {
+        throw new Error("Expected exact Bedrock egress auth");
+      }
+      const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
+      const resolved = await createFirewallApi(context).requestFirewallAuth(
+        sandboxHeaders,
+        {
+          encryptedSecrets: claim.encryptedSecrets,
+          authHeaders: auth.headers ?? {},
+          ...(auth.awsSigv4 ? { authAwsSigv4: auth.awsSigv4 } : {}),
+        },
+        [200],
+      );
+      expect(resolved.body).toMatchObject(
+        mode === "api-key"
+          ? { headers: { Authorization: "Bearer selected-bedrock-bearer" } }
+          : {
+              awsSigv4: {
+                accessKeyId: "AKIASELECTED",
+                secretAccessKey: "selected-aws-secret",
+                ...(mode === "temporary-access-keys"
+                  ? { sessionToken: "selected-session-token" }
+                  : {}),
+              },
+            },
+      );
+      expect(requests).toBe(2);
+      await expectNoBuiltInModelUsage(second.runId);
+      await cancelChatRun(actor, second.runId, sandboxHeaders);
+    },
+    90_000,
+  );
+
+  it.each(["old-cli", "subscription-key", "wrong-region"] as const)(
+    "rejects %s before native provider I/O",
+    async (boundary) => {
+      const { actor, agentId } = await entitledChatActor();
+      configureNativeCliArtifact();
+      const model = "claude-sonnet-4-6";
+      const type =
+        boundary === "wrong-region" ? "aws-bedrock" : "anthropic-api-key";
+      const { providerId } = await upsertOrgModelProvider(
+        actor,
+        boundary === "wrong-region"
+          ? {
+              type: "aws-bedrock",
+              authMethod: "api-key",
+              selectedModel:
+                "arn:aws:bedrock:us-west-2:123456789012:application-inference-profile/wrong-region",
+              secrets: {
+                AWS_BEARER_TOKEN_BEDROCK: "selected-bearer",
+                AWS_REGION: "us-east-1",
+              },
+            }
+          : {
+              type: "anthropic-api-key",
+              secret:
+                boundary === "subscription-key"
+                  ? "sk-ant-oat01-subscription-secret"
+                  : "selected-native-key",
+            },
+      );
+      await api.updateOrgModelPolicies(actor, [
+        {
+          model,
+          isDefault: true,
+          defaultProviderType: type,
+          credentialScope: "org",
+          modelProviderId: providerId,
+        },
+      ]);
+      await authDeviceSupport.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.PiLoop]: true,
+      });
+      if (boundary === "old-cli") {
+        mockEnv(
+          "CLI_PKG_URL",
+          `https://static.okou.io/okou-cli/${"b".repeat(40)}/package.tgz`,
+        );
+      }
+      let calls = 0;
+      server.use(
+        http.post("https://api.anthropic.com/*", () => {
+          calls += 1;
+          return nativeMessagesResponse(model, "must not run");
+        }),
+        http.post("https://bedrock-runtime.us-east-1.amazonaws.com/*", () => {
+          calls += 1;
+          return nativeBedrockResponse();
+        }),
+      );
+      const response = await chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          model,
+          prompt: "reject the invalid native route",
+          clientEventId: randomUUID(),
+        },
+        [201, 400, 422, 503],
+      );
+      await flushWaitUntilForTest();
+      expect({ status: response.status, body: response.body }).toMatchObject({
+        status: 400,
+      });
+      expect(calls).toBe(0);
+    },
+    90_000,
+  );
+
+  it.each(["in-flight", "late-result"] as const)(
+    "keeps native cancellation and billing owned at the %s boundary",
+    async (phase) => {
+      const { actor, agentId } = await entitledChatActor();
+      configureNativeCliArtifact();
+      const model = "claude-sonnet-4-6";
+      await configureBuiltInPiModel(actor, model);
+      await authDeviceSupport.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.PiLoop]: true,
+      });
+      const pricing = await createPiApiFirstTurnUsagePricingResolution(model);
+      mockPiResourceArchiveDownloads();
+      const objects = mockPiCheckpointObjectStore();
+      const entered = createDeferredPromise<void>(context.signal);
+      const release = createDeferredPromise<void>(context.signal);
+      let requests = 0;
+      server.use(
+        http.post("https://api.anthropic.com/v1/messages", async () => {
+          requests += 1;
+          if (!entered.settled()) {
+            entered.resolve(undefined);
+          }
+          await release.promise;
+          return nativeMessagesResponse(
+            model,
+            "discard cancelled native output",
+          );
+        }),
+      );
+      const run = await sendChatRun(
+        actor,
+        { agentId, model, prompt: "cancel the native request" },
+        pricing,
+      );
+      await entered.promise;
+      if (phase === "late-result") {
+        await cancelBeforeLatePiResult(
+          actor,
+          run.runId,
+          () => {
+            release.resolve(undefined);
+          },
+          pricing,
+        );
+      } else {
+        await api.requestCancelRun(actor, run.runId, [200], pricing);
+        release.resolve(undefined);
+      }
+      await flushWaitUntilForTest();
+      await expectPiApiFirstTurnTerminalWithoutOutput(actor, run, "cancelled");
+      expectNoPiApiFirstTurnArtifacts(run.runId, objects);
+      if (phase === "late-result") {
+        await expectPiApiUsage(run.runId, model, "", {
+          input: 5,
+          output: 3,
+          cacheRead: 3,
+          cacheCreation: 2,
+        });
+      } else {
+        await expectNoBuiltInModelUsage(run.runId);
+      }
+      await api.requestClaimRunnerJob(true, run.runId, [404], {
+        capabilities: { piModelConfigGenerations: [4] },
+      });
+      expect(requests).toBe(1);
+    },
+    90_000,
+  );
+
+  it("does not switch the captured native route after a provider authentication failure", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    configureNativeCliArtifact();
+    const model = "claude-sonnet-4-6";
+    await configureBuiltInPiModel(actor, model);
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.PiLoop]: true,
+    });
+    mockPiResourceArchiveDownloads();
+    mockPiCheckpointObjectStore();
+    let directCalls = 0;
+    let alternateCalls = 0;
+    server.use(
+      http.post("https://api.anthropic.com/v1/messages", () => {
+        directCalls += 1;
+        return HttpResponse.json(
+          {
+            type: "error",
+            error: {
+              type: "authentication_error",
+              message: "selected credential rejected",
+            },
+          },
+          { status: 401 },
+        );
+      }),
+      http.post("https://openrouter.ai/*", () => {
+        alternateCalls += 1;
+        return nativeMessagesResponse(model, "forbidden alternate");
+      }),
+    );
+    const run = await sendChatRun(actor, {
+      agentId,
+      model,
+      prompt: "retain the selected route on failure",
+    });
+    await waitForRunStatus(actor, run.runId, "failed");
+    await flushWaitUntilForTest();
+    expect(directCalls).toBe(1);
+    expect(alternateCalls).toBe(0);
+    await api.requestClaimRunnerJob(true, run.runId, [404], {
+      capabilities: { piModelConfigGenerations: [4] },
+    });
+  }, 90_000);
+
+  it("captures the managed OpenRouter Claude key before API ownership and charges native categories once", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    configureNativeCliArtifact();
+    const model = "claude-sonnet-4-6";
+    const withSelectedRoute = await configureBuiltInPiModelOnOpenRouter(
+      actor,
+      model,
+    );
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.PiLoop]: true,
+    });
+    const pricing = await createPiApiFirstTurnUsagePricingResolution(model);
+    mockPiResourceArchiveDownloads();
+    mockPiCheckpointObjectStore();
+    let openRouterCalls = 0;
+    let anthropicCalls = 0;
+    server.use(
+      http.post("https://api.anthropic.com/*", () => {
+        anthropicCalls += 1;
+        return nativeMessagesResponse(model, "unselected");
+      }),
+      http.post(
+        "https://openrouter.ai/api/v1/messages",
+        async ({ request }) => {
+          openRouterCalls += 1;
+          expect(request.headers.get("authorization")).toMatch(/^Bearer .+/u);
+          expect(request.headers.get("x-api-key")).toBeNull();
+          await expect(request.json()).resolves.toMatchObject({
+            model: "anthropic/claude-sonnet-4.6",
+          });
+          return nativeMessagesResponse(
+            "anthropic/claude-sonnet-4.6",
+            "Managed native response",
+          );
+        },
+      ),
+    );
+    const run = await withSelectedRoute(() => {
+      return sendChatRun(
+        actor,
+        { agentId, model, prompt: "use the selected managed OpenRouter route" },
+        pricing,
+      );
+    });
+    await waitForRunStatus(actor, run.runId, "completed");
+    await flushWaitUntilForTest();
+    expect(openRouterCalls).toBe(1);
+    expect(anthropicCalls).toBe(0);
+    await expectPiApiUsage(run.runId, model, "", {
+      input: 5,
+      output: 3,
+      cacheRead: 3,
+      cacheCreation: 2,
+    });
+  }, 90_000);
+  it.each(["schedule", "event"] as const)(
+    "uses the shared native %s Automation handoff, completion and owned memory path",
+    async (source) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor(
+        {},
+        source === "event" ? "team" : "pro",
+      );
+      configureNativeCliArtifact();
+      const model = "claude-sonnet-4-6";
+      const { providerId } = await upsertOrgModelProvider(actor, {
+        type: "anthropic-api-key",
+        secret: "selected-automation-key",
+      });
+      await api.updateOrgModelPolicies(actor, [
+        {
+          model,
+          isDefault: true,
+          defaultProviderType: "anthropic-api-key",
+          credentialScope: "org",
+          modelProviderId: providerId,
+        },
+      ]);
+      await authDeviceSupport.updateFeatureSwitches(actor, {
+        [FeatureSwitchKey.PiLoop]: true,
+      });
+      const pricing = await createPiApiFirstTurnUsagePricingResolution(model);
+      const workflows = createWorkflowsBddApi(context);
+      const workflowId = await workflows.createWorkflow(actor, {
+        agentId,
+        name: `native-source-${source}`,
+      });
+      const created = await accept(
+        threadPiAutomationsClient().create({
+          headers: sessionHeaders(actor),
+          params: { workflowId },
+          body:
+            source === "schedule"
+              ? { schedule: { type: "loop", intervalSeconds: 3600 } }
+              : { kind: "event", eventType: "webhook-received" },
+        }),
+        [201],
+      );
+      mockPiResourceArchiveDownloads();
+      const objects = mockPiCheckpointObjectStore();
+      const automation = created.body;
+      let threadId: string;
+      if (
+        automation.kind === "event" &&
+        automation.eventType === "webhook-received" &&
+        automation.webhookUrl &&
+        automation.webhookSecret &&
+        automation.chatThreadId
+      ) {
+        const event = {
+          webhookUrl: automation.webhookUrl,
+          webhookSecret: automation.webhookSecret,
+          payload: "native event",
+          timestamp: Math.floor(now() / 1000),
+          usagePricingResolution: pricing,
+        };
+        await expect(postThreadPiAutomationEvent(event)).resolves.toMatchObject(
+          { duplicate: false },
+        );
+        await expect(postThreadPiAutomationEvent(event)).resolves.toMatchObject(
+          { duplicate: true },
+        );
+        threadId = automation.chatThreadId;
+      } else {
+        const started = await accept(
+          threadPiAutomationsClient().run({
+            headers: sessionHeaders(actor),
+            params: { id: automation.id },
+          }),
+          [201],
+        );
+        threadId = started.body.chatThreadId;
+      }
+      const runId = await lastThreadPiAutomationRun(actor, threadId);
+      await flushWaitUntilForTest();
+      await api.heartbeatRunner(runnerGroup);
+      await api.requestClaimRunnerJob(true, runId, [404], {
+        capabilities: { piModelConfigGenerations: [1, 2, 3] },
+      });
+      const claim = await api.claimRunnerJob(runId, {
+        capabilities: { piModelConfigGenerations: [4] },
+      });
+      expect(claim.piModelConfig).toMatchObject({
+        schemaVersion: 4,
+        route: "anthropic-api-key",
+        catalogModel: model,
+        billingOwner: "user",
+      });
+      const ownedClaim = {
+        claim,
+        sandboxHeaders: { authorization: `Bearer ${claim.sandboxToken}` },
+      };
+      await completeSandboxFirstPiRun({
+        actor,
+        run: { runId, threadId },
+        claim: ownedClaim,
+        checkpointObjects: objects,
+        prompt: claim.prompt,
+        answer: `owned native ${source} completion`,
+        nativeModel: model,
+        usagePricingResolution: pricing,
+      });
+      await expectThreadPiTerminal(actor, threadId, runId);
+      await expectExactPrivatePiMemoryAdmission({
+        orgId: requireOrgId(actor),
+        userId: actor.userId,
+        runId,
+      });
+      await expectNoBuiltInModelUsage(runId);
+    },
+    90_000,
+  );
+
+  it("keeps official Claude member subscription credentials on Claude Code with Pi enabled", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const model = "claude-sonnet-4-6";
+    await misc.upsertPersonalModelProvider(
+      actor,
+      {
+        type: "claude-code-oauth-token",
+        secret: "sk-ant-oat01-official-subscription",
+      },
+      [200, 201],
+    );
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model,
+        isDefault: true,
+        defaultProviderType: "claude-code-oauth-token",
+        credentialScope: "member",
+        modelProviderId: null,
+      },
+    ]);
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.PiLoop]: true,
+    });
+    let nativeCalls = 0;
+    server.use(
+      http.post("https://api.anthropic.com/*", () => {
+        nativeCalls += 1;
+        return nativeMessagesResponse(model, "must not call Pi");
+      }),
+    );
+    const run = await sendChatRun(actor, {
+      agentId,
+      model,
+      prompt: "retain official Claude subscription ownership",
+    });
+    const { claim, sandboxHeaders } = await claimChatRun(
+      runnerGroup,
+      run.runId,
+    );
+    expect(claim.cliAgentType).toBe("claude-code");
+    expect(claim.piModelConfig).toBeUndefined();
+    expect(claimEnvironment(claim).CLAUDE_CODE_OAUTH_TOKEN).toBeTruthy();
+    expect(nativeCalls).toBe(0);
+    await cancelChatRun(actor, run.runId, sandboxHeaders);
   }, 90_000);
 });

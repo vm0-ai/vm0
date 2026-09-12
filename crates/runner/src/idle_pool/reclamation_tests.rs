@@ -59,6 +59,7 @@ async fn idle_reclamation_holds_from_terminal_unpark_through_kill_but_not_host_d
         ExecResult::new(
             0,
             serde_json::to_vec(&SessionHistorySidecarExportMetadata {
+                timings: Default::default(),
                 representation: SessionHistorySidecarRepresentation::Raw,
                 encoded_size: history.len() as u64,
             })
@@ -379,6 +380,7 @@ async fn idle_reclamation_admission_does_not_block_bypass_or_active_promotion() 
     sandbox.push_exec_result(Ok(ExecResult::new(
         0,
         serde_json::to_vec(&SessionHistorySidecarExportMetadata {
+            timings: Default::default(),
             representation: SessionHistorySidecarRepresentation::Raw,
             encoded_size: history.len() as u64,
         })

@@ -51,6 +51,23 @@
   --color-artifact-image: #638b80;
 }
 
+/* Palette previews keep the fixed 135deg/52% sRGB blend in Light and Dark.
+   Inline references resolve on each themed element, not the document root. */
+@theme inline {
+  --color-palette-anchor: var(--okou-color-theme-anchor);
+  --background-image-palette-gradient: linear-gradient(
+    135deg,
+    var(--okou-color-theme-anchor) 0%,
+    color-mix(
+        in srgb,
+        var(--okou-color-theme-anchor),
+        var(--okou-color-theme-companion)
+      )
+      52%,
+    var(--okou-color-theme-companion) 100%
+  );
+}
+
 /* Safe area insets as CSS custom properties — more reliable than direct env() in inline
    styles across WebKit versions, including iOS 26+ standalone PWA mode. */
 :root {
@@ -373,76 +390,78 @@ body {
 }
 
 /* Each named theme pairs one anchor with one companion; the same pair drives
-   the picker swatch and the low-concentration workspace ambience below. */
+   picker swatches, primary actions, and the workspace ambience below. The HSL
+   primary value also feeds the shared semantic token without duplicating it. */
 [data-color-theme="golden-hour"] {
-  --okou-color-theme-anchor: #f7a102;
+  --okou-color-theme-primary: 38.9 98.4% 48.8%;
+  --okou-color-theme-primary-foreground: 40 4.3% 13.5%;
+  --okou-color-theme-anchor: hsl(var(--okou-color-theme-primary));
   --okou-color-theme-companion: #f4e33c;
   --okou-color-theme-hue: 38.9;
   --okou-color-theme-ring: 39.1 73.6% 52.5%;
 }
 
 [data-color-theme="citrus-spark"] {
-  --okou-color-theme-anchor: #f4e33c;
+  --okou-color-theme-primary: 54.5 89.3% 59.6%;
+  --okou-color-theme-primary-foreground: 40 4.3% 13.5%;
+  --okou-color-theme-anchor: hsl(var(--okou-color-theme-primary));
   --okou-color-theme-companion: #b5d329;
   --okou-color-theme-hue: 54.5;
   --okou-color-theme-ring: 65.4 58.7% 40.8%;
 }
 
 [data-color-theme="berry-blush"] {
-  --okou-color-theme-anchor: #e24e4a;
+  --okou-color-theme-primary: 1.6 72.4% 58.8%;
+  --okou-color-theme-primary-foreground: 0 0% 0%;
+  --okou-color-theme-anchor: hsl(var(--okou-color-theme-primary));
   --okou-color-theme-companion: #e4abc8;
   --okou-color-theme-hue: 1.6;
   --okou-color-theme-ring: 351 39.7% 57.1%;
 }
 
 [data-color-theme="cotton-sky"] {
-  --okou-color-theme-anchor: #e4abc8;
+  --okou-color-theme-primary: 329.5 51.4% 78.2%;
+  --okou-color-theme-primary-foreground: 40 4.3% 13.5%;
+  --okou-color-theme-anchor: hsl(var(--okou-color-theme-primary));
   --okou-color-theme-companion: #b5d4e5;
   --okou-color-theme-hue: 329.5;
   --okou-color-theme-ring: 319.6 20.7% 56.5%;
 }
 
 [data-color-theme="blue-horizon"] {
-  --okou-color-theme-anchor: #3758a1;
+  --okou-color-theme-primary: 221.3 49.1% 42.4%;
+  --okou-color-theme-primary-foreground: 0 0% 100%;
+  --okou-color-theme-anchor: hsl(var(--okou-color-theme-primary));
   --okou-color-theme-companion: #b5d4e5;
   --okou-color-theme-hue: 221.3;
   --okou-color-theme-ring: 221.3 35.4% 55.7%;
 }
 
 [data-color-theme="daydream"] {
-  --okou-color-theme-anchor: #8aaaf0;
+  --okou-color-theme-primary: 221.2 77.3% 74.1%;
+  --okou-color-theme-primary-foreground: 40 4.3% 13.5%;
+  --okou-color-theme-anchor: hsl(var(--okou-color-theme-primary));
   --okou-color-theme-companion: #9c78d8;
   --okou-color-theme-hue: 232;
   --okou-color-theme-ring: 232 38% 55%;
 }
 
 [data-color-theme="deep-lagoon"] {
-  --okou-color-theme-anchor: #017562;
+  --okou-color-theme-primary: 170.2 98.3% 23.1%;
+  --okou-color-theme-primary-foreground: 0 0% 100%;
+  --okou-color-theme-anchor: hsl(var(--okou-color-theme-primary));
   --okou-color-theme-companion: #3758a1;
   --okou-color-theme-hue: 170.2;
   --okou-color-theme-ring: 171.8 47.1% 33.3%;
 }
 
 [data-color-theme="limelight"] {
-  --okou-color-theme-anchor: #b5d329;
+  --okou-color-theme-primary: 70.6 67.5% 49.4%;
+  --okou-color-theme-primary-foreground: 40 4.3% 13.5%;
+  --okou-color-theme-anchor: hsl(var(--okou-color-theme-primary));
   --okou-color-theme-companion: #f4e33c;
   --okou-color-theme-hue: 70.6;
   --okou-color-theme-ring: 74.2 53.8% 41.6%;
-}
-
-.okou-color-theme-swatch {
-  background-color: var(--okou-color-theme-anchor);
-  background-image: linear-gradient(
-    135deg,
-    var(--okou-color-theme-anchor) 0%,
-    color-mix(
-        in srgb,
-        var(--okou-color-theme-anchor),
-        var(--okou-color-theme-companion)
-      )
-      52%,
-    var(--okou-color-theme-companion) 100%
-  );
 }
 
 /* Okou app: inherits global neutral tokens; only card-specific tokens defined here */
@@ -458,14 +477,40 @@ body {
   /* A card inside a message is not elevated off the page the way a page-level
      card is, so it gets contact rather than lift: a 2px blur instead of 12px. */
   --okou-chat-card-shadow: 0 1px 2px hsl(30 6% 45% / 0.05);
-  /* Static focus veil for the composer. Fading this layer through opacity lets
-     the browser composite it without interpolating the wide blur every frame. */
-  --okou-composer-focus-veil: 0 10px 48px -8px hsl(30 8% 45% / 0.09);
 }
 
-/* A wide black shadow reads as a page gradient on dark surfaces. The border
-   step carries the focus state without adding another layer behind the card. */
-:where([data-theme="dark"]) .okou-app {
+/* Static focus veil for the composer. Fading this layer through opacity lets
+   the browser composite it without interpolating the blur every frame.
+
+   It is a runtime theme value, so it is owned at the document root rather than
+   inside the `.okou-app` scope: `applyTheme` and
+   `applyColorThemeDocumentAttributes` in `signals/theme.ts` write `data-theme`
+   and `data-gradient-color-themes` onto `document.documentElement`, and both
+   consumers inherit from there. `:where()` keeps each override at the
+   specificity of the rule it refines, so source order decides between them,
+   exactly as it did while these lived on `.okou-app`.
+
+   Sized to the room the composer actually has. It sits 16px above the
+   workspace pane's bottom edge, and a veil that is still painting there gets
+   cut by the edge instead of ending on its own. Offset and blur are set so the
+   falloff lands back on the surface within ~11px; the alpha carries the weight
+   the width used to, so the card edge reads exactly as dense on focus as it did
+   before. */
+:root {
+  --okou-composer-focus-veil: 0 6px 20px -8px hsl(30 8% 45% / 0.12);
+}
+
+/* A black shadow reads as a page gradient on dark surfaces. The border step
+   carries the focus state without adding another layer behind the card. */
+:root:where([data-theme="dark"]) {
+  --okou-composer-focus-veil: none;
+}
+
+:root[data-gradient-color-themes] {
+  --okou-composer-focus-veil: 0 6px 20px -8px hsl(var(--state-layer) / 0.09);
+}
+
+:root:where([data-theme="dark"])[data-gradient-color-themes] {
   --okou-composer-focus-veil: none;
 }
 
@@ -474,11 +519,6 @@ body {
     0 2px 12px hsl(var(--state-layer) / 0.035),
     0 0 0 0.5px hsl(var(--state-layer) / 0.018);
   --okou-chat-card-shadow: 0 1px 2px hsl(var(--state-layer) / 0.035);
-  --okou-composer-focus-veil: 0 10px 48px -8px hsl(var(--state-layer) / 0.07);
-}
-
-:where([data-theme="dark"]) .okou-app[data-gradient-color-themes] {
-  --okou-composer-focus-veil: none;
 }
 
 /* Desktop shell: avoid accidental selection on app chrome while preserving content/editors. */
@@ -1623,17 +1663,6 @@ details > summary {
   overflow: hidden;
 }
 
-.owf-diagram-okou-icon img {
-  position: absolute;
-  top: -9.73px;
-  left: -6.4px;
-  display: block;
-  width: 76.8px;
-  height: 76.8px;
-  max-width: none;
-  object-fit: fill;
-}
-
 .owf-diagram-node-source {
   top: 34px;
   left: 94px;
@@ -1801,6 +1830,21 @@ details > summary {
 
 /* Colour themes realigned to the permanent palette's lightness steps. */
 :root[data-gradient-color-themes][data-color-theme] {
+  --primary: var(--okou-color-theme-primary);
+  --primary-foreground: var(--okou-color-theme-primary-foreground);
+  /* Blend toward the companion so filled actions stay in the selected palette
+     and retain label contrast in both light and dark modes. */
+  --color-primary-hover: color-mix(
+    in srgb,
+    var(--okou-color-theme-anchor),
+    var(--okou-color-theme-companion) var(--state-on-filled-hover-alpha)
+  );
+  --color-primary-pressed: color-mix(
+    in srgb,
+    var(--okou-color-theme-anchor),
+    var(--okou-color-theme-companion) var(--state-on-filled-pressed-alpha)
+  );
+
   --gray-0: var(--okou-color-theme-hue) 24% 98.3%;
   --gray-50: var(--okou-color-theme-hue) 22% 97.7%;
   --gray-100: var(--okou-color-theme-hue) 20% 96.7%;

@@ -1681,6 +1681,7 @@ test("Redirect a cold Morning Brief detail to its preference", async () => {
   context.mocks.api(morningBriefPreferenceContract.get, ({ respond }) => {
     return respond(200, {
       enabled: true,
+      status: "enabled",
       nextRunAt: null,
       timezone: "UTC",
       unavailableReason: null,
@@ -1828,6 +1829,84 @@ test("Show the current status of a retired Official Workflow", async () => {
   ).toBeInTheDocument();
   expect(queryButtonByText("Install")).toBeNull();
 });
+
+async function dismissOfficialWorkflowDialog(
+  dialog: HTMLElement,
+  dismissal: "Cancel" | "Close" | "Escape" | "backdrop",
+) {
+  if (dismissal === "Cancel") {
+    click(buttonByText("Cancel", dialog));
+  } else if (dismissal === "Close") {
+    click(within(dialog).getByLabelText("Close"));
+  } else if (dismissal === "Escape") {
+    await userEvent.setup({ delay: null }).keyboard("{Escape}");
+  } else {
+    const viewport = dialog.closest('[data-slot="dialog-viewport"]');
+    if (!(viewport instanceof HTMLElement)) {
+      throw new Error("Expected the Official Workflow dialog viewport");
+    }
+    await userEvent.setup({ delay: null }).click(viewport);
+  }
+  await waitFor(() => {
+    expect(dialog).not.toBeInTheDocument();
+  });
+}
+
+test.each(["Cancel", "Close", "Escape", "backdrop"] as const)(
+  "Clear the previous Official Workflow install error after %s",
+  async (dismissal) => {
+    const definition = officialCatalogDetail();
+    mockAgentPageApis();
+    context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
+    context.mocks.data.userPreferences({ timezone: "UTC" });
+    mockWorkflowApis([]);
+    context.mocks.api(officialWorkflowsContract.get, ({ respond }) => {
+      return respond(200, definition);
+    });
+    context.mocks.api(officialWorkflowsContract.install, ({ respond }) => {
+      return respond(500, {
+        error: { code: "INTERNAL_SERVER_ERROR", message: "Install failed" },
+      });
+    });
+    await setupPage({
+      context,
+      path: `/workflows/official/${definition.name}`,
+      featureSwitches: { [FeatureSwitchKey.OfficialWorkflows]: true },
+    });
+    const installButton = await waitFor(() => {
+      return buttonByText("Install");
+    });
+    click(installButton);
+    const dialog = await screen.findByRole("dialog");
+    await fill(
+      within(dialog).getByLabelText("interval-seconds (required)"),
+      "7200",
+    );
+    await userEvent
+      .setup({ delay: null })
+      .click(buttonByText("Install", dialog));
+    await expect(
+      within(dialog).findByText("Official Workflow could not be installed"),
+    ).resolves.toBeVisible();
+    expect(buttonByText("Install", dialog)).toBeEnabled();
+
+    await dismissOfficialWorkflowDialog(dialog, dismissal);
+    click(installButton);
+    const reopened = await screen.findByRole("dialog");
+    expect(
+      within(reopened).getByLabelText("interval-seconds (required)"),
+    ).toHaveValue(3600);
+    expect(
+      within(reopened).queryByText("Official Workflow could not be installed"),
+    ).not.toBeInTheDocument();
+    expect(buttonByText("Install", reopened)).toBeEnabled();
+
+    click(buttonByText("Install", reopened));
+    await expect(
+      within(reopened).findByText("Official Workflow could not be installed"),
+    ).resolves.toBeVisible();
+  },
+);
 
 test("Install an Official Workflow with typed Blueprint settings", async () => {
   const definition = officialCatalogDetail();
@@ -2437,6 +2516,157 @@ test("Show an Official Workflow that needs reconfiguration", async () => {
     ),
   ).resolves.toBeInTheDocument();
 });
+
+test.each(["Cancel", "Close", "Escape", "backdrop"] as const)(
+  "Clear the previous Official Workflow reconfigure error after %s",
+  async (dismissal) => {
+    const workflow = officialSalesResearch();
+    const definition = officialCatalogDetail();
+    mockAgentPageApis();
+    context.mocks.data.userPreferences({ timezone: "UTC" });
+    mockWorkflowApis([workflow]);
+    context.mocks.api(
+      officialWorkflowInstallationsContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          workflow,
+          definition: {
+            name: definition.name,
+            revision: definition.revision,
+            lifecycle: "active",
+            blueprints: definition.blueprints,
+          },
+        });
+      },
+    );
+    context.mocks.api(
+      officialWorkflowInstallationsContract.reconfigure,
+      ({ respond }) => {
+        return respond(500, {
+          error: {
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Reconfigure failed",
+          },
+        });
+      },
+    );
+    await setupWorkflowDetailPage(workflowDetailPath("info"));
+    const reconfigureButton = await waitFor(() => {
+      return buttonByText("Reconfigure");
+    });
+    click(reconfigureButton);
+    const dialog = await screen.findByRole("dialog");
+    await fill(
+      within(dialog).getByLabelText("interval-seconds (required)"),
+      "7200",
+    );
+    await userEvent
+      .setup({ delay: null })
+      .click(buttonByText("Reconfigure", dialog));
+    await expect(
+      within(dialog).findByText("Official Workflow could not be reconfigured"),
+    ).resolves.toBeVisible();
+    expect(buttonByText("Reconfigure", dialog)).toBeEnabled();
+
+    await dismissOfficialWorkflowDialog(dialog, dismissal);
+    click(reconfigureButton);
+    const reopened = await screen.findByRole("dialog");
+    expect(
+      within(reopened).getByLabelText("interval-seconds (required)"),
+    ).toHaveValue(3600);
+    expect(
+      within(reopened).queryByText(
+        "Official Workflow could not be reconfigured",
+      ),
+    ).not.toBeInTheDocument();
+    expect(buttonByText("Reconfigure", reopened)).toBeEnabled();
+
+    click(buttonByText("Reconfigure", reopened));
+    await expect(
+      within(reopened).findByText(
+        "Official Workflow could not be reconfigured",
+      ),
+    ).resolves.toBeVisible();
+  },
+);
+
+test.each(["Install", "Reconfigure"] as const)(
+  "Keep a pending Official Workflow %s submission disabled after reopening",
+  async (operation) => {
+    const workflow = officialSalesResearch();
+    const definition = officialCatalogDetail();
+    const response = context.mocks.deferred<void>();
+    const installing = operation === "Install";
+    mockAgentPageApis();
+    context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
+    context.mocks.data.userPreferences({ timezone: "UTC" });
+    mockWorkflowApis(installing ? [] : [workflow]);
+    context.mocks.api(officialWorkflowsContract.get, ({ respond }) => {
+      return respond(200, definition);
+    });
+    context.mocks.api(
+      officialWorkflowsContract.install,
+      async ({ respond }) => {
+        await response.promise;
+        return respond(500, {
+          error: { code: "INTERNAL_SERVER_ERROR", message: "Install failed" },
+        });
+      },
+    );
+    context.mocks.api(
+      officialWorkflowInstallationsContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          workflow,
+          definition: {
+            name: definition.name,
+            revision: definition.revision,
+            lifecycle: "active",
+            blueprints: definition.blueprints,
+          },
+        });
+      },
+    );
+    context.mocks.api(
+      officialWorkflowInstallationsContract.reconfigure,
+      async ({ respond }) => {
+        await response.promise;
+        return respond(500, {
+          error: {
+            code: "INTERNAL_SERVER_ERROR",
+            message: "Reconfigure failed",
+          },
+        });
+      },
+    );
+    await setupPage({
+      context,
+      path: installing
+        ? `/workflows/official/${definition.name}`
+        : workflowDetailPath("info"),
+      featureSwitches: { [FeatureSwitchKey.OfficialWorkflows]: true },
+    });
+    const openButton = await waitFor(() => {
+      return buttonByText(operation);
+    });
+    click(openButton);
+    const dialog = await screen.findByRole("dialog");
+    click(buttonByText(operation, dialog));
+    await waitFor(() => {
+      expect(buttonByText(operation, dialog)).toBeDisabled();
+    });
+    await dismissOfficialWorkflowDialog(dialog, "Close");
+    click(openButton);
+    const reopened = await screen.findByRole("dialog");
+    expect(buttonByText(operation, reopened)).toBeDisabled();
+
+    response.resolve();
+    await waitFor(() => {
+      expect(buttonByText(operation, reopened)).toBeEnabled();
+    });
+    expect(within(reopened).queryByRole("alert")).not.toBeInTheDocument();
+  },
+);
 
 test("Reconfigure typed settings for an Official Workflow", async () => {
   const workflow = officialSalesResearch("retired");
@@ -3978,11 +4208,7 @@ function mockCalendarReconnect(
         }
         return dialog;
       });
-      const connectorChangedSubscribe = context.mocks.ably.deferNextSubscribe();
       click(buttonByText("Reconnect", connectDialog));
-
-      await connectorChangedSubscribe.started;
-      connectorChangedSubscribe.attach();
       await waitFor(() => {
         expect(authWindow.location.href).toBe(
           "https://oauth.test/google-calendar/authorize",

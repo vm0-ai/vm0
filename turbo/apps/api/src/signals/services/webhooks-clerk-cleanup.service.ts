@@ -1,3 +1,4 @@
+import { morningBriefEnrollments } from "@okouai/db/schema/morning-brief-enrollment";
 import { agents } from "@okouai/db/schema/agent";
 import { agentRunQueue } from "@okouai/db/schema/agent-run-queue";
 import { agentRuns } from "@okouai/db/runtime/agent-run";
@@ -27,6 +28,7 @@ import { telegramInstallations } from "@okouai/db/schema/telegram-installation";
 import { telegramUserLinks } from "@okouai/db/schema/telegram-user-link";
 import { userCache } from "@okouai/db/schema/user-cache";
 import { users } from "@okouai/db/schema/user";
+import { privacyChoices } from "@okouai/db/schema/privacy-choice";
 import { userPermissionGrants } from "@okouai/db/schema/user-permission-grant";
 import { variables } from "@okouai/db/schema/variable";
 import {
@@ -822,6 +824,9 @@ async function deleteOrgData(
     .delete(orgMembersMetadata)
     .where(eq(orgMembersMetadata.orgId, orgId));
   await db.delete(orgCache).where(eq(orgCache.orgId, orgId));
+  await db
+    .delete(morningBriefEnrollments)
+    .where(eq(morningBriefEnrollments.orgId, orgId));
   await db.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
 }
 
@@ -882,9 +887,23 @@ async function deleteUserData(
     .where(eq(userPermissionGrants.userId, userId));
   await db.delete(orgMembersCache).where(eq(orgMembersCache.userId, userId));
   await db
+    .delete(morningBriefEnrollments)
+    .where(eq(morningBriefEnrollments.userId, userId));
+  await db
     .delete(orgMembersMetadata)
     .where(eq(orgMembersMetadata.userId, userId));
   await db.delete(userCache).where(eq(userCache.userId, userId));
+  // Removing the subjects also removes their revision evidence. Linked browser
+  // receipts must stop resolving the deleted person's preferences.
+  await db
+    .delete(privacyChoices)
+    .where(
+      or(
+        eq(privacyChoices.userId, userId),
+        eq(privacyChoices.linkedUserId, userId),
+      ),
+    );
+  signal.throwIfAborted();
   await db.transaction(async (tx) => {
     await tx.execute(
       sql`SELECT set_config('lock_timeout', ${AGENT_LIFECYCLE_LOCK_TIMEOUT}, true)`,

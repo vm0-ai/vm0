@@ -195,6 +195,14 @@ import {
   type WorkflowTemplateItem,
 } from "@okouai/core/workflow-template-items";
 import { r2ImageTransformUrl } from "@okouai/core/r2-image-transform";
+import {
+  defaultPresentationTemplateThemeId,
+  presentationTemplateColorSystemId,
+  toIllustrationGenerationTemplate,
+  toPresentationGenerationTemplate,
+  toVideoGenerationTemplate,
+  toWebsiteGenerationTemplate,
+} from "./composer-template-catalog.ts";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import type {
   ConnectorAccountConnection,
@@ -699,22 +707,6 @@ function isSelectedPresentationTemplate(
   );
 }
 
-function toPresentationGenerationTemplate(
-  item: PresentationTemplateItem,
-  colorSystemId = presentationTemplateColorSystemId(
-    defaultPresentationTemplateThemeId(item),
-  ),
-): GenerationTemplateRequest {
-  return {
-    type: "presentation",
-    selection: {
-      templateId: item.templateId,
-      colorSystemId,
-      previewUrl: item.embedUrl,
-    },
-  };
-}
-
 function toImportedPresentationGenerationTemplate(
   template: PresentationTemplateSummary,
 ): GenerationTemplateRequest {
@@ -763,17 +755,6 @@ function isSelectedIllustrationTemplate(
   );
 }
 
-function toIllustrationGenerationTemplate(
-  item: IllustrationTemplateItem,
-): GenerationTemplateRequest {
-  return {
-    type: "illustration",
-    selection: {
-      illustrationStyleId: item.illustrationStyleId,
-    },
-  };
-}
-
 function selectedIllustrationTemplateItem(
   value: GenerationTemplateRequest | undefined,
 ): IllustrationTemplateItem | undefined {
@@ -801,17 +782,6 @@ function isSelectedVideoTemplate(
  * pin and the member default, and the rest from the composer's own settings
  * chip, so nothing about a run is frozen into the message that started it.
  */
-function toVideoGenerationTemplate(
-  item: VideoTemplateItem,
-): GenerationTemplateRequest {
-  return {
-    type: "video",
-    selection: {
-      stylePresetId: item.id,
-    },
-  };
-}
-
 function selectedVideoTemplateItem(
   value: GenerationTemplateRequest | undefined,
 ): VideoTemplateItem | undefined {
@@ -878,15 +848,6 @@ function isSelectedWebsiteTemplate(
     value?.type === "website" &&
     findWebsiteTemplateItem(value.selection.websiteTemplateId)?.id === item.id
   );
-}
-
-function toWebsiteGenerationTemplate(
-  item: WebsiteTemplateItem,
-): GenerationTemplateRequest {
-  return {
-    type: "website",
-    selection: { websiteTemplateId: item.id },
-  };
 }
 
 function selectedWebsiteTemplateItem(
@@ -1041,7 +1002,7 @@ const TEMPLATE_TILE_RING =
   "rounded-xl ring-offset-1 ring-offset-card transition-shadow duration-150";
 const TEMPLATE_TILE_RING_SELECTED = "ring-1 ring-primary";
 const TEMPLATE_TILE_MEDIA =
-  "relative overflow-hidden border border-gray-200 bg-muted";
+  "relative overflow-hidden border border-border bg-muted";
 const TEMPLATE_TILE_SCRIM =
   "pointer-events-none absolute inset-x-0 bottom-0 z-[15] h-14 bg-gradient-to-t from-black/45 to-transparent opacity-0 transition-opacity duration-150 group-hover/tile:opacity-100";
 const TEMPLATE_TILE_USE =
@@ -1320,7 +1281,7 @@ function WorkflowTemplateConnectorIcons({
   return (
     <>
       {withDivider ? (
-        <span className="h-3.5 w-px shrink-0 bg-border/70" />
+        <span className="h-3.5 w-px shrink-0 bg-divider/70" />
       ) : null}
       <span
         className={cn(
@@ -1370,7 +1331,7 @@ function WorkflowTemplateCard({
   return (
     <div
       className={cn(
-        "group/tile flex flex-col border border-gray-200 bg-card p-4",
+        "group/tile flex flex-col border border-border bg-card p-4",
         TEMPLATE_CARD_SHADOW,
         TEMPLATE_TILE_RING,
         selected && TEMPLATE_TILE_RING_SELECTED,
@@ -2207,16 +2168,6 @@ function presentationTemplateThemeName(
   theme: PresentationTemplateTheme,
 ): string {
   return PRESENTATION_TEMPLATE_THEME_NAMES[theme.id]();
-}
-
-function defaultPresentationTemplateThemeId(
-  item: PresentationTemplateItem,
-): string {
-  return item.colorSystemId?.replace("color-system:", "") ?? "warm-sand";
-}
-
-function presentationTemplateColorSystemId(themeId: string): string {
-  return `color-system:${themeId}`;
 }
 
 function findPresentationTemplateTheme(
@@ -4217,7 +4168,7 @@ function IllustrationTemplateCard({
     <div
       data-illustration-template-card=""
       className={cn(
-        "group/tile mb-4 break-inside-avoid overflow-hidden border border-gray-200 bg-card",
+        "group/tile mb-4 break-inside-avoid overflow-hidden border border-border bg-card",
         TEMPLATE_CARD_SHADOW,
         TEMPLATE_TILE_RING,
         selected && TEMPLATE_TILE_RING_SELECTED,
@@ -9365,6 +9316,7 @@ function ComposerInputSlot({
   const notifyDraftChanged = useComposerDraftChange(signals);
   const restoreAttachments = useSet(signals.draft.restoreAttachments$);
   const pageSignal = useGet(pageSignal$);
+  const focusEditor = useSet(signals.editor.focus$);
   const insertPromptMarkdown = useSet(signals.editor.insertPromptMarkdown$);
   const insertUserMessage = useSet(signals.editor.insertUserMessage$);
   const uploadFile = useComposerFileUpload(signals);
@@ -9473,7 +9425,17 @@ function ComposerInputSlot({
     >
       <div
         className="col-start-1 row-start-1 min-h-0"
+        data-slot="chat-composer-input"
         hidden={createPickerOpen}
+        onClick={(event) => {
+          const target = event.target;
+          if (
+            target instanceof Node &&
+            !signals.editor.editor.view.dom.contains(target)
+          ) {
+            focusEditor();
+          }
+        }}
       >
         <TiptapWorkflowComposer
           signals={signals}
@@ -9863,7 +9825,7 @@ function ComposerModelPickerControls({
         desktopLayout={desktopLayout}
         mediaModelPanel={mediaModelPanel}
       />
-      <div className="mx-0 h-5 w-px bg-border/60 sm:mx-0.5" />
+      <div className="mx-0 h-5 w-px bg-divider/60 sm:mx-0.5" />
     </>
   );
 }

@@ -9,8 +9,9 @@ import {
 } from "./model-providers";
 
 const c = initContract();
-const orgUpsertModelProviderRequestSchema =
-  upsertModelProviderRequestSchema.omit({ selectedModel: true });
+// Org model policies own logical identity. Only configured cloud routes retain
+// a separate upstream deployment/profile on the provider itself.
+const orgUpsertModelProviderRequestSchema = upsertModelProviderRequestSchema;
 
 const builtInModelCooldownIdentitySchema = z.object({
   selectedModel: z.string(),

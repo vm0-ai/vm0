@@ -1,5 +1,71 @@
 # Changelog
 
+## [0.48.38](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.37...desktop-v0.48.38) (2026-09-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.429.1
+
+## [0.48.37](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.36...desktop-v0.48.37) (2026-09-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.429.0
+
+## [0.48.36](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.35...desktop-v0.48.36) (2026-09-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.428.2
+
+## [0.48.35](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.34...desktop-v0.48.35) (2026-09-11)
+
+
+### Refactoring
+
+* **desktop:** retire cua and keep the okou driver ([#33505](https://github.com/vm0-ai/vm0/issues/33505)) ([eda8d63](https://github.com/vm0-ai/vm0/commit/eda8d63859204120e1611896192f6c7891c9b644))
+
+## [0.48.34](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.33...desktop-v0.48.34) (2026-09-11)
+
+
+### Refactoring
+
+* **desktop:** rename renderer-local bridge globals to okou prefix ([#33484](https://github.com/vm0-ai/vm0/issues/33484)) ([e75ee4c](https://github.com/vm0-ai/vm0/commit/e75ee4cd5e77d48e09d6775de28c95de39b660b7)), closes [#33476](https://github.com/vm0-ai/vm0/issues/33476)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.428.1
+
+## [0.48.33](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.32...desktop-v0.48.33) (2026-09-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.428.0
+
+## [0.48.32](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.31...desktop-v0.48.32) (2026-09-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.427.0
+
 ## [0.48.31](https://github.com/vm0-ai/vm0/compare/desktop-v0.48.30...desktop-v0.48.31) (2026-09-10)
 
 

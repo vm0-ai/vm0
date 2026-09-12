@@ -840,6 +840,16 @@ describe("Codex expiry metadata resilience", () => {
     });
     const providers = app(personalModelProvidersMainContract);
     const switches = app(featureSwitchesContract);
+    // Fresh users in this non-staff organization already use legacy bindings.
+    // Verify that public context once instead of writing the same disabled
+    // override for all 129 independent owners.
+    const defaults = await accept(
+      switches.get({ headers: { authorization: `Bearer ${userIds[0]}` } }),
+      [200],
+    );
+    expect(defaults.body.effectiveSwitches).toMatchObject({
+      [FeatureSwitchKey.PersonalModelProviderAccounts]: false,
+    });
     // Each API-created owner occupies a connect binding and a legacy binding.
     // More than 256 bindings must evict the oldest, without time manipulation.
     // Token-scoped Clerk responses let independent owners prepare concurrently
@@ -848,17 +858,6 @@ describe("Codex expiry metadata resilience", () => {
       await Promise.all(
         userIds.slice(index, index + 8).map(async (userId) => {
           const ownerHeaders = { authorization: `Bearer ${userId}` };
-          await accept(
-            switches.update({
-              headers: ownerHeaders,
-              body: {
-                switches: {
-                  [FeatureSwitchKey.PersonalModelProviderAccounts]: false,
-                },
-              },
-            }),
-            [200],
-          );
           await accept(
             providers.upsert({
               headers: ownerHeaders,

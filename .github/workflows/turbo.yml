@@ -1038,6 +1038,9 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          # Native model contexts must pin the CLI built from this API source.
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
       - uses: ./.github/actions/toolchain-init
 
       - name: Fetch development Doppler OAuth config
@@ -2515,10 +2518,6 @@ jobs:
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
-          CURRENT_EVENT: ${{ github.event_name }}
-          CURRENT_PR_HEAD_REF: ${{ github.head_ref || '' }}
-          CURRENT_RUN_ID: ${{ github.run_id }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           GH_TOKEN: ${{ github.token }}
           JOB_REF: ${{ needs.prepare.outputs.runner-image-job-ref }}
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}

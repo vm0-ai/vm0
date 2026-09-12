@@ -89,7 +89,7 @@ function FeedbackToolbar({
         })}
         <ShortcutHint shortcut="c" />
       </Button>
-      <div className="h-4 w-px bg-border" />
+      <div className="h-4 w-px bg-divider" />
       <Button
         type="button"
         variant="quiet"
@@ -106,7 +106,7 @@ function FeedbackToolbar({
       </Button>
       {onForward ? (
         <>
-          <div className="h-4 w-px bg-border" />
+          <div className="h-4 w-px bg-divider" />
           <Button
             type="button"
             variant="quiet"
@@ -125,7 +125,7 @@ function FeedbackToolbar({
       ) : null}
       {translation ? (
         <>
-          <div className="h-4 w-px bg-border" />
+          <div className="h-4 w-px bg-divider" />
           {translation}
         </>
       ) : null}

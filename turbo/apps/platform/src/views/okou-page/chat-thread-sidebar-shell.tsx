@@ -64,7 +64,7 @@ function ChatThreadSidebarResizeHandle() {
     >
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/60 transition-colors group-hover:bg-border"
+        className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-divider/60 transition-colors group-hover:bg-divider"
       />
     </div>
   );

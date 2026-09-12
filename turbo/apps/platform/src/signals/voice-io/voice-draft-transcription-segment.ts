@@ -5,7 +5,7 @@ import {
   type VoiceIoTranscribeSegmentResponse,
 } from "@okouai/api-contracts/contracts/voice-io-transcribe";
 import { accept } from "../../lib/accept.ts";
-import { apiClient$ } from "../api-client.ts";
+import { apiClient$, type ApiClientFactory } from "../api-client.ts";
 import {
   readVoiceDraftRecording,
   readVoiceDraftAudio,
@@ -14,10 +14,13 @@ import {
 } from "../external/voice-draft-store.ts";
 import { voiceDraftSegmentFile } from "./voice-draft-audio.ts";
 
-interface VoiceDraftTranscriptionResult {
-  readonly transcript: string;
-  readonly text?: string;
-}
+type VoiceDraftTranscriptionResult =
+  | {
+      readonly kind: "transcribed";
+      readonly transcript: string;
+      readonly text?: string;
+    }
+  | { readonly kind: "unavailable"; readonly message: string };
 
 type SegmentResult = Computed<
   Promise<VoiceDraftTranscriptionResult | undefined>
@@ -82,6 +85,38 @@ function completedText(
   return response.polishedText;
 }
 
+async function requestSegment(
+  createClient: ApiClientFactory,
+  body: FormData,
+  final: boolean,
+  signal: AbortSignal,
+): Promise<VoiceDraftTranscriptionResult | undefined> {
+  const result = await accept(
+    createClient(voiceIoTranscribeContract).segment({
+      body,
+      fetchOptions: { signal },
+    }),
+    [200, 204, 402, 429, 503],
+    signal,
+  );
+  signal.throwIfAborted();
+  if (result.status === 402 || result.status === 429) {
+    return;
+  }
+  if (result.status === 503) {
+    if (result.body.error.code === "PROVIDER_UNAVAILABLE") {
+      return { kind: "unavailable", message: result.body.error.message };
+    }
+    // Only classified provider unavailability is a recovery outcome.
+    return await accept(Promise.resolve(result), [200], signal);
+  }
+  return {
+    kind: "transcribed",
+    transcript: result.status === 200 ? result.body.transcript : "",
+    text: completedText(final, result.status === 200 ? result.body : undefined),
+  };
+}
+
 /** Each segment owns its request and waits for the preceding checkpoint. */
 export function createVoiceDraftSegmentResult(
   options: SegmentOptions,
@@ -91,85 +126,86 @@ export function createVoiceDraftSegmentResult(
   const final = segment?.final ?? true;
   const segmentEnd = segment?.endSample;
   // eslint-disable-next-line ccstate/no-computed-signal -- migrate this computed away from AbortSignal ownership
-  return computed(async (get) => {
-    const previous = options.previous$
-      ? await get(options.previous$)
-      : { transcript: "" };
-    signal.throwIfAborted();
-    // An exhausted quota stops the rest of the chain until an explicit retry.
-    if (!previous) {
-      return;
-    }
-    const recording = await readVoiceDraftRecording(key);
-    signal.throwIfAborted();
-    if (recording?.id !== recordingId) {
-      throw new Error("Voice recording changed during transcription");
-    }
-    let progress = recording.progress ?? {
-      revision: 0,
-      context: options.context,
-      segments: [],
-    };
-    if (progress.text !== undefined) {
-      return { transcript: previous.transcript, text: progress.text };
-    }
-    const saved = progress.segments.find((item) => {
-      return item.endSample === segmentEnd;
-    });
-    if (saved?.transcript !== undefined) {
-      return {
-        transcript: [previous.transcript, saved.transcript]
-          .filter(Boolean)
-          .join(" "),
+  return computed(
+    async (get): Promise<VoiceDraftTranscriptionResult | undefined> => {
+      const previous = options.previous$
+        ? await get(options.previous$)
+        : { kind: "transcribed" as const, transcript: "" };
+      signal.throwIfAborted();
+      // An exhausted quota stops the rest of the chain until an explicit retry.
+      if (!previous) {
+        return;
+      }
+      if (previous.kind === "unavailable") {
+        return previous;
+      }
+      const recording = await readVoiceDraftRecording(key);
+      signal.throwIfAborted();
+      if (recording?.id !== recordingId) {
+        throw new Error("Voice recording changed during transcription");
+      }
+      let progress = recording.progress ?? {
+        revision: 0,
+        context: options.context,
+        segments: [],
       };
-    }
-    if (!segment && !previous.transcript) {
-      return { transcript: "", text: "" };
-    }
-    if (segment && !saved) {
-      progress = {
+      if (progress.text !== undefined) {
+        return {
+          kind: "transcribed",
+          transcript: previous.transcript,
+          text: progress.text,
+        };
+      }
+      const saved = progress.segments.find((item) => {
+        return item.endSample === segmentEnd;
+      });
+      if (saved?.transcript !== undefined) {
+        return {
+          kind: "transcribed",
+          transcript: [previous.transcript, saved.transcript]
+            .filter(Boolean)
+            .join(" "),
+        };
+      }
+      if (!segment && !previous.transcript) {
+        return { kind: "transcribed", transcript: "", text: "" };
+      }
+      if (segment && !saved) {
+        progress = {
+          ...progress,
+          revision: progress.revision + 1,
+          segments: [...progress.segments, segment],
+        };
+        // Persist the boundary before HTTP so retries use the same audio bytes.
+        await saveVoiceDraftProgress(key, recordingId, progress);
+        signal.throwIfAborted();
+      }
+      const body = await segmentBody(
+        options,
+        progress.context,
+        previous.transcript,
+        signal,
+      );
+      const result = await requestSegment(get(apiClient$), body, final, signal);
+      signal.throwIfAborted();
+      if (!result || result.kind === "unavailable") {
+        return result;
+      }
+      const { transcript, text } = result;
+      await saveVoiceDraftProgress(key, recordingId, {
         ...progress,
         revision: progress.revision + 1,
-        segments: [...progress.segments, segment],
-      };
-      // Persist the boundary before HTTP so retries use the same audio bytes.
-      await saveVoiceDraftProgress(key, recordingId, progress);
+        segments: progress.segments.map((item) => {
+          return item.endSample === segmentEnd ? { ...item, transcript } : item;
+        }),
+        ...(text === undefined ? {} : { text }),
+      });
       signal.throwIfAborted();
-    }
-    const body = await segmentBody(
-      options,
-      progress.context,
-      previous.transcript,
-      signal,
-    );
-    const result = await accept(
-      get(apiClient$)(voiceIoTranscribeContract).segment({
-        body,
-        fetchOptions: { signal },
-      }),
-      [200, 204, 402, 429],
-      signal,
-    );
-    if (result.status === 402 || result.status === 429) {
-      return;
-    }
-    const transcript = result.status === 200 ? result.body.transcript : "";
-    const text = completedText(
-      final,
-      result.status === 200 ? result.body : undefined,
-    );
-    await saveVoiceDraftProgress(key, recordingId, {
-      ...progress,
-      revision: progress.revision + 1,
-      segments: progress.segments.map((item) => {
-        return item.endSample === segmentEnd ? { ...item, transcript } : item;
-      }),
-      ...(text === undefined ? {} : { text }),
-    });
-    signal.throwIfAborted();
-    return {
-      transcript: [previous.transcript, transcript].filter(Boolean).join(" "),
-      ...(text === undefined ? {} : { text }),
-    };
-  });
+      return {
+        kind: "transcribed",
+        transcript: [previous.transcript, transcript].filter(Boolean).join(" "),
+        ...(text === undefined ? {} : { text }),
+      };
+    },
+  );
 }

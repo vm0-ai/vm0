@@ -10,7 +10,7 @@ import { HttpProxyAgent } from "http-proxy-agent";
 import { HttpsProxyAgent } from "https-proxy-agent";
 
 import { assertPiNativeCredential } from "./credential";
-import type { PiAgentModelConfig } from "./types";
+import type { PiAgentStreamConfig } from "./types";
 import {
   observePiResponseStatus,
   type PiAgentStreamOptions,
@@ -26,9 +26,11 @@ function isBedrock(
   return model.api === "bedrock-converse-stream";
 }
 
-type NativeStreamConfig = Pick<
-  PiAgentModelConfig,
-  "catalogModel" | "dialect" | "region" | "bedrockAuth" | "transport"
+type NativeStreamConfig = Extract<
+  PiAgentStreamConfig,
+  {
+    readonly dialect: "anthropic-messages" | "bedrock-converse-stream";
+  }
 >;
 
 function assertNativeOptions(options: PiAgentStreamOptions): void {
@@ -49,6 +51,21 @@ export function streamPiNative(
     throw new Error("Pi native stream requires its exact catalog and dialect");
   }
   assertNativeOptions(options);
+  const catalogModel = config.catalogModel;
+  // A Messages upstream may echo the selected opaque deployment in its result.
+  // Preserve same-route signatures while the adapter uses catalog capabilities;
+  // persisted history and the final request retain their upstream identity.
+  const nativeContext: Context = {
+    ...context,
+    messages: context.messages.map((message) => {
+      return message.role === "assistant" &&
+        message.provider === model.provider &&
+        message.api === model.api &&
+        message.model === model.id
+        ? { ...message, model: catalogModel }
+        : message;
+    }),
+  };
   const nativeOptions = {
     ...options,
     maxRetries: 0,
@@ -82,12 +99,13 @@ export function streamPiNative(
     if (config.transport !== "sse") throw new Error("Pi Messages requires SSE");
     return streamMessages(
       { ...model, id: config.catalogModel },
-      context,
+      nativeContext,
       nativeOptions,
     );
   }
   if (
     !isBedrock(model) ||
+    config.dialect !== "bedrock-converse-stream" ||
     config.transport !== "aws-event-stream" ||
     !config.region ||
     !config.bedrockAuth
@@ -112,7 +130,7 @@ export function streamPiNative(
   );
   return streamBedrock(
     { ...model, id: config.catalogModel, name: config.catalogModel },
-    context,
+    nativeContext,
     {
       ...nativeOptions,
       clientConfig: {

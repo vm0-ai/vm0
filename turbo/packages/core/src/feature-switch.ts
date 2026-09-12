@@ -49,6 +49,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@okou.ai",
     description: "Manually create a welcome conversation with fixed examples",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ThreadActivitySummary]: {
     maintainer: "lancy@okou.ai",
@@ -254,8 +255,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@okou.ai",
     description:
       "Enable Morning Brief and email subscription management in Preferences.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.TestOauthConnector]: {
     maintainer: "liangyou@okou.ai",
@@ -325,6 +325,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Choose model reasoning effort for Codex and Claude Code chats.",
     enabled: false,
+    enabledUserHashes: ["032a75d8"], // Bingjie's account, including API contexts without email
+    enabledEmailHashes: ["6490c77f"], // bingjie@okou.ai
   },
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "lancy@okou.ai",
@@ -365,6 +367,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Transcribe and polish voice input before inserting it into the composer, with Mod+Shift+E to start or stop recording.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.VoiceGoogleCloud]: {
+    maintainer: "liangyou@okou.ai",
+    description:
+      "Route Gemini voice transcription and polishing through Google Cloud instead of OpenRouter.",
+    enabled: false,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@okou.ai",
@@ -497,7 +505,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ConnectorDirectory]: {
     maintainer: "tongx@okou.ai",
     description:
-      "Shelf-based connector browsing in the chat composer and on the connectors page: connected connectors separated from discovery, category shelves and chips, per-connector detail, and keyboard navigation.",
+      "Shelf-based connector browsing in the chat composer and on the connectors page: a Discover/Your connectors scope segment with one filter each (category and agent), category shelves and chips, per-connector detail, and keyboard navigation.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -505,6 +513,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@okou.ai",
     description:
       "Pin chats from the desktop title and keep Pin, Share, and More visible in the mobile thread header.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ComposerSlashTemplatePanel]: {
+    maintainer: "tongx@okou.ai",
+    description:
+      "Replace the composer's flat slash menu with a two-pane panel that previews each template type's covers.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

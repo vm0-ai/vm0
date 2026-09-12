@@ -655,7 +655,7 @@ describe("okou browser route", () => {
     expect(created.body.browser).toMatchObject({
       name: "booking",
       status: "active",
-      // Zero always requests the provider's longest lifetime and manages
+      // The API always requests the provider's longest lifetime and manages
       // reclamation through the idle lease instead.
       timeoutMinutes: 240,
       idleExpiresAt: isoAt(10 * MINUTE_MS),

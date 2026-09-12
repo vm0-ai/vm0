@@ -1543,9 +1543,13 @@ impl ExecutionContext {
 
     /// Extract the framework-native session id.
     ///
-    /// Returns `Some` for continued sessions. For first runs this returns
-    /// `None`; the executor reads the CLI-generated session id from the
-    /// guest filesystem post-execution (see `read_guest_cli_agent_session_id`).
+    /// Prefers `pi_session_id`, otherwise returns the resume-session id.
+    /// Pi session ids are preassigned, including on first runs without a
+    /// `resume_session`, so `Some` does not imply a continued session.
+    ///
+    /// Returns `None` only when neither source supplies an id. In that case,
+    /// the executor reads the CLI-generated session id from the guest filesystem
+    /// post-execution (see `read_guest_cli_agent_session_id`).
     pub fn cli_agent_session_id(&self) -> Option<&str> {
         self.pi_session_id.as_deref().or_else(|| {
             self.resume_session
@@ -1892,6 +1896,11 @@ mod tests {
 
         assert_eq!(
             context.pi_session_id.as_deref(),
+            Some("22222222-2222-4222-8222-222222222222")
+        );
+        assert!(context.resume_session.is_none());
+        assert_eq!(
+            context.cli_agent_session_id(),
             Some("22222222-2222-4222-8222-222222222222")
         );
         assert_eq!(
@@ -2307,7 +2316,7 @@ mod tests {
     }
 
     #[test]
-    fn cli_agent_session_id_returns_none_without_resume() {
+    fn cli_agent_session_id_returns_none_without_supplied_id() {
         let json = json!({
             "runId": "550e8400-e29b-41d4-a716-446655440000",
             "prompt": "hello",
