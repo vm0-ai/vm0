@@ -1,6 +1,5 @@
 """Diagnostic header work limits and credential semantics through real addon hooks."""
 
-import inspect
 import json
 
 import pytest
@@ -387,8 +386,7 @@ async def test_shared_base_request_lifecycle_keeps_normal_auth_when_inspection_e
         fake_firewall_headers(headers={"X-Active-Auth": "synthetic"}),
     ):
         result = mitm_addon.requestheaders(flow)
-        if inspect.isawaitable(result):
-            await result
+        assert result is None
         await mitm_addon.request(flow)
 
     assert flow.error is None
