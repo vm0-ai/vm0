@@ -1,5 +1,10 @@
 import type { PasswordValidation } from "@clerk/react/types";
 import {
+  ClerkAPIResponseError,
+  ClerkOfflineError,
+  ClerkRuntimeError,
+} from "@clerk/shared/error";
+import {
   act,
   fireEvent,
   screen,
@@ -525,38 +530,51 @@ test.each([
   },
 );
 
-test("A cancelled social callback leaves sign-up safe and retryable", async () => {
-  mockAuthV2Capabilities({ googleOAuth: true });
-  await setupSignUpPage(
-    {
-      externalAccountError: {
-        code: "oauth_callback_error",
-        longMessage: "Google sign-up was cancelled.",
-        message: "OAuth callback failed",
+test.each([
+  {
+    code: "oauth_access_denied",
+    message: "You did not grant access to your account.",
+  },
+  {
+    code: "oauth_callback_error",
+    message:
+      "This action couldn't be completed. Please try again later or contact support if this persists.",
+  },
+])(
+  "A social callback with $code leaves sign-up safe and retryable",
+  async ({ code, message }) => {
+    mockAuthV2Capabilities({ googleOAuth: true });
+    await setupSignUpPage(
+      {
+        externalAccountError: {
+          code,
+          longMessage: "Google sign-up was cancelled.",
+          message: "OAuth callback failed",
+        },
+        externalAccountStatus: "failed",
+        status: null,
       },
-      externalAccountStatus: "failed",
-      status: null,
-    },
-    {
-      path: "/sign-up/sso-callback",
-      url: "https://app.okou.ai/sign-up/sso-callback",
-    },
-  );
+      {
+        path: "/sign-up/sso-callback",
+        url: "https://app.okou.ai/sign-up/sso-callback",
+      },
+    );
 
-  const alert = await screen.findByRole("alert");
-  expect(alert).toHaveTextContent(
-    "This action couldn't be completed. Please try again later or contact support if this persists.",
-  );
-  await waitFor(() => {
-    expect(screen.getByRole("alert")).toHaveFocus();
-  });
-  expect(screen.queryByText("Google sign-up was cancelled.")).toBeNull();
-  click(await waitForRoleElement("button", "Continue with Google"));
-  await waitFor(() => {
-    expect(mockedClerk.signUpAuthenticateWithRedirect).toHaveBeenCalledTimes(1);
-  });
-  expect(mockedClerk.setActive).not.toHaveBeenCalled();
-});
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(message);
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveFocus();
+    });
+    expect(screen.queryByText("Google sign-up was cancelled.")).toBeNull();
+    click(await waitForRoleElement("button", "Continue with Google"));
+    await waitFor(() => {
+      expect(mockedClerk.signUpAuthenticateWithRedirect).toHaveBeenCalledTimes(
+        1,
+      );
+    });
+    expect(mockedClerk.setActive).not.toHaveBeenCalled();
+  },
+);
 
 test("A visitor can reveal the sign-up password without submitting", async () => {
   const user = userEvent.setup({ delay: null });
@@ -772,6 +790,488 @@ test("Email verification enforces resend cooldown and preserves onboarding attri
   expect(redirectUrl.searchParams.get("utm_campaign")).toBe("summer");
 });
 
+test.each([
+  {
+    name: "the configured minimum before other requirements",
+    complexity: { min_length: true, require_uppercase: true },
+    message: "Your password must contain 12 or more characters.",
+  },
+  {
+    name: "the configured maximum",
+    complexity: { max_length: true },
+    message: "Your password must contain less than 16 characters.",
+  },
+  {
+    name: "an uppercase letter",
+    complexity: { require_uppercase: true },
+    message: "Your password must contain an uppercase letter.",
+  },
+  {
+    name: "a lowercase letter",
+    complexity: { require_lowercase: true },
+    message: "Your password must contain a lowercase letter.",
+  },
+  {
+    name: "a number",
+    complexity: { require_numbers: true },
+    message: "Your password must contain a number.",
+  },
+  {
+    name: "a special character",
+    complexity: { require_special_char: true },
+    message: "Your password must contain a special character.",
+  },
+  {
+    name: "multiple missing requirements",
+    complexity: { require_numbers: true, require_uppercase: true },
+    message: "Your password must contain a number and an uppercase letter.",
+  },
+])(
+  "Sign-up password validation explains $name",
+  async ({ complexity, message }) => {
+    mockSignUpConfiguration({
+      passwordSettings: { min_length: 12, max_length: 16 },
+    });
+    mockedClerk.signUpValidatePassword.mockImplementationOnce(
+      (_password, callbacks) => {
+        callbacks?.onValidation?.({ complexity });
+      },
+    );
+    await setupSignUpPage({ status: null });
+    const { passwordInput } = await fillRequiredDetails();
+
+    fireEvent.submit(containingForm(passwordInput));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(message);
+    expect(alert).toHaveFocus();
+    expect(passwordInput).toHaveAttribute("aria-invalid", "true");
+    expect(
+      passwordInput.getAttribute("aria-describedby")?.split(" "),
+    ).toContain(alert.id);
+    expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
+  },
+);
+
+test("Correcting a password clears its requirements and allows account creation", async () => {
+  mockedClerk.signUpValidatePassword.mockImplementationOnce(
+    (_password, callbacks) => {
+      callbacks?.onValidation?.({ complexity: { require_numbers: true } });
+    },
+  );
+  await setupSignUpPage({ status: null });
+  const { passwordInput } = await fillRequiredDetails();
+  fireEvent.submit(containingForm(passwordInput));
+  await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+    "Your password must contain a number.",
+  );
+
+  await fill(passwordInput, "valid-password-2");
+  await waitFor(() => {
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+  fireEvent.submit(containingForm(passwordInput));
+
+  await waitFor(() => {
+    expect(mockedClerk.clientSignUpCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ password: "valid-password-2" }),
+    );
+  });
+});
+
+test.each([
+  {
+    locale: "ja-JP",
+    emailLabel: "メールアドレス",
+    passwordLabel: "パスワード",
+    complexity: { min_length: true },
+    passwordValue: "short",
+    message: "パスワードは次の条件を満たす必要があります： 12文字以上.",
+  },
+  {
+    locale: "it-IT",
+    emailLabel: "Indirizzo email",
+    passwordLabel: "Password",
+    complexity: { min_length: true, require_numbers: true },
+    passwordValue: "short",
+    message: "La password deve contenere almeno 12 caratteri.",
+  },
+  {
+    locale: "it-IT",
+    emailLabel: "Indirizzo email",
+    passwordLabel: "Password",
+    complexity: { max_length: true },
+    passwordValue: "a-very-long-password",
+    message: "La password deve contenere meno di 16 caratteri.",
+  },
+  {
+    locale: "it-IT",
+    emailLabel: "Indirizzo email",
+    passwordLabel: "Password",
+    complexity: {
+      require_numbers: true,
+      require_lowercase: true,
+      require_uppercase: true,
+      require_special_char: true,
+    },
+    passwordValue: "unacceptable",
+    message:
+      "La password deve contenere un numero, una lettera minuscola, una lettera maiuscola e un carattere speciale.",
+  },
+])(
+  "Sign-up localizes configured password requirements in $locale: $message",
+  async ({
+    locale,
+    emailLabel,
+    passwordLabel,
+    complexity,
+    passwordValue,
+    message,
+  }) => {
+    context.mocks.browser.languages([locale]);
+    mockSignUpConfiguration({
+      passwordSettings: { min_length: 12, max_length: 16 },
+    });
+    mockedClerk.signUpValidatePassword.mockImplementationOnce(
+      (_password, callbacks) => {
+        callbacks?.onValidation?.({ complexity });
+      },
+    );
+    await setupSignUpPage({ status: null });
+    const email = await screen.findByLabelText(emailLabel);
+    const password = screen.getByLabelText(passwordLabel);
+    await fill(email, "person@example.com");
+    await fill(password, passwordValue);
+    fireEvent.submit(containingForm(password));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(message);
+    expect(alert).toHaveFocus();
+    expect(password).toHaveAttribute("aria-invalid", "true");
+    expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
+  },
+);
+
+test.each([
+  {
+    name: "a breached password",
+    errors: [{ code: "form_password_pwned" }],
+    message:
+      "This password has been found as part of a breach and can not be used, please try another password instead.",
+  },
+  {
+    name: "a password exceeding the byte limit",
+    errors: [{ code: "form_password_size_in_bytes_exceeded" }],
+    message: "Your password is too long. Please use a shorter password.",
+  },
+  {
+    name: "insufficient strength before complexity with a suggestion",
+    errors: [
+      {
+        code: "form_password_not_strong_enough",
+        meta: {
+          zxcvbn: {
+            suggestions: [
+              { code: "anotherWord" },
+              { code: "unknown_suggestion" },
+            ],
+          },
+        },
+      },
+      { code: "form_password_no_special_char" },
+    ],
+    message:
+      "Your password is not strong enough. Add more words that are less common.",
+  },
+  {
+    name: "multiple password requirements returned by Clerk",
+    errors: [
+      { code: "form_password_no_uppercase" },
+      { code: "form_password_no_number" },
+    ],
+    message: "Your password must contain a number and an uppercase letter.",
+  },
+])(
+  "Sign-up explains $name after server validation",
+  async ({ errors, message }) => {
+    mockedClerk.clientSignUpCreate.mockRejectedValue({
+      errors: errors.map((error) => {
+        return {
+          ...error,
+          longMessage: "Private provider detail",
+          meta: {
+            ...("meta" in error ? error.meta : {}),
+            paramName: "password",
+          },
+        };
+      }),
+    });
+    await setupSignUpPage({ status: null });
+    const { passwordInput } = await fillRequiredDetails();
+    fireEvent.submit(containingForm(passwordInput));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(message);
+    expect(passwordInput).toHaveAttribute("aria-invalid", "true");
+    expect(
+      screen.queryByText("Private provider detail"),
+    ).not.toBeInTheDocument();
+    expect(alert).not.toHaveTextContent("unknown_suggestion");
+  },
+);
+
+test.each([
+  {
+    code: "form_identifier_exists",
+    paramName: "email_address",
+    label: "Email address",
+    message:
+      "An account with this email address already exists. Please sign in instead.",
+  },
+  {
+    code: "form_email_address_blocked",
+    paramName: "email_address",
+    label: "Email address",
+    message:
+      "This email address cannot be used. Please try a different email address.",
+  },
+  {
+    code: "form_param_max_length_exceeded",
+    paramName: "first_name",
+    label: "First name",
+    message: "Your first name is too long. Please shorten it and try again.",
+  },
+  {
+    code: "form_param_max_length_exceeded",
+    paramName: "last_name",
+    label: "Last name",
+    message: "Your last name is too long. Please shorten it and try again.",
+  },
+])(
+  "Sign-up associates Clerk's $code error with $paramName",
+  async ({ code, paramName, label, message }) => {
+    mockSignUpConfiguration({
+      attributes: {
+        first_name: {
+          enabled: true,
+          required: true,
+          used_for_first_factor: false,
+        },
+        last_name: {
+          enabled: true,
+          required: true,
+          used_for_first_factor: false,
+        },
+      },
+    });
+    mockedClerk.clientSignUpCreate.mockRejectedValue(
+      new ClerkAPIResponseError("Private detail", {
+        status: 422,
+        data: [
+          { code, message: "Private detail", meta: { param_name: paramName } },
+        ],
+      }),
+    );
+    await setupSignUpPage({ status: null });
+    const { emailInput } = await fillRequiredDetails();
+    await fill(screen.getByLabelText("First name"), "Ada");
+    await fill(screen.getByLabelText("Last name"), "Lovelace");
+    fireEvent.submit(containingForm(emailInput));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(message);
+    const field = screen.getByLabelText(label, { exact: false });
+    expect(field).toHaveAttribute("aria-invalid", "true");
+    expect(field.getAttribute("aria-describedby")?.split(" ")).toContain(
+      alert.id,
+    );
+    expect(alert).toHaveFocus();
+    expect(document.body).not.toHaveTextContent("Private detail");
+  },
+);
+
+test("Sign-up still shows errors for fields that are not displayed", async () => {
+  mockedClerk.clientSignUpCreate.mockRejectedValue(
+    new ClerkAPIResponseError("Private detail", {
+      status: 422,
+      data: [
+        {
+          code: "form_param_max_length_exceeded",
+          message: "Private detail",
+          meta: { param_name: "first_name" },
+        },
+      ],
+    }),
+  );
+  await setupSignUpPage({ status: null });
+  const { emailInput } = await fillRequiredDetails();
+  expect(screen.queryByLabelText(/First name/)).not.toBeInTheDocument();
+  fireEvent.submit(containingForm(emailInput));
+  await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+    "Your first name is too long. Please shorten it and try again.",
+  );
+  expect(document.body).not.toHaveTextContent("Private detail");
+});
+
+test.each([
+  {
+    name: "rate limiting without a known API code",
+    error: new ClerkAPIResponseError("Private detail", {
+      status: 429,
+      data: [],
+    }),
+    message: "Too many attempts. Please wait a moment before trying again.",
+  },
+  {
+    name: "invitation-only registration",
+    error: new ClerkAPIResponseError("Private detail", {
+      status: 403,
+      data: [{ code: "sign_up_mode_restricted", message: "Private detail" }],
+    }),
+    message:
+      "An invitation is required to create an account. Please use your invitation link.",
+  },
+  {
+    name: "an offline client",
+    error: new ClerkOfflineError("Private detail"),
+    message: "You appear to be offline. Reconnect and try again.",
+  },
+  {
+    name: "an unknown provider error",
+    error: new ClerkRuntimeError("Private detail", {
+      code: "future_auth_error",
+    }),
+    message:
+      "This action couldn't be completed. Please try again later or contact support if this persists.",
+  },
+])(
+  "Sign-up explains $name without exposing raw SDK messages",
+  async ({ error, message }) => {
+    mockedClerk.clientSignUpCreate.mockRejectedValue(error);
+    await setupSignUpPage({ status: null });
+    const { emailInput, passwordInput } = await fillRequiredDetails();
+    fireEvent.submit(containingForm(emailInput));
+
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      message,
+    );
+    expect(emailInput).not.toHaveAttribute("aria-invalid", "true");
+    expect(passwordInput).not.toHaveAttribute("aria-invalid", "true");
+    expect(document.body).not.toHaveTextContent("Private detail");
+  },
+);
+
+test.each([
+  {
+    name: "an incorrect code",
+    error: new ClerkAPIResponseError("Private detail", {
+      status: 422,
+      data: [
+        {
+          code: "form_code_incorrect",
+          message: "Private detail",
+          meta: { param_name: "code" },
+        },
+      ],
+    }),
+    message: "Incorrect verification code. Please try again.",
+  },
+  {
+    name: "a runtime timeout",
+    error: new ClerkRuntimeError("Private detail", {
+      code: "clerk_runtime_load_timeout",
+    }),
+    message:
+      "Sign-in took too long to load. Please refresh the page and try again.",
+  },
+])(
+  "Email verification remains retryable after $name",
+  async ({ error, message }) => {
+    mockedClerk.signUpAttemptEmailAddressVerification
+      .mockRejectedValueOnce(error)
+      .mockImplementationOnce(() => {
+        return moveSignUpToAsync(readyEmailVerificationState());
+      });
+    await setupSignUpPage(readyEmailVerificationState());
+    const code = await screen.findByLabelText("Verification code");
+    await fill(code, "123456");
+    fireEvent.submit(containingForm(code));
+    await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+      message,
+    );
+
+    await fill(code, "654321");
+    fireEvent.submit(containingForm(code));
+    await waitFor(() => {
+      expect(
+        mockedClerk.signUpAttemptEmailAddressVerification,
+      ).toHaveBeenCalledTimes(2);
+    });
+    expect(document.body).not.toHaveTextContent("Private detail");
+  },
+);
+
+test("Clerk's verification_expired response requires a new sign-up code", async () => {
+  mockedClerk.signUpAttemptEmailAddressVerification.mockRejectedValue(
+    new ClerkAPIResponseError("Private detail", {
+      status: 422,
+      data: [{ code: "verification_expired", message: "Private detail" }],
+    }),
+  );
+  await setupSignUpPage(readyEmailVerificationState());
+  const code = await screen.findByLabelText("Verification code");
+  await fill(code, "123456");
+  fireEvent.submit(containingForm(code));
+  await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+    "This verification code has expired. Request a new code.",
+  );
+  await expect(
+    waitForRoleElement("button", "Continue"),
+  ).resolves.toBeDisabled();
+  await expect(
+    waitForRoleElement("button", "Didn't receive a code? Resend"),
+  ).resolves.toBeEnabled();
+});
+
+test("Sign-up localizes a duplicate email address using Clerk's parameter-specific translation", async () => {
+  context.mocks.browser.languages(["ja-JP"]);
+  mockedClerk.clientSignUpCreate.mockRejectedValue(
+    new ClerkAPIResponseError("Private detail", {
+      status: 422,
+      data: [
+        {
+          code: "form_identifier_exists",
+          message: "Private detail",
+          meta: { param_name: "email_address" },
+        },
+      ],
+    }),
+  );
+  await setupSignUpPage({ status: null });
+  const email = await screen.findByLabelText("メールアドレス");
+  await fill(email, "person@example.com");
+  await fill(screen.getByLabelText("パスワード"), "valid-password");
+  fireEvent.submit(containingForm(email));
+  await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+    "このメールアドレスは既に使用されています。別のものをお試しください。",
+  );
+  expect(email).toHaveAttribute("aria-invalid", "true");
+});
+
+test("Social sign-up shows a CAPTCHA runtime error before a challenge is displayed", async () => {
+  mockAuthV2Capabilities({ googleOAuth: true });
+  mockedClerk.signUpAuthenticateWithRedirect.mockRejectedValueOnce(
+    new ClerkRuntimeError("Private detail", { code: "captcha_unavailable" }),
+  );
+  await setupSignUpPage({ status: null });
+  click(await waitForRoleElement("button", "Continue with Google"));
+  await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+    "Sign up unsuccessful due to failed bot validation. Please refresh the page to try again or reach out to support for more assistance.",
+  );
+  expect(document.body).not.toHaveTextContent("Private detail");
+  expect(screen.getAllByRole("alert")).toHaveLength(1);
+});
+
 test("Account creation waits for delayed password validation", async () => {
   let finishValidation: ((validation: PasswordValidation) => void) | undefined;
   mockedClerk.signUpValidatePassword.mockImplementation(
@@ -796,7 +1296,10 @@ test("Account creation waits for delayed password validation", async () => {
     finishValidation?.({
       complexity: {},
       strength: {
-        keys: ["min_zxcvbn_strength"],
+        keys: [
+          "unstable__errors.zxcvbn.notEnough",
+          "unstable__errors.zxcvbn.suggestions.anotherWord",
+        ],
         result: {
           calcTime: 0,
           feedback: { suggestions: [], warning: null },
@@ -811,7 +1314,7 @@ test("Account creation waits for delayed password validation", async () => {
   });
 
   await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
-    "Your password is not strong enough.",
+    "Your password is not strong enough. Add more words that are less common.",
   );
   expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
 });
@@ -867,7 +1370,7 @@ test("An expired sign-up code lets the visitor correct the email and resend once
   await expect(screen.findByText("updated@example.com")).resolves.toBeVisible();
 });
 
-test("A visitor can retry sign-up after bot verification expires", async () => {
+test("A visitor can retry sign-up after bot verification fails", async () => {
   const create = createDeferredPromise<
     ReturnType<typeof currentSignUpResource>
   >(context.signal);
@@ -913,7 +1416,7 @@ test("A visitor can retry sign-up after bot verification expires", async () => {
 
   const captchaError = await screen.findByRole("alert");
   expect(captchaError).toHaveTextContent(
-    "Bot verification expired. Try again.",
+    "Security verification failed. Please try again.",
   );
   await waitFor(() => {
     expect(captchaError).toHaveFocus();
@@ -977,3 +1480,76 @@ test("A visitor can restart a transferred or unrecoverable sign-up", async () =>
     expect.stringContaining(encodeURIComponent(redirectUrl)),
   );
 });
+
+test.each([
+  {
+    locale: "es-ES",
+    emailLabel: "Correo electrónico",
+    passwordLabel: "Contraseña",
+    message:
+      "Tu contraseña no es lo suficientemente segura. Añade más palabras que sean menos comunes.",
+  },
+  {
+    locale: "it-IT",
+    emailLabel: "Indirizzo email",
+    passwordLabel: "Password",
+    message:
+      "La tua password non è abbastanza sicura. Aggiungi altre parole meno comuni.",
+  },
+])(
+  "Sign-up translates strength suggestions that Clerk leaves in English for $locale",
+  async ({ locale, emailLabel, passwordLabel, message }) => {
+    context.mocks.browser.languages([locale]);
+    mockedClerk.clientSignUpCreate
+      .mockRejectedValueOnce(
+        new ClerkAPIResponseError("Private provider detail", {
+          status: 422,
+          data: [
+            {
+              code: "form_password_not_strong_enough",
+              message: "Private provider detail",
+              meta: {
+                param_name: "password",
+                zxcvbn: {
+                  suggestions: [
+                    { code: "anotherWord", message: "Private strength detail" },
+                    {
+                      code: "unknown_suggestion",
+                      message: "Private strength detail",
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        }),
+      )
+      .mockImplementationOnce(() => {
+        return moveSignUpToAsync(readyEmailVerificationState());
+      });
+    await setupSignUpPage({ status: null });
+    const email = await screen.findByLabelText(emailLabel);
+    const password = screen.getByLabelText(passwordLabel);
+    await fill(email, "person@example.com");
+    await fill(password, "valid-password");
+    fireEvent.submit(containingForm(password));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(message);
+    expect(password).toHaveAttribute("aria-invalid", "true");
+    expect(document.body).not.toHaveTextContent("Private provider detail");
+    expect(alert).not.toHaveTextContent("unknown_suggestion");
+    expect(document.body).not.toHaveTextContent("Private strength detail");
+
+    await fill(password, "Stronger-and-less-common-2!");
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+    fireEvent.submit(containingForm(password));
+    await waitFor(() => {
+      expect(screen.queryByLabelText(passwordLabel)).not.toBeInTheDocument();
+    });
+    await expect(
+      screen.findByText("person@example.com"),
+    ).resolves.toBeVisible();
+  },
+);

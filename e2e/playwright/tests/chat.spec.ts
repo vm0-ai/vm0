@@ -7,11 +7,15 @@ const appUrl = deriveAppUrl(resolveApiBackendUrl());
 const MOBILE_VIEWPORT = { width: 402, height: 874 } as const;
 
 function dialogImageFixture() {
-  const buffer = Buffer.from(
-    "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGMIqFhAEmIY1TCqYfhqAAATWWgQLeF+owAAAABJRU5ErkJggg==",
-    "base64",
-  );
-  return { name: "dialog-safe-area.png", mimeType: "image/png", buffer };
+  // Upload through the composer so the preview URL resolves a registered file.
+  return {
+    name: "dialog-safe-area.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGMIqFhAEmIY1TCqYfhqAAATWWgQLeF+owAAAABJRU5ErkJggg==",
+      "base64",
+    ),
+  };
 }
 
 test("dialog width caps preserve the sm breakpoint and shrink on narrow screens", async ({

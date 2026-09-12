@@ -143,7 +143,7 @@ test("primary actions retain brand styling while links remain accessible", async
   );
 });
 
-test.describe("French startup from the browser language", () => {
+test.describe("Localized startup in a non-English browser", () => {
   test.use({
     colorScheme: "dark",
     locale: "fr-FR",
@@ -188,6 +188,15 @@ test.describe("French startup from the browser language", () => {
     await expect(authV2Root(page).locator("h1")).toHaveText(
       "Créer votre compte",
     );
+    await expect(
+      authV2Root(page).getByLabel("Adresse e-mail", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      authV2Root(page).getByLabel("Mot de passe", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      authV2Root(page).getByRole("button", { name: "Continuer", exact: true }),
+    ).toBeVisible();
   });
 });
 

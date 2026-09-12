@@ -119,6 +119,9 @@ function signInErrorCategory(
     case "unknown": {
       return "unknown";
     }
+    case "rate-limited": {
+      return "provider-error";
+    }
     case "clerk": {
       if (error.clerkCode === "external_account_not_found") {
         return "account-not-found";
@@ -170,6 +173,9 @@ function signUpErrorCategory(
   error: AuthV2SignUpError,
 ): AuthV2DiagnosticErrorCategory {
   switch (error.code) {
+    case "rate-limited": {
+      return "provider-error";
+    }
     case "legal-required":
     case "password-invalid": {
       return "invalid-input";
