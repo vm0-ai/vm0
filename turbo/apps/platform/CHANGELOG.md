@@ -11,6 +11,26 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.893.1](https://github.com/vm0-ai/vm0/compare/app-v0.893.0...app-v0.893.1) (2026-09-12)
+
+
+### Bug Fixes
+
+* **ssh:** show configured credential count ([#33696](https://github.com/vm0-ai/vm0/issues/33696)) ([9ac81fd](https://github.com/vm0-ai/vm0/commit/9ac81fd04b0950df3484348136e11582327f696b))
+
+
+### Refactoring
+
+* **app:** drain session list title legacy classes ([#33693](https://github.com/vm0-ai/vm0/issues/33693)) ([42d0e08](https://github.com/vm0-ai/vm0/commit/42d0e08f024389c97ac2b091f06ac23c76541a97))
+* **app:** drop dead entrance-motion classes ([#33691](https://github.com/vm0-ai/vm0/issues/33691)) ([7489a1c](https://github.com/vm0-ai/vm0/commit/7489a1cdb49505c55376fa1086823868f26b66f2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.659.0
+
 ## [0.893.0](https://github.com/vm0-ai/vm0/compare/app-v0.892.0...app-v0.893.0) (2026-09-12)
 
 
