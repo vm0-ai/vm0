@@ -7616,7 +7616,7 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
       origin: "https://api.okou.ai",
       connectorSlug: "github",
       query: { code: "code-123" },
-      headers: { "x-vm0-web-origin": "https://www.okou.ai" },
+      headers: { "x-okou-web-origin": "https://www.okou.ai" },
     });
     expect(trustedHeader.status).toBe(307);
     const trustedUrl = redirectLocation(trustedHeader);
