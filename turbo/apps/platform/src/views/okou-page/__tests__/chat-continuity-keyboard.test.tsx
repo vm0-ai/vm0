@@ -127,6 +127,7 @@ async function openNeighboringChatPanes(mainThread: "current" | "newest") {
   await setupPage({
     context,
     path: `/chats/${main.id}?sidebar=${side.id}`,
+    locale: "en-US",
     ...workspace.pageOptions,
   });
 
@@ -139,16 +140,12 @@ async function openNeighboringChatPanes(mainThread: "current" | "newest") {
 }
 
 test("Move to a newer chat from the main pane without changing the side pane", async () => {
+  const user = userEvent.setup({ delay: null });
   const { current, side, newest } = await openNeighboringChatPanes("current");
   const mainComposer = composerIn(current.id);
   mainComposer.focus();
   expect(mainComposer).toHaveFocus();
-  fireEvent.keyDown(mainComposer, {
-    key: "ArrowUp",
-    code: "ArrowUp",
-    ctrlKey: true,
-    shiftKey: true,
-  });
+  await user.keyboard("{Control>}{Shift>}{ArrowUp}{/Shift}{/Control}");
 
   await waitFor(() => {
     expect(threadContainer(newest.id)).toBeVisible();
@@ -165,6 +162,7 @@ test("Move to a newer chat from the main pane without changing the side pane", a
 });
 
 test("Move to an older chat from the side pane without changing the main pane", async () => {
+  const user = userEvent.setup({ delay: null });
   const { current, side, newest } = await openNeighboringChatPanes("newest");
   expect(continuitySidebarLink(newest.id)).toHaveAttribute(
     "aria-current",
@@ -173,12 +171,7 @@ test("Move to an older chat from the side pane without changing the main pane", 
   const sideContainer = threadContainer(side.id);
   sideContainer.focus();
   expect(sideContainer).toHaveFocus();
-  fireEvent.keyDown(sideContainer, {
-    key: "ArrowDown",
-    code: "ArrowDown",
-    ctrlKey: true,
-    shiftKey: true,
-  });
+  await user.keyboard("{Control>}{Shift>}{ArrowDown}{/Shift}{/Control}");
 
   await waitFor(() => {
     expect(threadContainer(current.id)).toBeVisible();
