@@ -84,6 +84,14 @@ function isUnknownRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+// Axiom reports how many events it accepted, and the API treats any other
+// count as a partial ingest. The mock therefore sizes its response from the
+// request without inspecting or asserting on the payload.
+async function ingestedEventCount(request: Request): Promise<number> {
+  const events: unknown = await request.json();
+  return Array.isArray(events) ? events.length : 0;
+}
+
 function successfulAxiomIngestStatus(ingested: number) {
   return {
     ingested,
@@ -1648,9 +1656,14 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     server.use(
       http.post(
         "https://api.axiom.co/v1/datasets/sandbox-telemetry-metrics/ingest",
-        () => {
+        async ({ request }) => {
           ingestRequests += 1;
-          return HttpResponse.json(successfulAxiomIngestStatus(1));
+          // Axiom answers with the number of events it accepted, so the mock
+          // has to size its response the same way. Nothing here inspects the
+          // payload; the test asserts the HTTP result and the request count.
+          return HttpResponse.json(
+            successfulAxiomIngestStatus(await ingestedEventCount(request)),
+          );
         },
       ),
     );
@@ -1758,9 +1771,11 @@ describe("WHCB-05: sandbox agent webhook boundaries", () => {
     server.use(
       http.post(
         "https://api.axiom.co/v1/datasets/:dataset/ingest",
-        ({ params }) => {
+        async ({ request, params }) => {
           ingestedDatasets.add(String(params.dataset));
-          return HttpResponse.json(successfulAxiomIngestStatus(1));
+          return HttpResponse.json(
+            successfulAxiomIngestStatus(await ingestedEventCount(request)),
+          );
         },
       ),
     );
