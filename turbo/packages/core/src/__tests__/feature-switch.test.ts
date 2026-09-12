@@ -36,6 +36,8 @@ describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.AvatarNeckSweater, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.VoiceInputV2, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.VoiceGoogleCloud, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -201,6 +203,7 @@ describe("getAllFeatureStates", () => {
     );
     expect(staffOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.VoiceInputV2]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.VoiceGoogleCloud]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.IntroVideo]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(true);
@@ -226,7 +229,8 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.ChatTranslation]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.VoiceInputV2]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.VoiceInputV2]).toBe(true);
+    expect(otherOrgStates[FeatureSwitchKey.VoiceGoogleCloud]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.IntroVideo]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.GradientColorThemes]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OfficialWorkflows]).toBe(false);
@@ -337,6 +341,12 @@ describe("getFeatureSwitchMetadata", () => {
     const metadata = getFeatureSwitchMetadata();
 
     expect(metadata[FeatureSwitchKey.AvatarNeckSweater].rolloutStage).toBe(
+      "released",
+    );
+    expect(metadata[FeatureSwitchKey.VoiceInputV2].rolloutStage).toBe(
+      "released",
+    );
+    expect(metadata[FeatureSwitchKey.VoiceGoogleCloud].rolloutStage).toBe(
       "released",
     );
     expect(metadata[FeatureSwitchKey.Banking].rolloutStage).toBe("beta");

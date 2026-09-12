@@ -46,7 +46,7 @@ async function enableVoicePolish(useGoogleCloud = true) {
     { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
     {
       [FeatureSwitchKey.VoiceInputV2]: true,
-      ...(useGoogleCloud ? { [FeatureSwitchKey.VoiceGoogleCloud]: true } : {}),
+      [FeatureSwitchKey.VoiceGoogleCloud]: useGoogleCloud,
     },
   );
 }
@@ -121,7 +121,7 @@ describe("POST /api/voice-io/polish", () => {
     expect(calls).toBe(1);
   });
 
-  it("preserves OpenRouter polishing by default without Google credentials", async () => {
+  it("preserves OpenRouter polishing when Google routing is disabled", async () => {
     await enableVoicePolish(false);
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     mockOptionalEnv("GCP_LLM_PROJECT_ID", undefined);

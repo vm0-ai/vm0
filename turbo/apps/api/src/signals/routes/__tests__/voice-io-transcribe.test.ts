@@ -160,7 +160,7 @@ async function enabledActor(useGoogleCloud = true) {
     { userId: actor.userId, orgId: actor.orgId, orgRole: "org:admin" },
     {
       [FeatureSwitchKey.VoiceInputV2]: true,
-      ...(useGoogleCloud ? { [FeatureSwitchKey.VoiceGoogleCloud]: true } : {}),
+      [FeatureSwitchKey.VoiceGoogleCloud]: useGoogleCloud,
     },
   );
   return actor;
@@ -175,11 +175,39 @@ function requestAudioParts(request: VertexVoiceRequest) {
 }
 
 describe("voice input models and reference context", () => {
+  it("defaults ordinary organizations to voice input through Google Cloud", async () => {
+    const actor = createBddApi(context).user();
+    if (!actor.orgId) {
+      throw new Error("Voice draft tests require an organization");
+    }
+    await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits: 10_000 });
+    mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
+    server.use(
+      http.post(VERTEX_VOICE_URL, () => {
+        return recoveredVoiceResponse();
+      }),
+    );
+
+    const result = await accept(
+      client().segment({
+        headers: { authorization: "Bearer clerk-session" },
+        body: form([audioFile(1)]),
+      }),
+      [200],
+    );
+
+    expect(result.body).toStrictEqual({
+      transcript: "Recorded speech.",
+      polishedText: "Recorded speech.",
+      language: "en",
+    });
+  });
+
   it.each([
     { model: "google/gemini-2.5-flash-lite", tokens: 65_535, effort: "none" },
     { model: "google/gemini-3.8-flash", tokens: 65_536, effort: "minimal" },
   ] as const)(
-    "keeps $model on OpenRouter by default without Google credentials",
+    "keeps $model on OpenRouter when Google routing is disabled",
     async ({ model, tokens, effort }) => {
       await enabledActor(false);
       mockOptionalEnv("GCP_LLM_PROJECT_ID", undefined);

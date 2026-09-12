@@ -1,18 +1,20 @@
 # Voice input v2 model benchmark
 
 Use one deployed PR App/API commit, one ordinary test organization, and a fixed
-audio corpus. Enable `voiceInputV2` and `_debug` at `/_/lab`, then choose **Voice
-input model** in **Settings → Debug**. The selection is a per-member preference
-scoped to the current organization. An unset preference or **Default** uses
+audio corpus. Confirm the globally enabled `voiceInputV2` switch and enable
+`_debug` at `/_/lab`, then choose **Voice input model** in **Settings → Debug**.
+The selection is a per-member preference scoped to the current organization. An
+unset preference or **Default** uses
 Gemini 3.1 Flash-Lite (`google/gemini-3.1-flash-lite`); choosing **Default** clears
 the saved preference. Changing the Debug switch only controls access to the
 settings and timing diagnostics; a saved model preference remains effective.
 
 Lab overrides already apply to every registered switch. The voice transcription
-and polish endpoints now honor those overrides without an additional staff-org
-check. Registry staff audiences still determine initial rollout defaults. The
-separate staff authorization for cancelling global model-provider cooldowns is
-an operational permission, not a feature-switch prerequisite.
+and polish endpoints honor those overrides without an additional staff-org check.
+Both `voiceInputV2` and `voiceGoogleCloud` are enabled globally by default; an
+explicit false override still disables the corresponding behavior. The separate
+staff authorization for cancelling global model-provider cooldowns is an
+operational permission, not a feature-switch prerequisite.
 
 ## Model paths
 
@@ -21,18 +23,20 @@ Gemini 3.8 Flash was the latest Gemini 3.x Flash in that catalog. Names in the
 picker refer to explicit model IDs; record the date and upstream response IDs
 as well, since providers can update an endpoint behind an existing ID.
 
-| Models                                                           | Provider path                           | Processing                                                                                                                                                                       |
-| ---------------------------------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Gemini 2.5 Flash-Lite, 3.1 Flash-Lite, 3.6 Flash, 3.8 Flash      | OpenRouter chat completions             | 60-second segments with 2-second overlap, transcribed serially with saved context; final audio and complete-recording polish share one call                                      |
-| OpenAI GPT Audio, GPT Audio Mini                                 | OpenRouter chat completions             | Serial 60-second overlapping segments; final audio and polish share one call. Text-only finalization uses Gemini 3.1 Flash-Lite. JSON is prompt-constrained and server-validated |
-| Qwen3 ASR Flash, ASR 1.7B, ASR 0.6B                              | OpenRouter audio transcriptions         | Selected ASR transcribes each segment; Gemini 3.1 Flash-Lite reconciles overlap with saved speech and polishes on the final segment                                              |
-| OpenAI GPT Transcribe, GPT-4o Transcribe, GPT-4o Mini Transcribe | OpenRouter audio transcriptions         | Selected ASR transcribes each segment; Gemini 3.1 Flash-Lite reconciles overlap with saved speech and polishes on the final segment                                              |
-| ElevenLabs Scribe v2                                             | fal synchronous speech-to-text endpoint | Selected ASR transcribes each segment; Gemini 3.1 Flash-Lite reconciles overlap with saved speech and polishes on the final segment                                              |
+| Models                                                           | Provider path                           | Processing                                                                                                                                                                                                |
+| ---------------------------------------------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Gemini 2.5 Flash-Lite, 3.1 Flash-Lite, 3.6 Flash, 3.8 Flash      | Google Vertex AI `generateContent`      | 60-second segments with 2-second overlap, transcribed serially with saved context; final audio and complete-recording polish share one call                                                               |
+| OpenAI GPT Audio, GPT Audio Mini                                 | OpenRouter chat completions             | Serial 60-second overlapping segments; final audio and polish share one call. Text-only finalization uses Gemini 3.1 Flash-Lite through Google Vertex AI. JSON is prompt-constrained and server-validated |
+| Qwen3 ASR Flash, ASR 1.7B, ASR 0.6B                              | OpenRouter audio transcriptions         | Selected ASR transcribes each segment; Gemini 3.1 Flash-Lite on Google Vertex AI reconciles overlap with saved speech and polishes on the final segment                                                   |
+| OpenAI GPT Transcribe, GPT-4o Transcribe, GPT-4o Mini Transcribe | OpenRouter audio transcriptions         | Selected ASR transcribes each segment; Gemini 3.1 Flash-Lite on Google Vertex AI reconciles overlap with saved speech and polishes on the final segment                                                   |
+| ElevenLabs Scribe v2                                             | fal synchronous speech-to-text endpoint | Selected ASR transcribes each segment; Gemini 3.1 Flash-Lite on Google Vertex AI reconciles overlap with saved speech and polishes on the final segment                                                   |
 
-The API uses its existing `OPENROUTER_API_KEY` and, for Scribe, `FAL_KEY`.
-Unavailable credentials or provider errors produce an explicit failure; a
-comparison never silently changes to another transcription model. The existing
-audio-input quota, duration limits, and successful-use accounting still apply.
+The globally enabled Google route uses the configured `GCP_LLM_*` workload
+identity. GPT Audio and OpenRouter transcription models use `OPENROUTER_API_KEY`;
+Scribe uses `FAL_KEY`. Unavailable credentials or provider errors produce an
+explicit failure; a comparison never silently changes to another transcription
+model. The existing audio-input quota, duration limits, and successful-use
+accounting still apply.
 
 GPT Audio's pure-text polish requests returned upstream HTTP 400 during the
 YouTube pilot. Finalization with no remaining audio therefore selects the shared
@@ -85,8 +89,8 @@ agent-browser --session voice-benchmark --executable-path /usr/bin/chromium \
 ```
 
 Use the App/API origins from the deployment checks. Complete test sign-in and
-onboarding, set both Lab switches, and verify the selected model survives a
-reload. Drive the real record and stop controls. Capture microphone activation,
+onboarding, confirm both globally enabled voice switches, and verify the selected
+model survives a reload. Drive the real record and stop controls. Capture microphone activation,
 the recording stop action, outgoing audio, response, and editable composer text.
 Use a known leading silence interval and align replay to capture readiness so
 startup latency cannot truncate the same fixture differently between samples.

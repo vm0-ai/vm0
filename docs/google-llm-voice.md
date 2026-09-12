@@ -11,13 +11,13 @@ OpenRouter/fal provider, and generic chat/image/LLM consumers retain their routi
 
 ## Configuration
 
-The public `voiceGoogleCloud` switch is **off by default**, including for
-staff. Enable it for a user in **Lab → Alpha** using the existing
-per-user feature-switch override. The existing `voiceInputV2` access switch must
-also be enabled. Both voice API routes resolve the authenticated user's override
-on every request; no browser/API contract or additional environment variable is
-needed. Off preserves the existing OpenRouter Gemini path and does not require
-Google credentials. On selects Google for all Gemini voice steps, including
+The public `voiceInputV2` and `voiceGoogleCloud` switches are **on by default for
+all users**. Existing per-user Lab overrides can still disable or reset either
+switch. `voiceInputV2` must remain enabled to access the voice routes. Both routes
+resolve the authenticated user's overrides on every request; no browser/API
+contract or additional environment variable is needed. Disabling
+`voiceGoogleCloud` preserves the OpenRouter Gemini path and does not require Google
+credentials. When enabled, it selects Google for all Gemini voice steps, including
 independent text polish. Failures never change the selected provider.
 
 The active billed project is `vm0-ai-488909` (number `662642595011`). The separate
@@ -148,11 +148,11 @@ record. Provisioned IAM and configured Variables establish prerequisites, not
 successful runtime authentication or model access. HTTP fixtures establish code
 behavior, not Google's live project capacity or audio limits.
 
-Before production rollout, enable `voiceGoogleCloud` only for the preview test
-user and use the PR preview to verify the actual dev runtime
-identity and each model/location with non-sensitive audio, all three structured
-output schemas, plain-text polish, normal 75s browser PCM, and the existing valid
-WAV boundary up to 25 MiB including base64 expansion. Bound functional generation
+Before merging or deploying the global rollout, use the PR preview to verify the
+actual dev runtime identity and each model/location with non-sensitive audio, all
+three structured output schemas, plain-text polish, normal 75s browser PCM, and
+the existing valid WAV boundary up to 25 MiB including base64 expansion. Bound
+functional generation
 probes to 32 calls total across models/environments; these are not throughput
 proof. Do not silently reduce accepted input size or introduce GCS/conversion,
 provider fallback, or model substitution if a probe fails; revise the plan.
@@ -172,10 +172,11 @@ insufficient evidence or use one bounded follow-up of at most 24 hours. Keep the
 issue open until the live acceptance criteria are satisfied. Neither merge nor
 one successful model call proves reduced capacity failures.
 
-Disable `voiceGoogleCloud` for the affected user to route subsequent Gemini
-voice requests back through OpenRouter. An in-flight request retains its selected
-provider. Broader rollback uses the normal approved API deployment rollback/revert path.
-Retain OpenRouter credentials for unchanged providers and rollback. Browser
+Disable `voiceGoogleCloud` for an affected user to route subsequent Gemini voice
+requests back through OpenRouter, or disable `voiceInputV2` to withdraw voice
+access. An in-flight request retains its selected provider. A global rollback
+reverts the switch defaults or uses the normal approved API deployment rollback
+path. Retain OpenRouter credentials for unchanged providers and rollback. Browser
 drafts/checkpoints remain compatible; there is no automatic runtime fallback.
 Keep the shared identities/configuration until an explicit cleanup is reviewed.
 

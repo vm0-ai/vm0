@@ -365,14 +365,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@okou.ai",
     description:
       "Transcribe and polish voice input before inserting it into the composer, with Mod+Shift+E to start or stop recording.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.VoiceGoogleCloud]: {
     maintainer: "liangyou@okou.ai",
     description:
       "Route Gemini voice transcription and polishing through Google Cloud instead of OpenRouter.",
-    enabled: false,
+    enabled: true,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@okou.ai",
