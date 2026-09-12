@@ -18,6 +18,7 @@ import { onRejection, safeSync, settle } from "../utils";
 type AuxiliaryFeature =
   | "chat_title"
   | "shared_thread_title"
+  | "chat_activity_summary"
   | "chat_initial_thinking"
   | "run_summary"
   | "recommended_followups"
