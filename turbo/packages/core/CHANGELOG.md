@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.659.0](https://github.com/vm0-ai/vm0/compare/core-v8.658.0...core-v8.659.0) (2026-09-12)
+
+
+### Features
+
+* **chat:** enable reasoning effort for the staff team ([#33688](https://github.com/vm0-ai/vm0/issues/33688)) ([d836e6d](https://github.com/vm0-ai/vm0/commit/d836e6d2341225e16a5065c44e49467dcce5274c))
+
 ## [8.658.0](https://github.com/vm0-ai/vm0/compare/core-v8.657.0...core-v8.658.0) (2026-09-12)
 
 
