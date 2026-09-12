@@ -43,6 +43,23 @@
   --color-usage-kind-connector: #779aad;
   --color-usage-kind-other: #c8b800;
 
+  /* Data-viz palette shared with the Okou chart gallery, consumed by the
+     composer's chart previews. Keep categorical order stable and use the blue
+     scale for ordered magnitude. These stay identical in Light and Dark on
+     purpose: a series keeps its identity across themes, and the surrounding
+     background, border, and foreground tokens carry the theme instead. Add a
+     stop only when a preview actually paints it. */
+  --color-chart-blue-100: #cde2fb;
+  --color-chart-blue-200: #9ec5f4;
+  --color-chart-blue-300: #6da7ec;
+  --color-chart-blue-400: #3987e5;
+  --color-chart-blue-500: #2a78d6;
+  --color-chart-blue-600: #1c5cab;
+  --color-chart-orange: #eb6834;
+  --color-chart-green: #1baf7a;
+  --color-chart-gold: #eda100;
+  --color-chart-red: #e34948;
+
   /* Artifact-type icon foregrounds, shared by type choices, selected labels,
      and their menus. These glyph colors retain contrast on light and dark
      surfaces; they are not body-text colors. */
