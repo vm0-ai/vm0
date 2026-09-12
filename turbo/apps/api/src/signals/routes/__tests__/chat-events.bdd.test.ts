@@ -1,6 +1,6 @@
+import { piNativeCatalogModelSchema } from "@okouai/api-contracts/contracts/pi-native-models";
 import {
   PI_NATIVE_CREDENTIAL_PLACEHOLDER,
-  piNativeCatalogModelSchema,
   piModelConfigV4Schema,
   piNativeInferenceUrl,
 } from "@okouai/api-contracts/contracts/pi-native";
@@ -3650,10 +3650,24 @@ describe("CHAT effort: thread configuration", () => {
   it.each([
     {
       model: "gpt-5.6-sol",
-      effort: "high",
+      effort: "ultra",
       pi: true,
       providerType: "openai-api-key",
-      effectiveEffort: undefined,
+      effectiveEffort: "max",
+    },
+    {
+      model: "deepseek-v4-flash",
+      effort: "low",
+      pi: true,
+      providerType: "openrouter-codex",
+      effectiveEffort: "high",
+    },
+    {
+      model: "deepseek-v4-pro",
+      effort: "max",
+      pi: true,
+      providerType: "openrouter-codex",
+      effectiveEffort: "high",
     },
     {
       model: "claude-sonnet-5",
@@ -3709,14 +3723,13 @@ describe("CHAT effort: thread configuration", () => {
           await flushWaitUntilForTest();
         }
         const claimed = await claimChatRun(runnerGroup, sent.runId);
-        if (effectiveEffort === undefined) {
-          expect(claimed.claim.platformEnvironment).not.toHaveProperty(
-            "OKOU_REASONING_EFFORT",
-          );
-        } else {
-          expect(claimed.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
-            effectiveEffort,
-          );
+        expect(claimed.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
+          effectiveEffort,
+        );
+        if (pi) {
+          expect(claimed.claim.piModelConfig).toMatchObject({
+            thinkingLevel: effectiveEffort,
+          });
         }
         await expect(
           chat.readThreadMetadata(actor, thread.id),
@@ -3730,34 +3743,71 @@ describe("CHAT effort: thread configuration", () => {
   );
 
   it.each([
-    { enabled: true, requestedEffort: "high", effectiveEffort: "high" },
-    { enabled: false, requestedEffort: "high", effectiveEffort: undefined },
+    {
+      enabled: true,
+      requestedEffort: "high",
+      effectiveEffort: "high",
+      pi: false,
+    },
+    {
+      enabled: true,
+      requestedEffort: "high",
+      effectiveEffort: "high",
+      pi: true,
+    },
+    {
+      enabled: true,
+      requestedEffort: "ultra",
+      effectiveEffort: "max",
+      pi: true,
+    },
+    {
+      enabled: false,
+      requestedEffort: "high",
+      effectiveEffort: undefined,
+      pi: false,
+    },
     {
       enabled: true,
       requestedEffort: "ultracode",
       effectiveEffort: "high",
+      pi: false,
     },
   ] as const)(
-    "uses current thread settings when a queued message starts with rollout $enabled and $requestedEffort effort",
-    async ({ enabled, requestedEffort, effectiveEffort }) => {
+    "uses current thread settings when a queued message starts with rollout $enabled, Pi $pi and $requestedEffort effort",
+    async ({ enabled, requestedEffort, effectiveEffort, pi }) => {
       const { actor, agentId, providerId, runnerGroup } =
         await entitledChatActor();
       chatCallbacks.failIfChatCallbackRouteIsFetched();
       await authDeviceSupport.updateFeatureSwitches(actor, {
         [FeatureSwitchKey.ChatReasoningEffort]: true,
+        [FeatureSwitchKey.PiLoop]: false,
       });
-      await api.updateOrgModelPolicies(
-        actor,
-        (["claude-sonnet-5", "claude-opus-4-8"] as const).map((model) => {
-          return {
-            model,
-            isDefault: model === "claude-sonnet-5",
-            defaultProviderType: "anthropic-api-key",
-            credentialScope: "org",
-            modelProviderId: providerId,
-          };
-        }),
-      );
+      const selectedModel = pi ? "gpt-5.6-sol" : "claude-opus-4-8";
+      const targetProviderId = pi
+        ? (
+            await upsertOrgModelProvider(actor, {
+              type: "openai-api-key",
+              secret: "queued-pi-effort-key",
+            })
+          ).providerId
+        : providerId;
+      await api.updateOrgModelPolicies(actor, [
+        {
+          model: "claude-sonnet-5",
+          isDefault: true,
+          defaultProviderType: "anthropic-api-key",
+          credentialScope: "org",
+          modelProviderId: providerId,
+        },
+        {
+          model: selectedModel,
+          isDefault: false,
+          defaultProviderType: pi ? "openai-api-key" : "anthropic-api-key",
+          credentialScope: "org",
+          modelProviderId: targetProviderId,
+        },
+      ]);
       const active = await sendChatRun(actor, {
         agentId,
         prompt: "Active task",
@@ -3770,12 +3820,15 @@ describe("CHAT effort: thread configuration", () => {
         { reasoningEffort: "extra" },
       );
       const clientEventId = randomUUID();
+      const prompt = pi
+        ? "/unknown-command read the current thread settings at launch"
+        : "Read the current thread settings at launch";
       const queued = await chat.requestSendEvent(
         actor,
         {
           agentId,
           threadId: active.threadId,
-          prompt: "Read the current thread settings at launch",
+          prompt,
           clientEventId,
         },
         [201],
@@ -3784,7 +3837,7 @@ describe("CHAT effort: thread configuration", () => {
       await chat.updateThreadModelSelection(
         actor,
         active.threadId,
-        "claude-opus-4-8",
+        selectedModel,
         { reasoningEffort: requestedEffort },
       );
       const retry = await chat.requestSendEvent(
@@ -3792,7 +3845,7 @@ describe("CHAT effort: thread configuration", () => {
         {
           agentId,
           threadId: active.threadId,
-          prompt: "Read the current thread settings at launch",
+          prompt,
           clientEventId,
           runOptions: { reasoningEffort: requestedEffort },
         },
@@ -3801,7 +3854,11 @@ describe("CHAT effort: thread configuration", () => {
       expect(retry.body).toStrictEqual(queued.body);
       await authDeviceSupport.updateFeatureSwitches(actor, {
         [FeatureSwitchKey.ChatReasoningEffort]: enabled,
+        [FeatureSwitchKey.PiLoop]: pi,
       });
+      if (pi) {
+        mockPiCheckpointObjectStore();
+      }
       await cancelChatRun(actor, active.runId, activeClaim.sandboxHeaders);
       const messages = await waitForThreadMessages(
         actor,
@@ -3823,19 +3880,27 @@ describe("CHAT effort: thread configuration", () => {
       }
       expect(promoted.userMessage.parts).toContainEqual({
         type: "model",
-        selectedModel: "claude-opus-4-8",
+        selectedModel,
       });
+      if (pi) {
+        await flushWaitUntilForTest();
+      }
       const claimed = await claimChatRun(runnerGroup, promoted.runId);
+      if (pi) {
+        expect(claimed.claim.piModelConfig).toMatchObject({
+          thinkingLevel: effectiveEffort,
+        });
+      }
       expect(claimed.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
         effectiveEffort,
       );
       await expect(
         chat.readThreadMetadata(actor, active.threadId),
       ).resolves.toMatchObject({
-        selectedModel: "claude-opus-4-8",
+        selectedModel,
         modelSettings: {
           "claude-sonnet-5": { effort: "extra" },
-          "claude-opus-4-8": { effort: requestedEffort },
+          [selectedModel]: { effort: requestedEffort },
         },
       });
       await cancelChatRun(actor, promoted.runId, claimed.sandboxHeaders);
@@ -4083,7 +4148,7 @@ describe("CHAT effort: automation launches", () => {
         effort: "high",
         pi: true,
         providerType: "openai-api-key",
-        effectiveEffort: undefined,
+        effectiveEffort: "high",
       },
     ] as const) {
       const { providerId } = await upsertOrgModelProvider(actor, {
@@ -4122,14 +4187,13 @@ describe("CHAT effort: automation launches", () => {
         await flushWaitUntilForTest();
       }
       const next = await claimChatRun(runnerGroup, started.body.runId);
-      if (route.effectiveEffort === undefined) {
-        expect(next.claim.platformEnvironment).not.toHaveProperty(
-          "OKOU_REASONING_EFFORT",
-        );
-      } else {
-        expect(next.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
-          route.effectiveEffort,
-        );
+      expect(next.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
+        route.effectiveEffort,
+      );
+      if (route.pi) {
+        expect(next.claim.piModelConfig).toMatchObject({
+          thinkingLevel: route.effectiveEffort,
+        });
       }
       await expect(
         chat.readThreadMetadata(actor, threadId),
@@ -9122,7 +9186,10 @@ describe("CHAT-02: model-first provider policies", () => {
       await updateFeatureSwitchesForUser(
         context,
         { ...actor, orgId },
-        { [FeatureSwitchKey.PiLoop]: true },
+        {
+          [FeatureSwitchKey.PiLoop]: true,
+          [FeatureSwitchKey.ChatReasoningEffort]: true,
+        },
       );
       mockPiResourceArchiveDownloads();
       const checkpointObjects = mockPiCheckpointObjectStore();
@@ -9178,6 +9245,7 @@ describe("CHAT-02: model-first provider policies", () => {
           agentId,
           prompt: firstPrompt,
           model: selectedModel,
+          runOptions: { reasoningEffort: "max" },
         },
         usagePricingResolution,
       );
@@ -9194,6 +9262,9 @@ describe("CHAT-02: model-first provider policies", () => {
         },
       });
       expect(modelRequests).toHaveLength(1);
+      expect(modelRequests[0]?.body).toMatchObject({
+        reasoning: { effort: "max" },
+      });
       const firstModelInput = JSON.stringify(modelRequests[0]?.body);
       expect(occurrences(firstModelInput, firstPrompt)).toBe(1);
       expect(occurrences(firstModelInput, modelAnswers[0] ?? "")).toBe(0);
@@ -9233,6 +9304,12 @@ describe("CHAT-02: model-first provider policies", () => {
       );
       expect(firstClaim.status).toBe(404);
 
+      await chat.updateThreadModelSelection(
+        actor,
+        first.threadId,
+        selectedModel,
+        { reasoningEffort: "high" },
+      );
       const secondPrompt = "continue the same Pi session";
       const second = await sendChatRun(
         actor,
@@ -9246,6 +9323,14 @@ describe("CHAT-02: model-first provider policies", () => {
       await waitForRunStatus(actor, second.runId, "completed");
       await flushWaitUntilForTest();
       expect(modelRequests).toHaveLength(2);
+      expect(modelRequests[1]?.body).toMatchObject({
+        reasoning: { effort: "high" },
+      });
+      await expect(
+        chat.readThreadMetadata(actor, first.threadId),
+      ).resolves.toMatchObject({
+        modelSettings: { [selectedModel]: { effort: "high" } },
+      });
       await expectPiApiUsage(second.runId, selectedModel, "", {
         input: 5,
         output: 3,
@@ -21839,8 +21924,11 @@ describe("CHAT-02: initial thinking indicator", () => {
       prompt: "Prepare a later update",
     });
     await flushWaitUntilForTest();
-    expect((await api.readRun(actor, queued.runId)).status).toBe("queued");
-    const page = await chat.listThreadEvents(actor, queued.threadId);
+    const [queuedRun, page] = await Promise.all([
+      api.readRun(actor, queued.runId),
+      chat.listThreadEvents(actor, queued.threadId),
+    ]);
+    expect(queuedRun.status).toBe("queued");
     expect(page.events).toContainEqual(
       expect.objectContaining({ runEventId: "queue:queued" }),
     );
@@ -27967,6 +28055,7 @@ describe("shared native Pi route activation", () => {
       await configureBuiltInPiModel(actor, model);
       await authDeviceSupport.updateFeatureSwitches(actor, {
         [FeatureSwitchKey.PiLoop]: true,
+        [FeatureSwitchKey.ChatReasoningEffort]: true,
       });
       const pricing = await createPiApiFirstTurnUsagePricingResolution(model);
       mockPiResourceArchiveDownloads();
@@ -27985,7 +28074,12 @@ describe("shared native Pi route activation", () => {
       );
       const first = await sendChatRun(
         actor,
-        { agentId, model, prompt: "retain this Claude native preference" },
+        {
+          agentId,
+          model,
+          prompt: "retain this Claude native preference",
+          runOptions: { reasoningEffort: "low" },
+        },
         pricing,
       );
       await waitForRunStatus(actor, first.runId, "completed");
@@ -27994,6 +28088,10 @@ describe("shared native Pi route activation", () => {
         orgId: requireOrgId(actor),
         userId: actor.userId,
         runId: first.runId,
+      });
+      const nextEffort = model === "claude-sonnet-4-6" ? "high" : "extra";
+      await chat.updateThreadModelSelection(actor, first.threadId, model, {
+        reasoningEffort: nextEffort,
       });
       const second = await sendChatRun(
         actor,
@@ -28008,6 +28106,15 @@ describe("shared native Pi route activation", () => {
       await flushWaitUntilForTest();
       expect(requests).toHaveLength(2);
       expect(requests[0]).toMatchObject({ model });
+      expect(JSON.stringify(requests[0])).toContain('"effort":"low"');
+      expect(JSON.stringify(requests[1])).toContain(
+        `"effort":"${nextEffort === "extra" ? "xhigh" : "high"}"`,
+      );
+      await expect(
+        chat.readThreadMetadata(actor, first.threadId),
+      ).resolves.toMatchObject({
+        modelSettings: { [model]: { effort: nextEffort } },
+      });
       expect(JSON.stringify(requests[1])).toContain(
         "retain this Claude native preference",
       );

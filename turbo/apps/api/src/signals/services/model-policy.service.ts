@@ -1,3 +1,4 @@
+import { resolveBuiltInModelRuntimeRoute } from "./built-in-model-runtime-route.service";
 import { isCloudModelMappingValid } from "@okouai/api-contracts/contracts/cloud-model-mapping";
 import { command } from "ccstate";
 import { and, eq, inArray, notInArray } from "drizzle-orm";
@@ -779,9 +780,22 @@ async function listOrgModelPolicies(
       return [surface.id, surface];
     }),
   );
-  const policies = rows.map((row) => {
-    return serializePolicy(row, providersById, surfacesById);
-  });
+  const policies = await Promise.all(
+    rows.map(async (row) => {
+      const policy = serializePolicy(row, providersById, surfacesById);
+      if (!isBuiltInModelProviderType(policy.defaultProviderType)) {
+        return policy;
+      }
+      const runtimeRoute = await resolveBuiltInModelRuntimeRoute(
+        db,
+        policy.model,
+      );
+      return {
+        ...policy,
+        runtimeProviderType: runtimeRoute?.providerType ?? null,
+      };
+    }),
+  );
   const workspaceDefault = selectWorkspaceDefaultPolicy(policies);
 
   return {

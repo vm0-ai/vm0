@@ -617,6 +617,71 @@
       "evidence": []
     },
     {
+      "id": "sidebar-copy-foreground",
+      "family": "navigation",
+      "tokens": [
+        "okou-nav-copy",
+        "okou-nav-copy-muted",
+        "okou-nav-copy-muted-hover"
+      ],
+      "consumers": [
+        "apps/platform/src/views/okou-page/sidebar.tsx",
+        "apps/platform/src/views/okou-page/sidebar-pinned.tsx",
+        "apps/platform/src/views/okou-page/sidebar-threads.tsx",
+        "apps/platform/src/views/okou-page/sidebar-upgrade.tsx",
+        "apps/platform/src/views/okou-page/__tests__/chat-list-test-helpers.ts"
+      ],
+      "cases": [
+        "nav-copy-gradient-light",
+        "nav-copy-gradient-dark",
+        "nav-copy-default-light",
+        "nav-copy-default-dark",
+        "nav-copy-rail-light",
+        "nav-copy-rail-dark"
+      ],
+      "status": "implemented",
+      "evidence": []
+    },
+    {
+      "id": "hairline-rule",
+      "family": "local-controls",
+      "tokens": ["okou-border-t"],
+      "consumers": [
+        "apps/platform/src/views/okou-page/billing-dialog.tsx",
+        "apps/platform/src/views/okou-page/components/org-manage/buy-credits-section.tsx",
+        "apps/platform/src/views/okou-page/components/org-manage/org-billing-tab.tsx",
+        "apps/platform/src/views/okou-page/components/org-manage/org-general-tab.tsx",
+        "apps/platform/src/views/okou-page/components/org-manage/org-invoices-tab.tsx",
+        "apps/platform/src/views/okou-page/components/org-manage/org-members-tab.tsx",
+        "apps/platform/src/views/okou-page/components/org-manage/org-usage-tab.tsx",
+        "apps/platform/src/views/okou-page/components/settings/add-connection-dialog.tsx",
+        "apps/platform/src/views/okou-page/components/settings/connector-account-manager-dialog.tsx",
+        "apps/platform/src/views/okou-page/tiptap-instructions-editor.tsx",
+        "packages/ui/src/components/ui/dropdown-menu.tsx",
+        "packages/ui/src/components/ui/select.tsx"
+      ],
+      "cases": [
+        "hairline-rule-billing-light",
+        "hairline-rule-billing-dark",
+        "hairline-rule-invoices-light",
+        "hairline-rule-invoices-dark",
+        "hairline-rule-people-light",
+        "hairline-rule-people-dark",
+        "hairline-rule-general-light",
+        "hairline-rule-general-dark",
+        "hairline-rule-usage-light",
+        "hairline-rule-usage-dark",
+        "hairline-rule-connectors-light",
+        "hairline-rule-connectors-dark",
+        "hairline-rule-agent-profile-light",
+        "hairline-rule-agent-profile-dark",
+        "hairline-rule-billing-narrow",
+        "hairline-rule-billing-narrow-dark"
+      ],
+      "status": "implemented",
+      "evidence": []
+    },
+    {
       "id": "session-list-title",
       "family": "navigation",
       "tokens": [
@@ -649,12 +714,14 @@
     "../e2e/playwright/style-migration/icon-mono-cases.json",
     "../e2e/playwright/style-migration/settings-select-cases.json",
     "../e2e/playwright/style-migration/badge-cases.json",
+    "../e2e/playwright/style-migration/nav-copy-cases.json",
     "../e2e/playwright/style-migration/chat-emoji-cases.json",
     "../e2e/playwright/style-migration/running-indicator-cases.json",
     "../e2e/playwright/style-migration/swatch-cases.json",
     "../e2e/playwright/style-migration/shared-recipe-cases.json",
     "../e2e/playwright/style-migration/mic-motion-cases.json",
     "../e2e/playwright/style-migration/control-surface-cases.json",
+    "../e2e/playwright/style-migration/hairline-rule-cases.json",
     "../e2e/playwright/style-migration/sidebar-thread-title-cases.json"
   ]
 }

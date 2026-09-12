@@ -1606,14 +1606,16 @@ describe("workflow queue", () => {
     // Both values become the same JavaScript Date. The database-first event
     // deliberately has the lexicographically later UUID, so a millisecond
     // conversion followed by an id sort would choose the wrong queue head.
-    await setWorkflowQueueEventCreatedAtFixture({
-      eventId: databaseFirst.id,
-      createdAt: "2019-12-31 23:54:00.000100",
-    });
-    await setWorkflowQueueEventCreatedAtFixture({
-      eventId: databaseSecond.id,
-      createdAt: "2019-12-31 23:54:00.000900",
-    });
+    await Promise.all([
+      setWorkflowQueueEventCreatedAtFixture({
+        eventId: databaseFirst.id,
+        createdAt: "2019-12-31 23:54:00.000100",
+      }),
+      setWorkflowQueueEventCreatedAtFixture({
+        eventId: databaseSecond.id,
+        createdAt: "2019-12-31 23:54:00.000900",
+      }),
+    ]);
 
     const result = await postWorkflowWebhook(
       automation,

@@ -2683,6 +2683,11 @@ function resolveTimedThread(
           reasoningEffort: resolveReasoningEffortForDispatch({
             selectedModel: resolved.runConfiguration.modelPin.selectedModel,
             effort: resolved.runConfiguration.reasoningEffort,
+            runtimeProviderType:
+              resolved.runConfiguration.builtInModelRuntimeRoute
+                ?.providerType ??
+              resolved.runConfiguration.providerAdmission
+                .effectiveModelProvider,
             piExecution: usesPi(
               args,
               resolved.thread,

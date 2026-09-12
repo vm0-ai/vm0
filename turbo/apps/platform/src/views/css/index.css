@@ -28,6 +28,12 @@
   /* Sidebar colors - using tokens for dark mode support */
   --color-sidebar-border: hsl(var(--gray-200));
 
+  /* Nav copy. The gradient color themes define the two raw values at :root and
+     collapse every nav consumer onto them. Everywhere else the values are
+     unset, so each consumer falls back to the foreground it already spells. */
+  --color-nav-copy: var(--nav-copy, var(--color-sidebar-foreground));
+  --color-nav-copy-muted: var(--nav-copy-muted, var(--color-muted-foreground));
+
   /* Credit balance breakdown segment colors (usage bar chart) */
   --color-credit-free: #008d76;
   --color-credit-promotional: #ff6030;
@@ -568,9 +574,6 @@ body {
 .okou-border {
   border: 0.7px solid hsl(var(--gray-400));
 }
-.okou-border-t {
-  border-top: 0.7px solid hsl(var(--gray-400));
-}
 
 /* Avatar / logo thumbnails: a hairline lighter than okou-border, so the edge of
    a picture stays readable without the stroke reading as a frame. */
@@ -592,15 +595,6 @@ body {
   --color-sidebar: hsl(var(--sidebar));
   --color-sidebar-border: hsl(var(--border) / 0.5);
 }
-.okou-app[data-gradient-color-themes] .okou-nav .okou-nav-copy {
-  color: hsl(var(--okou-nav-foreground));
-}
-.okou-app[data-gradient-color-themes] .okou-nav .okou-nav-copy-muted {
-  color: hsl(var(--okou-nav-muted-foreground));
-}
-.okou-app[data-gradient-color-themes] .group:hover .okou-nav-copy-muted-hover {
-  color: hsl(var(--okou-nav-foreground));
-}
 .okou-app[data-gradient-color-themes] .okou-nav.okou-nav-rail {
   background-color: hsl(var(--okou-nav-rail));
 }
@@ -609,7 +603,7 @@ body {
 }
 
 /* The travel a sidebar thread title is scrolled by while its row is hovered or
-   focused. `ChatThreadItemLink` composes the mask and the travel as Tailwind
+   focused. `ChatThreadItemTitle` composes the mask and the travel as Tailwind
    utilities and reads this property from both; it is registered here because a
    registered property is what lets a transition interpolate a length, and
    because `inherits: true` is what carries the animated value down to the text
@@ -1781,8 +1775,8 @@ details > summary {
      white sheet overpowers it. The rail keeps its depth and stays the anchor. */
   --sidebar: var(--okou-color-theme-hue) 30% 98.4%;
   --okou-nav-rail: var(--okou-color-theme-hue) 36% 93.5%;
-  --okou-nav-foreground: var(--okou-color-theme-hue) 24% 18%;
-  --okou-nav-muted-foreground: var(--okou-color-theme-hue) 18% 38%;
+  --nav-copy: hsl(var(--okou-color-theme-hue) 24% 18%);
+  --nav-copy-muted: hsl(var(--okou-color-theme-hue) 18% 38%);
   --background-50: var(--gray-50);
   --state-layer: var(--okou-color-theme-ring);
   --segment-selected: var(--card);
@@ -1822,8 +1816,8 @@ details > summary {
   --ring: var(--okou-color-theme-hue) 45% 62%;
   --sidebar: var(--okou-color-theme-hue) 14% 12%;
   --okou-nav-rail: var(--okou-color-theme-hue) 18% 8%;
-  --okou-nav-foreground: var(--okou-color-theme-hue) 22% 90%;
-  --okou-nav-muted-foreground: var(--okou-color-theme-hue) 16% 64%;
+  --nav-copy: hsl(var(--okou-color-theme-hue) 22% 90%);
+  --nav-copy-muted: hsl(var(--okou-color-theme-hue) 16% 64%);
   --background-50: var(--gray-50);
   --state-layer: var(--okou-color-theme-hue) 35% 82%;
   --segment-selected: var(--gray-400);

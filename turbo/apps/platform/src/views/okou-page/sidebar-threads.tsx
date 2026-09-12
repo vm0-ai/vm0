@@ -402,7 +402,7 @@ function ChatThreadItemTitle({ title }: { title: string }) {
       data-slot="sidebar-thread-title"
       ref={measureTitle}
       className={cn(
-        "okou-nav-copy flex-1 min-w-0 overflow-hidden",
+        "text-[color:var(--nav-copy,inherit)] flex-1 min-w-0 overflow-hidden",
         // `sidebarThreadTitleOverflowRef$` overwrites the first two inline as
         // soon as it has measured; these are the values before it runs.
         "[--okou-nav-title-overflow:0px] [--okou-nav-title-duration:780ms] [--okou-nav-title-fade:24px]",
@@ -748,7 +748,7 @@ function ChatThreads({
 
   if (threadCount === 0) {
     return (
-      <p className="okou-nav-copy-muted px-2 py-2 text-xs text-muted-foreground leading-relaxed">
+      <p className="px-2 py-2 text-xs text-nav-copy-muted leading-relaxed">
         {unreadOnly
           ? t(($) => {
               return $.chat.sidebar.noUnread;
@@ -956,7 +956,7 @@ function ChatThreadsTitle({ showMarkAllRead }: { showMarkAllRead: boolean }) {
         return setCollapsed(!collapsed);
       }}
     >
-      <span className="okou-nav-copy-muted okou-nav-copy-muted-hover flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-muted-foreground group-hover:text-sidebar-foreground transition-colors">
+      <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-nav-copy-muted group-hover:text-nav-copy transition-colors">
         {titleLabel}
         <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           <ChevronRight

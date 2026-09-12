@@ -276,7 +276,7 @@ import {
   voiceInputV2Enabled$,
   featureSwitch$,
 } from "../../signals/external/feature-switch.ts";
-import { effectiveChatReasoningEffort } from "../../signals/okou-page/model-reasoning-effort.ts";
+import { preferredChatReasoningEffort } from "../../signals/okou-page/model-reasoning-effort.ts";
 import {
   selectedComputerUseHostId,
   visibleComputerUseHosts,
@@ -3316,7 +3316,7 @@ function TemplatePreviewPage({
     <>
       <DialogHeader
         data-presentation-template-detail-header=""
-        className="flex h-[68px] shrink-0 justify-center border-b border-border px-6 pr-14 text-left duration-200 animate-in fade-in zoom-in-95 motion-reduce:animate-none"
+        className="flex h-[68px] shrink-0 justify-center border-b border-border px-6 pr-14 text-left duration-200 motion-reduce:animate-none"
       >
         <DialogTitle className="flex min-w-0 max-w-full items-center justify-start gap-1.5 text-left text-base leading-none">
           <button
@@ -3334,7 +3334,7 @@ function TemplatePreviewPage({
           </span>
         </DialogTitle>
       </DialogHeader>
-      <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto bg-muted/20 p-3 duration-200 animate-in fade-in zoom-in-95 motion-reduce:animate-none sm:gap-4 sm:p-5 lg:max-h-[72vh] lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden">
+      <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto bg-muted/20 p-3 duration-200 motion-reduce:animate-none sm:gap-4 sm:p-5 lg:max-h-[72vh] lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden">
         <div className="rounded-lg border border-border bg-background p-2.5 sm:p-3">
           <div
             role="group"
@@ -5475,7 +5475,7 @@ function ImportedPresentationTemplatePreviewHeader({
 }) {
   const { t } = useTranslation();
   return (
-    <DialogHeader className="flex h-[68px] shrink-0 justify-center border-b border-border px-6 pr-14 text-left duration-200 animate-in fade-in zoom-in-95 motion-reduce:animate-none">
+    <DialogHeader className="flex h-[68px] shrink-0 justify-center border-b border-border px-6 pr-14 text-left duration-200 motion-reduce:animate-none">
       <DialogTitle className="flex min-w-0 max-w-full items-center justify-start gap-1.5 text-left text-base leading-none">
         <button
           type="button"
@@ -5709,7 +5709,7 @@ function ImportedPresentationTemplatePreviewPage({
         title={title}
         onBack={onBack}
       />
-      <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto bg-muted/20 p-3 duration-200 animate-in fade-in zoom-in-95 motion-reduce:animate-none sm:gap-4 sm:p-5 lg:max-h-[72vh] lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden">
+      <div className="grid min-h-0 flex-1 gap-3 overflow-y-auto bg-muted/20 p-3 duration-200 motion-reduce:animate-none sm:gap-4 sm:p-5 lg:max-h-[72vh] lg:grid-cols-[minmax(0,1fr)_320px] lg:overflow-hidden">
         <div className="rounded-lg border border-border bg-background p-2.5 sm:p-3 lg:overflow-y-auto">
           <ImportedPresentationTemplateMainPreview
             title={title}
@@ -10126,8 +10126,8 @@ function ComposerTemporaryModelNotice({
   const modelChanged =
     selection?.selectedModel !== defaultSelection?.selectedModel;
   const serviceTierChanged = selectionServiceTier !== defaultServiceTier;
-  const effort = effectiveChatReasoningEffort(selection, featureSwitches);
-  const defaultEffort = effectiveChatReasoningEffort(
+  const effort = preferredChatReasoningEffort(selection, featureSwitches);
+  const defaultEffort = preferredChatReasoningEffort(
     defaultSelection,
     featureSwitches,
   );

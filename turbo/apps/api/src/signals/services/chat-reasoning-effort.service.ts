@@ -1,5 +1,5 @@
 import {
-  defaultModelReasoningEffort,
+  resolveRouteReasoningEffort,
   isModelReasoningEffortSupported,
   modelReasoningEffort,
   withModelReasoningEffort,
@@ -55,21 +55,12 @@ export function resolveChatReasoningEffort(args: {
   };
 }
 
-/**
- * Preserve the preference while adapting execution to the route that actually
- * runs it. Pi has no effort input, while Ultracode currently falls back to the
- * selected model's ordinary default outside its orchestration route.
- */
+/** Adapt the preference to the route selected for this run, without rewriting it. */
 export function resolveReasoningEffortForDispatch(args: {
   readonly selectedModel: string | null | undefined;
   readonly effort: ReasoningEffort | undefined;
   readonly piExecution: boolean;
+  readonly runtimeProviderType: string | null | undefined;
 }): ReasoningEffort | undefined {
-  if (args.effort === undefined || args.piExecution) {
-    return undefined;
-  }
-  if (args.effort === "ultracode") {
-    return defaultModelReasoningEffort(args.selectedModel);
-  }
-  return args.effort;
+  return resolveRouteReasoningEffort({ ...args, model: args.selectedModel });
 }

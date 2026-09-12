@@ -3228,23 +3228,28 @@ describe("POST /api/webhooks/teams/bot", () => {
 
   it("includes Teams thread computer use host bindings in queued agent tokens", async () => {
     const { fixture, actor, runnerGroup } = await setupConnectedTeamsBotActor();
-    const host = await computerUseApi.startComputerUseHost(actor, {
-      hostName: "Teams authorized host",
-    });
     const threadId = teamsFixtureExternalId(
       fixture,
       "teams-computer-use-thread",
     );
 
-    const firstResponse = await postTeamsActivity({
-      activity: teamsPersonalThreadMessageActivity({
-        fixture,
-        id: teamsFixtureExternalId(fixture, "activity-computer-use-authorize"),
-        threadId,
-        text: "authorize the browser",
+    const [host, firstResponse] = await Promise.all([
+      computerUseApi.startComputerUseHost(actor, {
+        hostName: "Teams authorized host",
       }),
-      token: teamsToken(),
-    });
+      postTeamsActivity({
+        activity: teamsPersonalThreadMessageActivity({
+          fixture,
+          id: teamsFixtureExternalId(
+            fixture,
+            "activity-computer-use-authorize",
+          ),
+          threadId,
+          text: "authorize the browser",
+        }),
+        token: teamsToken(),
+      }),
+    ]);
     expect(firstResponse.status).toBe(200);
     const firstBody = await readTeamsBotResponseAndFlush(firstResponse);
     expect(firstBody).not.toHaveProperty("dispatch");

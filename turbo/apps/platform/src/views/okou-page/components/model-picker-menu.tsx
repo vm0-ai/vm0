@@ -1,5 +1,5 @@
+import { orgModelPolicies$ } from "../../../signals/external/org-model-policies.ts";
 import { Slider } from "@okouai/ui/components/ui/slider";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { featureSwitch$ } from "../../../signals/external/feature-switch.ts";
 import {
   availableChatReasoningEfforts,
@@ -7,7 +7,7 @@ import {
 } from "../../../signals/okou-page/model-reasoning-effort.ts";
 import { withModelReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
 import type { KeyboardEvent, ReactNode } from "react";
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useSet, useLastResolved } from "ccstate-react";
 import {
   ArrowLeft,
   Check,
@@ -43,6 +43,18 @@ interface ModelPickerMenuOption {
   readonly content: ReactNode;
   readonly disabled: boolean;
   readonly fastAvailable: boolean;
+}
+
+function useChatEffort(selection: ModelProviderSelection | null | undefined) {
+  const switches = useGet(featureSwitch$);
+  const policies = useLastResolved(orgModelPolicies$);
+  const policy = policies?.policies.find((entry) => {
+    return entry.model === selection?.selectedModel;
+  });
+  return {
+    efforts: availableChatReasoningEfforts(selection, switches, policy),
+    effort: effectiveChatReasoningEffort(selection, switches, policy),
+  };
 }
 
 function MenuHeader({
@@ -204,11 +216,7 @@ function ModelPickerOverview({
   mediaModelPanel,
 }: Omit<ModelPickerMenuContentProps, "onChange">) {
   const { t } = useTranslation();
-  const switches = useGet(featureSwitch$);
-  const efforts = availableChatReasoningEfforts(value?.selectedModel, switches);
-  const savedEffort = switches[FeatureSwitchKey.ChatReasoningEffort]
-    ? effectiveChatReasoningEffort(value, switches)
-    : undefined;
+  const { efforts, effort: savedEffort } = useChatEffort(value);
   const showModels = useSet(signals.showModels$);
   const editSettings = useSet(signals.editSettings$);
   const selectedOption = options.find((option) => {
@@ -305,18 +313,13 @@ function ChatReasoningEffortSettings({
   onChange: ModelPickerMenuContentProps["onChange"];
 }) {
   const { t } = useTranslation();
-  const switches = useGet(featureSwitch$);
-  const efforts = availableChatReasoningEfforts(
-    selection.selectedModel,
-    switches,
-  );
-  if (!switches[FeatureSwitchKey.ChatReasoningEffort] || efforts.length === 0) {
+  const { efforts, effort: value } = useChatEffort(selection);
+  if (efforts.length === 0) {
     return null;
   }
   const label = t(($) => {
     return $.settings.models.picker.effort;
   });
-  const value = effectiveChatReasoningEffort(selection, switches);
   if (value === undefined) {
     return null;
   }
@@ -754,7 +757,6 @@ function ModelPickerFlyoutPanel({
   panelLabel: string;
 }) {
   const { t } = useTranslation();
-  const switches = useGet(featureSwitch$);
   const page = useGet(props.signals.page$);
   const editSettings = useSet(props.signals.editSettings$);
   const panelRef = useSet(props.signals.focusFlyoutPanelRef$);
@@ -762,13 +764,7 @@ function ModelPickerFlyoutPanel({
   const selectedOption = props.options.find((option) => {
     return option.model === props.value?.selectedModel;
   });
-  const efforts = availableChatReasoningEfforts(
-    props.value?.selectedModel,
-    switches,
-  );
-  const savedEffort = switches[FeatureSwitchKey.ChatReasoningEffort]
-    ? effectiveChatReasoningEffort(props.value, switches)
-    : undefined;
+  const { efforts, effort: savedEffort } = useChatEffort(props.value);
   const showSettingsRow =
     !activeMedia &&
     Boolean(props.value) &&
@@ -1098,7 +1094,7 @@ export function ModelPickerMenuContent(props: ModelPickerMenuContentProps) {
       ref={focusPanel}
       role="region"
       aria-label={label}
-      className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-150 [&_button:focus-visible]:ring-inset [&_button:focus-visible]:ring-offset-0"
+      className="motion-safe:duration-150 [&_button:focus-visible]:ring-inset [&_button:focus-visible]:ring-offset-0"
       onKeyDown={(event) => {
         if (event.key === "Escape" && page.kind !== "overview") {
           event.preventDefault();

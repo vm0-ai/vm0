@@ -6322,6 +6322,8 @@
       "replaceAuthentication": "Authentifizierung ersetzen",
       "sharedHelp_one": "Anmeldeänderungen gelten für {{count}} Host:",
       "sharedHelp_other": "Anmeldeänderungen gelten für alle {{count}} Hosts:",
+      "summary_one": "{{count}} Zugangsdaten-Satz konfiguriert",
+      "summary_other": "{{count}} Zugangsdaten-Sätze konfiguriert",
       "unused": "Von keinem Host verwendet"
     },
     "credentialsHelp": "Zugangsdaten können nur geschrieben werden und bleiben außerhalb der Sandbox. Fügen Sie den vollständigen Schlüssel ein; Leerzeichen bleiben erhalten. Die Felder werden beim Schließen des Formulars geleert.",

@@ -163,10 +163,10 @@ export class MemoryPiSession {
     return branch.reverse();
   }
 
-  /** Mirror the official Pi SDK's persisted model and thinking defaults. */
+  /** Apply the captured run effort while retaining the prior session history. */
   prepareModelTurn<TApi extends Api>(
     model: Model<TApi>,
-    thinkingLevel: ModelThinkingLevel = PI_DEFAULT_THINKING_LEVEL,
+    thinkingLevel?: ModelThinkingLevel,
   ): void {
     const branch = this.#activeBranch();
     const hasMessages = branch.some((entry) => {
@@ -182,10 +182,18 @@ export class MemoryPiSession {
     const hasThinkingEntry = branch.some((entry) => {
       return entry.type === "thinking_level_change";
     });
-    if (!hasThinkingEntry) {
+    const effectiveThinkingLevel = clampThinkingLevel(
+      model,
+      thinkingLevel ?? PI_DEFAULT_THINKING_LEVEL,
+    );
+    if (
+      !hasThinkingEntry ||
+      (thinkingLevel !== undefined &&
+        this.buildSessionContext().thinkingLevel !== effectiveThinkingLevel)
+    ) {
       this.#appendEntry({
         type: "thinking_level_change",
-        thinkingLevel: clampThinkingLevel(model, thinkingLevel),
+        thinkingLevel: effectiveThinkingLevel,
       });
     }
   }

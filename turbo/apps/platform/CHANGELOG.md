@@ -11,6 +11,26 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.893.0](https://github.com/vm0-ai/vm0/compare/app-v0.892.0...app-v0.893.0) (2026-09-12)
+
+
+### Features
+
+* **chat:** support model-aware reasoning effort in pi ([#33683](https://github.com/vm0-ai/vm0/issues/33683)) ([ab64ece](https://github.com/vm0-ai/vm0/commit/ab64ece13b139daa0ca67e4049273e4e79ba4e76))
+
+
+### Refactoring
+
+* **ui:** move the sidebar nav copy tint to the variable layer ([#33302](https://github.com/vm0-ai/vm0/issues/33302)) ([73ab20c](https://github.com/vm0-ai/vm0/commit/73ab20c50c53a1f0e99bf46cb887b97bb41e733f)), closes [#32402](https://github.com/vm0-ai/vm0/issues/32402)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.432.0
+    * @okouai/core bumped to 8.658.0
+
 ## [0.892.0](https://github.com/vm0-ai/vm0/compare/app-v0.891.0...app-v0.892.0) (2026-09-12)
 
 
