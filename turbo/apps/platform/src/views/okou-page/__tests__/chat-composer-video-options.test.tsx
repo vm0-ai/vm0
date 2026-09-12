@@ -206,7 +206,6 @@ test.each([false, true])(
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: { [FeatureSwitchKey.ComposerCreateCommands]: enabled },
     });
-    await enterText("Generate the first cinematic clip.");
     await enterVideoMode("Claude Fable 5.1");
     await selectVideoTemplate();
     await expect(
