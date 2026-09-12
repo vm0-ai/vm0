@@ -1,3 +1,8 @@
+import {
+  INTRO_VIDEO_RENDER_TASK,
+  recordIntroVideoRenderCallback$,
+  loadIntroVideoRenderJob$,
+} from "../services/intro-video-render.service";
 import { command } from "ccstate";
 import {
   webhookBuiltInGenerationBytePlusContract,
@@ -1783,6 +1788,22 @@ const handleHeyGenIntroVideoAgentWebhook$ = command(
   },
 );
 
+const handleHeyGenCloudRenderWebhook$ = command(
+  async (
+    { get, set },
+    id: string,
+    signal: AbortSignal,
+  ): Promise<ProviderWebhookResponse> => {
+    const raw = await get(request$).text();
+    signal.throwIfAborted();
+    await set(recordIntroVideoRenderCallback$, id, safeJsonParse(raw), signal);
+    const updated = await set(loadIntroVideoRenderJob$, id, signal);
+    return updated?.status === "completed" || updated?.status === "failed"
+      ? okResponse()
+      : jsonError("Cloud render is still pending", 503);
+  },
+);
+
 const postHeyGenBuiltInGenerationWebhook$ = command(
   async (
     { get, set },
@@ -1816,6 +1837,12 @@ const postHeyGenBuiltInGenerationWebhook$ = command(
       return okResponse();
     }
     const internal = readBuiltInGenerationRequestInternal(job.request);
+    if (
+      internal.provider === "heygen" &&
+      internal.providerTask === INTRO_VIDEO_RENDER_TASK
+    ) {
+      return await set(handleHeyGenCloudRenderWebhook$, job.id, signal);
+    }
     if (
       internal.provider === "heygen" &&
       internal.providerTask === "intro-video-agent"

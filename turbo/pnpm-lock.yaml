@@ -228,6 +228,9 @@ importers:
       ably:
         specifier: ^2.21.0
         version: 2.21.0(react-dom@19.2.6(react@19.2.8))(react@19.2.8)
+      adm-zip:
+        specifier: ^0.6.0
+        version: 0.6.0
       archiver:
         specifier: ^8.0.0
         version: 8.0.0
@@ -334,9 +337,6 @@ importers:
       '@typescript/native':
         specifier: npm:typescript@7.0.2
         version: typescript@7.0.2
-      adm-zip:
-        specifier: ^0.6.0
-        version: 0.6.0
       clerk:
         specifier: ^3.0.1
         version: 3.0.1
@@ -446,6 +446,9 @@ importers:
       ably:
         specifier: ^2.21.0
         version: 2.21.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      adm-zip:
+        specifier: ^0.6.0
+        version: 0.6.0
       chalk:
         specifier: ^5.6.2
         version: 5.6.2
@@ -455,6 +458,9 @@ importers:
       eslint:
         specifier: ^9.34.0
         version: 9.39.4(jiti@2.7.0)
+      ignore:
+        specifier: ^7.0.5
+        version: 7.0.5
       json:
         specifier: ^11.0.0
         version: 11.0.0

@@ -267,6 +267,13 @@
       "when": 1789204587533,
       "tag": "1115_dapper_skin",
       "breakpoints": true
+    },
+    {
+      "idx": 1116,
+      "version": "7",
+      "when": 1789224005319,
+      "tag": "1116_heygen_hyperframes_render_pricing",
+      "breakpoints": true
     }
   ]
 }
