@@ -8,6 +8,22 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.590.1](https://github.com/vm0-ai/vm0/compare/api-v1.590.0...api-v1.590.1) (2026-09-12)
+
+
+### Refactoring
+
+* **api:** rename the oauth web origin header to x-okou-web-origin ([#33700](https://github.com/vm0-ai/vm0/issues/33700)) ([b090bcc](https://github.com/vm0-ai/vm0/commit/b090bccfdb424775ac472b24ef5d95471cba3734))
+* **api:** table-drive the per-channel delivery blocks in the chat run callback ([#33689](https://github.com/vm0-ai/vm0/issues/33689)) ([4f50f4a](https://github.com/vm0-ai/vm0/commit/4f50f4af3e12856b74865842236eeb8a2adfd440)), closes [#33655](https://github.com/vm0-ai/vm0/issues/33655)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.659.0
+    * @okouai/db bumped to 1.254.2
+
 ## [1.590.0](https://github.com/vm0-ai/vm0/compare/api-v1.589.0...api-v1.590.0) (2026-09-12)
 
 

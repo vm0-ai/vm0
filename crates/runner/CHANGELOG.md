@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.191.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.191.0...runner-rs-v0.191.1) (2026-09-12)
+
+
+### Performance Improvements
+
+* **runner:** reuse idle ssh connections within a run ([#33690](https://github.com/vm0-ai/vm0/issues/33690)) ([17e9259](https://github.com/vm0-ai/vm0/commit/17e9259583f7682ccbc69214bd5da9442a3b6a21))
+
 ## [0.191.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.190.8...runner-rs-v0.191.0) (2026-09-12)
 
 
