@@ -1,10 +1,7 @@
 {
   "version": 1,
   "legacyClassTokens": [
-    "animate-in",
     "copied",
-    "ease",
-    "fade-in",
     "icon-tooltip-trigger",
     "language-mermaid",
     "lucide",
@@ -13,8 +10,6 @@
     "mermaid-diagram-image",
     "mermaid-diagram-pending",
     "mermaid-diagram-source",
-    "motion-safe:animate-in",
-    "motion-safe:fade-in",
     "okou-app",
     "okou-blocks",
     "okou-border",
@@ -69,12 +64,10 @@
     "owf-diagram-okou-icon",
     "owf-diagram-vertical-control",
     "owf-diagram-wrap",
-    "slide-in-from-bottom-2",
     "table-wrapper",
     "toaster",
     "wmde-markdown",
-    "wmde-markdown-color",
-    "zoom-in-95"
+    "wmde-markdown-color"
   ],
   "cssAtoms": {
     "apps/platform/src/views/css/index.css": [
@@ -3108,10 +3101,7 @@
       "okou-chat-card": 4
     },
     "apps/platform/src/views/okou-page/chat-composer.tsx": {
-      "animate-in": 4,
-      "fade-in": 4,
-      "okou-app": 1,
-      "zoom-in-95": 4
+      "okou-app": 1
     },
     "apps/platform/src/views/okou-page/chat-forward-dialog.tsx": {
       "okou-app": 1
@@ -3121,8 +3111,6 @@
       "okou-chat-bubble-user": 1
     },
     "apps/platform/src/views/okou-page/chat-thread-page.tsx": {
-      "animate-in": 4,
-      "fade-in": 4,
       "okou-blocks": 1,
       "okou-chat-bubble-user": 2,
       "okou-chat-card": 2,
@@ -3130,19 +3118,7 @@
       "okou-shimmer-text": 1,
       "okou-thinking-enter": 3,
       "okou-thinking-spinner": 1,
-      "okou-thinking-spinner-frame": 1,
-      "slide-in-from-bottom-2": 4
-    },
-    "apps/platform/src/views/okou-page/chat-thread-sidebar-shell.tsx": {
-      "animate-in": 1,
-      "ease": 1,
-      "fade-in": 1
-    },
-    "apps/platform/src/views/okou-page/components/model-picker-menu.tsx": {
-      "animate-in": 1,
-      "fade-in": 1,
-      "motion-safe:animate-in": 1,
-      "motion-safe:fade-in": 1
+      "okou-thinking-spinner-frame": 1
     },
     "apps/platform/src/views/okou-page/components/org-manage/buy-credits-section.tsx": {
       "okou-border-t": 1
@@ -3227,11 +3203,6 @@
       "okou-app": 1,
       "okou-viewport-shell": 1
     },
-    "apps/platform/src/views/okou-page/ideation-page.tsx": {
-      "animate-in": 1,
-      "fade-in": 1,
-      "slide-in-from-bottom-2": 1
-    },
     "apps/platform/src/views/okou-page/image-annotation-editor.tsx": {
       "okou-app": 1
     },
@@ -3312,12 +3283,9 @@
       "okou-border": 3
     },
     "apps/platform/src/views/shared-thread-page/shared-thread-page.tsx": {
-      "animate-in": 2,
-      "fade-in": 2,
       "okou-app": 1,
       "okou-composer": 1,
-      "okou-workspace-bg": 1,
-      "slide-in-from-bottom-2": 2
+      "okou-workspace-bg": 1
     },
     "apps/platform/src/views/unsupported-browser-page.tsx": {
       "okou-app": 1

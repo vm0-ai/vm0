@@ -1094,7 +1094,7 @@ export function ModelPickerMenuContent(props: ModelPickerMenuContentProps) {
       ref={focusPanel}
       role="region"
       aria-label={label}
-      className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-150 [&_button:focus-visible]:ring-inset [&_button:focus-visible]:ring-offset-0"
+      className="motion-safe:duration-150 [&_button:focus-visible]:ring-inset [&_button:focus-visible]:ring-offset-0"
       onKeyDown={(event) => {
         if (event.key === "Escape" && page.kind !== "overview") {
           event.preventDefault();
