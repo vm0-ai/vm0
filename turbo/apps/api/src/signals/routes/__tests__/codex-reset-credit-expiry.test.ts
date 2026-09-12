@@ -816,9 +816,12 @@ describe("Codex expiry metadata resilience", () => {
     // More than 256 bindings must evict the oldest, without time manipulation.
     // Token-scoped Clerk responses let independent owners prepare concurrently
     // without racing the shared session mock or creating unrelated organizations.
-    for (let index = 0; index < userIds.length; index += 8) {
-      await Promise.all(
-        userIds.slice(index, index + 8).map(async (userId) => {
+    // Keep eight owners in flight without waiting for a whole batch's slowest
+    // request before starting the next owner.
+    const remainingOwners = userIds.values();
+    const preparations = await Promise.allSettled(
+      Array.from({ length: 8 }, async () => {
+        for (const userId of remainingOwners) {
           const ownerHeaders = { authorization: `Bearer ${userId}` };
           await accept(
             providers.upsert({
@@ -836,8 +839,15 @@ describe("Codex expiry metadata resilience", () => {
             [200],
           );
           expectExpiry(listed.body.modelProviders, remote.expiry);
-        }),
-      );
+        }
+      }),
+    );
+    // Join every worker before restoring the first owner's session, including
+    // when another owner's request or expiry assertion fails.
+    for (const preparation of preparations) {
+      if (preparation.status === "rejected") {
+        throw preparation.reason;
+      }
     }
     const before = remote.detailsCalls;
     remote.expiry = new Date(now() + 7_200_000).toISOString();
