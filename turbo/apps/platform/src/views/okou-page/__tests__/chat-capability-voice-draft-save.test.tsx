@@ -35,6 +35,7 @@ test.each([
 ])(
   "Finish voice independently of a failed text draft save at $path after $recovery",
   async ({ path, recovery }) => {
+    // eslint-disable-next-line ccstate/no-create-child-abort-controller -- migrate this lifetime to the ccstate signal hierarchy
     const initialPage = createChildAbortController(context.signal);
     context.mocks.browser.voiceInput({ rms: 0.12 });
     installRunChat();

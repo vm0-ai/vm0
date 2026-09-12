@@ -446,11 +446,9 @@ function validateClientGrantAlignment(
   }
   if (
     authMethod.grant.kind === "auth-code" &&
-    authMethod.client?.clientType !== "confidential"
+    authMethod.client?.clientRegistration !== "static"
   ) {
-    throw new Error(
-      `${methodRef} auth-code grant requires a confidential client`,
-    );
+    throw new Error(`${methodRef} auth-code grant requires a static client`);
   }
   if (
     (authMethod.grant.kind === "external-code" ||

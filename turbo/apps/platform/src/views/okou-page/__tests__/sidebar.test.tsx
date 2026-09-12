@@ -1672,11 +1672,14 @@ test("Mark all of an agent’s chats read", async () => {
   const nav = await waitFor(() => {
     const current = mobileSidebar();
     expect(within(current).getByText("Research Agent")).toBeInTheDocument();
-    expect(within(current).getByText("Support Agent")).toBeInTheDocument();
     return current;
   });
   const researchSidebarRow = agentRowByName(nav, "Research Agent");
-  const supportSidebarRow = agentRowByName(nav, "Support Agent");
+  // Unpinned agents appear after the Worker finishes loading unread indicators,
+  // independently of the pinned-agent list above.
+  const supportSidebarRow = await waitFor(() => {
+    return agentRowByName(nav, "Support Agent");
+  });
   await waitFor(() => {
     expect(
       within(researchSidebarRow).getByLabelText("Unread"),
@@ -2356,7 +2359,12 @@ test.each(["agent", "thread"] as const)(
   "Refresh the %s unread indicator",
   async (indicator) => {
     mockMobileLayout();
-    prepareAgents();
+    // Both consumers observe Nova and its thread; unrelated agents add no coverage.
+    context.mocks.data.agents(
+      prepareAgents().filter((agent) => {
+        return agent.agentId === AGENT_ID;
+      }),
+    );
     mockSidebarThreadStory([
       createThread(EXISTING_THREAD_ID, "Remote unread conversation"),
     ]);
@@ -2399,7 +2407,7 @@ test.each(["agent", "thread"] as const)(
 
     await setupSidebarPage({
       context,
-      path: `/agents/${AGENT_ID}/chat`,
+      path: "/agents",
       sharedWorkerTestTransport: "message-port",
     });
 

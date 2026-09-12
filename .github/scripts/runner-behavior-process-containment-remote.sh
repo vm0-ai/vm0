@@ -62,6 +62,10 @@ rm -rf "$marker"
 mkdir -p "$marker"
 touch "$marker/sandbox-reuse-marker"
 
+# Observe the policy installed by guest-init in the restored snapshot.
+awk '$2 == "/sys/fs/cgroup" && $3 == "cgroup2" && $4 ~ /(^|,)favordynmods(,|$)/ { found = 1 } END { exit !found }' /proc/mounts \
+  || { echo "guest cgroup2 mount is missing favordynmods" >&2; exit 1; }
+
 expected_path="/usr/local/bin:/usr/bin:/bin:/usr/local/games:/usr/games:$HOME/go/bin:$HOME/.cargo/bin"
 if [ "$PATH" != "$expected_path" ]; then
   echo "Guest Agent CLI child PATH changed: expected=$expected_path actual=$PATH" >&2
@@ -287,6 +291,8 @@ set -eu
 marker=/tmp/vm0-process-containment
 base=/sys/fs/cgroup/vm0-exec
 test -f "$marker/sandbox-reuse-marker"
+awk '$2 == "/sys/fs/cgroup" && $3 == "cgroup2" && $4 ~ /(^|,)favordynmods(,|$)/ { found = 1 } END { exit !found }' /proc/mounts \
+  || { echo "reused guest cgroup2 mount is missing favordynmods" >&2; exit 1; }
 if [ -e "$marker/profile-executed" ]; then
   echo "sandbox login profile executed before Guest Agent" >&2
   exit 1

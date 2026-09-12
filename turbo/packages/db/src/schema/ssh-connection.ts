@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import {
   check,
+  foreignKey,
   index,
   integer,
   pgTable,
@@ -9,6 +10,7 @@ import {
   uuid,
   varchar,
 } from "drizzle-orm/pg-core";
+import { sshCredentials } from "./ssh-credential";
 
 export const sshConnections = pgTable(
   "ssh_connections",
@@ -19,7 +21,7 @@ export const sshConnections = pgTable(
     displayName: varchar("display_name", { length: 128 }).notNull(),
     host: varchar("host", { length: 253 }).notNull(),
     port: integer("port").notNull().default(22),
-    username: varchar("username", { length: 255 }).notNull(),
+    credentialId: uuid("credential_id").notNull(),
     learnedHostKeyAlgorithm: varchar("learned_host_key_algorithm", {
       length: 64,
     }),
@@ -32,6 +34,16 @@ export const sshConnections = pgTable(
   },
   (table) => {
     return [
+      foreignKey({
+        name: "ssh_connections_credential_owner_fk",
+        columns: [table.credentialId, table.orgId, table.userId],
+        foreignColumns: [
+          sshCredentials.id,
+          sshCredentials.orgId,
+          sshCredentials.userId,
+        ],
+      }).onDelete("restrict"),
+      index("idx_ssh_connections_credential").on(table.credentialId, table.id),
       index("idx_ssh_connections_owner_created").on(
         table.orgId,
         table.userId,
@@ -47,10 +59,6 @@ export const sshConnections = pgTable(
         sql`char_length(${table.host}) BETWEEN 1 AND 253`,
       ),
       check("chk_ssh_connections_port", sql`${table.port} BETWEEN 1 AND 65535`),
-      check(
-        "chk_ssh_connections_username",
-        sql`char_length(${table.username}) BETWEEN 1 AND 255`,
-      ),
       check("chk_ssh_connections_generation", sql`${table.generation} > 0`),
       check(
         "chk_ssh_connections_learned_host_key_pair",

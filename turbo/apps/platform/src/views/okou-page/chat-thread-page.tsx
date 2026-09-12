@@ -5659,7 +5659,7 @@ interface ResolvedMessageAttachment {
   readonly signals: ArtifactSignals;
 }
 
-type OpenMessageImagePreview = (url: string, filename?: string) => void;
+type OpenMessageImagePreview = (attachment: ResolvedMessageAttachment) => void;
 
 function userMessageRenderAttachments(
   document: UserMessageRenderDocument | undefined,
@@ -5744,10 +5744,11 @@ function MessageAttachment({
         imageClassName="block h-full w-full object-contain"
         linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
         onPreview={() => {
-          onImageClick(a.url, a.filename);
+          onImageClick(a);
         }}
         placeholderClassName="h-full w-full"
         resourceUrl$={a.signals.resourceUrl$}
+        thumbnailUrl$={a.signals.thumbnailUrl$}
         url={a.url}
       />
     );
@@ -6796,14 +6797,6 @@ function inputPromptRunAnchor(inputEvent: ChatInputEvent | undefined) {
     : undefined;
 }
 
-function messageImageLightboxTarget(
-  threadId: string,
-  url: string,
-  filename: string | undefined,
-) {
-  return { threadId, url, ...(filename ? { filename } : {}) };
-}
-
 function PagedUserMessage({
   event,
   thread,
@@ -6821,10 +6814,13 @@ function PagedUserMessage({
     });
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
-  const openLightbox: OpenMessageImagePreview = (url, filename) => {
-    openImageLightbox(
-      messageImageLightboxTarget(thread.threadId, url, filename),
-    );
+  const openLightbox: OpenMessageImagePreview = (attachment) => {
+    openImageLightbox({
+      threadId: thread.threadId,
+      url: attachment.url,
+      filename: attachment.filename,
+      preview: attachment.signals,
+    });
   };
   const copiedId = useGet(thread.copiedEventId$);
   const copied = copiedId === event.id;

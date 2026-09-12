@@ -1,7 +1,11 @@
-import { registerSessionResourceCleanup } from "@earendil-works/pi-ai";
+import {
+  registerSessionResourceCleanup,
+  type InMemoryCredentialStore,
+} from "@earendil-works/pi-ai";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 import { piAgentStreamForConfig, resolvePiAgentModel } from "./model";
-import type { PiAgentModelConfig } from "./types";
+import type { PiAgentModelConfig, PiAgentStreamConfig } from "./types";
 
 export function initializePiSessionResourceRegistry(): void {
   // Vite's SSR bundle otherwise keeps Pi's registry behind only the lazy
@@ -14,20 +18,37 @@ export function initializePiSessionResourceRegistry(): void {
   unregister();
 }
 
+/** Bootstrap only the captured model; callers own credentials and session policy. */
+export async function createPiModelRuntime(
+  args: {
+    readonly model: NonNullable<ReturnType<typeof resolvePiAgentModel>>;
+    readonly config: PiAgentModelConfig;
+    readonly credentials?: InMemoryCredentialStore;
+  },
+  signal?: AbortSignal,
+): Promise<ModelRuntime> {
+  const modelRuntime = await ModelRuntime.create({
+    allowModelNetwork: false,
+    modelsPath: null,
+    refreshOnCreate: false,
+    ...(args.credentials === undefined
+      ? {}
+      : { credentials: args.credentials }),
+    ...(signal === undefined ? {} : { signal }),
+  });
+  // Preserve the caller's resolved model, including maintenance-only metadata
+  // corrections. Resolving the catalog again would discard those corrections.
+  modelRuntime.registerProvider(
+    args.config.provider,
+    registeredModelConfig(args.model, args.config.apiKey, args.config),
+  );
+  return modelRuntime;
+}
+
 export function registeredModelConfig(
   model: NonNullable<ReturnType<typeof resolvePiAgentModel>>,
   apiKey: string,
-  config: Pick<
-    PiAgentModelConfig,
-    | "accountId"
-    | "dialect"
-    | "requestHeaders"
-    | "serviceTier"
-    | "transport"
-    | "catalogModel"
-    | "region"
-    | "bedrockAuth"
-  >,
+  config: PiAgentStreamConfig,
 ) {
   return {
     name: model.provider,

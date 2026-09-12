@@ -8,6 +8,78 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.586.1](https://github.com/vm0-ai/vm0/compare/api-v1.586.0...api-v1.586.1) (2026-09-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.429.1
+    * @okouai/core bumped to 8.654.3
+    * @okouai/db bumped to 1.253.1
+    * @okouai/pi-agent-runtime bumped to 1.26.2
+
+## [1.586.0](https://github.com/vm0-ai/vm0/compare/api-v1.585.1...api-v1.586.0) (2026-09-11)
+
+
+### Features
+
+* **connectors:** support posthog cimd oauth and regional accounts ([#33490](https://github.com/vm0-ai/vm0/issues/33490)) ([37967c7](https://github.com/vm0-ai/vm0/commit/37967c79fbe0658e97adfa1c1d3c2138e2469099))
+* **ssh:** manage reusable key and password credentials ([#33553](https://github.com/vm0-ai/vm0/issues/33553)) ([c51d8ca](https://github.com/vm0-ai/vm0/commit/c51d8ca3cc39eb8aa1b82f3919fcc816846890c8))
+
+
+### Bug Fixes
+
+* **voice:** classify google failures and retain safe diagnostics ([#33566](https://github.com/vm0-ai/vm0/issues/33566)) ([dcf5447](https://github.com/vm0-ai/vm0/commit/dcf54470b4b4b2346faaaed1b0d040eaeacc7793))
+
+
+### Refactoring
+
+* **api:** emit x-okou signature headers and drop the legacy names ([#33561](https://github.com/vm0-ai/vm0/issues/33561)) ([2cdbdcf](https://github.com/vm0-ai/vm0/commit/2cdbdcf65cba3504828108a675056b4963cbe3a5))
+* **api:** make pi api-first transitions explicit ([#33580](https://github.com/vm0-ai/vm0/issues/33580)) ([de15084](https://github.com/vm0-ai/vm0/commit/de15084436e6936d2a7338cd75d916f11cdd81e7))
+* **pi:** canonicalize the internal execution route ([#33558](https://github.com/vm0-ai/vm0/issues/33558)) ([cc1178b](https://github.com/vm0-ai/vm0/commit/cc1178b92c62a403b6052768df40d7a04ea40933)), closes [#33556](https://github.com/vm0-ai/vm0/issues/33556)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.429.0
+    * @okouai/connectors bumped to 3.10.0
+    * @okouai/core bumped to 8.654.2
+    * @okouai/db bumped to 1.253.0
+    * @okouai/pi-agent-runtime bumped to 1.26.1
+
+## [1.585.1](https://github.com/vm0-ai/vm0/compare/api-v1.585.0...api-v1.585.1) (2026-09-11)
+
+
+### Bug Fixes
+
+* **api:** absorb rate-limited activity summaries without a diagnostic ([#33522](https://github.com/vm0-ai/vm0/issues/33522)) ([034c2c2](https://github.com/vm0-ai/vm0/commit/034c2c2bd9b8c6d13e98cac330c76850eddd63c3))
+* **api:** distinguish residual activity-summary completion outcomes ([#33515](https://github.com/vm0-ai/vm0/issues/33515)) ([0bab449](https://github.com/vm0-ai/vm0/commit/0bab4493a1237205175ce2d3df2dc66f9ba8034e))
+* **api:** raise morning brief provisioning outcome logs to info ([#33540](https://github.com/vm0-ai/vm0/issues/33540)) ([31791a2](https://github.com/vm0-ai/vm0/commit/31791a2f38712a764967487fd86018230820cdff))
+* **api:** report built-in capacity failures as errors ([#33520](https://github.com/vm0-ai/vm0/issues/33520)) ([6fd5177](https://github.com/vm0-ai/vm0/commit/6fd51770aa4c8e1e62e713677ed6de205e04dfa0))
+* **api:** report unabsorbed activity-summary provider failures as errors ([#33530](https://github.com/vm0-ai/vm0/issues/33530)) ([9d7a5a4](https://github.com/vm0-ai/vm0/commit/9d7a5a4ce4cb50a429eaaad16ea4df7d9a8d6021))
+* **api:** treat empty recommended followups as an expected omission ([#33517](https://github.com/vm0-ai/vm0/issues/33517)) ([d500252](https://github.com/vm0-ai/vm0/commit/d5002522d31ebf55f1759c95fd0d0712b63e1e39))
+* **pi-memory:** publish full summaries with bounded prompt injection ([#33536](https://github.com/vm0-ai/vm0/issues/33536)) ([da440bf](https://github.com/vm0-ai/vm0/commit/da440bff4d7a03293bdce027bf09d938a4a58f9a))
+
+
+### Refactoring
+
+* **api:** accept x-okou signature headers alongside the legacy names ([#33508](https://github.com/vm0-ai/vm0/issues/33508)) ([6238e7d](https://github.com/vm0-ai/vm0/commit/6238e7d1cebdb56f2d89c45e5a1f0617c9a9703e))
+* **pi-memory:** make phase two a local consolidation engine ([#33547](https://github.com/vm0-ai/vm0/issues/33547)) ([5d66823](https://github.com/vm0-ai/vm0/commit/5d66823659fa01a406a694bec0f26b94cb69b3aa)), closes [#33521](https://github.com/vm0-ai/vm0/issues/33521)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.428.2
+    * @okouai/core bumped to 8.654.1
+    * @okouai/db bumped to 1.252.3
+    * @okouai/pi-agent-runtime bumped to 1.26.0
+
 ## [1.585.0](https://github.com/vm0-ai/vm0/compare/api-v1.584.1...api-v1.585.0) (2026-09-11)
 
 

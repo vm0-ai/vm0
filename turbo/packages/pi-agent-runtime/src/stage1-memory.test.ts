@@ -376,6 +376,7 @@ describe("Pi memory Stage 1 runtime", () => {
           apiKey: "test-key",
           model: "gpt-5.6-terra",
           dialect: "openai-responses",
+          transport: "sse",
         },
         projectedHistory: '{"role":"user","content":"work"}',
         requestId: "00000000-0000-4000-8000-000000000999",

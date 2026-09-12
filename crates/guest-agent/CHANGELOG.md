@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.89.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.89.4...guest-agent-v0.89.5) (2026-09-11)
+
+
+### Refactoring
+
+* **api:** make pi api-first transitions explicit ([#33580](https://github.com/vm0-ai/vm0/issues/33580)) ([de15084](https://github.com/vm0-ai/vm0/commit/de15084436e6936d2a7338cd75d916f11cdd81e7))
+
+## [0.89.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.89.3...guest-agent-v0.89.4) (2026-09-11)
+
+
+### Bug Fixes
+
+* **guest-agent:** bound pi and codex event delivery ([#33532](https://github.com/vm0-ai/vm0/issues/33532)) ([c42da19](https://github.com/vm0-ai/vm0/commit/c42da19f700479f51954f2012106a211fe4f97c6))
+
 ## [0.89.3](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.89.2...guest-agent-v0.89.3) (2026-09-11)
 
 ## [0.89.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.89.1...guest-agent-v0.89.2) (2026-09-11)

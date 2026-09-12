@@ -11,8 +11,9 @@ import {
   SSH_USERNAME_MAX_LENGTH,
 } from "./ssh-connections";
 
+import { SSH_PASSWORD_MAX_LENGTH } from "./ssh-credentials";
+export { SSH_PASSWORD_MAX_LENGTH } from "./ssh-credentials";
 const c = initContract();
-export const SSH_PASSWORD_MAX_LENGTH = 4096;
 const generationSchema = z.int().positive().max(2_147_483_647);
 
 /** Identifier-only invalidation; null connectionId invalidates the whole Run. */

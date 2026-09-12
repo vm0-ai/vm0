@@ -358,7 +358,7 @@ async function openExistingGateway(displayName: string, routed = false) {
 async function openProvidersTab(): Promise<void> {
   await setupPage({
     context,
-    path: "/?settings=model",
+    path: "/agents?settings=model",
   });
   await waitFor(() => {
     expect(
@@ -371,7 +371,7 @@ async function openProvidersTab(): Promise<void> {
 async function openModelSettings(): Promise<void> {
   await setupPage({
     context,
-    path: "/?settings=model",
+    path: "/agents?settings=model",
   });
   await waitFor(() => {
     expect(

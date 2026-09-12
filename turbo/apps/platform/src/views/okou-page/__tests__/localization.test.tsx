@@ -153,7 +153,11 @@ test("Authentication copy falls back without changing the app language", async (
   const clerk = context.mocks.clerk();
   vi.spyOn(console, "error").mockImplementation(() => {});
   clerk.localizationUnavailable("pt-BR");
-  await setupPage({ context, path: "/settings", locale: "pt-BR" });
+  await setupPage({
+    context,
+    path: "/agents?settings=preference",
+    locale: "pt-BR",
+  });
 
   await expect(
     screen.findByRole("heading", { name: "Preferência" }),
@@ -337,9 +341,13 @@ test("French uses local formatting and plurals", async () => {
   expect(screen.getByText("1,2s")).toBeVisible();
 });
 
-test("Only the selected authentication language is loaded and reused", async () => {
+async function openFrenchAuthenticationSettings() {
   const clerk = context.mocks.clerk();
-  await setupPage({ context, path: "/settings", locale: "fr-FR" });
+  await setupPage({
+    context,
+    path: "/agents?settings=preference",
+    locale: "fr-FR",
+  });
   await expect(
     screen.findByRole("heading", { name: "Préférences" }),
   ).resolves.toBeInTheDocument();
@@ -351,7 +359,11 @@ test("Only the selected authentication language is loaded and reused", async () 
     within(frenchAuthentication).getByLabelText("Adresse e-mail"),
   ).toBeVisible();
   await closeAddAccount(frenchAuthentication, "Fermer");
+  return clerk;
+}
 
+test("Authentication copy follows the selected language after switching", async () => {
+  const clerk = await openFrenchAuthenticationSettings();
   await selectLanguage("Langue", "English");
   await expect(
     screen.findByRole("heading", { name: "Preference" }),
@@ -364,7 +376,15 @@ test("Only the selected authentication language is loaded and reused", async () 
     within(englishAuthentication).getByLabelText("Email address"),
   ).toBeVisible();
   await closeAddAccount(englishAuthentication, "Close");
+  expect(clerk.localizationRequests).toStrictEqual(["fr-FR"]);
+});
 
+test("Switching back reuses the previously loaded authentication language", async () => {
+  const clerk = await openFrenchAuthenticationSettings();
+  await selectLanguage("Langue", "English");
+  await expect(
+    screen.findByRole("heading", { name: "Preference" }),
+  ).resolves.toBeInTheDocument();
   await selectLanguage("Language", "Français");
   await expect(
     screen.findByRole("heading", { name: "Préférences" }),

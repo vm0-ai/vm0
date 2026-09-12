@@ -934,3 +934,27 @@ and requeued, and materialization re-classifies it as `over_limit`. Rolling back
 below the producer change only stops new larger sources; it does not rewrite
 what was already published. The stored source itself is never truncated or
 rewritten by any reader, producer or rollback.
+
+## PostHog CIMD OAuth
+
+PostHog OAuth uses a public client identified by
+`https://app.okou.ai/connectors/posthog/metadata.json`, with PKCE and no
+client secret. Deploy the API support for static public authorization-code
+clients and the updated public metadata before publishing the companion
+`vm0-ai/vm0-connectors` catalog change. Earlier API versions reject the public
+client during catalog relationship validation; catalog publication must wait
+until those versions no longer serve traffic. If the API must roll back below
+this support, restore a compatible catalog first through the normal catalog
+release process.
+
+The new API can load the old confidential-client catalog. Its capability
+filter hides only the incompatible PostHog OAuth method until the companion
+catalog is published; the personal API-key method remains available. The
+existing PostHog OAuth feature switch still controls exposure.
+
+OAuth storage version 2 adds the account's region and API base URL and changes
+the client identity. Version 1 OAuth accounts must reconnect through the
+existing storage-version lifecycle. US provider user IDs remain unchanged;
+EU IDs have an `eu:` prefix to distinguish independent regional ID namespaces.
+The personal API-key storage version stays at 1. No frontend, Runner, or
+production data migration is required.

@@ -15,7 +15,7 @@ import { agentSessions } from "@okouai/db/schema/agent-session";
 import { agentSshAccess } from "@okouai/db/schema/agent-ssh-access";
 import { sshConnections } from "@okouai/db/schema/ssh-connection";
 import { sshConnectionObservations } from "@okouai/db/schema/ssh-connection-observation";
-import { sshConnectionCredentials } from "@okouai/db/schema/ssh-connection-credential";
+import { sshCredentials } from "@okouai/db/schema/ssh-credential";
 import { and, eq, lt, ne, or, sql } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
@@ -40,12 +40,14 @@ async function currentConnection(
       userId: agentRuns.userId,
       host: sshConnections.host,
       port: sshConnections.port,
-      username: sshConnections.username,
+      username: sshCredentials.username,
+      authMethod: sshCredentials.authMethod,
+      encryptedPassword: sshCredentials.encryptedPassword,
       generation: sshConnections.generation,
       algorithm: sshConnections.learnedHostKeyAlgorithm,
       fingerprint: sshConnections.learnedHostKeyFingerprint,
-      encryptedPrivateKey: sshConnectionCredentials.encryptedPrivateKey,
-      encryptedPassphrase: sshConnectionCredentials.encryptedPassphrase,
+      encryptedPrivateKey: sshCredentials.encryptedPrivateKey,
+      encryptedPassphrase: sshCredentials.encryptedPassphrase,
     })
     .from(agentRuns)
     .innerJoin(
@@ -81,8 +83,12 @@ async function currentConnection(
       ),
     )
     .innerJoin(
-      sshConnectionCredentials,
-      eq(sshConnectionCredentials.connectionId, sshConnections.id),
+      sshCredentials,
+      and(
+        eq(sshCredentials.id, sshConnections.credentialId),
+        eq(sshCredentials.orgId, agentRuns.orgId),
+        eq(sshCredentials.userId, agentRuns.userId),
+      ),
     )
     .where(
       and(
@@ -97,13 +103,7 @@ async function currentConnection(
     );
   const [row] = lockAuthority
     ? await query.for("share", {
-        of: [
-          agentRuns,
-          agentSessions,
-          agents,
-          agentSshAccess,
-          sshConnectionCredentials,
-        ],
+        of: [agentRuns, agentSessions, agents, agentSshAccess, sshCredentials],
       })
     : await query;
   signal.throwIfAborted();
@@ -145,6 +145,28 @@ export async function resolveRunnerSsh(
   }
   const hostKey = learnedHostKey(row);
   // The joined snapshot is the authority handoff. Never hold DB locks across KMS.
+  const common = {
+    host: row.host,
+    port: row.port,
+    username: row.username,
+    generation: row.generation,
+    learnedHostKey: hostKey,
+  };
+  if (row.authMethod === "password") {
+    if (
+      row.encryptedPassword === null ||
+      row.encryptedPrivateKey !== null ||
+      row.encryptedPassphrase !== null
+    ) {
+      throw new Error("SSH password credential has an invalid stored shape");
+    }
+    const password = await decryptStoredSecretValue(row.encryptedPassword);
+    signal.throwIfAborted();
+    return { outcome: "resolved_password", ...common, password };
+  }
+  if (row.encryptedPrivateKey === null || row.encryptedPassword !== null) {
+    throw new Error("SSH private-key credential has an invalid stored shape");
+  }
   const privateKey = await decryptStoredSecretValue(row.encryptedPrivateKey);
   signal.throwIfAborted();
   const passphrase =
@@ -152,16 +174,7 @@ export async function resolveRunnerSsh(
       ? null
       : await decryptStoredSecretValue(row.encryptedPassphrase);
   signal.throwIfAborted();
-  return {
-    outcome: "resolved",
-    host: row.host,
-    port: row.port,
-    username: row.username,
-    generation: row.generation,
-    learnedHostKey: hostKey,
-    privateKey,
-    passphrase,
-  };
+  return { outcome: "resolved", ...common, privateKey, passphrase };
 }
 
 export async function pinRunnerSsh(

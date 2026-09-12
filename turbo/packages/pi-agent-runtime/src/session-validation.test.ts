@@ -276,6 +276,7 @@ describe("native Pi history structural boundaries", () => {
         provider: "openai",
         model: "gpt-5.6-terra",
         dialect: "openai-responses" as const,
+        transport: "sse" as const,
         apiKey: "synthetic-key",
         baseUrl: "http://127.0.0.1:1",
       },

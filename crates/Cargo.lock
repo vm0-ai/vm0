@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ably-subscriber"
-version = "1.1.1"
+version = "1.1.2"
 dependencies = [
  "base64 0.23.1",
  "futures-util",
@@ -982,7 +982,7 @@ checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
 
 [[package]]
 name = "codex-mock"
-version = "0.11.5"
+version = "0.11.6"
 dependencies = [
  "chrono",
  "clap",
@@ -1676,7 +1676,7 @@ dependencies = [
 
 [[package]]
 name = "guest-agent"
-version = "0.89.3"
+version = "0.89.5"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1785,7 +1785,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.253"
+version = "0.16.254"
 dependencies = [
  "guest-contracts",
  "guest-control-server",
@@ -3391,7 +3391,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.190.5"
+version = "0.190.7"
 dependencies = [
  "ably-subscriber",
  "api-contracts",

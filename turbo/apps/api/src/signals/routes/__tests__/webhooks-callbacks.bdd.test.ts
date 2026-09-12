@@ -960,7 +960,7 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     const editedCommentBody = JSON.stringify({
       action: "edited",
       issue,
-      comment: { id: 456, body: "@Zero please help", user },
+      comment: { id: 456, body: "@Nova please help", user },
       repository,
       installation,
       sender: user,
@@ -975,7 +975,7 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     const botCommentBody = JSON.stringify({
       action: "created",
       issue,
-      comment: { id: 457, body: "@Zero please help", user: bot },
+      comment: { id: 457, body: "@Nova please help", user: bot },
       repository,
       installation,
       sender: bot,
@@ -1005,7 +1005,7 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     const mentionedCommentWithoutInstallBody = JSON.stringify({
       action: "created",
       issue,
-      comment: { id: 459, body: "@Zero please help", user },
+      comment: { id: 459, body: "@Nova please help", user },
       repository,
       installation,
       sender: user,

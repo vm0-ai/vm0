@@ -180,10 +180,9 @@ run_case() {
   if [ "$recovery" = true ]; then
     runner_sha_map=$(jq -c --arg sha "$cached_sha" 'map_values($sha)' <<<"$runner_sha_map")
   fi
-  local service_ref=$job_ref current_event=pull_request
+  local service_ref=$job_ref
   if [[ "$job_ref" == staging-* ]]; then
     service_ref=staging
-    current_event=push
   fi
   local host host_index=0
   if [ ! -d "$case_dir" ]; then
@@ -205,9 +204,6 @@ run_case() {
     PATH="${tmp_dir}/bin:$PATH" \
     AWS_METAL_RUNNER_HOSTS=arm-1,x86-1,x86-2 \
     BIN_DIR="/var/lib/vm0-runner/bin/${job_ref}" \
-    CURRENT_EVENT="$current_event" \
-    CURRENT_RUN_ID=123 \
-    DEFAULT_BRANCH=main \
     JOB_REF="$job_ref" \
     METAL_HOSTS=arm-1,x86-1,x86-2 \
     METAL_USER=ci \

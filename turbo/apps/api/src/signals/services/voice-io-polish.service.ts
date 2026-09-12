@@ -8,7 +8,10 @@ import { command } from "ccstate";
 import { notConfigured } from "../../lib/error";
 import { requestSignal$ } from "../context/hono";
 import { gcpLlmConfiguration, GcpLlmAuthError } from "../external/gcp-llm-auth";
-import { generateVertexVoice } from "../external/vertex-voice";
+import {
+  generateVertexVoice,
+  VertexVoiceError,
+} from "../external/vertex-voice";
 import {
   FAST_PATH_MODEL,
   generateText,
@@ -43,6 +46,7 @@ function providerError(error: unknown) {
   if (
     error instanceof VoiceProviderUnavailableError ||
     (error instanceof GcpLlmAuthError && error.temporary) ||
+    (error instanceof VertexVoiceError && error.temporary) ||
     (error instanceof OpenRouterRequestError &&
       (error.status === 429 || error.status >= 500))
   ) {

@@ -642,7 +642,7 @@ describe("AUTH-01 sandbox and agent bearers", () => {
     const admin = api.user();
     api.acceptAgentStorageWrites();
     const agent = await api.createAgent(admin, {
-      displayName: "BDD Zero Cap Agent",
+      displayName: "BDD Nova Cap Agent",
     });
     cfg.mockMembership(admin, "org:admin");
 

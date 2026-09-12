@@ -11,12 +11,6 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
-import { now } from "../../../lib/time";
-import {
-  flushLogs,
-  logger,
-  __resetForTest as resetLogs,
-} from "../../../lib/log";
 import {
   advanceRunActivityClockFixture,
   holdRunActivityFixture,
@@ -203,103 +197,39 @@ async function deliver(
   await flushWaitUntilForTest();
 }
 
-// Exercise the production logger and both real SDK constructors. Only the
-// outbound ingestion HTTP request is captured; no application logger is spied on.
-function captureDiagnostics() {
-  const eventSchema = z
-    .object({
-      level: z.string(),
-      message: z.string(),
-      source: z.literal("api"),
-      fields: z.record(z.string(), z.unknown()),
-    })
-    .passthrough();
-  const events: z.infer<typeof eventSchema>[] = [];
-  context.mocks.axiomLogging.useRealTransport.mockReturnValue(true);
-  mockEnv("AXIOM_TOKEN_TELEMETRY", "xaat-activity-logging-test");
-  mockEnv("AXIOM_DATASET_SUFFIX", "dev");
-  mockEnv("OKOU_DEBUG", "");
-  resetLogs();
-  server.use(
-    http.post(
-      "https://api.axiom.co/v1/datasets/vm0-web-logs-dev/ingest",
-      async ({ request: ingestion }) => {
-        expect(ingestion.headers.get("content-type")).toBe(
-          "application/x-ndjson",
-        );
-        const body = await ingestion.text();
-        const batch = body
-          .trim()
-          .split("\n")
-          .map((line) => {
-            return eventSchema.parse(JSON.parse(line));
-          });
-        events.push(...batch);
-        return HttpResponse.json({
-          ingested: batch.length,
-          failed: 0,
-          failures: [],
-          processedBytes: body.length,
-          blocksCreated: 1,
-          walLength: 0,
-        });
+const privatePayload = "private-provider-payload";
+
+function completion(content: unknown, finishReason = "stop") {
+  return HttpResponse.json({
+    choices: [
+      {
+        finish_reason: finishReason,
+        ...(finishReason === "length"
+          ? { native_finish_reason: "MAX_TOKENS" }
+          : {}),
+        message: { content },
       },
-    ),
+    ],
+  });
+}
+// A rejected body stream is the only real transport failure a handler can
+// produce; a handler that throws would answer with HTTP 500 instead.
+function brokenBody(error: Error) {
+  return new HttpResponse(
+    new ReadableStream({
+      start(controller) {
+        controller.error(error);
+      },
+    }),
   );
-  onTestFinished(async () => {
-    await flushLogs();
-    resetLogs();
-  });
-  logger("api:unrelated").debug("Unrelated activity transport debug");
-  return async () => {
-    await flushLogs();
-    expect(events).not.toContainEqual(
-      expect.objectContaining({ level: "debug" }),
-    );
-    return events.filter((event) => {
-      return (
-        event.fields.context === "api:activity-summary" ||
-        event.fields.context === "api:run-activity"
-      );
-    });
-  };
 }
-
-type DiagnosticEvent = {
-  readonly level: string;
-  readonly message: string;
-  readonly fields: Record<string, unknown>;
-};
-
-function completionRecords(logs: readonly DiagnosticEvent[]) {
-  return logs.filter((event) => {
-    return event.message === "Activity summary completion";
-  });
-}
-
-/** Provider-request completions at every level, including any absorbed one. */
-function providerFailureRecords(logs: readonly DiagnosticEvent[]) {
-  return completionRecords(logs).filter((event) => {
-    return event.fields.outcome === "provider_failure";
-  });
-}
-
-/** Anything this service asked an operator to look at. */
-function operatorRecords(logs: readonly DiagnosticEvent[]) {
-  return logs.filter((event) => {
-    return event.level === "warn" || event.level === "error";
-  });
-}
-
 describe("thread activity summary", () => {
   it("enforces feature availability and ownership before cache or model exposure", async () => {
     const f = await fixture(false);
-    const diagnostics = captureDiagnostics();
     const inputs = provider();
     await deliver(f, [tool(0, "must not be captured")]);
     await accept(request(f.actor, f.run), [403]);
     expect(inputs).toHaveLength(0);
-    await expect(diagnostics()).resolves.toStrictEqual([]);
     await enable(f.actor);
     const first = await summarize(f.actor, f.run);
     expect(first).toMatchObject({
@@ -345,89 +275,9 @@ describe("thread activity summary", () => {
     expect(inputs).toHaveLength(1);
   });
 
-  it("ingests content-free activity records through the default production transport at operation granularity", async () => {
-    const f = await fixture(true, "PRIVATE_PROMPT");
-    const diagnostics = captureDiagnostics();
-    const inputs = provider(() => {
-      return "PRIVATE PHRASE";
-    });
-    const batch = [tool(0, "PRIVATE_ARGUMENT"), tool(1, "PRIVATE_EVIDENCE")];
-    await deliver(f, batch);
-    expect(inputs).toHaveLength(0);
-    await expect(summarize(f.actor, f.run)).resolves.toMatchObject({
-      status: "fresh",
-      messages: [{ id: "PRIVATE PHRASE", text: "PRIVATE PHRASE" }],
-    });
-    await summarize(f.actor, f.run);
-    await deliver(f, batch);
-    await deliver(f, [
-      { type: "usage", sequenceNumber: 2, usage: { input_tokens: 300 } },
-    ]);
-    expect(inputs).toHaveLength(1);
-    const logs = await diagnostics();
-    expect(logs).toStrictEqual([
-      expect.objectContaining({
-        level: "info",
-        message: "Activity snapshot capture",
-        fields: {
-          context: "api:run-activity",
-          runId: f.run.runId,
-          outcome: "written",
-          eventCount: 2,
-        },
-      }),
-      expect.objectContaining({
-        level: "info",
-        message: "Activity summary attempt",
-        fields: { context: "api:activity-summary", runId: f.run.runId },
-      }),
-      expect.objectContaining({
-        level: "info",
-        message: "Activity summary completion",
-        fields: {
-          context: "api:activity-summary",
-          runId: f.run.runId,
-          outcome: "success",
-          durationMs: expect.any(Number),
-          cooldownMs: 0,
-        },
-      }),
-      expect.objectContaining({
-        level: "info",
-        message: "Activity summary cache",
-        fields: {
-          context: "api:activity-summary",
-          runId: f.run.runId,
-          outcome: "fresh",
-        },
-      }),
-      expect.objectContaining({
-        level: "info",
-        message: "Activity snapshot capture",
-        fields: {
-          context: "api:run-activity",
-          runId: f.run.runId,
-          outcome: "unchanged",
-          eventCount: 2,
-        },
-      }),
-    ]);
-    expect(JSON.stringify(logs)).not.toContain("PRIVATE");
-    await webhooks.requestAgentComplete(
-      { runId: f.run.runId, exitCode: 0 },
-      f.headers,
-      [200],
-    );
-    await flushWaitUntilForTest();
-    await deliver(f, [tool(3, "PRIVATE_TERMINAL_ARGUMENT")]);
-    await expect(diagnostics()).resolves.toStrictEqual(logs);
-    expect(inputs).toHaveLength(1);
-  });
-
   it("retains activity for tool output PostgreSQL cannot store verbatim", async () => {
     const f = await fixture();
     const inputs = provider();
-    const diagnostics = captureDiagnostics();
     // A runtime can emit a NUL byte or a lone surrogate through a tool
     // argument, and a long tool name can end mid surrogate pair. PostgreSQL
     // rejects every one of those while parsing the jsonb value, which would
@@ -461,18 +311,6 @@ describe("thread activity summary", () => {
       ],
     });
     expect(inputs).toHaveLength(1);
-    await expect(diagnostics()).resolves.toContainEqual(
-      expect.objectContaining({
-        level: "info",
-        message: "Activity snapshot capture",
-        fields: {
-          context: "api:run-activity",
-          runId: f.run.runId,
-          outcome: "written",
-          eventCount: 1,
-        },
-      }),
-    );
   });
 
   it("rejects queued and superseded run identities before cached or model output", async () => {
@@ -789,6 +627,121 @@ describe("thread activity summary", () => {
     expect(inputs).toHaveLength(1);
   });
 
+  it.each([
+    {
+      name: "a completion that spent the whole token budget",
+      reply: () => {
+        return completion(privatePayload, "length");
+      },
+    },
+    {
+      name: "a completion that ended on an unoffered tool call",
+      reply: () => {
+        return completion(privatePayload, "tool_calls");
+      },
+    },
+    {
+      name: "a rejected transport request",
+      reply: () => {
+        return HttpResponse.error();
+      },
+    },
+    {
+      name: "a body that timed out mid-stream",
+      reply: () => {
+        return brokenBody(
+          new TypeError("terminated", {
+            cause: { code: "UND_ERR_BODY_TIMEOUT" },
+          }),
+        );
+      },
+    },
+    {
+      name: "a body that is not JSON",
+      reply: () => {
+        return new HttpResponse(privatePayload);
+      },
+    },
+    {
+      name: "an envelope without choices",
+      reply: () => {
+        return HttpResponse.json({});
+      },
+    },
+    {
+      name: "a completion with empty content",
+      reply: () => {
+        return completion("");
+      },
+    },
+    {
+      name: "an exception nothing classified",
+      reply: () => {
+        return brokenBody(
+          new TypeError(`${privatePayload}\n at /src/signals/redacted.ts:1:2`),
+        );
+      },
+    },
+  ])("cools down after $name without retrying", async ({ reply }) => {
+    const f = await fixture();
+    const inputs = provider(reply);
+    const absorbed = await summarize(f.actor, f.run);
+    // The optional output is simply omitted; the response stays truthful and
+    // the shared cooldown bounds recovery.
+    expect(absorbed).toMatchObject({
+      status: "cooldown",
+      messages: [],
+      summaryRevision: null,
+    });
+    expect(absorbed.retryAfterMs).toBeGreaterThan(50_000);
+    expect(absorbed.retryAfterMs).toBeLessThanOrEqual(60_000);
+    // The cooldown really reached the database: no second provider call.
+    await summarize(f.actor, f.run);
+    expect(inputs).toHaveLength(1);
+  });
+
+  it("keeps a stored summary when the optional key disappears", async () => {
+    const f = await fixture();
+    const inputs = provider();
+    const first = await summarize(f.actor, f.run);
+    expect(first.messages[0]?.text).toBe("Preparing the launch checklist");
+    // New evidence plus an elapsed attempt interval make a fresh attempt legal.
+    await deliver(f, [tool(0)]);
+    await advanceRunActivityClockFixture(f.run.runId, 16_000);
+    mockOptionalEnv("OPENROUTER_API_KEY", undefined);
+    const degraded = await summarize(f.actor, f.run);
+    // The attempt still claims, writes and rereads, so the caller degrades to
+    // the stored phrase instead of to an empty batch.
+    expect(degraded.messages).toStrictEqual(first.messages);
+    expect(degraded.summaryRevision).toBe(first.summaryRevision);
+    expect(degraded.status).toBe("cooldown");
+    expect(degraded.retryAfterMs).toBeGreaterThan(50_000);
+    expect(degraded.retryAfterMs).toBeLessThanOrEqual(60_000);
+    expect(inputs).toHaveLength(1);
+  });
+
+  it("keeps a stored summary through a rejected batch and recovers after the cooldown", async () => {
+    const f = await fixture();
+    const inputs = provider((_input, index) => {
+      return index === 2
+        ? "Valid message\n**Markdown**"
+        : "Preparing the launch checklist";
+    });
+    const first = await summarize(f.actor, f.run);
+    await deliver(f, [tool(0)]);
+    await advanceRunActivityClockFixture(f.run.runId, 16_000);
+    const rejected = await summarize(f.actor, f.run);
+    expect(rejected.messages).toStrictEqual(first.messages);
+    expect(rejected.summaryRevision).toBe(first.summaryRevision);
+    expect(rejected.retryAfterMs).toBeGreaterThan(50_000);
+    // The persisted cooldown expires and the next attempt publishes a phrase.
+    await advanceRunActivityClockFixture(f.run.runId, 61_000);
+    const recovered = await summarize(f.actor, f.run);
+    expect(recovered.messages[0]?.text).toBe("Preparing the launch checklist");
+    expect(recovered.summaryRevision).not.toBe(first.summaryRevision);
+    expect(inputs).toHaveLength(3);
+  });
+
   it("accepts existing Codex commands and tool results while bounding graphemes", async () => {
     const f = await fixture();
     const inputs = provider(() => {
@@ -895,6 +848,8 @@ describe("thread activity summary", () => {
     const failed = await summarize(f.actor, f.run);
     expect(failed).toMatchObject({ status: "cooldown", messages: [] });
     const inputs = provider();
+    // The cooldown bounds the next provider call even when no summary exists
+    // to fall back to, so restoring the key mid-cooldown generates nothing.
     await summarize(f.actor, f.run);
     expect(inputs).toHaveLength(0);
   });
@@ -979,72 +934,8 @@ describe("thread activity summary", () => {
     ).toContain("Public commentary during the Axiom outage");
   });
 
-  it("honors bounded Retry-After and keeps the last known summary without a record", async () => {
-    const f = await fixture();
-    const diagnostics = captureDiagnostics();
-    const inputs = provider((_input, index) => {
-      return index === 1
-        ? "Preparing the launch checklist"
-        : HttpResponse.json(
-            { error: { code: 429, message: "PRIVATE_PROVIDER_BODY" } },
-            { status: 429, headers: { "Retry-After": "120" } },
-          );
-    });
-    const first = await summarize(f.actor, f.run);
-    await deliver(f, [tool(0)]);
-    await advanceRunActivityClockFixture(f.run.runId, 16_000);
-    const failed = await summarize(f.actor, f.run);
-    expect(failed.messages).toStrictEqual(first.messages);
-    expect(failed.status).toBe("cooldown");
-    expect(failed.summaryRevision).toBe(first.summaryRevision);
-    // The skipped diagnostic is not a skipped cooldown: the provider's bounded
-    // Retry-After is still persisted and reported back to the caller.
-    expect(failed.retryAfterMs).toBeGreaterThan(110_000);
-    expect(failed.retryAfterMs).toBeLessThanOrEqual(120_000);
-    await summarize(f.actor, f.run);
-    expect(inputs).toHaveLength(2);
-    const logs = await diagnostics();
-    // The seeding generation is still reported; only the absorbed attempt is not.
-    expect(logs).toContainEqual(
-      expect.objectContaining({
-        level: "info",
-        message: "Activity summary completion",
-        fields: {
-          context: "api:activity-summary",
-          runId: f.run.runId,
-          outcome: "success",
-          durationMs: expect.any(Number),
-          cooldownMs: 0,
-        },
-      }),
-    );
-    // Two attempts, one completion: the absorbed attempt left no record at
-    // debug, info, warn or error.
-    expect(providerFailureRecords(logs)).toStrictEqual([]);
-    expect(completionRecords(logs)).toHaveLength(1);
-    expect(operatorRecords(logs)).toStrictEqual([]);
-    expect(
-      logs.filter((event) => {
-        return event.message === "Activity summary attempt";
-      }),
-    ).toHaveLength(2);
-    expect(logs).toContainEqual(
-      expect.objectContaining({
-        level: "info",
-        message: "Activity summary cache",
-        fields: {
-          context: "api:activity-summary",
-          runId: f.run.runId,
-          outcome: "cooldown",
-        },
-      }),
-    );
-    expect(JSON.stringify(logs)).not.toContain("PRIVATE_PROVIDER_BODY");
-  });
-
   it("absorbs a rate limit before any summary exists and recovers after the cooldown", async () => {
     const f = await fixture();
-    const diagnostics = captureDiagnostics();
     const inputs = provider((_input, index) => {
       return index === 1
         ? HttpResponse.json(
@@ -1061,7 +952,7 @@ describe("thread activity summary", () => {
     expect(empty.summaryRevision).toBeNull();
     expect(empty.retryAfterMs).toBeGreaterThan(50_000);
     expect(empty.retryAfterMs).toBeLessThanOrEqual(60_000);
-    // The shared cooldown still bounds the provider, not just the diagnostic.
+    // The shared cooldown really reached the database: no second provider call.
     await summarize(f.actor, f.run);
     expect(inputs).toHaveLength(1);
     await advanceRunActivityClockFixture(f.run.runId, 61_000);
@@ -1071,159 +962,10 @@ describe("thread activity summary", () => {
     );
     expect(recovered.status).toBe("fresh");
     expect(inputs).toHaveLength(2);
-    const logs = await diagnostics();
-    expect(
-      logs.filter((event) => {
-        return event.message === "Activity summary attempt";
-      }),
-    ).toHaveLength(2);
-    // Only the recovery generation is reported.
-    expect(providerFailureRecords(logs)).toStrictEqual([]);
-    expect(completionRecords(logs)).toHaveLength(1);
-    expect(operatorRecords(logs)).toStrictEqual([]);
-    expect(JSON.stringify(logs)).not.toContain("PRIVATE_PROVIDER_BODY");
-  });
-
-  it("classifies provider rate limits by native reason, not by transport status", async () => {
-    const f = await fixture();
-    const diagnostics = captureDiagnostics();
-    const inputs = provider((_input, index) => {
-      if (index === 1) {
-        // OpenRouter reports an upstream rate limit inside a successful
-        // envelope; the client wraps it as a synthetic 502.
-        return HttpResponse.json({
-          error: {
-            code: 429,
-            message: "PRIVATE_PROVIDER_BODY",
-            metadata: {
-              raw: JSON.stringify({
-                error: {
-                  status: "RESOURCE_EXHAUSTED",
-                  message: "PRIVATE_PROVIDER_BODY",
-                },
-              }),
-            },
-          },
-        });
-      }
-      return HttpResponse.json(
-        {
-          error: {
-            code: index === 2 ? "invalid_request_error" : 401,
-            message: "PRIVATE_PROVIDER_BODY",
-          },
-        },
-        { status: 429 },
-      );
-    });
-    const wrapped = await summarize(f.actor, f.run);
-    expect(wrapped.status).toBe("cooldown");
-    expect(wrapped.retryAfterMs).toBeGreaterThan(50_000);
-    await advanceRunActivityClockFixture(f.run.runId, 61_000);
-    await summarize(f.actor, f.run);
-    await advanceRunActivityClockFixture(f.run.runId, 61_000);
-    await summarize(f.actor, f.run);
-    expect(inputs).toHaveLength(3);
-    const logs = await diagnostics();
-    // A native rate limit is absorbed even though its status is 502.
-    expect(
-      providerFailureRecords(logs).filter((event) => {
-        return event.fields.reason === "rate_limited";
-      }),
-    ).toStrictEqual([]);
-    expect(providerFailureRecords(logs)).toHaveLength(2);
-    // A 429 whose native evidence is a real defect still reaches an operator.
-    // The level is the adjacent severity decision and is asserted elsewhere.
-    for (const reason of ["invalid_request", "auth"]) {
-      expect(logs).toContainEqual(
-        expect.objectContaining({
-          message: "Activity summary completion",
-          fields: expect.objectContaining({
-            runId: f.run.runId,
-            outcome: "provider_failure",
-            reason,
-            providerStatus: 429,
-          }),
-        }),
-      );
-    }
-    expect(JSON.stringify(logs)).not.toContain("PRIVATE_PROVIDER_BODY");
-  });
-
-  it("bounds the absorbed cooldown between the floor and the ceiling", async () => {
-    const f = await fixture();
-    const diagnostics = captureDiagnostics();
-    // Resolved per response, because the parser reads a date header against the
-    // same process clock. Building it up front would spend the encoded delay on
-    // this test's own runtime instead of measuring the header.
-    const retryAfter: (() => string | undefined)[] = [
-      () => {
-        return undefined;
-      },
-      () => {
-        return "not-a-number";
-      },
-      () => {
-        return "30";
-      },
-      () => {
-        return "120";
-      },
-      () => {
-        return "600";
-      },
-      () => {
-        return new Date(now() + 120_000).toUTCString();
-      },
-    ];
-    const inputs = provider((_input, index) => {
-      const value = retryAfter[index - 1]?.();
-      return HttpResponse.json(
-        { error: { code: 429, message: "PRIVATE_PROVIDER_BODY" } },
-        {
-          status: 429,
-          ...(value === undefined ? {} : { headers: { "Retry-After": value } }),
-        },
-      );
-    });
-    // Floor for missing, unparseable and short delays; the provider's own value
-    // in between; the five-minute ceiling above it. A date header resolves
-    // against the same clock as a delta.
-    const expected = [
-      [50_000, 60_000],
-      [50_000, 60_000],
-      [50_000, 60_000],
-      [110_000, 120_000],
-      [290_000, 300_000],
-      [110_000, 120_000],
-    ] as const;
-    let elapsed = 0;
-    for (const [lower, upper] of expected) {
-      if (elapsed > 0) {
-        await advanceRunActivityClockFixture(f.run.runId, elapsed + 1000);
-      }
-      const limited = await summarize(f.actor, f.run);
-      expect(limited.status).toBe("cooldown");
-      expect(limited.retryAfterMs).toBeGreaterThan(lower);
-      expect(limited.retryAfterMs).toBeLessThanOrEqual(upper);
-      elapsed = upper;
-    }
-    expect(inputs).toHaveLength(expected.length);
-    const logs = await diagnostics();
-    expect(
-      logs.filter((event) => {
-        return event.message === "Activity summary attempt";
-      }),
-    ).toHaveLength(expected.length);
-    expect(providerFailureRecords(logs)).toStrictEqual([]);
-    expect(completionRecords(logs)).toStrictEqual([]);
-    expect(operatorRecords(logs)).toStrictEqual([]);
-    expect(JSON.stringify(logs)).not.toContain("PRIVATE_PROVIDER_BODY");
   });
 
   it("absorbs upstream unavailability and keeps the last known summary", async () => {
     const f = await fixture();
-    const diagnostics = captureDiagnostics();
     const inputs = provider((_input, index) => {
       return index === 1
         ? "Preparing the launch checklist"
@@ -1243,21 +985,10 @@ describe("thread activity summary", () => {
     // The charged cooldown still bounds the next provider call.
     await summarize(f.actor, f.run);
     expect(inputs).toHaveLength(2);
-    const logs = await diagnostics();
-    expect(providerFailureRecords(logs)).toStrictEqual([]);
-    expect(operatorRecords(logs)).toStrictEqual([]);
-    // The attempt is still counted; only the absorbed outcome is silent.
-    expect(
-      logs.filter((event) => {
-        return event.message === "Activity summary attempt";
-      }),
-    ).toHaveLength(2);
-    expect(JSON.stringify(logs)).not.toContain("PRIVATE_PROVIDER_BODY");
   });
 
   it("absorbs an envelope unavailability and an upstream timeout", async () => {
     const f = await fixture();
-    const diagnostics = captureDiagnostics();
     const inputs = provider((_input, index) => {
       // A native unavailability arrives inside a successful envelope, which
       // this client wraps as a synthetic 502; the reason decides, not the status.
@@ -1286,79 +1017,9 @@ describe("thread activity summary", () => {
     const timedOut = await summarize(f.actor, f.run);
     expect(timedOut.status).toBe("cooldown");
     expect(inputs).toHaveLength(2);
-    const logs = await diagnostics();
-    expect(completionRecords(logs)).toStrictEqual([]);
-    expect(operatorRecords(logs)).toStrictEqual([]);
-    expect(
-      logs.filter((event) => {
-        return event.message === "Activity summary attempt";
-      }),
-    ).toHaveLength(2);
-    expect(JSON.stringify(logs)).not.toContain("PRIVATE_PROVIDER_BODY");
   });
 
-  it("reports credential, contract and unplaced provider failures as errors", async () => {
-    const f = await fixture();
-    const diagnostics = captureDiagnostics();
-    const inputs = provider((_input, index) => {
-      if (index === 1) {
-        // A native credential defect inside a rate-limited wrapper: the native
-        // code decides the class, so this is not absorbed with the 429s.
-        return HttpResponse.json(
-          { error: { code: 401, message: "PRIVATE_PROVIDER_BODY" } },
-          { status: 429, headers: { "Retry-After": "120" } },
-        );
-      }
-      if (index === 2) {
-        return HttpResponse.json({
-          error: {
-            code: "INVALID_ARGUMENT",
-            message: "PRIVATE_PROVIDER_BODY",
-          },
-        });
-      }
-      return HttpResponse.json(
-        { error: { code: 500, message: "PRIVATE_PROVIDER_BODY" } },
-        { status: 500 },
-      );
-    });
-    const auth = await summarize(f.actor, f.run);
-    expect(auth.retryAfterMs).toBeGreaterThan(110_000);
-    expect(auth.retryAfterMs).toBeLessThanOrEqual(120_000);
-    await advanceRunActivityClockFixture(f.run.runId, 121_000);
-    await summarize(f.actor, f.run);
-    await advanceRunActivityClockFixture(f.run.runId, 61_000);
-    await summarize(f.actor, f.run);
-    expect(inputs).toHaveLength(3);
-    const logs = await diagnostics();
-    const expected = [
-      { reason: "auth", providerStatus: 429, cooldownMs: 120_000 },
-      { reason: "invalid_request", providerStatus: 502, cooldownMs: 60_000 },
-      // Not every 5xx is absorbed: an error the shared classifier cannot place
-      // stays reported as `unknown` and claims no cause.
-      { reason: "unknown", providerStatus: 500, cooldownMs: 60_000 },
-    ] as const;
-    for (const fields of expected) {
-      expect(logs).toContainEqual(
-        expect.objectContaining({
-          level: "error",
-          message: "Activity summary completion",
-          fields: {
-            context: "api:activity-summary",
-            runId: f.run.runId,
-            outcome: "provider_failure",
-            durationMs: expect.any(Number),
-            ...fields,
-          },
-        }),
-      );
-    }
-    expect(providerFailureRecords(logs)).toHaveLength(expected.length);
-    expect(operatorRecords(logs)).toHaveLength(expected.length);
-    expect(JSON.stringify(logs)).not.toContain("PRIVATE_PROVIDER_BODY");
-  });
-
-  it("records a missed deadline as an accepted degradation, not a failure", async () => {
+  it("keeps the last known summary when an attempt misses its deadline", async () => {
     const f = await fixture();
     const entered = createDeferredPromise<void>(context.signal);
     const stalled = createDeferredPromise<string>(context.signal);
@@ -1370,7 +1031,6 @@ describe("thread activity summary", () => {
       return await stalled.promise;
     });
     const first = await summarize(f.actor, f.run);
-    const diagnostics = captureDiagnostics();
     await deliver(f, [tool(0)]);
     await advanceRunActivityClockFixture(f.run.runId, 16_000);
     const deadline = new AbortController();
@@ -1391,26 +1051,6 @@ describe("thread activity summary", () => {
     expect(missed.retryAfterMs).toBeGreaterThan(50_000);
     expect(missed.retryAfterMs).toBeLessThanOrEqual(60_000);
     expect(inputs).toHaveLength(2);
-    const logs = await diagnostics();
-    expect(logs).toContainEqual(
-      expect.objectContaining({
-        level: "info",
-        message: "Activity summary completion",
-        fields: {
-          context: "api:activity-summary",
-          runId: f.run.runId,
-          outcome: "timeout",
-          durationMs: expect.any(Number),
-          cooldownMs: 60_000,
-        },
-      }),
-    );
-    // An expected deadline must not reach an operator through any record.
-    expect(
-      logs.filter((event) => {
-        return event.level === "warn" || event.level === "error";
-      }),
-    ).toStrictEqual([]);
   });
 
   it("charges no cooldown when the instance stops before the provider answers", async () => {
@@ -1424,7 +1064,6 @@ describe("thread activity summary", () => {
       }
       return "Checking the current launch materials";
     });
-    const diagnostics = captureDiagnostics();
     const shutdown = new AbortController();
     createRouteMocks(context).clerk.session(
       f.actor.userId,
@@ -1446,25 +1085,6 @@ describe("thread activity summary", () => {
     shutdown.abort(new DOMException("API instance stopping", "AbortError"));
     release.resolve("This phrase never reaches an absent caller");
     await abandoned;
-    const logs = await diagnostics();
-    expect(logs).toContainEqual(
-      expect.objectContaining({
-        level: "info",
-        message: "Activity summary completion",
-        fields: {
-          context: "api:activity-summary",
-          runId: f.run.runId,
-          outcome: "cancelled",
-          durationMs: expect.any(Number),
-          cooldownMs: 0,
-        },
-      }),
-    );
-    expect(
-      logs.filter((event) => {
-        return event.level === "warn" || event.level === "error";
-      }),
-    ).toStrictEqual([]);
     // Only the attempt interval was ever charged, so the next viewer generates
     // again instead of waiting out a failure cooldown it never caused.
     await advanceRunActivityClockFixture(f.run.runId, 16_000);
@@ -1479,7 +1099,6 @@ describe("thread activity summary", () => {
     const f = await fixture();
     const inputs = provider();
     await summarize(f.actor, f.run);
-    const diagnostics = captureDiagnostics();
     // A stalled Postgres writer is an infrastructure condition, not a user API.
     const held = await holdRunActivityFixture(f.run.runId, context.signal);
     onTestFinished(async () => {
@@ -1504,39 +1123,6 @@ describe("thread activity summary", () => {
       status: "unavailable",
       messages: [],
     });
-    const records = await diagnostics();
-    // A concurrent writer for the same run is expected delivery behavior, so the
-    // capture stays below warn while the adjacent real failure keeps its level.
-    expect(records).toStrictEqual([
-      expect.objectContaining({
-        level: "info",
-        message: "Activity snapshot capture",
-        fields: {
-          context: "api:run-activity",
-          runId: f.run.runId,
-          outcome: "contended",
-          eventCount: 1,
-          stage: "lock",
-          errorCode: "55P03",
-        },
-      }),
-      expect.objectContaining({
-        level: "warn",
-        message: "Activity summary unavailable",
-        fields: {
-          context: "api:activity-summary",
-          runId: f.run.runId,
-          outcome: "storage_failed",
-        },
-      }),
-    ]);
-    // The classification adds a SQLSTATE class code and nothing else: no driver
-    // message, no statement text and no bound evidence.
-    expect(JSON.stringify(records)).not.toContain("lock_timeout");
-    expect(JSON.stringify(records)).not.toContain("run_activity_snapshots");
-    expect(JSON.stringify(records)).not.toContain(
-      "Normal message survives the optional failure",
-    );
     held.release();
     await held.done;
     const page = await chat.listThreadEvents(f.actor, f.run.threadId);
@@ -1551,7 +1137,6 @@ describe("thread activity summary", () => {
   });
   it("cleans expired snapshots through scoped maintenance even while disabled", async () => {
     const f = await fixture();
-    const diagnostics = captureDiagnostics();
     const inputs = provider();
     await deliver(f, [tool(0, "old evidence")]);
     await summarize(f.actor, f.run);
@@ -1581,17 +1166,5 @@ describe("thread activity summary", () => {
       sourceSequence: null,
     });
     expect(inputs[1]!.activity).toStrictEqual([]);
-    await expect(diagnostics()).resolves.toContainEqual(
-      expect.objectContaining({
-        level: "info",
-        message: "Activity snapshot cleanup",
-        fields: {
-          context: "api:run-activity",
-          outcome: "success",
-          removed: 1,
-          retentionMs: 86_400_000,
-        },
-      }),
-    );
   });
 });

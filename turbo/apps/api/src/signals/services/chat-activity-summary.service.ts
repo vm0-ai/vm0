@@ -25,17 +25,9 @@ import {
   summaryRevision,
 } from "../../lib/run-activity";
 import type { Db } from "../external/db";
-import {
-  FAST_PATH_MODEL,
-  generateText,
-  OpenRouterRequestError,
-} from "../external/openrouter";
-import {
-  isTransientProviderFailure,
-  openRouterFailureReason,
-  type OpenRouterFailureReason,
-} from "../external/openrouter-failure";
+import { FAST_PATH_MODEL, generateText } from "../external/openrouter";
 import { settleIncludingAbort } from "../utils";
+import { generateAuxiliary } from "./auxiliary-generation.service";
 import {
   canonicalChatEventContent,
   canonicalChatEventUserMessage,
@@ -66,7 +58,6 @@ const ATTEMPT_INTERVAL_MS = 15_000;
 // shortens the next attempt back to the plain attempt interval.
 const CLAIM_MS = 15_000;
 const FAILURE_COOLDOWN_MS = 60_000;
-const MAX_COOLDOWN_MS = 300_000;
 const SUMMARY_DEADLINE_MS = 10_000;
 const SYSTEM_PROMPT = [
   "Write three short, distinct, user-visible progress messages describing the assistant's recent activity. Use fewer when the evidence only supports one or two.",
@@ -323,107 +314,6 @@ async function claimSummary(db: Db, identity: ActivityRunIdentity) {
   });
 }
 
-/**
- * Completion outcomes an operator cannot act on. The response stays truthful,
- * the caller keeps its last usable phrase, and the shared cooldown or the
- * attempt interval bounds recovery.
- */
-function expectedOutcome(outcome: string): boolean {
-  return (
-    outcome === "success" || outcome === "timeout" || outcome === "cancelled"
-  );
-}
-
-interface CompletionRecord {
-  readonly outcome: string;
-  readonly durationMs: number;
-  readonly cooldownMs: number;
-  /** Present only for an `OpenRouterRequestError`; never a provider body. */
-  readonly providerStatus?: number;
-  /** The shared semantic classification of a provider request failure. */
-  readonly reason?: OpenRouterFailureReason;
-}
-
-/**
- * Provider failures this optional generation already absorbs, recognized by the
- * shared semantic reason rather than by a transport status. None of them
- * resolves by anyone here acting: the caller keeps its last usable phrase or
- * the existing generic label, and the same cooldown this record would report
- * bounds the retry. Emitting them at any level would only teach operators to
- * ignore the record. The outer status cannot decide this — a native rate limit
- * or an upstream timeout/unavailability arrives inside a synthetic 502
- * envelope, and a raw 429 whose native evidence is auth or invalid_request is a
- * real failure that must keep reaching someone.
- *
- * The set is the shared classifier's own, so a reason that stops counting as
- * transient there stops being absorbed here. `network` belongs to it but is
- * unreachable on this branch: a transport rejection is not an
- * `OpenRouterRequestError`, so it lands in the residual bucket instead.
- */
-function absorbedCompletion(completion: CompletionRecord): boolean {
-  return (
-    completion.outcome === "provider_failure" &&
-    completion.reason !== undefined &&
-    isTransientProviderFailure(completion.reason)
-  );
-}
-
-/**
- * A provider-request failure the shared classifier does not absorb: a
- * credential defect, a request-contract defect, or a request error it could not
- * place. Each needs an owner, so each is a real failure rather than a
- * degradation. `unknown` stays unknown — it names no cause and implies nothing
- * about the main run — but it is still reported, because nothing here shows it
- * recovers on its own.
- */
-function realProviderFailure(completion: CompletionRecord): boolean {
-  return (
-    completion.outcome === "provider_failure" &&
-    completion.reason !== undefined &&
-    !isTransientProviderFailure(completion.reason)
-  );
-}
-
-/**
- * The content-free record of one generation attempt. The caller reads `outcome`
- * and `reason` to pick a level and `cooldownMs` to write the next attempt, so
- * the diagnostic and the stored backoff can never disagree. No prompt, phrase,
- * provider body or driver message is ever attached.
- */
-function completionRecord(
-  started: number,
-  phrase: string | null,
-  abandoned: boolean,
-  deadlineReached: boolean,
-  failure: unknown,
-): CompletionRecord {
-  const request =
-    failure instanceof OpenRouterRequestError ? failure : undefined;
-  const cooldown = Math.min(
-    MAX_COOLDOWN_MS,
-    Math.max(FAILURE_COOLDOWN_MS, request?.retryAfterMs ?? 0),
-  );
-  return {
-    outcome: phrase
-      ? "success"
-      : abandoned
-        ? "cancelled"
-        : deadlineReached
-          ? "timeout"
-          : request
-            ? "provider_failure"
-            : "invalid_or_unconfigured",
-    durationMs: Math.round(performance.now() - started),
-    cooldownMs: phrase || abandoned ? 0 : cooldown,
-    ...(request
-      ? {
-          providerStatus: request.status,
-          reason: openRouterFailureReason(failure),
-        }
-      : {}),
-  };
-}
-
 async function generateSummary(
   db: Db,
   identity: ActivityRunIdentity,
@@ -431,10 +321,6 @@ async function generateSummary(
 ): Promise<ActivitySummaryResponse> {
   const claimed = await claimSummary(db, identity);
   if (claimed.kind === "response") {
-    log.info("Activity summary cache", {
-      runId: identity.runId,
-      outcome: claimed.response.status,
-    });
     return claimed.response;
   }
   signal.throwIfAborted();
@@ -442,64 +328,57 @@ async function generateSummary(
     return emptyResponse(identity.runId, "ineligible");
   }
   signal.throwIfAborted();
-  log.info("Activity summary attempt", { runId: identity.runId });
-  const started = performance.now();
+  // Both the request's own end and this attempt's deadline cancel the
+  // generation, so the shared boundary rethrows either one and counts every
+  // other failure silently as the degradation this endpoint already absorbs.
   const deadline = AbortSignal.timeout(SUMMARY_DEADLINE_MS);
-  const result = await settleIncludingAbort(
-    generateText(
-      FAST_PATH_MODEL,
-      [
-        { role: "system", content: SYSTEM_PROMPT },
-        {
-          role: "user",
-          content: JSON.stringify({
-            messages: claimed.context.messages,
-            activity: claimed.row.entries,
-          }),
+  const generationSignal = AbortSignal.any([signal, deadline]);
+  const generated = await settleIncludingAbort(
+    generateAuxiliary(
+      {
+        feature: "chat_activity_summary",
+        generate: () => {
+          return generateText(
+            FAST_PATH_MODEL,
+            [
+              { role: "system", content: SYSTEM_PROMPT },
+              {
+                role: "user",
+                content: JSON.stringify({
+                  messages: claimed.context.messages,
+                  activity: claimed.row.entries,
+                }),
+              },
+            ],
+            1024,
+            { reasoning: { effort: "low" } },
+            generationSignal,
+          );
         },
-      ],
-      1024,
-      { reasoning: { effort: "low" } },
-      AbortSignal.any([signal, deadline]),
+        usable: (text) => {
+          return activityPhrases(text) !== null;
+        },
+        unusableOutput: "expected",
+        diagnosticContext: {
+          runId: identity.runId,
+          threadId: identity.threadId,
+        },
+      },
+      generationSignal,
     ),
   );
-  const phrases = result.ok ? activityPhrases(result.value) : null;
-  // The text column stores the bounded batch as one plain-text line per message.
-  const phrase = phrases?.join("\n") ?? null;
   // The request signal ends this request's whole lifetime — today the API
-  // instance stopping. That is not a failed generation, so it is classified
-  // ahead of the deadline it may have raced.
-  const abandoned = !phrase && signal.aborted;
-  const completion = {
-    runId: identity.runId,
-    ...completionRecord(
-      started,
-      phrase,
-      abandoned,
-      deadline.aborted,
-      result.ok ? null : result.error,
-    ),
-  };
-  // Only the diagnostic is skipped. The cooldown this attempt charged, the
-  // stored summary and the final reread below all still run, so an absorbed
-  // failure degrades exactly like a reported one.
-  if (!absorbedCompletion(completion)) {
-    if (realProviderFailure(completion)) {
-      log.error("Activity summary completion", completion);
-    } else if (expectedOutcome(completion.outcome)) {
-      log.info("Activity summary completion", completion);
-    } else {
-      log.warn("Activity summary completion", completion);
-    }
-  }
-  // An abandoned attempt must not spend the shared cooldown on the next
-  // viewer's behalf. Its lease expires like any owner that stopped reporting,
-  // and the attempt interval written at claim time still bounds the next
-  // provider call. A phrase that finished first is still stored: this request
-  // is over, but the work is done and the next viewer should read it.
-  if (abandoned) {
-    signal.throwIfAborted();
-  }
+  // instance stopping. That is not a failed generation, so it must not spend
+  // the shared cooldown on the next viewer's behalf: its lease expires like any
+  // owner that stopped reporting, and the attempt interval written at claim
+  // time still bounds the next provider call. Every remaining outcome, the
+  // deadline included, is simply no phrase this attempt.
+  signal.throwIfAborted();
+  // The text column stores the bounded batch as one plain-text line per message.
+  const phrase =
+    activityPhrases(generated.ok ? (generated.value ?? null) : null)?.join(
+      "\n",
+    ) ?? null;
   const enabled = await activityEnabled(db, identity.orgId, identity.userId);
   if (!enabled) {
     return emptyResponse(identity.runId, "unavailable");
@@ -520,7 +399,7 @@ async function generateSummary(
               summarizedAt: activityClock,
             }
           : {
-              nextAttemptAt: sql`${activityClock} + ${completion.cooldownMs} * interval '1 millisecond'`,
+              nextAttemptAt: sql`${activityClock} + ${FAILURE_COOLDOWN_MS} * interval '1 millisecond'`,
             }),
       })
       .where(

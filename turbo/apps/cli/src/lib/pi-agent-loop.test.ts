@@ -66,6 +66,7 @@ const CONFIG: PiSandboxAgentConfig = {
     baseUrl: "https://api.deepseek.com/",
     model: "deepseek-v4-flash",
     dialect: "openai-responses",
+    transport: "sse",
     apiKey: "test-api-key",
   },
 };
@@ -798,6 +799,7 @@ describe("sandbox Pi agent loop", () => {
               apiKey: "SYNTHETIC_KEY",
               model: "gpt-5.6-terra",
               dialect: "openai-responses",
+              transport: "sse",
             },
             launchPayload: {
               ...CONFIG.launchPayload,
@@ -1002,6 +1004,7 @@ describe("sandbox Pi agent loop", () => {
         baseUrl: "https://api.openai.com/v1",
         model: "gpt-5.6-terra",
         dialect: "openai-responses",
+        transport: "sse",
         thinkingLevel: "low",
         serviceTier: "priority",
         apiKey: "test-api-key",

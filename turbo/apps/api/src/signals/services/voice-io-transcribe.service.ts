@@ -27,7 +27,7 @@ import {
 } from "../external/voice-input-transcription";
 import { settle } from "../utils";
 import { GcpLlmAuthError, gcpLlmConfiguration } from "../external/gcp-llm-auth";
-import { isVertexVoiceModel } from "../external/vertex-voice";
+import { isVertexVoiceModel, VertexVoiceError } from "../external/vertex-voice";
 import type { VoiceAudio } from "../external/voice-completion-types";
 import { VoiceProviderUnavailableError } from "../external/voice-provider-request";
 
@@ -77,7 +77,10 @@ function providerError(error: unknown) {
       "Speech recognition is temporarily busy. Please retry in a moment.",
     );
   }
-  if (error instanceof GcpLlmAuthError && error.temporary) {
+  if (
+    (error instanceof GcpLlmAuthError || error instanceof VertexVoiceError) &&
+    error.temporary
+  ) {
     return transcriptionError(
       503,
       "PROVIDER_UNAVAILABLE",

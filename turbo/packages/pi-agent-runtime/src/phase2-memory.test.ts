@@ -10,8 +10,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { encode } from "gpt-tokenizer/encoding/o200k_base";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { resolvePiAgentModel } from "./model";
 import type { PiMemoryPhase2Diagnostic } from "./phase2-memory-diagnostics";
 import { renderPiMemoryPhase2Prompt } from "./phase2-memory-prompt";
 import { PI_MEMORY_PHASE2_TOOL_NAMES } from "./phase2-memory-tools";
@@ -41,6 +42,7 @@ const servers: Server[] = [];
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(
     servers.splice(0).map(async (server) => {
       server.closeAllConnections();
@@ -103,6 +105,8 @@ function selected(
 function args(
   baseUrl: string,
   overrides: Partial<PiMemoryPhase2LocalConsolidationArgs> = {},
+  /** Written into the literal below so the dialect arm stays discriminated. */
+  catalogModel = "gpt-5.6-terra",
 ): PiMemoryPhase2LocalConsolidationArgs {
   return {
     memoryStorageId: "storage-phase2",
@@ -120,8 +124,9 @@ function args(
       baseUrl,
       apiKey: "PROVIDER_KEY_SECRET_31243",
       model: "MODEL_ALIAS_SECRET_31243",
-      catalogModel: "gpt-5.6-terra",
+      catalogModel,
       dialect: "openai-responses",
+      transport: "sse",
       thinkingLevel: "max",
       requestHeaders: { "x-phase2-secret": "HEADER_SECRET_31243" },
     },
@@ -140,12 +145,19 @@ type ProviderStep =
       readonly type: "tool";
       readonly name: string;
       readonly arguments: Record<string, unknown>;
+      /**
+       * Report a large prior context for the turn. The SDK anchors its context
+       * estimate on the last assistant usage, so this drives the next request's
+       * derived output ceiling without a real large provider request.
+       */
+      readonly usageTotalTokens?: number;
     }
   | {
       readonly type: "text";
       readonly text: string;
       /** Reproduce a provider that returns no response id for the turn. */
       readonly omitResponseId?: true;
+      readonly usageTotalTokens?: number;
     }
   | { readonly type: "incomplete"; readonly reason: string }
   | { readonly type: "http-error" }
@@ -162,13 +174,13 @@ function writeSse(response: ServerResponse, events: readonly unknown[]): void {
   );
 }
 
-function usage() {
+function usage(totalTokens?: number) {
   return {
     input_tokens: 11,
     output_tokens: 7,
     input_tokens_details: { cached_tokens: 2 },
     output_tokens_details: { reasoning_tokens: 2 },
-    total_tokens: 18,
+    total_tokens: totalTokens ?? 18,
   };
 }
 
@@ -228,7 +240,7 @@ function toolSse(
         object: "response",
         status: "completed",
         output: [item],
-        usage: usage(),
+        usage: usage(step.usageTotalTokens),
       },
     },
   ]);
@@ -282,7 +294,7 @@ function textSse(
         object: "response",
         status: "completed",
         output: [item],
-        usage: usage(),
+        usage: usage(step.usageTotalTokens),
       },
     },
   ]);
@@ -617,6 +629,11 @@ describe("Pi memory Phase 2 consolidation engine", () => {
   });
 
   it("uses one restricted official AgentSession and returns exact prepared usage", async () => {
+    const credentialDir = await mkdtemp(
+      join(tmpdir(), "pi-phase2-credentials-"),
+    );
+    temporaryDirectories.push(credentialDir);
+    vi.stubEnv("PI_CODING_AGENT_DIR", credentialDir);
     const provider = await startProvider([
       {
         type: "tool",
@@ -663,6 +680,11 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     );
 
     expect(result.status).toBe("prepared");
+    await expect(
+      readFile(join(credentialDir, "auth.json")),
+    ).rejects.toMatchObject({
+      code: "ENOENT",
+    });
     expect(result.responseId).toBe("resp_phase2_final_3");
     expect(result.usage).toStrictEqual({
       input: 36,
@@ -784,6 +806,7 @@ describe("Pi memory Phase 2 consolidation engine", () => {
         apiKey: "original-key",
         model: "gpt-5.6-terra",
         dialect: "openai-responses",
+        transport: "sse",
         requestHeaders: headers,
       },
     });
@@ -1248,5 +1271,76 @@ describe("Pi memory Phase 2 consolidation engine", () => {
     await expect(stat(cleanupRoot ?? "missing")).rejects.toMatchObject({
       code: "ENOENT",
     });
+  });
+
+  async function maintenanceRequestBudget(
+    priorContextTokens: number,
+    catalogModel?: string,
+  ): Promise<number> {
+    const provider = await startProvider([
+      {
+        type: "tool",
+        name: "phase2_write",
+        arguments: {
+          path: "memory/MEMORY.md",
+          content: "# Task Group: maintenance budget\n",
+        },
+        usageTotalTokens: priorContextTokens,
+      },
+      { type: "text", text: "consolidated" },
+    ]);
+    const result = await runPiMemoryPhase2LocalConsolidation(
+      args(provider.baseUrl, {}, catalogModel),
+      new AbortController().signal,
+    );
+    expect(result.status).toBe("prepared");
+    const next = provider.requests[1];
+    if (!next) {
+      throw new Error("Missing the Phase 2 request after the reported context");
+    }
+    expect(next.body).toMatchObject({ reasoning: { effort: "max" } });
+    const budget = next.body.max_output_tokens;
+    if (typeof budget !== "number") {
+      throw new Error("Phase 2 request did not serialize an output ceiling");
+    }
+    return budget;
+  }
+
+  it("serializes the official output ceiling past the legacy context threshold", async () => {
+    // The legacy catalog window collapses both of these to the Responses
+    // adapter's 16-token floor, which ends the turn as `length`.
+    expect(await maintenanceRequestBudget(270_000)).toBe(128_000);
+    expect(await maintenanceRequestBudget(330_000)).toBe(128_000);
+  });
+
+  it("keeps the real context clamp active near the official window", async () => {
+    const lower = await maintenanceRequestBudget(950_000);
+    const higher = await maintenanceRequestBudget(950_001);
+    expect(lower).toBeGreaterThan(16);
+    expect(lower).toBeLessThan(128_000);
+    expect(lower - higher).toBe(1);
+  });
+
+  it("scopes the correction to the one legacy catalog case", async () => {
+    const config = args("http://127.0.0.1:1/v1").model;
+    // Ordinary resolution keeps the catalog value before and after maintenance.
+    expect(resolvePiAgentModel(config)?.contextWindow).toBe(272_000);
+    // Precondition: the sibling model still carries the same stale catalog
+    // window. If the catalog is corrected upstream this fails deliberately, so
+    // the scope of the local correction is re-decided rather than drifting.
+    expect(
+      resolvePiAgentModel(
+        args("http://127.0.0.1:1/v1", {}, "gpt-5.6-sol").model,
+      )?.contextWindow,
+    ).toBe(272_000);
+    // The correction cannot lift a different catalog model on the same provider
+    // and dialect, so its derived ceiling stays below the corrected one.
+    const corrected = await maintenanceRequestBudget(270_000);
+    const untouched = await maintenanceRequestBudget(270_000, "gpt-5.6-sol");
+    expect(corrected).toBe(128_000);
+    expect(untouched).toBeLessThan(corrected);
+    const after = resolvePiAgentModel(config);
+    expect(after?.contextWindow).toBe(272_000);
+    expect(after?.maxTokens).toBe(128_000);
   });
 });

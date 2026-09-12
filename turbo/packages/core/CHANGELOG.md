@@ -1,5 +1,37 @@
 # Changelog
 
+## [8.654.3](https://github.com/vm0-ai/vm0/compare/core-v8.654.2...core-v8.654.3) (2026-09-12)
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#33582](https://github.com/vm0-ai/vm0/issues/33582)) ([d5ae0e3](https://github.com/vm0-ai/vm0/commit/d5ae0e331d31465b7302bc63e1557420caf7358b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.429.1
+
+## [8.654.2](https://github.com/vm0-ai/vm0/compare/core-v8.654.1...core-v8.654.2) (2026-09-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.429.0
+
+## [8.654.1](https://github.com/vm0-ai/vm0/compare/core-v8.654.0...core-v8.654.1) (2026-09-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.428.2
+
 ## [8.654.0](https://github.com/vm0-ai/vm0/compare/core-v8.653.0...core-v8.654.0) (2026-09-11)
 
 
