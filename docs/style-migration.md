@@ -674,3 +674,57 @@ observations match in every capture. Both archives were anonymously downloaded
 and SHA-256 verified. This is bounded Chromium acceptance with controlled
 bootstrap, API and browser-media boundaries; no Agent run, purchase, connector,
 real microphone recording or real transcription occurred.
+
+## Session list title batch
+
+The `session-list-title` batch owns `okou-nav-title`, `okou-nav-title-row` and
+`okou-nav-recent-label`: the clipped sidebar thread title, the row that drives
+its hover/focus travel, and the "Recent" header. It removes 17 CSS declarations
+and 5 consumption sites (4 production, 1 test hook) from `sidebar-threads.tsx`
+and `sidebar.test.tsx`. `okou-nav-recent-label` carried no declarations, so its
+removal is a pure class deletion. `@property --okou-nav-title-shift` stays in
+the App stylesheet, because a registration is not a class selector and the
+transition cannot interpolate a length without it.
+
+`sidebar-thread-title-cases.json` registers the deployed surface: the real
+`/chats/:threadId` chat list in Light/Dark desktop at device scale 1 and 2, and
+narrow touch/DPR 2. That case file has no runner yet; the acceptance evidence
+below is a local equivalence harness, so the batch is `implemented` rather than
+`baselined` or `verified`.
+
+The harness compiles both sides with the App's own Tailwind entry point —
+`before` from `git show origin/main:` of the stylesheet with main's class
+strings, `after` from the branch — and renders the real ancestor chain
+(`.okou-app` shell, `aside.okou-nav` chat list column, the scroll content, the
+`.group` row wrapper, the `Link` row, the label wrapper) in system Chromium over
+CDP. Headless Chromium reports `(hover: hover)` as false, which silently
+disables every Tailwind `hover:` utility, so the fine-pointer run sets
+`--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4`
+and the coarse-pointer product is measured in a separate run without it.
+
+Each capture covers two titles (one clipped, one that fits) times rest, hovered
+and focus-visible, times the row's three template branches, with the pseudo-state
+forced on both the row and its `.group` ancestor and the travel allowed to
+settle. Every capture compares full-frame pixels and a computed-style and
+geometry observation of the title box and its text span.
+
+All 18 theme states (the default palette plus the eight gradient palettes, each
+in Light and Dark) report 0 changed pixels and 0 observation differences in the
+fine-pointer, coarse-pointer and reduced-motion runs. `GradientColorThemes` is
+disabled by default, so the default palette is the online-visible result and the
+palette states are a superset.
+
+The negative control is part of the acceptance, because a diff channel that
+cannot fail proves nothing. Dropping the text span's
+`[transform:translateX(var(--okou-nav-title-shift))]` changes 10,266 pixels, and
+narrowing the fade from 24px to 23px changes 1,161, so the channel resolves both
+a gross and a one-pixel-scale change. Three earlier controls — dropping
+`overflow-hidden`, `mask-no-repeat` and `min-w-0` — changed 0 pixels and are
+retained: the mask already clips the overflow, `mask-size: 100% 100%` leaves
+nothing for `mask-repeat` to tile, and `overflow: hidden` already resolves the
+flex item's automatic minimum size to zero. Those three utilities are redundant
+in this composition and were kept only because the retired rule declared them.
+
+This is bounded local Chromium evidence against a reconstructed ancestor chain,
+not a deployed-preview capture: it does not certify the Base UI scroll area's
+own DOM, WebKit, native surfaces, or real navigation and virtualization.

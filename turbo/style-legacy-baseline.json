@@ -36,9 +36,6 @@
     "okou-nav-copy",
     "okou-nav-copy-muted",
     "okou-nav-copy-muted-hover",
-    "okou-nav-recent-label",
-    "okou-nav-title",
-    "okou-nav-title-row",
     "okou-pwa-fixed-cover",
     "okou-shimmer-text",
     "okou-sidebar-header",
@@ -702,125 +699,6 @@
         "selector": ":where([data-theme=\"dark\"]) .okou-nav",
         "property": "--color-sidebar",
         "value": " hsl(var(--sidebar))",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-nav-title",
-        "property": "--okou-nav-title-overflow",
-        "value": " 0px",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-nav-title",
-        "property": "--okou-nav-title-duration",
-        "value": " 780ms",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-nav-title",
-        "property": "--okou-nav-title-fade",
-        "value": " 24px",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-nav-title",
-        "property": "flex",
-        "value": "1",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-nav-title",
-        "property": "min-width",
-        "value": "0",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-nav-title",
-        "property": "overflow",
-        "value": "hidden",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-nav-title",
-        "property": "mask-image",
-        "value": "linear-gradient(90deg,transparent 0,#000 clamp(0px,calc(-1*var(--okou-nav-title-shift)),var(--okou-nav-title-fade)),#000 calc(100% - clamp(0px,calc(var(--okou-nav-title-overflow) + var(--okou-nav-title-shift)),var(--okou-nav-title-fade))),transparent 100%)",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-nav-title",
-        "property": "mask-repeat",
-        "value": "no-repeat",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-nav-title",
-        "property": "mask-size",
-        "value": "100% 100%",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-nav-title",
-        "property": "transition",
-        "value": "--okou-nav-title-shift 660ms cubic-bezier(0.4,0,0.2,1)",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-nav-title>span",
-        "property": "display",
-        "value": "block",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-nav-title>span",
-        "property": "width",
-        "value": "max-content",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-nav-title>span",
-        "property": "white-space",
-        "value": "nowrap",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-nav-title>span",
-        "property": "transform",
-        "value": "translateX(var(--okou-nav-title-shift))",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-nav-title-row:hover .okou-nav-title,.okou-nav-title-row:focus-visible .okou-nav-title",
-        "property": "--okou-nav-title-shift",
-        "value": " calc(-1 * var(--okou-nav-title-overflow))",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-nav-title-row:hover .okou-nav-title,.okou-nav-title-row:focus-visible .okou-nav-title",
-        "property": "transition",
-        "value": "--okou-nav-title-shift var(--okou-nav-title-duration) cubic-bezier(0.33,0,0.2,1) 750ms",
-        "important": false
-      },
-      {
-        "atRules": ["@media (prefers-reduced-motion:reduce)"],
-        "selector": ".okou-nav-title-row:hover .okou-nav-title,.okou-nav-title-row:focus-visible .okou-nav-title",
-        "property": "--okou-nav-title-shift",
-        "value": " 0px",
         "important": false
       },
       {
@@ -3282,10 +3160,7 @@
     "apps/platform/src/views/okou-page/sidebar-threads.tsx": {
       "okou-nav-copy": 1,
       "okou-nav-copy-muted": 2,
-      "okou-nav-copy-muted-hover": 1,
-      "okou-nav-recent-label": 1,
-      "okou-nav-title": 1,
-      "okou-nav-title-row": 1
+      "okou-nav-copy-muted-hover": 1
     },
     "apps/platform/src/views/okou-page/sidebar-upgrade.tsx": {
       "okou-nav-copy": 1,

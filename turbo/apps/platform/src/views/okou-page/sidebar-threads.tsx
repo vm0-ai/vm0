@@ -412,7 +412,7 @@ function ChatThreadItemLink({
         e.preventDefault();
         detach(openRename(pageSignal), Reason.DomCallback);
       }}
-      className={`okou-nav-title-row col-span-2 col-start-1 row-start-1 grid h-8 grid-cols-subgrid items-center rounded-lg pl-2 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
+      className={`col-span-2 col-start-1 row-start-1 grid h-8 grid-cols-subgrid items-center rounded-lg pl-2 text-left text-sm leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
         isHighlighted
           ? "bg-state-selected text-sidebar-foreground font-medium"
           : isUnread
@@ -422,8 +422,31 @@ function ChatThreadItemLink({
     >
       <span className="flex min-w-0 items-center gap-2 pr-8">
         <ChatThreadListPaneIcon signals={signals} />
-        <span className="okou-nav-copy okou-nav-title" ref={measureTitle}>
-          <span>
+        {/* A title that does not fit fades out instead of ending in an
+            ellipsis, and hovering or focusing its row scrolls the text to its
+            end and stops there.
+
+            `--okou-nav-title-overflow` is the only measured input; the mask and
+            the travel are both derived from it, which is what makes an edge
+            fade exactly when content is cut off at it: at rest only the right
+            edge is masked, at the end of the travel only the left one, and a
+            title that fits gets neither. `sidebarThreadTitleOverflowRef$`
+            writes it together with the duration.
+
+            The travel keys off the row's own `data-sidebar-chat-thread-id`
+            instead of `group-hover`, because Tailwind wraps `group-hover` in
+            `@media (hover: hover)` while this affordance has always run on
+            coarse pointers as well. The delay keeps a pointer sweeping down the
+            list from setting every row in motion; leaving has none, so the
+            title snaps back under the next row. `motion-safe` leaves the shift
+            at the registered `0px`, which is the value reduced motion has
+            always resolved to. */}
+        <span
+          data-slot="sidebar-thread-title"
+          className="okou-nav-copy flex-1 min-w-0 overflow-hidden [--okou-nav-title-overflow:0px] [--okou-nav-title-duration:780ms] [--okou-nav-title-fade:24px] [mask-image:linear-gradient(90deg,transparent_0,#000_clamp(0px,calc(-1*var(--okou-nav-title-shift)),var(--okou-nav-title-fade)),#000_calc(100%_-_clamp(0px,calc(var(--okou-nav-title-overflow)_+_var(--okou-nav-title-shift)),var(--okou-nav-title-fade))),transparent_100%)] mask-no-repeat [mask-size:100%_100%] [transition:--okou-nav-title-shift_660ms_cubic-bezier(0.4,0,0.2,1)] [[data-sidebar-chat-thread-id]:hover_&]:[transition:--okou-nav-title-shift_var(--okou-nav-title-duration)_cubic-bezier(0.33,0,0.2,1)_750ms] [[data-sidebar-chat-thread-id]:focus-visible_&]:[transition:--okou-nav-title-shift_var(--okou-nav-title-duration)_cubic-bezier(0.33,0,0.2,1)_750ms] motion-safe:[[data-sidebar-chat-thread-id]:hover_&]:[--okou-nav-title-shift:calc(-1*var(--okou-nav-title-overflow))] motion-safe:[[data-sidebar-chat-thread-id]:focus-visible_&]:[--okou-nav-title-shift:calc(-1*var(--okou-nav-title-overflow))]"
+          ref={measureTitle}
+        >
+          <span className="block w-max whitespace-nowrap [transform:translateX(var(--okou-nav-title-shift))]">
             {title ??
               t(($) => {
                 return $.chat.newChat;
@@ -902,7 +925,7 @@ function ChatThreadsTitle({ showMarkAllRead }: { showMarkAllRead: boolean }) {
 
   return (
     <div
-      className="okou-nav-recent-label group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-state-hover transition-colors"
+      className="group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-state-hover transition-colors"
       onClick={() => {
         return setCollapsed(!collapsed);
       }}
