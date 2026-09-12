@@ -411,8 +411,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@okou.ai",
     description:
       "Render Markdown time tags with explicit datetime offsets in the browser timezone.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.ProgressiveArtifactPreview]: {
     maintainer: "bingjie@okou.ai",
