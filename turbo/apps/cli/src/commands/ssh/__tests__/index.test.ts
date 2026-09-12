@@ -214,6 +214,76 @@ describe("okou ssh session", () => {
       params: { sessionId },
     });
   });
+
+  it("sends the selected signal without treating submission as a remote exit", async () => {
+    reply({ type: "submitted", session_id: sessionId, effects: "unknown" });
+    await invoke("signal", sessionId, "--signal", "USR2");
+    expect(JSON.parse(helper.requests[0]!)).toEqual({
+      version: 1,
+      method: "ssh.session.signal",
+      params: { sessionId, signal: "USR2" },
+    });
+    expect(result()).toEqual({
+      type: "submitted",
+      session_id: sessionId,
+      effects: "unknown",
+    });
+  });
+
+  it("preserves binary read output and waits for backpressure before reporting the next cursor", async () => {
+    const bytes = Buffer.from([0, 255, 10]);
+    reply({
+      type: "read",
+      session: { ...session, oldest_cursor: 10, end_cursor: 13 },
+      chunks: [
+        { cursor: 10, stream: "stdout", data: bytes.toString("base64") },
+      ],
+      next_cursor: 13,
+      lost: { from: 0, to: 10 },
+    });
+    const writes: Buffer[] = [];
+    let completeWrite: (() => void) | undefined;
+    const stdout = vi
+      .spyOn(process.stdout, "write")
+      .mockImplementation((chunk, encodingOrCallback, callback) => {
+        writes.push(Buffer.from(chunk));
+        const done =
+          typeof encodingOrCallback === "function"
+            ? encodingOrCallback
+            : callback;
+        completeWrite = () => {
+          done?.();
+        };
+        return false;
+      });
+    let settled = false;
+    try {
+      const work = sshCommand
+        .parseAsync(["session", "read", sessionId], { from: "user" })
+        .then(() => {
+          settled = true;
+        });
+      await vi.waitFor(() => {
+        expect(writes).toHaveLength(1);
+      });
+      expect(settled).toBe(false);
+      expect(errors).toHaveBeenCalledWith(
+        "Output bytes 0–10 were discarded from the bounded buffer.",
+      );
+      expect(errors).not.toHaveBeenCalledWith(
+        expect.stringContaining("next_cursor"),
+      );
+      completeWrite?.();
+      await work;
+      expect(Buffer.concat(writes)).toEqual(bytes);
+      expect(errors).toHaveBeenCalledWith("next_cursor=13; state=running");
+      expect(output).not.toHaveBeenCalled();
+      expect(process.exitCode).toBe(0);
+    } finally {
+      completeWrite?.();
+      stdout.mockRestore();
+    }
+  });
 });
 
 const helper = vi.hoisted(() => {

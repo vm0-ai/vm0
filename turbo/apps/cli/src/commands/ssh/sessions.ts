@@ -37,7 +37,8 @@ async function output(
           `${session.session_id}  ${session.ssh_connection_id}  ${session.state.type}`,
         );
       break;
-    case "read":
+    case "read": {
+      const signal = AbortSignal.timeout(65_000);
       if (result.lost)
         console.error(
           `Output bytes ${result.lost.from}–${result.lost.to} were discarded from the bounded buffer.`,
@@ -45,16 +46,13 @@ async function output(
       for (const chunk of result.chunks) {
         const stream =
           chunk.stream === "stdout" ? process.stdout : process.stderr;
-        await writeOutput(
-          stream,
-          Buffer.from(chunk.data, "base64"),
-          AbortSignal.timeout(65_000),
-        );
+        await writeOutput(stream, Buffer.from(chunk.data, "base64"), signal);
       }
       console.error(
         `next_cursor=${result.next_cursor}; state=${result.session.state.type}`,
       );
       break;
+    }
     case "status":
       console.log(JSON.stringify(result.session, null, 2));
       break;
