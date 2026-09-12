@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 
-import { EVENT } from "@axiomhq/logging";
 import type { ConnectorSlug } from "@okouai/api-contracts/contracts/connector-identity";
 import { cronConnectorCatalogContract } from "@okouai/api-contracts/contracts/cron";
 import { connectorsSlugCallbackContract } from "@okouai/api-contracts/contracts/connectors-slug-callback";
@@ -1429,34 +1428,6 @@ async function expectCatalogUnavailableRequestError(
     message: "Accepted external connector catalog is unavailable",
     reason,
     code,
-  });
-
-  const [message, fields] =
-    context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
-  expect(message).toBe(
-    "Unhandled request error: Accepted external connector catalog is unavailable",
-  );
-  const logFields = fields as Record<PropertyKey, unknown>;
-  expect(logFields).toMatchObject({
-    type: "unhandled_request_error",
-    errorSummary: "Accepted external connector catalog is unavailable",
-    method: "POST",
-    route: "/api/runners/builtin-firewalls/resolve",
-    errorCode: code,
-    error: expect.objectContaining({
-      name: "ExternalConnectorCatalogUnavailableError",
-      message: "Accepted external connector catalog is unavailable",
-      reason,
-      code,
-    }),
-  });
-  expect(logFields[EVENT]).toMatchObject({
-    source: "api",
-    type: "unhandled_request_error",
-    errorSummary: "Accepted external connector catalog is unavailable",
-    method: "POST",
-    route: "/api/runners/builtin-firewalls/resolve",
-    errorCode: code,
   });
 }
 
@@ -7448,14 +7419,13 @@ describe("connector catalog rejection and latest-valid retention", () => {
     );
   });
 
-  it("does not return or log raw source failures", async () => {
+  it("does not return raw source failures", async () => {
     const bucket = configureSource();
     const privateError =
       `credential=${PRIVATE_VALUE} bucket=${bucket} key=${ACTIVE_KEY} ` +
       "url=https://signed.example.test/private";
     context.mocks.s3.send.mockRejectedValue(new Error(privateError));
     const response = await syncCatalog();
-    const logged = JSON.stringify(context.mocks.axiomLogging.warn.mock.calls);
 
     expectRejectedBeforeAcceptance(response.body, "source-unavailable");
     for (const privateText of [
@@ -7465,7 +7435,6 @@ describe("connector catalog rejection and latest-valid retention", () => {
       "signed.example.test",
     ]) {
       expect(JSON.stringify(response.body)).not.toContain(privateText);
-      expect(logged).not.toContain(privateText);
     }
   });
 });

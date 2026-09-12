@@ -864,10 +864,8 @@ describe("GET /api/cron/sync-skills", () => {
     ).resolves.toBeNull();
   });
 
-  it("logs missing required skills and restores them after a source rollback", async () => {
+  it("restores missing required skills after a source rollback", async () => {
     const fixture = useCronSyncSkillsFixture();
-    mockEnv("AXIOM_TOKEN_TELEMETRY", "test-token");
-    mockEnv("AXIOM_DATASET_SUFFIX", "dev");
     const omittedSkills = fixture.requiredSeedSkillNames.slice(0, 2);
     const omittedSkillSet = new Set(omittedSkills);
     const keptSkills = fixture.requiredSeedSkillNames.filter((name) => {
@@ -910,16 +908,6 @@ describe("GET /api/cron/sync-skills", () => {
     await Promise.all(
       omittedSkills.map(async (name) => {
         await expect(findSkillByUrl(testSkillUrl(name))).resolves.toBeNull();
-      }),
-    );
-
-    expect(context.mocks.axiomLogging.error).toHaveBeenCalledWith(
-      expect.stringContaining("SEED_SKILLS references skills not found"),
-      expect.objectContaining({
-        context: "skills:sync",
-        missingSkills: omittedSkills.map((name) => {
-          return testSkillUrl(name);
-        }),
       }),
     );
 

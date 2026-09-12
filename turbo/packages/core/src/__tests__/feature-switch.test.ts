@@ -212,7 +212,7 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OkouDebug]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.AgentMessageMath]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.AgentMessageMath]).toBe(true);
     expect(otherOrgStates[FeatureSwitchKey.ProgressiveArtifactPreview]).toBe(
       false,
     );

@@ -215,6 +215,37 @@ use `type: rpc_error`, `code` and `delivery: not_dispatched | unknown`. Diagnose
 using these fields, never by matching error text. An uncertain result may have
 performed the remote command: do not automatically retry it.
 
+### Long commands and persistent shells
+
+For work spanning several CLI calls, use a managed session:
+
+```sh
+okou ssh session start <connection-id> --command 'sleep 90; uname -a' --json
+okou ssh session status <session-id> --json
+okou ssh session read <session-id> --cursor 0 --json
+okou ssh session close <session-id> --json
+```
+
+Start returns a session ID immediately; status reports setup failure, running
+state, or observed exit. `--shell` starts a persistent shell instead of a command;
+later `write --text <text>` calls share its working directory, environment and
+stdin. Include newlines when submitting shell commands. Optional `--pty` requests
+a terminal. `write --base64 <data>` preserves binary input, and `--eof` closes
+stdin after the submitted bytes. Use `signal --signal TERM` to submit a signal.
+
+Continue output reads with the returned `next_cursor`. Reading does not consume
+output, and a `lost` range explicitly identifies discarded bytes. `session list`
+recovers the current Run's IDs after a lost start reply. All session commands
+require `ssh:write`. There are eight retained sessions per current Run; completed
+records remain for five minutes or until closed. Running sessions last at most
+two hours and always end with their Run; they cannot resume in another Run.
+
+Input/signal submission and closing SSH do not prove the remote process stopped
+or its effects completed. Never automatically replay uncertain starts or input.
+An older Runner returns `unknown_method`; there is no automatic conversion into
+independent exec calls. Observed authorization-notification disconnects cancel
+managed sessions and prevent new starts until the subscription recovers.
+
 ## Host identity, errors and revocation
 
 The first successful connection learns and persists the server key before

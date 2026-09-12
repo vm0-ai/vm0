@@ -8,6 +8,7 @@ mod lifecycle;
 mod observations;
 mod passwords;
 mod proof;
+mod sessions;
 mod telemetry;
 
 use base64::Engine;

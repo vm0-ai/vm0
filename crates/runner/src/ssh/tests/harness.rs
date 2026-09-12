@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+mod process;
 use httpmock::{Mock, MockServer};
 use russh::{
     Channel, ChannelId,
@@ -46,6 +47,8 @@ pub(super) enum Reply {
     Reject,
     Disconnect,
     Hold,
+    Process,
+    BlockedInput,
 }
 impl Default for Reply {
     fn default() -> Self {
@@ -67,6 +70,9 @@ pub(super) struct Observed {
     pub(super) queries: Mutex<Vec<(String, u16)>>,
     pub(super) resolved: AtomicUsize,
     pub(super) reservations: AtomicUsize,
+    pub(super) ptys: AtomicUsize,
+    pub(super) signals: AtomicUsize,
+    pub(super) input: Mutex<Vec<u8>>,
 }
 
 pub(super) struct TestNetwork {
@@ -274,6 +280,21 @@ impl Harness {
             },
             auth_rejection_time: Duration::ZERO,
             auth_rejection_time_initial: Some(Duration::ZERO),
+            limits: if matches!(reply, Reply::Process) {
+                // Traffic after a quiet period forces another key exchange,
+                // including after the initial setup deadline in the long-task test.
+                russh::Limits {
+                    rekey_time_limit: Duration::from_secs(1),
+                    ..russh::Limits::default()
+                }
+            } else {
+                russh::Limits::default()
+            },
+            window_size: if matches!(reply, Reply::BlockedInput) {
+                1
+            } else {
+                server::Config::default().window_size
+            },
             ..server::Config::default()
         });
         let peer_observed = Arc::clone(&observed);
@@ -284,7 +305,7 @@ impl Harness {
                     accepted = listener.accept() => {
                         let Ok((socket, _)) = accepted else { break; };
                         let config = Arc::clone(&config);
-                        let handler = Peer { key: peer_key.clone(), observed: Arc::clone(&peer_observed), reply: reply.clone(), output: None };
+                        let handler = Peer { key: peer_key.clone(), observed: Arc::clone(&peer_observed), reply: reply.clone(), output: None, process: None, pty: false };
                         sessions.spawn(async move { if let Ok(session) = server::run_stream(config, socket, handler).await { let _ = session.await; } });
                     }
                     _ = sessions.join_next(), if !sessions.is_empty() => (),
@@ -527,6 +548,8 @@ struct Peer {
     observed: Arc<Observed>,
     reply: Reply,
     output: Option<Outgoing>,
+    process: Option<process::Process>,
+    pty: bool,
 }
 
 struct Outgoing {
@@ -631,11 +654,20 @@ impl server::Handler for Peer {
             .unwrap()
             .push(command.to_vec());
         match &self.reply {
+            Reply::Process => {
+                session.channel_success(channel)?;
+                self.process = Some(process::Process::start(
+                    Some(command),
+                    self.pty,
+                    channel,
+                    session.handle(),
+                ));
+            }
             Reply::Reject => {
                 session.channel_failure(channel)?;
             }
             Reply::Disconnect => return Err(russh::Error::Disconnect),
-            Reply::Hold => {
+            Reply::Hold | Reply::BlockedInput => {
                 session.channel_success(channel)?;
             }
             Reply::Exit {
@@ -666,5 +698,88 @@ impl server::Handler for Peer {
         session: &mut server::Session,
     ) -> Result<(), Self::Error> {
         self.send_output(channel, session)
+    }
+
+    async fn shell_request(
+        &mut self,
+        channel: ChannelId,
+        session: &mut server::Session,
+    ) -> Result<(), Self::Error> {
+        if matches!(self.reply, Reply::Process) {
+            session.channel_success(channel)?;
+            self.process = Some(process::Process::start(
+                None,
+                self.pty,
+                channel,
+                session.handle(),
+            ));
+        } else {
+            session.channel_failure(channel)?;
+        }
+        Ok(())
+    }
+
+    async fn pty_request(
+        &mut self,
+        channel: ChannelId,
+        term: &str,
+        columns: u32,
+        rows: u32,
+        _pixels_x: u32,
+        _pixels_y: u32,
+        _modes: &[(russh::Pty, u32)],
+        session: &mut server::Session,
+    ) -> Result<(), Self::Error> {
+        if matches!(self.reply, Reply::Process) {
+            assert_eq!((term, columns, rows), ("xterm-256color", 80, 24));
+            self.observed.ptys.fetch_add(1, Ordering::SeqCst);
+            self.pty = true;
+            session.channel_success(channel)?;
+        } else {
+            session.channel_failure(channel)?;
+        }
+        Ok(())
+    }
+
+    async fn data(
+        &mut self,
+        channel: ChannelId,
+        bytes: &[u8],
+        session: &mut server::Session,
+    ) -> Result<(), Self::Error> {
+        self.observed.input.lock().unwrap().extend_from_slice(bytes);
+        if matches!(self.reply, Reply::BlockedInput) {
+            // A one-byte receive window remains exhausted. Output is still
+            // independent of the client's blocked stdin write.
+            session.data(channel, b"output during blocked input".to_vec())?;
+        }
+        if let Some(process) = &self.process {
+            process.input(process::Input::Data(bytes.to_vec()))?;
+        }
+        Ok(())
+    }
+
+    async fn channel_eof(
+        &mut self,
+        _channel: ChannelId,
+        _session: &mut server::Session,
+    ) -> Result<(), Self::Error> {
+        if let Some(process) = &self.process {
+            process.input(process::Input::Eof)?;
+        }
+        Ok(())
+    }
+
+    async fn signal(
+        &mut self,
+        _channel: ChannelId,
+        signal: russh::Sig,
+        _session: &mut server::Session,
+    ) -> Result<(), Self::Error> {
+        self.observed.signals.fetch_add(1, Ordering::SeqCst);
+        if let Some(process) = &self.process {
+            process.signal(&signal);
+        }
+        Ok(())
     }
 }
