@@ -62,6 +62,14 @@ def capture_and_strip(flow: http.HTTPFlow) -> None:
     When both names appear, the canonical name is authoritative and the legacy
     name is read only when the canonical one is absent entirely. Repetition of a
     single name remains ``malformed``; one occurrence of each is not repetition.
+
+    ``LEGACY_HEADER_NAME`` is a bounded rollout fallback. Surface: existing
+    runner and sandbox, gated on old instances finishing their drain. Remove it
+    once the CLI sends only the canonical name and no queued or claimed
+    execution context can still resolve a ``CLI_PKG_URL`` from before that
+    sender change — see ``docs/deployment-compatibility.md``, *Commit-addressed
+    CLI artifacts*; the package's semantic version is not a valid floor.
+    Follow-up: vm0-ai/vm0#33661 step 3.
     """
     if _STATUS_METADATA_KEY not in flow.metadata:
         header_name = HEADER_NAME

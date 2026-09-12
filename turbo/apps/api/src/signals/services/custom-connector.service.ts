@@ -130,8 +130,10 @@ const MCP_PROTECTED_HEADER_NAMES = Object.freeze([
   "x-forwarded-for",
   "x-forwarded-host",
   "x-forwarded-proto",
-  // Both connector-intent names stay protected while the runner strips both:
-  // the canonical one, and the legacy one older CLI packages still send.
+  // The runner reads and strips both connector-intent names, so both stay
+  // protected here. `x-vm0-connector-intent` is the legacy name older CLI
+  // packages still send; it is removable with the runner's legacy handling
+  // once those packages have drained (vm0-ai/vm0#33661 step 3).
   "x-okou-connector-intent",
   "x-vm0-connector-intent",
 ]);
