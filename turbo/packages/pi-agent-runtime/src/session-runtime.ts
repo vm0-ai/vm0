@@ -10,7 +10,6 @@ import {
   createEditToolDefinition,
   createReadToolDefinition,
   createWriteToolDefinition,
-  ModelRuntime,
   SettingsManager,
   type CreateAgentSessionFromServicesOptions,
   type SessionManager,
@@ -34,8 +33,8 @@ import {
 } from "./okou-harness-prompt";
 import { piPreheatedResourceLoaderOptions } from "./resources";
 import {
+  createPiModelRuntime,
   initializePiSessionResourceRegistry,
-  registeredModelConfig,
 } from "./session-model";
 import type { PiAgentModelConfig } from "./types";
 
@@ -167,10 +166,9 @@ export async function createPiAgentSessionForRuntime(args: {
     );
   }
 
-  const modelRuntime = await ModelRuntime.create({
-    allowModelNetwork: false,
-    modelsPath: null,
-    refreshOnCreate: false,
+  const modelRuntime = await createPiModelRuntime({
+    model,
+    config: args.model,
     ...(args.resourceSnapshot ||
     ["anthropic-messages", "bedrock-converse-stream"].includes(
       args.model.dialect,
@@ -178,10 +176,6 @@ export async function createPiAgentSessionForRuntime(args: {
       ? { credentials: new InMemoryCredentialStore() }
       : {}),
   });
-  modelRuntime.registerProvider(
-    args.model.provider,
-    registeredModelConfig(model, args.model.apiKey, args.model),
-  );
   const services = await createAgentSessionServices({
     cwd: args.cwd,
     agentDir: args.agentDir,
