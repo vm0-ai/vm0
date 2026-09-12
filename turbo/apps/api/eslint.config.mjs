@@ -153,13 +153,6 @@ const apiTestDiagnosticsSyntax = [
   },
 ];
 
-// Files that still read the logger or telemetry mocks, owned by #33656. This
-// list may only shrink: never add a file to it. Delete the list, and the
-// ignores entry that spreads it, once the last file leaves.
-const apiTestDiagnosticsBaseline = [
-  "src/signals/routes/__tests__/helpers/projection-observations.ts",
-];
-
 const productionRouteTestImportMessage =
   "Production source must not import test-only routes. Mount required test fixture routes explicitly from tests through setupApp().";
 
@@ -825,7 +818,6 @@ export default [
       // The app factory's log wiring and flush ownership is the subject here,
       // and no route exposes it.
       "src/__tests__/app-factory.test.ts",
-      ...apiTestDiagnosticsBaseline,
     ],
     rules: {
       "no-restricted-syntax": [
