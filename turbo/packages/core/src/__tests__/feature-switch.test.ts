@@ -36,6 +36,7 @@ describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.AvatarNeckSweater, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.MarkdownTime, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -335,6 +336,9 @@ describe("getFeatureSwitchMetadata", () => {
     const metadata = getFeatureSwitchMetadata();
 
     expect(metadata[FeatureSwitchKey.AvatarNeckSweater].rolloutStage).toBe(
+      "released",
+    );
+    expect(metadata[FeatureSwitchKey.MarkdownTime].rolloutStage).toBe(
       "released",
     );
     expect(metadata[FeatureSwitchKey.Banking].rolloutStage).toBe("beta");
