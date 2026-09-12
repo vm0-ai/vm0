@@ -8423,7 +8423,7 @@ describe("RUN-02: model provider selection and built-in admission", () => {
       orgId,
       status: "active",
       supportByok: true,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
     const completed = await bdd.completeOnboarding(actor);
     expect(completed.status).toBe(200);
@@ -8431,7 +8431,7 @@ describe("RUN-02: model provider selection and built-in admission", () => {
       orgId,
       status: "active",
       supportByok: true,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
     await api.ensureOrgModelProvider(actor);
     const agent = await bdd.createAgent(actor, {
@@ -8449,7 +8449,7 @@ describe("RUN-02: model provider selection and built-in admission", () => {
       orgId,
       status: "active",
       supportByok: true,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
 
     const run = await api.createRun(actor, {
@@ -8471,7 +8471,7 @@ describe("RUN-02: model provider selection and built-in admission", () => {
       orgId,
       status: "suspended",
       supportByok: true,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
 
     const byokPrompt = `staff suspended BYOK ${randomUUID()}`;
@@ -21174,7 +21174,7 @@ describe("BILL-01: billing entitlement reconciliation cron", () => {
       canBuyConcurrency: false,
       autoRechargeAllowed: false,
       supportByok: false,
-      restrictedVm0Models: true,
+      restrictedBuiltInModels: true,
       videoGenerationAllowed: false,
       workflowWebhookAutomationAllowed: false,
       stripeSubscriptionId: granted.subscriptionId,

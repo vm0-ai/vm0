@@ -140,7 +140,7 @@ function connectedPersonalClaudeCodeProvider(): ModelProviderResponse {
 
 function mockBillingCapabilities(modelCapabilities: {
   readonly supportByok: boolean;
-  readonly restrictedVm0Models: boolean;
+  readonly restrictedBuiltInModels: boolean;
 }): void {
   context.mocks.api(billingStatusContract.get, ({ respond }) => {
     const status: BillingStatusResponse = {
@@ -503,7 +503,10 @@ test("Offer Pro when personal subscription providers are unavailable", async () 
     role: "admin",
   });
   context.mocks.data.personalModelProviders([]);
-  mockBillingCapabilities({ supportByok: false, restrictedVm0Models: false });
+  mockBillingCapabilities({
+    supportByok: false,
+    restrictedBuiltInModels: false,
+  });
 
   await openModelSettings("Models");
 

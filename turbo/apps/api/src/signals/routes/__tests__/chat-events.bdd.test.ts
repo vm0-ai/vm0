@@ -7999,7 +7999,7 @@ describe("CHAT-02: model-first provider policies", () => {
       orgId,
       status: "suspended",
       supportByok: true,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
     const suspendedEventId = randomUUID();
     const suspended = await chat.requestSendEvent(
@@ -8047,7 +8047,7 @@ describe("CHAT-02: model-first provider policies", () => {
       orgId,
       status: "active",
       supportByok: false,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
     await seedBuiltInModelKey(LIMITED_FREE1_DEFAULT_RUN_MODEL);
     const byokDisabled = await chat.requestSendEvent(
@@ -8080,7 +8080,7 @@ describe("CHAT-02: model-first provider policies", () => {
       orgId,
       status: "active",
       supportByok: true,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
     await api.updateOrgModelPolicies(actor, [
       {
@@ -8095,7 +8095,7 @@ describe("CHAT-02: model-first provider policies", () => {
       orgId,
       status: "active",
       supportByok: true,
-      restrictedVm0Models: true,
+      restrictedBuiltInModels: true,
     });
     const restricted = await chat.requestSendEvent(
       actor,
@@ -8175,7 +8175,7 @@ describe("CHAT-02: model-first provider policies", () => {
       orgId,
       status: "suspended",
       supportByok: true,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
     threadLock.release();
     const rejected = await followUp;

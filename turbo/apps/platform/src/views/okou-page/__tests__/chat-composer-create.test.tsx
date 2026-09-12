@@ -40,7 +40,10 @@ import {
 function setupModels(): void {
   mockAgent();
   mockOrgModelRoutes("claude-fable-5-1");
-  mockBillingCapabilities({ supportByok: true, restrictedVm0Models: false });
+  mockBillingCapabilities({
+    supportByok: true,
+    restrictedBuiltInModels: false,
+  });
   context.mocks.data.userModelPreference({
     selectedModel: "claude-fable-5-1",
     serviceTier: null,

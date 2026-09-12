@@ -4373,7 +4373,7 @@ describe("connector catalog valid lifecycle", () => {
       orgId,
       status: "active",
       supportByok: true,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
     const initialOauth = await connectorsApi.startOauth(
       actor,

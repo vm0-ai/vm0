@@ -268,7 +268,10 @@ function filterPolicyUpdatesForPlan(
   policies: UpdateOrgModelPolicy[],
   modelCapabilities: ModelPlanCapabilities,
 ): UpdateOrgModelPolicy[] {
-  if (modelCapabilities.supportByok && !modelCapabilities.restrictedVm0Models) {
+  if (
+    modelCapabilities.supportByok &&
+    !modelCapabilities.restrictedBuiltInModels
+  ) {
     return policies;
   }
 

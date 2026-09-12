@@ -380,6 +380,7 @@
     "memberInvitationAllowed": true,
     "autoRechargeAllowed": false,
     "supportByok": false,
+    "restrictedBuiltInModels": true,
     "restrictedVm0Models": true,
     "videoGenerationAllowed": false,
     "workflowWebhookAutomationAllowed": false,

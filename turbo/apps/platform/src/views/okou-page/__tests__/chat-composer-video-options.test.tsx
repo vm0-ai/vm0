@@ -56,7 +56,7 @@ function installVideoEnvironment(): void {
   mockOrgModelRoutes("claude-fable-5-1");
   mockBillingCapabilities({
     supportByok: true,
-    restrictedVm0Models: false,
+    restrictedBuiltInModels: false,
   });
 }
 
