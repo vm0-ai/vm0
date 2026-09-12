@@ -262,23 +262,37 @@ impl Pool {
         Ok(lease)
     }
 
-    fn monitor(&self, transport: &Arc<Transport>) {
+    fn monitor(self: &Arc<Self>, transport: &Arc<Transport>) {
+        let pool = Arc::downgrade(self);
         let weak = Arc::downgrade(transport);
         let scope = transport.scope.clone();
         let cancelled = transport.access.cancelled();
         let retained = transport.retained;
         let mut idle = transport.idle_deadline.subscribe();
         self.tasks.spawn(async move {
+            let mut idle_deadline = *idle.borrow_and_update();
             loop {
-                let deadline = (*idle.borrow_and_update())
-                    .unwrap_or(scope.deadline)
-                    .min(scope.deadline);
+                let deadline = idle_deadline.unwrap_or(scope.deadline).min(scope.deadline);
                 tokio::select! { biased;
                     () = scope.cancelled.cancelled() => break,
                     () = scope.sandbox_cancelled.cancelled() => break,
                     () = cancelled.cancelled(), if retained => break,
-                    changed = idle.changed() => { if changed.is_err() { break; } }
-                    () = tokio::time::sleep_until(deadline) => break,
+                    changed = idle.changed() => {
+                        if changed.is_err() { break; }
+                        idle_deadline = *idle.borrow_and_update();
+                    }
+                    () = tokio::time::sleep_until(deadline) => {
+                        if Instant::now() >= scope.deadline {
+                            break;
+                        }
+                        let Some(pool) = pool.upgrade() else { break; };
+                        // A selected idle timeout may race checkout or a newer idle period.
+                        // Retire only entries still idle and expired under the checkout lock.
+                        pool.prune();
+                        // Checkout may have removed the entry before publishing its new deadline.
+                        // Consume this expiry once, then await that change or lifecycle cancellation.
+                        idle_deadline = None;
+                    }
                 }
             }
             if let Some(transport) = weak.upgrade() {

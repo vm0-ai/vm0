@@ -142,8 +142,10 @@ command keep their existing socket behavior. If the socket cannot be prepared
 for reuse, it is retired without changing the completed command's result.
 
 The Run retains at most eight idle transports, evicting the oldest on overflow.
-An idle timer closes each socket after 60 seconds without another request. Physical
-work has 24 Run-local permits: eight short operations, eight retained sessions and
+An idle timer closes each socket after 60 seconds without another request.
+Idle expiry rechecks current pool membership under the same lock as checkout, so
+a delayed timeout cannot close a connection already in use or newly returned to idle.
+Physical work has 24 Run-local permits: eight short operations, eight retained sessions and
 eight idle transports. Physical-capacity waits observe the caller's setup deadline
 and cancellation. Neither this bound nor idle retention creates a Runner-wide quota.
 The socket's host lease holds its physical permit through actual DNS/library cleanup.

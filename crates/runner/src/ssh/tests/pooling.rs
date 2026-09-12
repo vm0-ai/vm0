@@ -203,6 +203,52 @@ async fn idle_expiry_closes_the_socket_without_waiting_for_another_request() {
 }
 
 #[tokio::test]
+async fn reuse_renews_idle_expiry_and_active_work_survives_earlier_idle_deadlines() {
+    let mut h = Harness::new(Reply::Process).await;
+    h.runtime.ably_connected(true);
+    let _resolve = h.resolve(h.credential(true)).await;
+    assert_eq!(
+        terminal(&h.request(command("true")).await)["type"],
+        "finished"
+    );
+
+    tokio::time::pause();
+    tokio::time::advance(Duration::from_secs(50)).await;
+    tokio::time::resume();
+    assert_eq!(
+        output(&h.request(command("printf renewed")).await, "stdout"),
+        b"renewed"
+    );
+    assert_eq!(h.observed.auth.load(Ordering::SeqCst), 1);
+
+    // Cross the first idle period's deadline while the renewed period is current.
+    tokio::time::pause();
+    tokio::time::advance(Duration::from_secs(15)).await;
+    tokio::time::resume();
+    let active = start(&h, json!({"type":"shell"}), false).await;
+    state(&h, &active, "running").await;
+    assert_eq!(h.observed.auth.load(Ordering::SeqCst), 1);
+
+    // Cross the renewed idle deadline after checkout. Only Run/session limits apply now.
+    tokio::time::pause();
+    tokio::time::advance(Duration::from_secs(61)).await;
+    tokio::time::resume();
+    write(&h, &active, "printf live; exit 0\n", false).await;
+    assert_eq!(
+        state(&h, &active, "finished").await["state"]["exit"]["code"],
+        0
+    );
+    assert_eq!(
+        bytes(&rpc(&h, "read", json!({"sessionId":active,"cursor":0})).await),
+        b"live"
+    );
+    assert_eq!(h.observed.auth.load(Ordering::SeqCst), 1);
+    assert_eq!(h.observed.closed.load(Ordering::SeqCst), 0);
+    h.shutdown().await;
+    wait_for(|| h.observed.closed.load(Ordering::SeqCst) == 1).await;
+}
+
+#[tokio::test]
 async fn idle_cache_evicts_the_oldest_connection_and_never_matches_only_an_endpoint() {
     let mut h = Harness::new(Reply::default()).await;
     h.runtime.ably_connected(true);
