@@ -383,7 +383,7 @@ describe("GET/PUT /api/model-policies", () => {
     ).toBe(LIMITED_FREE1_DEFAULT_RUN_MODEL);
   });
 
-  it.each(["deepseek-v4-flash", "gpt-5.6-luna"] as const)(
+  it.each(["deepseek-v4-pro", "deepseek-v4-flash", "gpt-5.6-luna"] as const)(
     "keeps an existing %s default for limited-free-1 workspaces",
     async (previousDefaultModel) => {
       const fixture = seedFixture();
