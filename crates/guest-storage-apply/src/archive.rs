@@ -14,7 +14,8 @@ use std::path::Path;
 /// later error. Entries rejected by the path and link safety checks, and link
 /// targets or sources that are missing or unreadable for non-transport reasons,
 /// are logged and skipped. Consequently, `Ok(())` means that all accepted
-/// entries were processed, not that every archive entry was unpacked.
+/// entries were processed and the enclosing gzip member passed validation,
+/// not that every archive entry was unpacked.
 ///
 /// # TOCTOU (documented, not mitigated)
 ///
@@ -33,10 +34,11 @@ use std::path::Path;
 ///
 /// # Errors
 ///
-/// An unreadable archive entry or entry path, or a failure to unpack an
-/// accepted entry terminates extraction. Terminating archive errors are
-/// retriable when the source recorded an HTTP body-read failure; otherwise they
-/// are fatal. Files written before an error remain in the target directory.
+/// An unreadable archive entry or entry path, a failure to unpack an
+/// accepted entry, or a gzip validation failure terminates extraction. Archive
+/// errors are retriable when the source recorded an HTTP body-read failure;
+/// otherwise they are fatal. Files written before an error remain in the target
+/// directory.
 pub(crate) fn extract_tar_gz(source: ArchiveSource, target: &Path) -> Result<(), DownloadError> {
     let (reader, http_body_read_failure) = source.into_parts();
     let decoder = flate2::read::GzDecoder::new(reader);
@@ -162,6 +164,12 @@ pub(crate) fn extract_tar_gz(source: ArchiveSource, target: &Path) -> Result<(),
             )
         })?;
     }
+
+    // Tar iteration stops at its end marker before gzip necessarily reaches its
+    // trailer. Finish the same decoder to validate its CRC and uncompressed size.
+    let mut decoder = archive.into_inner();
+    io::copy(&mut decoder, &mut io::sink())
+        .map_err(|e| archive_error(&http_body_read_failure, "Failed to finish gzip archive", e))?;
 
     Ok(())
 }
