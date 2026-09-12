@@ -302,12 +302,7 @@ async function claimSummary(db: Db, identity: ActivityRunIdentity) {
     if (!claimed) {
       return {
         kind: "response" as const,
-        response: emptyResponse(
-          identity.runId,
-          (await eligibleActivityRun(tx, identity))[0]
-            ? "unavailable"
-            : "ineligible",
-        ),
+        response: emptyResponse(identity.runId, "unavailable"),
       };
     }
     return { kind: "claim" as const, claimId, revision, row, context };
@@ -322,10 +317,6 @@ async function generateSummary(
   const claimed = await claimSummary(db, identity);
   if (claimed.kind === "response") {
     return claimed.response;
-  }
-  signal.throwIfAborted();
-  if (!(await eligibleActivityRun(db, identity))[0]) {
-    return emptyResponse(identity.runId, "ineligible");
   }
   signal.throwIfAborted();
   // Both the request's own end and this attempt's deadline cancel the
@@ -379,10 +370,6 @@ async function generateSummary(
     activityPhrases(generated.ok ? (generated.value ?? null) : null)?.join(
       "\n",
     ) ?? null;
-  const enabled = await activityEnabled(db, identity.orgId, identity.userId);
-  if (!enabled) {
-    return emptyResponse(identity.runId, "unavailable");
-  }
   await activityTransaction(db, async (tx) => {
     await tx
       .update(runActivitySnapshots)
@@ -415,9 +402,6 @@ async function generateSummary(
   });
   signal.throwIfAborted();
   return await activityTransaction(db, async (tx) => {
-    if (!(await eligibleActivityRun(tx, identity))[0]) {
-      return emptyResponse(identity.runId, "ineligible");
-    }
     const row = await lockActivitySnapshot(tx, identity.runId);
     if (row.expiresAt <= row.clock) {
       return emptyResponse(identity.runId, "unavailable");
@@ -467,16 +451,6 @@ export async function requestActivitySummary(
       outcome: "storage_failed",
     });
   }
-  if (!(await eligibleActivityRun(db, identity))[0]) {
-    return {
-      kind: "summary" as const,
-      response: emptyResponse(identity.runId, "ineligible"),
-    };
-  }
-  if (!(await activityEnabled(db, identity.orgId, identity.userId))) {
-    return { kind: "disabled" as const };
-  }
-  signal.throwIfAborted();
   return {
     kind: "summary" as const,
     response: result.ok
