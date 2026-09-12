@@ -81,6 +81,8 @@ function configuredThinkingLevel(
   sessionManager: SessionManager,
   configured: ModelThinkingLevel | undefined,
 ): ModelThinkingLevel | undefined {
+  // A run captures its current effort before either API-first or Sandbox execution.
+  if (configured !== undefined) return configured;
   const hasThinkingEntry = sessionManager.getBranch().some((entry) => {
     return entry.type === "thinking_level_change";
   });
@@ -101,6 +103,21 @@ function configuredThinkingLevel(
     default: {
       throw new Error(`Unsupported Pi session thinking level: ${existing}`);
     }
+  }
+}
+
+function recordConfiguredThinkingLevel(
+  sessionManager: SessionManager,
+  configured: ModelThinkingLevel | undefined,
+  effective: ModelThinkingLevel,
+): void {
+  // The SDK restores messages but does not record a changed launch effort on an
+  // existing branch. Persist the effective level before a handoff/checkpoint.
+  if (
+    configured !== undefined &&
+    sessionManager.buildSessionContext().thinkingLevel !== effective
+  ) {
+    sessionManager.appendThinkingLevelChange(effective);
   }
 }
 
@@ -210,5 +227,10 @@ export async function createPiAgentSessionForRuntime(args: {
       ...memoryTools,
     ],
   });
+  recordConfiguredThinkingLevel(
+    args.sessionManager,
+    args.model.thinkingLevel,
+    created.session.thinkingLevel,
+  );
   return { ...created, services, model };
 }

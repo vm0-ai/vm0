@@ -276,7 +276,7 @@ import {
   voiceInputV2Enabled$,
   featureSwitch$,
 } from "../../signals/external/feature-switch.ts";
-import { effectiveChatReasoningEffort } from "../../signals/okou-page/model-reasoning-effort.ts";
+import { preferredChatReasoningEffort } from "../../signals/okou-page/model-reasoning-effort.ts";
 import {
   selectedComputerUseHostId,
   visibleComputerUseHosts,
@@ -10126,8 +10126,8 @@ function ComposerTemporaryModelNotice({
   const modelChanged =
     selection?.selectedModel !== defaultSelection?.selectedModel;
   const serviceTierChanged = selectionServiceTier !== defaultServiceTier;
-  const effort = effectiveChatReasoningEffort(selection, featureSwitches);
-  const defaultEffort = effectiveChatReasoningEffort(
+  const effort = preferredChatReasoningEffort(selection, featureSwitches);
+  const defaultEffort = preferredChatReasoningEffort(
     defaultSelection,
     featureSwitches,
   );

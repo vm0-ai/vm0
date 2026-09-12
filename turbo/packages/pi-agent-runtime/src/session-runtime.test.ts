@@ -1500,7 +1500,7 @@ describe("official Pi AgentSession runtime", () => {
     }
   });
 
-  it("keeps an existing explicit session thinking level authoritative", async () => {
+  it("applies the captured run effort to a restored session and records the change", async () => {
     const sessionManager = SessionManager.inMemory("/home/user/workspace", {
       id: "00000000-0000-4000-8000-000000000125",
     });
@@ -1523,12 +1523,15 @@ describe("official Pi AgentSession runtime", () => {
     });
 
     try {
-      expect(created.session.agent.state.thinkingLevel).toBe("high");
+      expect(created.session.agent.state.thinkingLevel).toBe("max");
       expect(
         sessionManager.getBranch().filter((entry) => {
           return entry.type === "thinking_level_change";
         }),
-      ).toHaveLength(1);
+      ).toEqual([
+        expect.objectContaining({ thinkingLevel: "high" }),
+        expect.objectContaining({ thinkingLevel: "max" }),
+      ]);
     } finally {
       created.session.dispose();
     }

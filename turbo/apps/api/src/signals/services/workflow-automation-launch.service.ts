@@ -363,6 +363,8 @@ async function resolveModelContext(
       resolveReasoningEffortForDispatch({
         selectedModel,
         effort: threadModelContext.reasoningEffort,
+        runtimeProviderType:
+          builtInModelRuntimeRoute?.providerType ?? effectiveModelProvider,
         piExecution,
       }) ?? null,
     piExecution,

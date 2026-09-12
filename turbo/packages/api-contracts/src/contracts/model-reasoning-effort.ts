@@ -62,7 +62,7 @@ export const modelSettingsPatchSchema = z
 
 export type ModelSettingsPatch = z.infer<typeof modelSettingsPatchSchema>;
 
-/** Native CLI choices, further restricted by the selected model. */
+/** Model preferences span runtimes; each execution route narrows these choices. */
 export function getModelReasoningEfforts(
   model: string | null | undefined,
 ): readonly ReasoningEffort[] {
@@ -87,6 +87,10 @@ export function getModelReasoningEfforts(
       return CLAUDE_CODE_EFFORTS;
     case "claude-sonnet-4-6":
       return ["low", "medium", "high", "max"];
+    case "deepseek-v4-flash":
+      return ["low", "high", "xhigh", "max"];
+    case "deepseek-v4-pro":
+      return ["high", "xhigh", "max"];
     default:
       return [];
   }
@@ -99,7 +103,7 @@ export function isModelReasoningEffortSupported(
   return getModelReasoningEfforts(model).includes(effort);
 }
 
-/** Match Okou's native launch defaults when a model has no saved override. */
+/** Match Okou's model launch defaults when a model has no saved override. */
 export function defaultModelReasoningEffort(
   model: string | null | undefined,
 ): ReasoningEffort | undefined {
@@ -119,9 +123,65 @@ export function defaultModelReasoningEffort(
     case "claude-opus-4-8":
     case "claude-sonnet-5":
     case "claude-sonnet-4-6":
+    case "deepseek-v4-flash":
+    case "deepseek-v4-pro":
       return "high";
     default:
       return undefined;
+  }
+}
+
+/** Product choices supported by the captured runtime and provider catalog. */
+export function getRouteReasoningEfforts(args: {
+  readonly model: string | null | undefined;
+  readonly piExecution: boolean;
+  readonly runtimeProviderType: string | null | undefined;
+}): readonly ReasoningEffort[] {
+  const choices = getModelReasoningEfforts(args.model);
+  if (args.model === "deepseek-v4-flash" || args.model === "deepseek-v4-pro") {
+    if (!args.piExecution) return [];
+    if (args.runtimeProviderType === "openrouter-codex") {
+      return ["high", "xhigh"];
+    }
+    if (
+      args.runtimeProviderType === "deepseek" ||
+      args.runtimeProviderType === "custom-openai-responses"
+    ) {
+      return choices.filter((effort) => {
+        return effort !== "xhigh";
+      });
+    }
+    return [];
+  }
+  return choices.filter((effort) => {
+    return effort !== "ultracode" && (!args.piExecution || effort !== "ultra");
+  });
+}
+
+/** An unavailable route choice falls back without changing the saved preference. */
+export function resolveRouteReasoningEffort(args: {
+  readonly model: string | null | undefined;
+  readonly effort: ReasoningEffort | undefined;
+  readonly piExecution: boolean;
+  readonly runtimeProviderType: string | null | undefined;
+}): ReasoningEffort | undefined {
+  if (args.effort === undefined) return undefined;
+  const choices = getRouteReasoningEfforts(args);
+  if (choices.includes(args.effort)) return args.effort;
+  const fallback = defaultModelReasoningEffort(args.model);
+  return fallback && choices.includes(fallback) ? fallback : undefined;
+}
+
+/** Claude's product label differs from Pi's SDK vocabulary. */
+export function piThinkingLevelForEffort(effort: ReasoningEffort) {
+  switch (effort) {
+    case "extra":
+      return "xhigh";
+    case "ultra":
+    case "ultracode":
+      throw new Error(`Reasoning effort ${effort} is not supported by Pi`);
+    default:
+      return effort;
   }
 }
 

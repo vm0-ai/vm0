@@ -10,6 +10,8 @@ import {
   modelSettingsSchema,
   modelReasoningEffort,
   withModelReasoningEffort,
+  resolveRouteReasoningEffort,
+  piThinkingLevelForEffort,
 } from "../model-reasoning-effort";
 
 describe("chat reasoning effort capabilities", () => {
@@ -31,7 +33,7 @@ describe("chat reasoning effort capabilities", () => {
       "ultracode",
     ]);
     expect(defaultModelReasoningEffort("gpt-5.6-sol")).toBe("max");
-    expect(defaultModelReasoningEffort("deepseek-v4-flash")).toBeUndefined();
+    expect(defaultModelReasoningEffort("deepseek-v4-flash")).toBe("high");
   });
 
   it("keeps each model's override independent", () => {
@@ -45,7 +47,7 @@ describe("chat reasoning effort capabilities", () => {
     expect(
       modelReasoningEffort("deepseek-v4.1-flash", settings),
     ).toBeUndefined();
-    expect(modelReasoningEffort("deepseek-v4-flash", settings)).toBeUndefined();
+    expect(modelReasoningEffort("deepseek-v4-flash", settings)).toBe("high");
     expect(
       modelSettingsSchema.safeParse({
         "deepseek-v4.1-flash": { effort: "high" },
@@ -53,9 +55,9 @@ describe("chat reasoning effort capabilities", () => {
     ).toBe(false);
     expect(
       modelSettingsSchema.safeParse({
-        "deepseek-v4-flash": { effort: "high" },
+        "deepseek-v4-flash": { effort: "low" },
       }).success,
-    ).toBe(false);
+    ).toBe(true);
     expect(
       modelSettingsSchema.safeParse({
         "gpt-5.6-sol": { effort: null },
@@ -113,5 +115,90 @@ describe("chat reasoning effort capabilities", () => {
     ).toMatchObject({
       runOptions: { reasoningEffort: "low", codexServiceTier: "fast" },
     });
+  });
+});
+
+describe("route effort preferences", () => {
+  it.each([
+    {
+      model: "gpt-5.6-sol",
+      effort: "ultra",
+      piExecution: true,
+      runtimeProviderType: "openai-api-key",
+      expected: "max",
+    },
+    {
+      model: "gpt-6-astra",
+      effort: "ultra",
+      piExecution: false,
+      runtimeProviderType: "openai-api-key",
+      expected: "ultra",
+    },
+    {
+      model: "claude-sonnet-5",
+      effort: "extra",
+      piExecution: true,
+      runtimeProviderType: "anthropic-api-key",
+      expected: "extra",
+    },
+    {
+      model: "claude-sonnet-5",
+      effort: "ultracode",
+      piExecution: true,
+      runtimeProviderType: "anthropic-api-key",
+      expected: "high",
+    },
+    {
+      model: "deepseek-v4-flash",
+      effort: "low",
+      piExecution: true,
+      runtimeProviderType: "deepseek",
+      expected: "low",
+    },
+    {
+      model: "deepseek-v4-flash",
+      effort: "low",
+      piExecution: true,
+      runtimeProviderType: "openrouter-codex",
+      expected: "high",
+    },
+    {
+      model: "deepseek-v4-pro",
+      effort: "max",
+      piExecution: true,
+      runtimeProviderType: "openrouter-codex",
+      expected: "high",
+    },
+    {
+      model: "deepseek-v4-pro",
+      effort: "xhigh",
+      piExecution: true,
+      runtimeProviderType: "openrouter-codex",
+      expected: "xhigh",
+    },
+    {
+      model: "deepseek-v4-pro",
+      effort: "xhigh",
+      piExecution: true,
+      runtimeProviderType: "deepseek",
+      expected: "high",
+    },
+    {
+      model: "deepseek-v4-pro",
+      effort: "max",
+      piExecution: false,
+      runtimeProviderType: "deepseek",
+      expected: undefined,
+    },
+  ] as const)(
+    "resolves $model $effort on $runtimeProviderType",
+    ({ expected, ...args }) => {
+      const settings = { [args.model]: { effort: args.effort } };
+      expect(resolveRouteReasoningEffort(args)).toBe(expected);
+      expect(modelReasoningEffort(args.model, settings)).toBe(args.effort);
+    },
+  );
+  it("maps Claude's product effort to Pi's level", () => {
+    expect(piThinkingLevelForEffort("extra")).toBe("xhigh");
   });
 });

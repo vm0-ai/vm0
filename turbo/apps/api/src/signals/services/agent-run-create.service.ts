@@ -1,3 +1,4 @@
+import { isPiNativeModel } from "@okouai/core/pi-execution";
 import { isCloudModelMappingValid } from "@okouai/api-contracts/contracts/cloud-model-mapping";
 import {
   assertPiNativeCredential,
@@ -263,10 +264,7 @@ import {
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { resolvePiSandboxModelConfig } from "./pi-sandbox-config";
-import {
-  isPiNativeModel,
-  PiNativeConfigurationError,
-} from "./pi-native-model-config";
+import { PiNativeConfigurationError } from "./pi-native-model-config";
 import {
   piResourceDiscoveryMounts,
   piResourceSnapshotDigest,
@@ -8667,6 +8665,7 @@ async function materializePreparedPiProvider(
   const config = resolvePiSandboxModelConfig(
     provider,
     createArgs.codexServiceTier,
+    createArgs.agentRunMetadata?.reasoningEffort,
   );
   if (!config || !provider) {
     throw new Error(
@@ -8761,6 +8760,7 @@ function resolvePreparedPiModelConfig(args: {
   const config = resolvePiSandboxModelConfig(
     args.modelProvider,
     args.createArgs.codexServiceTier,
+    args.createArgs.agentRunMetadata?.reasoningEffort,
   );
   if (!config) {
     throw new Error(
