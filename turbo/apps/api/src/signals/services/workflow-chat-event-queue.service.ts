@@ -390,7 +390,8 @@ export async function rejectWorkflowQueueEvent(
 export async function staleChatThreadQueueThreadIds(
   db: Db,
   args: {
-    readonly staleBefore: Date;
+    readonly createdAtOrAfter: Date;
+    readonly createdBefore: Date;
     readonly limit: number;
     readonly chatThreadIds?: readonly string[];
   },

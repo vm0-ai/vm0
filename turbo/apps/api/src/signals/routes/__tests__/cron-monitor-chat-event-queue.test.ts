@@ -196,6 +196,21 @@ describe("cron monitor chat event queue", () => {
     expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
   });
 
+  it("ignores orphaned events outside the recent stale window", async () => {
+    const fixture = await trackFixture(seedFixture("old-orphan"));
+
+    const response = await accept(
+      stateClient().monitor({ body: { event_ids: [fixture.eventId] } }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      success: true,
+      orphanedMessages: 0,
+    });
+    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+  });
+
   it("does not expose scoped monitoring in production", async () => {
     mockEnv("ENV", "production");
 

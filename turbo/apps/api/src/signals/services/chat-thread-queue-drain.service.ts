@@ -24,10 +24,12 @@ import {
 } from "./workflow-queue-drain.service";
 import { expiredCancellationRecoveryThreads } from "./chat-active-run.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
-import { pendingActiveInputCondition } from "./chat-event-queue.service";
+import {
+  pendingActiveInputCondition,
+  recentStaleChatQueueWindow,
+} from "./chat-event-queue.service";
 
 const DRAIN_SWEEP_LIMIT = 20;
-export const STALE_QUEUE_ITEM_AGE_MS = 5 * 60 * 1000;
 const L = logger("ChatThreadQueueDrain");
 
 type QueueDrainSweepCandidate =
@@ -211,7 +213,7 @@ export const drainStaleChatThreadQueues$ = command(
     }
     const db = set(writeDb$);
     const currentTime = nowDate().getTime();
-    const staleBefore = new Date(currentTime - STALE_QUEUE_ITEM_AGE_MS);
+    const staleWindow = recentStaleChatQueueWindow(currentTime);
     const recoveryExpiredBefore = new Date(
       currentTime - CANCELLATION_RECOVERY_STALE_AFTER_MS,
     );
@@ -222,7 +224,7 @@ export const drainStaleChatThreadQueues$ = command(
         chatThreadIds: input.chatThreadIds,
       }),
       staleChatThreadQueueThreadIds(db, {
-        staleBefore,
+        ...staleWindow,
         limit: DRAIN_SWEEP_LIMIT,
         chatThreadIds: input.chatThreadIds,
       }),
@@ -248,7 +250,7 @@ export const drainStaleChatThreadQueues$ = command(
       .map((chatThreadId) => {
         return {
           chatThreadId,
-          queueItemCreatedBefore: staleBefore,
+          queueItemCreatedBefore: staleWindow.createdBefore,
           reason: "queue-item-stale" as const,
         };
       });

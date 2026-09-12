@@ -7,6 +7,7 @@ const c = initContract();
 const fixtureKindSchema = z.enum([
   "active-run",
   "failed-message",
+  "old-orphan",
   "orphan",
   "orphaned-automation",
   "queued-integration",
