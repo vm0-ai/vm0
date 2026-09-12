@@ -7,13 +7,6 @@ import {
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
 
-/** Match Okou's native launch defaults when the thread has no override. */
-export function defaultChatReasoningEffort(
-  model: string,
-): ReasoningEffort | undefined {
-  return defaultModelReasoningEffort(model);
-}
-
 /** Native chat choices only; Pi effort is owned by a separate rollout. */
 export function availableChatReasoningEfforts(
   model: string | null | undefined,

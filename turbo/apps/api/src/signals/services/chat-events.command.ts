@@ -1280,7 +1280,6 @@ async function maybePersistExplicitRunSettings(params: {
   readonly body: NormalSendBody;
   readonly codexServiceTier: CodexServiceTier | undefined;
   readonly modelPin: ThreadModelPin;
-  readonly modelSettings: ModelSettings;
 }): Promise<void> {
   if (params.body.modelSelection === undefined) {
     return;
@@ -1302,7 +1301,11 @@ async function maybePersistExplicitRunSettings(params: {
           ? {}
           : {
               ...chatThreadModelPinColumns(params.modelPin),
-              modelSettings: params.modelSettings,
+              modelSettings: sql`${chatThreads.modelSettings} || jsonb_build_object(
+                cast(${modelSettingsPatch.model} as text),
+                COALESCE(${chatThreads.modelSettings} -> cast(${modelSettingsPatch.model} as text), '{}'::jsonb)
+                  || jsonb_build_object('effort', cast(${modelSettingsPatch.effort} as text))
+              )`,
             }),
         updatedAt,
       })
@@ -2745,7 +2748,6 @@ function maybePersistTimedExplicitRunSettings(
         body: args.body,
         codexServiceTier: runConfiguration.codexServiceTier,
         modelPin: runConfiguration.modelPin,
-        modelSettings: runConfiguration.modelSettings,
       });
     },
   );

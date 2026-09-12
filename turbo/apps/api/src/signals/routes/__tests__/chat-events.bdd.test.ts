@@ -3982,6 +3982,80 @@ describe("CHAT effort: thread configuration", () => {
     await cancelChatRun(actor, reset.runId, resetClaim.sandboxHeaders);
   }, 90_000);
 
+  it("merges concurrent explicit effort writes without dropping another model", async () => {
+    const { actor, agentId, providerId } = await entitledChatActor();
+    await api.updateOrgModelPolicies(
+      actor,
+      (["claude-sonnet-5", "claude-opus-4-8"] as const).map((model) => {
+        return {
+          model,
+          isDefault: model === "claude-sonnet-5",
+          defaultProviderType: "anthropic-api-key" as const,
+          credentialScope: "org" as const,
+          modelProviderId: providerId,
+        };
+      }),
+    );
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ChatReasoningEffort]: true,
+    });
+    const thread = await chat.createThread(actor, {
+      agentId,
+      title: "Concurrent effort patches",
+    });
+    const threadLock = await holdChatThreadRowLockFixture({
+      threadId: thread.id,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      threadLock.release();
+      await threadLock.done;
+    });
+
+    const requests = [
+      chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: thread.id,
+          prompt: "Save Sonnet effort",
+          model: "claude-sonnet-5",
+          runOptions: { reasoningEffort: "extra" },
+        },
+        [201],
+      ),
+      chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: thread.id,
+          prompt: "Save Opus effort",
+          model: "claude-opus-4-8",
+          runOptions: { reasoningEffort: "low" },
+        },
+        [201],
+      ),
+    ] as const;
+    await expect.poll(threadLock.blockedWaiterCount).toBeGreaterThanOrEqual(2);
+    threadLock.release();
+    await threadLock.done;
+    const responses = await Promise.all(requests);
+
+    await expect(
+      chat.readThreadMetadata(actor, thread.id),
+    ).resolves.toMatchObject({
+      modelSettings: {
+        "claude-sonnet-5": { effort: "extra" },
+        "claude-opus-4-8": { effort: "low" },
+      },
+    });
+    for (const response of responses) {
+      if (response.body.runId) {
+        await cancelChatRun(actor, response.body.runId);
+      }
+    }
+  }, 90_000);
+
   it.each([
     {
       model: "gpt-5.6-sol",
