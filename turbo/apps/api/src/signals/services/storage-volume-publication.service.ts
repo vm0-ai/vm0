@@ -335,44 +335,55 @@ async function reconcileArchiveSize(
   archiveSize: number,
   signal: AbortSignal,
 ): Promise<PreparedStorageVersion | undefined> {
-  const [updated] = await db
-    .update(storageVersions)
-    .set({ archiveSize })
-    .where(
-      and(
-        eq(storageVersions.id, expected.versionId),
-        eq(storageVersions.storageId, expected.storageId),
-        eq(storageVersions.s3Key, expected.s3Key),
-        eq(storageVersions.size, expected.size),
-        eq(storageVersions.fileCount, expected.fileCount),
-        isNull(storageVersions.message),
-        eq(storageVersions.createdBy, expected.createdBy),
-      ),
-    )
-    .returning({
-      storageId: storageVersions.storageId,
-      versionId: storageVersions.id,
-      s3Key: storageVersions.s3Key,
-      size: storageVersions.size,
-      archiveSize: storageVersions.archiveSize,
-      fileCount: storageVersions.fileCount,
-      message: storageVersions.message,
-      createdBy: storageVersions.createdBy,
-    });
-  signal.throwIfAborted();
-  if (updated) {
-    return updated;
-  }
+  return await db.transaction(async (tx) => {
+    // Preparation may finish without publishing HEAD. Reconcile the source and
+    // invalidate old work together, following the ordinary writer's lock order.
+    await tx
+      .select({ id: storages.id })
+      .from(storages)
+      .where(eq(storages.id, expected.storageId))
+      .for("update");
+    signal.throwIfAborted();
+    const [updated] = await tx
+      .update(storageVersions)
+      .set({ archiveSize })
+      .where(
+        and(
+          eq(storageVersions.id, expected.versionId),
+          eq(storageVersions.storageId, expected.storageId),
+          eq(storageVersions.s3Key, expected.s3Key),
+          eq(storageVersions.size, expected.size),
+          eq(storageVersions.fileCount, expected.fileCount),
+          isNull(storageVersions.message),
+          eq(storageVersions.createdBy, expected.createdBy),
+        ),
+      )
+      .returning({
+        storageId: storageVersions.storageId,
+        versionId: storageVersions.id,
+        s3Key: storageVersions.s3Key,
+        size: storageVersions.size,
+        archiveSize: storageVersions.archiveSize,
+        fileCount: storageVersions.fileCount,
+        message: storageVersions.message,
+        createdBy: storageVersions.createdBy,
+      });
+    signal.throwIfAborted();
+    if (updated) {
+      await enqueuePiResourceVersionIndexes(tx, [expected.versionId], signal);
+      return updated;
+    }
 
-  const current = await readStorageVersion(db, expected.versionId, signal);
-  if (!current) {
-    return undefined;
-  }
-  const prepared = { ...expected, archiveSize };
-  if (!storageVersionMatches(current, prepared)) {
-    throw new StorageVersionIdentityConflictError(expected.versionId);
-  }
-  return current;
+    const current = await readStorageVersion(tx, expected.versionId, signal);
+    if (!current) {
+      return undefined;
+    }
+    const prepared = { ...expected, archiveSize };
+    if (!storageVersionMatches(current, prepared)) {
+      throw new StorageVersionIdentityConflictError(expected.versionId);
+    }
+    return current;
+  });
 }
 
 async function resolveCanonicalVolumeStorage(

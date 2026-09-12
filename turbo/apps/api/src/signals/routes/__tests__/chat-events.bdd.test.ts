@@ -75,7 +75,10 @@ import {
   piApiFirstTurnManifestSchema,
 } from "@okouai/api-contracts/contracts/runners";
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
-import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
+import {
+  workflowAutomationsContract,
+  workflowsDetailContract,
+} from "@okouai/api-contracts/contracts/workflows";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
@@ -211,6 +214,7 @@ import { modelProvidersRoutes } from "../model-providers";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import { webhooksWorkflowAutomationsRoutes } from "../webhooks-workflow-automations";
 import { workflowAutomationsRoutes } from "../workflow-automations";
+import { workflowsRoutes } from "../workflows";
 import { readAgentRunState$ } from "./helpers/agent-run-callback";
 import {
   createBddApi,
@@ -12479,6 +12483,89 @@ describe("CHAT-02: model-first provider policies", () => {
       pendingInstructions,
     );
   }, 30_000);
+
+  it.each(["created", "copied"] as const)(
+    "discovers a newly %s Workflow without reading its archive",
+    async (publication) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      mockPiCheckpointObjectStore();
+      mockPiResourceArchiveDownloads();
+      const requests: string[] = [];
+      server.use(
+        http.post(
+          "https://api.openai.com/v1/responses",
+          async ({ request }) => {
+            requests.push(await request.text());
+            return nativeCodexSseResponse(
+              piResponsesTextSse("workflow indexed", requests.length),
+            );
+          },
+        ),
+      );
+      const queued = await queueCapabilityProvenPiRun({
+        actor,
+        agentId,
+        runnerGroup,
+        prompt: "warm shared resource versions",
+      });
+      await completeChatRunOk(
+        queued.anchor.runId,
+        queued.anchorClaim.sandboxHeaders,
+        { usagePricingResolution: queued.usagePricingResolution },
+      );
+      await waitForRunStatus(actor, queued.run.runId, "completed", 10_000);
+      await flushWaitUntilForTest();
+
+      const sourceAgentId =
+        publication === "created"
+          ? agentId
+          : (await bdd.createAgent(actor, { displayName: "Workflow source" }))
+              .agentId;
+      const name = `indexed-${randomUUID().slice(0, 8)}`;
+      const workflow = await createMiscRoutesApi(context).createWorkflow(
+        actor,
+        sourceAgentId,
+        name,
+        { content: "Produce the indexed workflow report." },
+        [201],
+      );
+      if (workflow.status !== 201) {
+        throw new Error("Expected the workflow to be published");
+      }
+      if (publication === "copied") {
+        routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+        await accept(
+          setupApp({ context, routes: workflowsRoutes })(
+            workflowsDetailContract,
+          ).copy({
+            headers: { authorization: "Bearer clerk-session" },
+            params: { workflowId: workflow.body.id },
+            body: { toAgentId: agentId },
+          }),
+          [201],
+        );
+      }
+      mockPiResourceArchiveDownloads(true);
+      const next = await sendChatRun(
+        actor,
+        {
+          agentId,
+          prompt: "discover the new workflow",
+          model: "gpt-5.6-terra",
+        },
+        queued.usagePricingResolution,
+      );
+      await waitForRunStatus(actor, next.runId, "completed", 10_000);
+      expect(piResponsesDeveloperPrompt(requests.at(-1))).toContain(name);
+      const events = (await chat.listThreadEvents(actor, next.threadId)).events;
+      expect(eventBackedContents(events, next.runId)).toStrictEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ content: "workflow indexed" }),
+        ]),
+      );
+    },
+    30_000,
+  );
 
   it("classifies old Pi citations across real request caps, retries, replay, and ordering", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();

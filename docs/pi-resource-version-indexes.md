@@ -37,8 +37,9 @@ are validated; corruption is not treated as an ordinary cache miss.
 The cron worker claims bounded batches with `FOR UPDATE SKIP LOCKED`, five-minute
 leases, and capped exponential retry delay for object-store failures. Publication
 or on-demand completion clears ownership; a stale worker cannot overwrite that
-result. Generic Storage archive repairs that change the committed compressed
-size reset the projection and lease in the same transaction. An older captured
+result. Generic Storage and server-side volume archive repairs that change the
+committed compressed size reset the projection and lease in the same transaction,
+including repairs whose later HEAD publication is interrupted. An older captured
 read cannot overwrite work for that repaired source. Archive I/O occurs outside database locks. There is no process-local
 fire-and-forget queue.
 

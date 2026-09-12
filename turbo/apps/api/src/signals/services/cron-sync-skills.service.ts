@@ -40,10 +40,7 @@ import { createDeferredPromise, safeSync, tapError } from "../utils";
 import type { FileEntryWithHash } from "./storage-content-hash.service";
 import { newStorageS3Location } from "./storage-s3-prefix.utils";
 
-import {
-  indexPiResourceFiles,
-  preparePiResourceIndex,
-} from "../../lib/pi-resource-index";
+import { preparePiResourceIndex } from "../../lib/pi-resource-index";
 import {
   publishPiResourceVersionIndex,
   readPiResourceVersionIndexes,
@@ -361,11 +358,15 @@ async function hasCurrentSkillVersion(
     if (!version) {
       throw new Error("Current skill references a missing Storage version");
     }
+    // Reuse the publisher's archive encoding and bounded parser even when the
+    // logical version is unchanged. Raw files would bypass the expansion limit.
+    const { archiveBuffer } = await createSkillArchive(args.files);
+    signal.throwIfAborted();
     await publishPiResourceVersionIndex(
       {
         db: args.db,
         versionId: args.versionHash,
-        projection: indexPiResourceFiles(args.files),
+        projection: preparePiResourceIndex(archiveBuffer),
         archiveSize: version.archiveSize,
       },
       signal,

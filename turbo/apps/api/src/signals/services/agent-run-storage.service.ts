@@ -1397,12 +1397,6 @@ async function insertInitialArtifactVersion(args: {
             createdBy: args.userId,
           })
           .onConflictDoNothing();
-        await publishPiResourceVersionIndex({
-          db: tx,
-          versionId: args.versionId,
-          projection: { schemaVersion: 1, files: [] },
-          archiveSize: 0,
-        });
         const [updated] = await tx
           .update(storages)
           .set({
@@ -1418,6 +1412,12 @@ async function insertInitialArtifactVersion(args: {
             ),
           )
           .returning({ id: storages.id });
+        await publishPiResourceVersionIndex({
+          db: tx,
+          versionId: args.versionId,
+          projection: { schemaVersion: 1, files: [] },
+          archiveSize: 0,
+        });
         if (updated) {
           await enqueueMemorySummaryProjection({
             db: tx,

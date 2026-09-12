@@ -68,7 +68,7 @@ function discoveryText(content: Buffer): PiDiscoveryText {
     : { kind: "text", value: decoded.ok };
 }
 
-export function indexPiResourceFiles(
+function indexPiResourceFiles(
   files: readonly { readonly path: string; readonly content: Buffer }[],
 ): PiResourceVersionIndex {
   return {
