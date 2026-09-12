@@ -157,11 +157,9 @@ const apiTestDiagnosticsSyntax = [
 // list may only shrink: never add a file to it. Delete the list, and the
 // ignores entry that spreads it, once the last file leaves.
 const apiTestDiagnosticsBaseline = [
-  "src/signals/routes/__tests__/auxiliary-generation.test.ts",
   "src/signals/routes/__tests__/billing-redeem-code.test.ts",
   "src/signals/routes/__tests__/browser.test.ts",
   "src/signals/routes/__tests__/chat-callbacks.bdd.test.ts",
-  "src/signals/routes/__tests__/chat-event-archive-consumers.test.ts",
   "src/signals/routes/__tests__/chat-event-snapshot.test.ts",
   "src/signals/routes/__tests__/chat-events.bdd.test.ts",
   "src/signals/routes/__tests__/chat-threads.bdd.test.ts",
@@ -174,7 +172,6 @@ const apiTestDiagnosticsBaseline = [
   "src/signals/routes/__tests__/cron-sync-skills.test.ts",
   "src/signals/routes/__tests__/desktop-updates.test.ts",
   "src/signals/routes/__tests__/goal-schema-contraction.test.ts",
-  "src/signals/routes/__tests__/helpers/auxiliary-generation.ts",
   "src/signals/routes/__tests__/helpers/projection-observations.ts",
   "src/signals/routes/__tests__/image-io-generate.test.ts",
   "src/signals/routes/__tests__/integrations-telegram-post.test.ts",
