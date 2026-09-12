@@ -350,6 +350,12 @@ export async function installMicMotionFixture(
               notFoundThreads: [],
             },
           });
+        } else if (
+          pathname === "/api/user-preferences/initialize" &&
+          method === "POST"
+        ) {
+          assert.deepEqual(request.postDataJSON(), { timezone: "UTC" });
+          await route.fulfill({ json: preferences });
         } else if (pathname === "/api/user-preferences" && method === "POST") {
           const update: Record<string, unknown> = request.postDataJSON();
           for (const [key, value] of Object.entries(update)) {
