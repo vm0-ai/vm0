@@ -879,26 +879,78 @@ test("Correcting a password clears its requirements and allows account creation"
   });
 });
 
-test("Sign-up password requirements use Clerk's selected language and configured length", async () => {
-  context.mocks.browser.languages(["ja-JP"]);
-  mockSignUpConfiguration({ passwordSettings: { min_length: 12 } });
-  mockedClerk.signUpValidatePassword.mockImplementationOnce(
-    (_password, callbacks) => {
-      callbacks?.onValidation?.({ complexity: { min_length: true } });
+test.each([
+  {
+    locale: "ja-JP",
+    emailLabel: "メールアドレス",
+    passwordLabel: "パスワード",
+    complexity: { min_length: true },
+    passwordValue: "short",
+    message: "パスワードは次の条件を満たす必要があります： 12文字以上.",
+  },
+  {
+    locale: "it-IT",
+    emailLabel: "Indirizzo email",
+    passwordLabel: "Password",
+    complexity: { min_length: true, require_numbers: true },
+    passwordValue: "short",
+    message: "La password deve contenere almeno 12 caratteri.",
+  },
+  {
+    locale: "it-IT",
+    emailLabel: "Indirizzo email",
+    passwordLabel: "Password",
+    complexity: { max_length: true },
+    passwordValue: "a-very-long-password",
+    message: "La password deve contenere meno di 16 caratteri.",
+  },
+  {
+    locale: "it-IT",
+    emailLabel: "Indirizzo email",
+    passwordLabel: "Password",
+    complexity: {
+      require_numbers: true,
+      require_lowercase: true,
+      require_uppercase: true,
+      require_special_char: true,
     },
-  );
-  await setupSignUpPage({ status: null });
-  const email = await screen.findByLabelText("メールアドレス");
-  const password = screen.getByLabelText("パスワード");
-  await fill(email, "person@example.com");
-  await fill(password, "short");
-  fireEvent.submit(containingForm(password));
+    passwordValue: "unacceptable",
+    message:
+      "La password deve contenere un numero, una lettera minuscola, una lettera maiuscola e un carattere speciale.",
+  },
+])(
+  "Sign-up localizes configured password requirements in $locale: $message",
+  async ({
+    locale,
+    emailLabel,
+    passwordLabel,
+    complexity,
+    passwordValue,
+    message,
+  }) => {
+    context.mocks.browser.languages([locale]);
+    mockSignUpConfiguration({
+      passwordSettings: { min_length: 12, max_length: 16 },
+    });
+    mockedClerk.signUpValidatePassword.mockImplementationOnce(
+      (_password, callbacks) => {
+        callbacks?.onValidation?.({ complexity });
+      },
+    );
+    await setupSignUpPage({ status: null });
+    const email = await screen.findByLabelText(emailLabel);
+    const password = screen.getByLabelText(passwordLabel);
+    await fill(email, "person@example.com");
+    await fill(password, passwordValue);
+    fireEvent.submit(containingForm(password));
 
-  await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
-    "パスワードは次の条件を満たす必要があります： 12文字以上.",
-  );
-  expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
-});
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(message);
+    expect(alert).toHaveFocus();
+    expect(password).toHaveAttribute("aria-invalid", "true");
+    expect(mockedClerk.clientSignUpCreate).not.toHaveBeenCalled();
+  },
+);
 
 test.each([
   {
@@ -1428,3 +1480,76 @@ test("A visitor can restart a transferred or unrecoverable sign-up", async () =>
     expect.stringContaining(encodeURIComponent(redirectUrl)),
   );
 });
+
+test.each([
+  {
+    locale: "es-ES",
+    emailLabel: "Correo electrónico",
+    passwordLabel: "Contraseña",
+    message:
+      "Tu contraseña no es lo suficientemente segura. Añade más palabras que sean menos comunes.",
+  },
+  {
+    locale: "it-IT",
+    emailLabel: "Indirizzo email",
+    passwordLabel: "Password",
+    message:
+      "La tua password non è abbastanza sicura. Aggiungi altre parole meno comuni.",
+  },
+])(
+  "Sign-up translates strength suggestions that Clerk leaves in English for $locale",
+  async ({ locale, emailLabel, passwordLabel, message }) => {
+    context.mocks.browser.languages([locale]);
+    mockedClerk.clientSignUpCreate
+      .mockRejectedValueOnce(
+        new ClerkAPIResponseError("Private provider detail", {
+          status: 422,
+          data: [
+            {
+              code: "form_password_not_strong_enough",
+              message: "Private provider detail",
+              meta: {
+                param_name: "password",
+                zxcvbn: {
+                  suggestions: [
+                    { code: "anotherWord", message: "Private strength detail" },
+                    {
+                      code: "unknown_suggestion",
+                      message: "Private strength detail",
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        }),
+      )
+      .mockImplementationOnce(() => {
+        return moveSignUpToAsync(readyEmailVerificationState());
+      });
+    await setupSignUpPage({ status: null });
+    const email = await screen.findByLabelText(emailLabel);
+    const password = screen.getByLabelText(passwordLabel);
+    await fill(email, "person@example.com");
+    await fill(password, "valid-password");
+    fireEvent.submit(containingForm(password));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(message);
+    expect(password).toHaveAttribute("aria-invalid", "true");
+    expect(document.body).not.toHaveTextContent("Private provider detail");
+    expect(alert).not.toHaveTextContent("unknown_suggestion");
+    expect(document.body).not.toHaveTextContent("Private strength detail");
+
+    await fill(password, "Stronger-and-less-common-2!");
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+    fireEvent.submit(containingForm(password));
+    await waitFor(() => {
+      expect(screen.queryByLabelText(passwordLabel)).not.toBeInTheDocument();
+    });
+    await expect(
+      screen.findByText("person@example.com"),
+    ).resolves.toBeVisible();
+  },
+);

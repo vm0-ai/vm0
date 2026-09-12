@@ -4,10 +4,6 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 
 import { clerkAuthErrorMessage } from "../../../i18n/clerk-auth-errors.ts";
-import {
-  clerkLocalizationForLocale,
-  clerkLocalizations$,
-} from "../../../i18n/clerk-localization.ts";
 import { locale$ } from "../../../signals/locale.ts";
 import type {
   AuthV2SignUpError,
@@ -268,15 +264,20 @@ export function useAuthV2SignUpCopy(
   brandName: AuthBrandContext["brandName"],
 ): AuthV2SignUpCopy {
   const { t } = useTranslation();
-  const localization = clerkLocalizationForLocale(
-    useGet(clerkLocalizations$),
-    useGet(locale$),
+  const locale = useGet(locale$);
+  const clerkErrors = t(
+    ($) => {
+      return $.auth.v2.clerkErrors;
+    },
+    {
+      returnObjects: true,
+    },
   );
   return {
     clerkError: (error) => {
       const code =
         error.code === "rate-limited" ? "too_many_requests" : error.clerkCode;
-      return clerkAuthErrorMessage(localization, {
+      return clerkAuthErrorMessage(clerkErrors, locale, {
         code,
         paramName: error.clerkParamName,
         passwordError: error.passwordError,

@@ -6,7 +6,11 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { ClerkAPIResponseError, ClerkRuntimeError } from "@clerk/shared/error";
+import {
+  ClerkAPIResponseError,
+  ClerkOfflineError,
+  ClerkRuntimeError,
+} from "@clerk/shared/error";
 import { expect, test, vi } from "vitest";
 
 import {
@@ -1968,7 +1972,7 @@ test.each([
     locale: "ja-JP",
     label: "メールアドレス",
     paramName: "identifier",
-    message: "入力された値の形式が正しくありません。確認して修正してください。",
+    message: "有効なメールアドレスまたはユーザー名を入力してください。",
   },
 ] as const)(
   "Sign-in localizes $paramName errors in $locale",
@@ -2265,3 +2269,116 @@ test("An unsupported first factor does not block an available password method", 
     password: "My password 123!",
   });
 });
+
+test.each([
+  {
+    locale: "pt-BR",
+    emailLabel: "Seu e-mail",
+    passwordLabel: "Senha",
+    offline:
+      "Parece que você está sem conexão. Reconecte-se e tente novamente.",
+    rateLimited:
+      "Muitas tentativas. Aguarde um momento antes de tentar novamente.",
+  },
+  {
+    locale: "ja-JP",
+    emailLabel: "メールアドレス",
+    passwordLabel: "パスワード",
+    offline: "オフラインのようです。接続を回復して、もう一度お試しください。",
+    rateLimited:
+      "試行回数が多すぎます。しばらく待ってから、もう一度お試しください。",
+  },
+  {
+    locale: "ko-KR",
+    emailLabel: "이메일 주소",
+    passwordLabel: "비밀번호",
+    offline:
+      "인터넷에 연결되어 있지 않은 것 같습니다. 다시 연결한 후 시도해 주세요.",
+    rateLimited:
+      "시도 횟수가 너무 많습니다. 잠시 기다린 후 다시 시도해 주세요.",
+  },
+  {
+    locale: "id-ID",
+    emailLabel: "Alamat email",
+    passwordLabel: "Kata sandi",
+    offline:
+      "Sepertinya Anda sedang offline. Sambungkan kembali ke internet dan coba lagi.",
+    rateLimited:
+      "Terlalu banyak percobaan. Tunggu sebentar sebelum mencoba lagi.",
+  },
+  {
+    locale: "de-DE",
+    emailLabel: "E-Mail-Adresse",
+    passwordLabel: "Passwort",
+    offline:
+      "Du scheinst offline zu sein. Stelle die Verbindung wieder her und versuche es erneut.",
+    rateLimited:
+      "Zu viele Versuche. Bitte warte einen Moment, bevor du es erneut versuchst.",
+  },
+  {
+    locale: "es-ES",
+    emailLabel: "Correo electrónico",
+    passwordLabel: "Contraseña",
+    offline:
+      "Parece que no tienes conexión. Vuelve a conectarte e inténtalo de nuevo.",
+    rateLimited:
+      "Demasiados intentos. Espera un momento antes de volver a intentarlo.",
+  },
+  {
+    locale: "it-IT",
+    emailLabel: "Indirizzo email",
+    passwordLabel: "Password",
+    offline: "Sembra che tu sia offline. Ripristina la connessione e riprova.",
+    rateLimited: "Troppi tentativi. Attendi un momento prima di riprovare.",
+  },
+  {
+    locale: "fr-FR",
+    emailLabel: "Adresse e-mail",
+    passwordLabel: "Mot de passe",
+    offline:
+      "Vous semblez être hors ligne. Rétablissez la connexion et réessayez.",
+    rateLimited:
+      "Trop de tentatives. Veuillez patienter un instant avant de réessayer.",
+  },
+  {
+    locale: "hi-IN",
+    emailLabel: "ईमेल पता",
+    passwordLabel: "पासवर्ड",
+    offline:
+      "लगता है आप ऑफ़लाइन हैं। इंटरनेट से दोबारा जुड़ें और फिर से कोशिश करें।",
+    rateLimited:
+      "बहुत अधिक प्रयास किए गए हैं। दोबारा कोशिश करने से पहले थोड़ी देर रुकें।",
+  },
+])(
+  "Sign-in explains offline and rate-limit errors in $locale and allows recovery",
+  async ({ locale, emailLabel, passwordLabel, offline, rateLimited }) => {
+    context.mocks.browser.languages([locale]);
+    mockIdentifierSubmission([passwordFactor()]);
+    mockedClerk.clientSignInCreate
+      .mockRejectedValueOnce(new ClerkOfflineError("Private provider detail"))
+      .mockRejectedValueOnce(
+        new ClerkAPIResponseError("Private provider detail", {
+          status: 429,
+          data: [],
+        }),
+      );
+    await setupSignInPage({ status: "needs_identifier" });
+    const email = await screen.findByLabelText(emailLabel);
+    await fill(email, "person@example.com");
+    fireEvent.submit(containingForm(email));
+    const offlineAlert = await screen.findByRole("alert");
+    expect(offlineAlert).toHaveTextContent(offline);
+    expect(offlineAlert).toHaveFocus();
+    expect(document.documentElement.lang).toBe(locale);
+
+    fireEvent.submit(containingForm(email));
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent(rateLimited);
+    });
+    expect(document.body).not.toHaveTextContent("Private provider detail");
+
+    fireEvent.submit(containingForm(email));
+    await expect(screen.findByLabelText(passwordLabel)).resolves.toBeVisible();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  },
+);

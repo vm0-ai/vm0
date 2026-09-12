@@ -1,4 +1,4 @@
-import { enUS } from "@clerk/localizations/en-US";
+import type common from "./locales/en-US/common.json";
 
 import type { AuthV2PasswordError } from "../signals/auth-v2/password-errors.ts";
 
@@ -11,26 +11,11 @@ const complexityKeys = [
   ["require_special_char", "requireSpecialCharacter"],
 ] as const;
 
-function translatedMessage(
-  localized: Readonly<Record<string, unknown>> | undefined,
-  english: Readonly<Record<string, unknown>> | undefined,
-  key: string,
-): string | undefined {
-  for (const resource of [localized, english]) {
-    const value = resource && Object.hasOwn(resource, key) && resource[key];
-    if (typeof value === "string" && value.trim()) {
-      return value;
-    }
-  }
-  return undefined;
-}
-
 export function clerkPasswordErrorMessage(
-  localization: typeof enUS,
+  copy: typeof common.auth.v2.clerkErrors,
+  locale: string,
   error: AuthV2PasswordError,
 ): string | undefined {
-  const localized = localization.unstable__errors;
-  const english = enUS.unstable__errors;
   const messages: string[] = [];
   // Match Clerk's usePasswordComplexity: minimum length is shown on its own,
   // before other failed rules. Use the configured limits, not the English
@@ -42,57 +27,30 @@ export function clerkPasswordErrorMessage(
     ) {
       continue;
     }
-    const template = translatedMessage(
-      localized?.passwordComplexity,
-      english?.passwordComplexity,
-      key,
-    );
-    if (!template) {
-      return undefined;
-    }
+    const template = copy.passwordComplexity[key];
     const message =
       rule === "min_length" || rule === "max_length"
         ? template.replaceAll("{{length}}", String(error.limits[rule]))
         : template;
-    if (message.includes("{{")) {
-      return undefined;
-    }
     messages.push(message);
   }
   if (messages.length > 0) {
-    const prefix = translatedMessage(
-      localized?.passwordComplexity,
-      english?.passwordComplexity,
-      "sentencePrefix",
-    );
-    if (!prefix) {
-      return undefined;
-    }
-    const requirements = new Intl.ListFormat(localization.locale, {
+    const requirements = new Intl.ListFormat(locale, {
       style: "long",
       type: "conjunction",
     }).format(messages);
-    const message = `${prefix} ${requirements}`;
+    const message = `${copy.passwordComplexity.sentencePrefix} ${requirements}`;
     return message.endsWith(".") ? message : `${message}.`;
   }
   if (!error.strengthFailed) {
     return undefined;
   }
-  const notEnough = translatedMessage(
-    localized?.zxcvbn,
-    english?.zxcvbn,
-    "notEnough",
-  );
-  if (!notEnough) {
-    return undefined;
-  }
+  const translatedSuggestions: Readonly<Record<string, string>> =
+    copy.zxcvbn.suggestions;
   const suggestions = error.suggestionCodes.flatMap((code) => {
-    const message = translatedMessage(
-      localized?.zxcvbn?.suggestions,
-      english?.zxcvbn?.suggestions,
-      code,
-    );
-    return message && !message.includes("{{") ? [message] : [];
+    return Object.hasOwn(translatedSuggestions, code)
+      ? [translatedSuggestions[code]]
+      : [];
   });
-  return [notEnough, ...suggestions].join(" ");
+  return [copy.zxcvbn.notEnough, ...suggestions].join(" ");
 }

@@ -394,3 +394,39 @@ test("A user without an organization can accept an invitation even when creation
     expect.objectContaining({ organization: "org_invited" }),
   );
 });
+
+test.each([
+  {
+    code: "authentication_invalid",
+    message:
+      "Votre session de connexion n’est plus valide. Veuillez vous reconnecter.",
+  },
+  {
+    code: "future_authentication_error",
+    message:
+      "Nous n'avons pas pu terminer la connexion. Recommencez et réessayez.",
+  },
+])(
+  "Session continuation keeps $code errors and recovery in the selected language",
+  async ({ code, message }) => {
+    context.mocks.browser.languages(["fr-FR"]);
+    mockedClerk.setActive.mockRejectedValueOnce(
+      new ClerkAPIResponseError("Private provider detail", {
+        status: 401,
+        data: [{ code, message: "Private provider detail" }],
+      }),
+    );
+    await setupTaskPage({
+      memberships: [membership("org_one", "Our team")],
+      taskKey: "choose-organization",
+    });
+    click(await waitForButton("Continuer avec Our team"));
+    await expect(
+      screen.findByRole("region", {
+        name: "La connexion n'a pas pu être terminée",
+      }),
+    ).resolves.toHaveAccessibleDescription(message);
+    expect(buttonNamed("Recommencer")).toBeVisible();
+    expect(document.body).not.toHaveTextContent("Private provider detail");
+  },
+);
