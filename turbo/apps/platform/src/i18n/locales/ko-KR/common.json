@@ -5746,7 +5746,6 @@
         "welcomeThread": {
           "create": "환영 채팅 만들기",
           "creating": "만드는 중…",
-          "defaultAgentNotReady": "워크스페이스의 기본 에이전트를 설정한 후 다시 시도하세요.",
           "description": "소개와 예시가 포함된 환영 채팅을 만듭니다.",
           "failed": "환영 채팅을 만들 수 없습니다. 다시 시도하세요.",
           "title": "환영 채팅"

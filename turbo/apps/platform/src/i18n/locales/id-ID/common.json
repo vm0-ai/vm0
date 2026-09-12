@@ -5746,7 +5746,6 @@
         "welcomeThread": {
           "create": "Buat obrolan sambutan",
           "creating": "Membuat…",
-          "defaultAgentNotReady": "Konfigurasikan agen default ruang kerja, lalu coba lagi.",
           "description": "Buat obrolan sambutan berisi pengantar dan contoh.",
           "failed": "Tidak dapat membuat obrolan sambutan. Coba lagi.",
           "title": "Obrolan sambutan"

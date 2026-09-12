@@ -5821,7 +5821,6 @@
         "welcomeThread": {
           "create": "Crea chat di benvenuto",
           "creating": "Creazione…",
-          "defaultAgentNotReady": "Configura l’agente predefinito dell’area di lavoro, poi riprova.",
           "description": "Crea una chat di benvenuto con l’introduzione e gli esempi.",
           "failed": "Impossibile creare la chat di benvenuto. Riprova.",
           "title": "Chat di benvenuto"

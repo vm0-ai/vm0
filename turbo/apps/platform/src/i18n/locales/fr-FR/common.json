@@ -5821,7 +5821,6 @@
         "welcomeThread": {
           "create": "Créer une discussion de bienvenue",
           "creating": "Création…",
-          "defaultAgentNotReady": "Configurez l’agent par défaut de l’espace de travail, puis réessayez.",
           "description": "Créez une discussion de bienvenue avec la présentation et les exemples.",
           "failed": "Impossible de créer la discussion de bienvenue. Réessayez.",
           "title": "Discussion de bienvenue"
