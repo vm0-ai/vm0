@@ -2,7 +2,7 @@ import { Button, cn } from "@okouai/ui";
 import { Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 
-export function AuthV2ChoiceRow({
+export function AuthChoiceRow({
   actionLabel,
   busy,
   disabled,

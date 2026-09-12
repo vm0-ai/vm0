@@ -140,6 +140,10 @@ interface LocationAssignMock {
   calls: string[];
 }
 
+interface LocationReplaceMock {
+  calls: string[];
+}
+
 interface ClipboardWriteMock {
   writes: string[];
 }
@@ -426,6 +430,9 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       },
       locationAssign: (): LocationAssignMock => {
         return mockLocationAssign();
+      },
+      locationReplace: (): LocationReplaceMock => {
+        return mockLocationReplace();
       },
       authWindow: (): MockWindow => {
         return createMockWindow();
@@ -821,6 +828,14 @@ function mockWindowOpen(openedWindow: Window | null): BrowserOpenMock {
 function mockLocationAssign(): LocationAssignMock {
   const calls: string[] = [];
   vi.spyOn(window.location, "assign").mockImplementation((url) => {
+    calls.push(String(url));
+  });
+  return { calls };
+}
+
+function mockLocationReplace(): LocationReplaceMock {
+  const calls: string[] = [];
+  vi.spyOn(window.location, "replace").mockImplementation((url) => {
     calls.push(String(url));
   });
   return { calls };

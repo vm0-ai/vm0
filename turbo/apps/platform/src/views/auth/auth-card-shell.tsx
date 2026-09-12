@@ -9,13 +9,13 @@ import {
 import { useSet } from "ccstate-react";
 import type { ReactNode } from "react";
 
-import { focusAuthV2HeadingRef$ } from "../../signals/auth-v2-presentation.ts";
+import { focusAuthHeadingRef$ } from "../../signals/auth-presentation.ts";
 import { ProductBrandMark } from "../components/product-brand-mark.tsx";
 
-const AUTH_V2_TITLE_ID = "auth-v2-title";
-const AUTH_V2_DESCRIPTION_ID = "auth-v2-description";
+const AUTH_CARD_TITLE_ID = "auth-card-title";
+const AUTH_CARD_DESCRIPTION_ID = "auth-card-description";
 
-interface AuthV2ShellProps {
+interface AuthCardShellProps {
   readonly announcement?: ReactNode;
   readonly cardFooter?: ReactNode;
   readonly children: ReactNode;
@@ -27,7 +27,7 @@ interface AuthV2ShellProps {
   readonly title: ReactNode;
 }
 
-export function AuthV2Shell({
+export function AuthCardShell({
   announcement,
   cardFooter,
   children,
@@ -37,8 +37,8 @@ export function AuthV2Shell({
   layout = "default",
   surface = "page",
   title,
-}: AuthV2ShellProps) {
-  const focusHeading = useSet(focusAuthV2HeadingRef$);
+}: AuthCardShellProps) {
+  const focusHeading = useSet(focusAuthHeadingRef$);
   const choiceLayout = layout === "choice";
 
   return (
@@ -49,13 +49,13 @@ export function AuthV2Shell({
       )}
     >
       <Card
-        aria-describedby={description ? AUTH_V2_DESCRIPTION_ID : undefined}
-        aria-labelledby={AUTH_V2_TITLE_ID}
+        aria-describedby={description ? AUTH_CARD_DESCRIPTION_ID : undefined}
+        aria-labelledby={AUTH_CARD_TITLE_ID}
         className={cn(
           "relative w-full rounded-[12px] border-border p-0 shadow-none",
           choiceLayout && "overflow-hidden",
         )}
-        data-testid="app-auth-v2"
+        data-testid="app-auth-card"
         role="region"
       >
         <div
@@ -70,13 +70,13 @@ export function AuthV2Shell({
               choiceLayout && "px-10 py-8",
             )}
           >
-            <span className="mb-5" data-testid="auth-v2-brand-logo">
+            <span className="mb-5" data-testid="auth-card-brand-logo">
               <ProductBrandMark decorative size="compact" />
             </span>
             <div className="w-full space-y-1">
               <h1
                 className="text-lg font-medium text-foreground outline-none"
-                id={AUTH_V2_TITLE_ID}
+                id={AUTH_CARD_TITLE_ID}
                 key={focusKey}
                 ref={focusHeading}
                 tabIndex={-1}
@@ -86,7 +86,7 @@ export function AuthV2Shell({
               {description ? (
                 <CardDescription
                   className="max-w-sm leading-5"
-                  id={AUTH_V2_DESCRIPTION_ID}
+                  id={AUTH_CARD_DESCRIPTION_ID}
                 >
                   {description}
                 </CardDescription>
@@ -110,7 +110,7 @@ export function AuthV2Shell({
         aria-atomic="true"
         aria-live="polite"
         className="sr-only"
-        data-testid="auth-v2-announcer"
+        data-testid="auth-card-announcer"
       >
         {announcement}
       </p>
