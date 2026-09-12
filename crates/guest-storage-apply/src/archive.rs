@@ -2,6 +2,7 @@ use crate::LOG_TAG;
 use crate::error::DownloadError;
 use crate::path::normalize_path;
 use crate::source::{ArchiveSource, HttpBodyReadFailure};
+use crate::tar_metadata::{MetadataBudget, MetadataReader};
 use guest_telemetry::log_warn;
 use std::io;
 use std::path::Path;
@@ -40,14 +41,22 @@ use std::path::Path;
 pub(crate) fn extract_tar_gz(source: ArchiveSource, target: &Path) -> Result<(), DownloadError> {
     let (reader, http_body_read_failure) = source.into_parts();
     let decoder = flate2::read::GzDecoder::new(reader);
-    let mut archive = tar::Archive::new(decoder);
+    let budget = MetadataBudget::default();
+    let mut archive = tar::Archive::new(MetadataReader::new(decoder, &budget));
 
     // Extract entries one by one, validating paths to prevent symlink path traversal.
-    for entry in archive
+    let mut entries = archive
         .entries()
-        .map_err(|e| archive_error(&http_body_read_failure, "Failed to read archive entries", e))?
-    {
+        .map_err(|e| archive_error(&http_body_read_failure, "Failed to read archive entries", e))?;
+    loop {
+        budget.begin_entry();
+        let Some(entry) = entries.next() else {
+            break;
+        };
         let mut entry = entry.map_err(|e| {
+            archive_error(&http_body_read_failure, "Failed to read archive entry", e)
+        })?;
+        budget.allow_payload(&mut entry).map_err(|e| {
             archive_error(&http_body_read_failure, "Failed to read archive entry", e)
         })?;
 
