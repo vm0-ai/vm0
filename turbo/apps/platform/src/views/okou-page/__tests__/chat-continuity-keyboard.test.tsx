@@ -115,19 +115,19 @@ function expectPaneTitle(
 }
 
 async function openNeighboringChatPanes(mainThread: "current" | "newest") {
-  const oldest = continuityThread(16, 1, "Oldest neighboring chat");
   const current = continuityThread(16, 2, "Current keyboard chat");
   const side = continuityThread(16, 3, "Side keyboard chat");
   const newest = continuityThread(16, 4, "Newest neighboring chat");
   const workspace = installContinuityWorkspace(context, {
     caseId: 16,
-    threads: [oldest, current, side, newest],
+    threads: [current, side, newest],
   });
 
   const main = mainThread === "current" ? current : newest;
   await setupPage({
     context,
     path: `/chats/${main.id}?sidebar=${side.id}`,
+    locale: "en-US",
     ...workspace.pageOptions,
   });
 
@@ -144,6 +144,7 @@ test("Move to a newer chat from the main pane without changing the side pane", a
   const { current, side, newest } = await openNeighboringChatPanes("current");
   const mainComposer = composerIn(current.id);
   mainComposer.focus();
+  expect(mainComposer).toHaveFocus();
   await user.keyboard("{Control>}{Shift>}{ArrowUp}{/Shift}{/Control}");
 
   await waitFor(() => {
@@ -169,6 +170,7 @@ test("Move to an older chat from the side pane without changing the main pane", 
   );
   const sideContainer = threadContainer(side.id);
   sideContainer.focus();
+  expect(sideContainer).toHaveFocus();
   await user.keyboard("{Control>}{Shift>}{ArrowDown}{/Shift}{/Control}");
 
   await waitFor(() => {
