@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.658.0](https://github.com/vm0-ai/vm0/compare/core-v8.657.0...core-v8.658.0) (2026-09-12)
+
+
+### Features
+
+* **chat:** support model-aware reasoning effort in pi ([#33683](https://github.com/vm0-ai/vm0/issues/33683)) ([ab64ece](https://github.com/vm0-ai/vm0/commit/ab64ece13b139daa0ca67e4049273e4e79ba4e76))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.432.0
+
 ## [8.657.0](https://github.com/vm0-ai/vm0/compare/core-v8.656.0...core-v8.657.0) (2026-09-12)
 
 

@@ -365,7 +365,7 @@ export function sidebarThreadTitles(): string[] {
   return sidebarThreadLinks().map((link) => {
     return (
       link
-        .querySelector(".okou-nav-copy")
+        .querySelector('[data-slot="sidebar-thread-title"]')
         ?.textContent?.replace(/\s+/gu, " ")
         .trim() ?? ""
     );

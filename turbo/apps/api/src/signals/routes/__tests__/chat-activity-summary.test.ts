@@ -88,12 +88,14 @@ async function fixture(enabled = true, prompt = "Prepare a launch checklist") {
   mockOptionalEnv("OPENROUTER_API_KEY", undefined);
   const group = runs.configureRunnerGroup();
   await runs.grantProEntitlement(actor);
-  await runs.ensureOrgModelProvider(actor);
-  const agent = await bdd.createAgent(actor, {
-    displayName: "Activity summary",
-    description: "Activity API integration",
-    visibility: "private",
-  });
+  const [, agent] = await Promise.all([
+    runs.ensureOrgModelProvider(actor),
+    bdd.createAgent(actor, {
+      displayName: "Activity summary",
+      description: "Activity API integration",
+      visibility: "private",
+    }),
+  ]);
   await enable(actor, enabled);
   const sent = await chat.requestSendEvent(
     actor,
