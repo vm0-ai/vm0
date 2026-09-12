@@ -66,7 +66,7 @@ function installModelEnvironment(
   mockOrgModelRoutes(modelPreference.selectedModel ?? DEFAULT_RUN_MODEL);
   mockBillingCapabilities({
     supportByok: true,
-    restrictedVm0Models: false,
+    restrictedBuiltInModels: false,
   });
   context.mocks.data.userModelPreference(modelPreference);
 }

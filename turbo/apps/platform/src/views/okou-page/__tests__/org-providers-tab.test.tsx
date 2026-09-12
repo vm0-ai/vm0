@@ -197,7 +197,7 @@ function billingStatus(
   tier: string,
   modelCapabilities?: {
     readonly supportByok?: boolean;
-    readonly restrictedVm0Models?: boolean;
+    readonly restrictedBuiltInModels?: boolean;
   },
 ): BillingStatusResponse {
   return {
@@ -225,7 +225,7 @@ function billingStatus(
 
 function mockBillingCapabilities(modelCapabilities: {
   readonly supportByok: boolean;
-  readonly restrictedVm0Models: boolean;
+  readonly restrictedBuiltInModels: boolean;
 }): void {
   context.mocks.api(billingStatusContract.get, ({ respond }) => {
     return respond(200, billingStatus("pro", modelCapabilities));
@@ -785,7 +785,7 @@ test("Limit free workspaces to eligible built-in models", async () => {
   mockAdminOrg();
   mockBillingCapabilities({
     supportByok: false,
-    restrictedVm0Models: true,
+    restrictedBuiltInModels: true,
   });
   context.mocks.data.orgModelProviders([]);
   context.mocks.data.orgModelPolicies([
@@ -1036,7 +1036,10 @@ test("Add DeepSeek V4.1 Flash as a built-in model", async () => {
 
 test("Offer an upgrade for restricted Pro models", async () => {
   mockAdminOrg();
-  mockBillingCapabilities({ supportByok: false, restrictedVm0Models: true });
+  mockBillingCapabilities({
+    supportByok: false,
+    restrictedBuiltInModels: true,
+  });
   context.mocks.data.orgModelProviders([]);
   context.mocks.api(billingCheckoutContract.create, ({ body, respond }) => {
     return respond(200, {
@@ -1101,7 +1104,10 @@ test("Offer an upgrade for restricted Pro models", async () => {
 
 test("Offer a plan change when bring-your-own-key is unavailable", async () => {
   mockAdminOrg();
-  mockBillingCapabilities({ supportByok: false, restrictedVm0Models: false });
+  mockBillingCapabilities({
+    supportByok: false,
+    restrictedBuiltInModels: false,
+  });
   context.mocks.data.orgModelProviders([]);
   context.mocks.data.orgModelPolicies([
     builtInPolicy(

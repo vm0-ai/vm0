@@ -2923,7 +2923,7 @@ describe("POST /api/image-io/generate", () => {
     hostApi.captureHostedSitesS3();
     await upsertOrgPlanEntitlementFixture({
       orgId: fixture.orgId,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
     const site = `seedream-reference-${randomUUID().slice(0, 8)}`;
     const hostActor = {
