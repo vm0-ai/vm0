@@ -95,6 +95,7 @@ test.each([
       return respond(204);
     });
     await setupPage({
+      locale: "en-US",
       context: { ...context, signal: initialPage.signal },
       path,
       featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
@@ -130,6 +131,7 @@ test.each([
       vi.mocked(window.history.replaceState).mockRestore();
       vi.mocked(window.history.back).mockRestore();
       await setupPage({
+        locale: "en-US",
         context: refreshedContext,
         path,
         featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },

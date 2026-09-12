@@ -70,6 +70,7 @@ test.each([false, true])(
     context.mocks.data.userModelPreference({
       selectedModel: "gpt-5.6-luna",
       serviceTier: null,
+      modelSettings: {},
       selectedVideoModel: null,
       selectedImageModel: null,
       updatedAt: "2026-08-01T00:00:00.000Z",
@@ -146,6 +147,7 @@ test.each([false, true])(
     }
 
     await setupPage({
+      locale: "en-US",
       context: { ...context, signal: initialPage.signal },
       path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
       auth,
@@ -182,6 +184,7 @@ test.each([false, true])(
       unloadPage(initialPage);
       publishThreadConfirmation();
       await setupPage({
+        locale: "en-US",
         context: { ...refreshedContext, signal: refreshedPage.signal },
         path: `/chats/${createdThreadId}`,
         auth,

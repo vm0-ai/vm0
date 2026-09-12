@@ -1,5 +1,60 @@
 # Changelog
 
+## [9.324.2](https://github.com/vm0-ai/vm0/compare/cli-v9.324.1...cli-v9.324.2) (2026-09-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.432.0
+    * @okouai/core bumped to 8.658.0
+    * @okouai/pi-agent-runtime bumped to 1.27.0
+
+## [9.324.1](https://github.com/vm0-ai/vm0/compare/cli-v9.324.0...cli-v9.324.1) (2026-09-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.431.0
+    * @okouai/core bumped to 8.657.0
+    * @okouai/pi-agent-runtime bumped to 1.26.5
+
+## [9.324.0](https://github.com/vm0-ai/vm0/compare/cli-v9.323.17...cli-v9.324.0) (2026-09-12)
+
+
+### Features
+
+* **ssh:** add managed sessions within a run ([#33674](https://github.com/vm0-ai/vm0/issues/33674)) ([45c6643](https://github.com/vm0-ai/vm0/commit/45c6643695cfd76617ae72e5fb4b42a437cd9a70))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.430.1
+    * @okouai/connectors bumped to 3.11.0
+    * @okouai/core bumped to 8.656.0
+    * @okouai/pi-agent-runtime bumped to 1.26.4
+
+## [9.323.17](https://github.com/vm0-ai/vm0/compare/cli-v9.323.16...cli-v9.323.17) (2026-09-12)
+
+
+### Refactoring
+
+* **test:** replace retired-brand bot-name fixtures in teams and feishu suites ([#33592](https://github.com/vm0-ai/vm0/issues/33592)) ([7ef1854](https://github.com/vm0-ai/vm0/commit/7ef1854745a0e838cfe8d0d80aef247caad2dd65)), closes [#33588](https://github.com/vm0-ai/vm0/issues/33588)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.430.0
+    * @okouai/core bumped to 8.655.0
+    * @okouai/pi-agent-runtime bumped to 1.26.3
+
 ## [9.323.16](https://github.com/vm0-ai/vm0/compare/cli-v9.323.15...cli-v9.323.16) (2026-09-12)
 
 

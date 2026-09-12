@@ -8,6 +8,117 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.590.0](https://github.com/vm0-ai/vm0/compare/api-v1.589.0...api-v1.590.0) (2026-09-12)
+
+
+### Features
+
+* **chat:** support model-aware reasoning effort in pi ([#33683](https://github.com/vm0-ai/vm0/issues/33683)) ([ab64ece](https://github.com/vm0-ai/vm0/commit/ab64ece13b139daa0ca67e4049273e4e79ba4e76))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.432.0
+    * @okouai/core bumped to 8.658.0
+    * @okouai/db bumped to 1.254.1
+    * @okouai/pi-agent-runtime bumped to 1.27.0
+
+## [1.589.0](https://github.com/vm0-ai/vm0/compare/api-v1.588.0...api-v1.589.0) (2026-09-12)
+
+
+### Features
+
+* **chat:** persist model-aware reasoning effort settings ([#33551](https://github.com/vm0-ai/vm0/issues/33551)) ([1aa1036](https://github.com/vm0-ai/vm0/commit/1aa10365da1d277a04b4968a5e4218fc5c74b2a1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.431.0
+    * @okouai/core bumped to 8.657.0
+    * @okouai/db bumped to 1.254.0
+    * @okouai/pi-agent-runtime bumped to 1.26.5
+
+## [1.588.0](https://github.com/vm0-ai/vm0/compare/api-v1.587.0...api-v1.588.0) (2026-09-12)
+
+
+### Features
+
+* enable cal.com oauth for everyone ([#33401](https://github.com/vm0-ai/vm0/issues/33401)) ([97212da](https://github.com/vm0-ai/vm0/commit/97212daa5f952c629308bca23962636407b48737))
+* **ssh:** add managed sessions within a run ([#33674](https://github.com/vm0-ai/vm0/issues/33674)) ([45c6643](https://github.com/vm0-ai/vm0/commit/45c6643695cfd76617ae72e5fb4b42a437cd9a70))
+
+
+### Refactoring
+
+* **api:** delete dead fields and repeated guards in agent-run-create ([#33673](https://github.com/vm0-ai/vm0/issues/33673)) ([e4fa2ce](https://github.com/vm0-ai/vm0/commit/e4fa2ce2a572272968644271060418cf6926a24a))
+* **api:** drop log-only dimensions from the image generation failure classifiers ([#33665](https://github.com/vm0-ai/vm0/issues/33665)) ([e10e4a3](https://github.com/vm0-ai/vm0/commit/e10e4a38c902d79f0454e1028667f70ba0bc5bfb)), closes [#33649](https://github.com/vm0-ai/vm0/issues/33649)
+* **api:** reduce firewall-auth refresh-failure diagnostics to one rule ([#33668](https://github.com/vm0-ai/vm0/issues/33668)) ([7056f27](https://github.com/vm0-ai/vm0/commit/7056f27d56ec92c5056702f866b900a97d975dc1))
+* **api:** remove telemetry-only computation from the custom-connector runtime build ([#33672](https://github.com/vm0-ai/vm0/issues/33672)) ([3f18fc9](https://github.com/vm0-ai/vm0/commit/3f18fc980a5f5c87f4446252450d380e4f98f2ac))
+* **api:** rename restricted vm0 models to restricted built-in models ([#33670](https://github.com/vm0-ai/vm0/issues/33670)) ([c07f349](https://github.com/vm0-ai/vm0/commit/c07f349dd5bf75d500939daa87569e40905b0e18))
+* **api:** slim the activity-summary contract to the fields the platform reads ([#33630](https://github.com/vm0-ai/vm0/issues/33630)) ([198d38f](https://github.com/vm0-ai/vm0/commit/198d38f7a6a674672aa66c0053f40e783c424793))
+* remove graduated chat experience switches ([#33612](https://github.com/vm0-ai/vm0/issues/33612)) ([8e51714](https://github.com/vm0-ai/vm0/commit/8e517146fbe73026d88d0a3f508150ae6ddf04a2))
+* remove inert retired-brand vm0 residue ([#33660](https://github.com/vm0-ai/vm0/issues/33660)) ([9c83c9b](https://github.com/vm0-ai/vm0/commit/9c83c9b87ac2f910145cd9f66c350dd7006fb23c))
+* **runner:** rename sandbox-internal and preview-only x-vm0 headers ([#33663](https://github.com/vm0-ai/vm0/issues/33663)) ([9375cec](https://github.com/vm0-ai/vm0/commit/9375cec4abaa342c41b17cc54275f9cb59031b64))
+
+
+### Performance Improvements
+
+* **api:** precompute pi resource discovery indexes on write ([#33641](https://github.com/vm0-ai/vm0/issues/33641)) ([8ce31e8](https://github.com/vm0-ai/vm0/commit/8ce31e8254d2be1e1b080782e0d33a05bea4d3e4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.430.1
+    * @okouai/connectors bumped to 3.11.0
+    * @okouai/core bumped to 8.656.0
+    * @okouai/db bumped to 1.253.3
+    * @okouai/pi-agent-runtime bumped to 1.26.4
+
+## [1.587.0](https://github.com/vm0-ai/vm0/compare/api-v1.586.1...api-v1.587.0) (2026-09-12)
+
+
+### Features
+
+* add deepseek v4.1 flash ([#33591](https://github.com/vm0-ai/vm0/issues/33591)) ([b7b8854](https://github.com/vm0-ai/vm0/commit/b7b885498764b690c4a194f86da198815daae4c9))
+* **voice:** enable google cloud routing by default for staff ([#33571](https://github.com/vm0-ai/vm0/issues/33571)) ([e14e650](https://github.com/vm0-ai/vm0/commit/e14e650f944b25fd7b0b0b10f486e0a33354f567))
+
+
+### Bug Fixes
+
+* reduce clerk ci traffic and restore blocking e2e checks ([#33554](https://github.com/vm0-ai/vm0/issues/33554)) ([71712e4](https://github.com/vm0-ai/vm0/commit/71712e49f2382ab3e090a37c28162e30c0759252))
+
+
+### Documentation
+
+* **testing:** forbid log assertions in api tests and gate log-noise fixes ([#33610](https://github.com/vm0-ai/vm0/issues/33610)) ([fe93e0f](https://github.com/vm0-ai/vm0/commit/fe93e0f17fe52b01a36df435e30b2641a581a9e9))
+
+
+### Refactoring
+
+* **api:** delete the unreachable callbackroute hmac module ([#33590](https://github.com/vm0-ai/vm0/issues/33590)) ([656fc51](https://github.com/vm0-ai/vm0/commit/656fc515a0a523c535917c2beed6ddf7949299fa)), closes [#33585](https://github.com/vm0-ai/vm0/issues/33585)
+* **api:** drop activity snapshot capture stage and failure classification ([#33611](https://github.com/vm0-ai/vm0/issues/33611)) ([89647d0](https://github.com/vm0-ai/vm0/commit/89647d09a8899a7a56636225e685ab85876f7fa9)), closes [#33596](https://github.com/vm0-ai/vm0/issues/33596)
+* **api:** remove the retired zero desktop auth callback schemes ([#33615](https://github.com/vm0-ai/vm0/issues/33615)) ([60653a2](https://github.com/vm0-ai/vm0/commit/60653a23fdb82dbe96a1aa2affcafdad8a8a1388))
+* **api:** remove the unreachable welcome thread replay path ([#33603](https://github.com/vm0-ai/vm0/issues/33603)) ([14922c4](https://github.com/vm0-ai/vm0/commit/14922c43abdffef73becad176b1898f7bae92cb5))
+* **api:** route activity-summary generation through the shared auxiliary boundary ([#33604](https://github.com/vm0-ai/vm0/issues/33604)) ([d3b9e82](https://github.com/vm0-ai/vm0/commit/d3b9e825b6f8ca1147aa9f868faa55654dc0e576))
+* **pi:** share model runtime bootstrap and document architecture ([#33593](https://github.com/vm0-ai/vm0/issues/33593)) ([02c63e7](https://github.com/vm0-ai/vm0/commit/02c63e73072c55003ee9f8106a4cff8ff4cf4da9))
+* **test:** replace retired-brand bot-name fixtures in teams and feishu suites ([#33592](https://github.com/vm0-ai/vm0/issues/33592)) ([7ef1854](https://github.com/vm0-ai/vm0/commit/7ef1854745a0e838cfe8d0d80aef247caad2dd65)), closes [#33588](https://github.com/vm0-ai/vm0/issues/33588)
+* **test:** replace the last retired-brand fixtures and close the chain ([#33605](https://github.com/vm0-ai/vm0/issues/33605)) ([c000d4b](https://github.com/vm0-ai/vm0/commit/c000d4bb342318e47ae3e5ba3186192d5cf890c3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.430.0
+    * @okouai/core bumped to 8.655.0
+    * @okouai/db bumped to 1.253.2
+    * @okouai/pi-agent-runtime bumped to 1.26.3
+
 ## [1.586.1](https://github.com/vm0-ai/vm0/compare/api-v1.586.0...api-v1.586.1) (2026-09-12)
 
 

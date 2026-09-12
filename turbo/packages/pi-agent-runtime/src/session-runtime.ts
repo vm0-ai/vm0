@@ -10,7 +10,6 @@ import {
   createEditToolDefinition,
   createReadToolDefinition,
   createWriteToolDefinition,
-  ModelRuntime,
   SettingsManager,
   type CreateAgentSessionFromServicesOptions,
   type SessionManager,
@@ -34,8 +33,8 @@ import {
 } from "./okou-harness-prompt";
 import { piPreheatedResourceLoaderOptions } from "./resources";
 import {
+  createPiModelRuntime,
   initializePiSessionResourceRegistry,
-  registeredModelConfig,
 } from "./session-model";
 import type { PiAgentModelConfig } from "./types";
 
@@ -82,6 +81,8 @@ function configuredThinkingLevel(
   sessionManager: SessionManager,
   configured: ModelThinkingLevel | undefined,
 ): ModelThinkingLevel | undefined {
+  // A run captures its current effort before either API-first or Sandbox execution.
+  if (configured !== undefined) return configured;
   const hasThinkingEntry = sessionManager.getBranch().some((entry) => {
     return entry.type === "thinking_level_change";
   });
@@ -102,6 +103,21 @@ function configuredThinkingLevel(
     default: {
       throw new Error(`Unsupported Pi session thinking level: ${existing}`);
     }
+  }
+}
+
+function recordConfiguredThinkingLevel(
+  sessionManager: SessionManager,
+  configured: ModelThinkingLevel | undefined,
+  effective: ModelThinkingLevel,
+): void {
+  // The SDK restores messages but does not record a changed launch effort on an
+  // existing branch. Persist the effective level before a handoff/checkpoint.
+  if (
+    configured !== undefined &&
+    sessionManager.buildSessionContext().thinkingLevel !== effective
+  ) {
+    sessionManager.appendThinkingLevelChange(effective);
   }
 }
 
@@ -167,10 +183,9 @@ export async function createPiAgentSessionForRuntime(args: {
     );
   }
 
-  const modelRuntime = await ModelRuntime.create({
-    allowModelNetwork: false,
-    modelsPath: null,
-    refreshOnCreate: false,
+  const modelRuntime = await createPiModelRuntime({
+    model,
+    config: args.model,
     ...(args.resourceSnapshot ||
     ["anthropic-messages", "bedrock-converse-stream"].includes(
       args.model.dialect,
@@ -178,10 +193,6 @@ export async function createPiAgentSessionForRuntime(args: {
       ? { credentials: new InMemoryCredentialStore() }
       : {}),
   });
-  modelRuntime.registerProvider(
-    args.model.provider,
-    registeredModelConfig(model, args.model.apiKey, args.model),
-  );
   const services = await createAgentSessionServices({
     cwd: args.cwd,
     agentDir: args.agentDir,
@@ -216,5 +227,10 @@ export async function createPiAgentSessionForRuntime(args: {
       ...memoryTools,
     ],
   });
+  recordConfiguredThinkingLevel(
+    args.sessionManager,
+    args.model.thinkingLevel,
+    created.session.thinkingLevel,
+  );
   return { ...created, services, model };
 }

@@ -990,7 +990,7 @@ async function addManualAccountForNaming() {
   );
   await setupPage({
     context,
-    path: "/connectors",
+    path: "/connectors?keywords=ahrefs",
   });
   click(
     await waitFor(() => {

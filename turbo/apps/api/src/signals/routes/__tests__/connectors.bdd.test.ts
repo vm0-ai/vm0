@@ -797,7 +797,7 @@ describe("CONN-02: OAuth start and callback", () => {
 describe("CONN-02: OAuth device authorization", () => {
   it("returns 403 when the selected device-auth runtime method is unavailable", async () => {
     await installCatalogWithUnavailableMethods({
-      capabilityIdentityEnvName: "CALCOM_OAUTH_CLIENT_ID",
+      capabilityIdentityEnvName: "CAL_COM_OAUTH_CLIENT_ID",
       filteredAuthMethods: [
         {
           connectorSlug: "test-oauth-device",
@@ -7616,7 +7616,7 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
       origin: "https://api.okou.ai",
       connectorSlug: "github",
       query: { code: "code-123" },
-      headers: { "x-vm0-web-origin": "https://www.okou.ai" },
+      headers: { "x-okou-web-origin": "https://www.okou.ai" },
     });
     expect(trustedHeader.status).toBe(307);
     const trustedUrl = redirectLocation(trustedHeader);

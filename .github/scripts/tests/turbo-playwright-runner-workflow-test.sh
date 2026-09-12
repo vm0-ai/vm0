@@ -94,6 +94,22 @@ fi
 ruby -ryaml -ropen3 -rtempfile - "$WORKFLOW" "$RUNNER_MOCK_CLAUDE_BOOTSTRAP" <<'RUBY'
 workflow = YAML.load_file(ARGV.fetch(0))
 jobs = workflow.fetch("jobs")
+expected_deployed_ref =
+  "${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}"
+# Account/shard preparation, execution, reports, and cleanup must all consume
+# the API/CLI revision, including any future E2E lifecycle job.
+jobs.each do |job_name, job|
+  next unless job_name.start_with?("cli-e2e-") ||
+    %w[deploy-api deploy-cli].include?(job_name)
+
+  checkouts = job.fetch("steps").select do |step|
+    step.fetch("uses", "").start_with?("actions/checkout@")
+  end
+  unless checkouts.length == 1 &&
+      checkouts.first.dig("with", "ref") == expected_deployed_ref
+    raise "#{job_name} must checkout the deployed PR head, or event SHA outside pull requests"
+  end
+end
 prepare = jobs.fetch("prepare")
 stripe_listener = jobs.fetch("deploy-stripe-listener")
 browser = jobs.fetch("cli-e2e-02-browser")
@@ -123,6 +139,9 @@ browser_run = browser.fetch("steps").find do |step|
   step["name"] == "Run browser E2E tests"
 end
 raise "missing browser E2E execution" unless browser_run
+if browser_run["continue-on-error"] || browser["continue-on-error"]
+  raise "browser E2E failures must remain blocking"
+end
 assert_canonical_api_backend_url.call(browser_run, "browser E2E")
 pnpm_setup_action =
   "pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86"
@@ -195,8 +214,7 @@ playwright_run = playwright.fetch("steps").find do |step|
   step["name"] == "Run Playwright E2E tests"
 end
 unless playwright_run&.fetch("shell") == "bash" &&
-    playwright_run["continue-on-error"] ==
-      "${{ vars.CI_CHECK_BROWSER_E2E != '1' }}" &&
+    !playwright_run["continue-on-error"] && !playwright["continue-on-error"] &&
     playwright_run.fetch("run").include?('--project="$PLAYWRIGHT_PROJECT"') &&
     playwright_run.dig("env", "PLAYWRIGHT_PROJECT") ==
       "${{ matrix.project }}"
@@ -799,10 +817,11 @@ end
   raise "CI gate must check #{job_name} with RUNNER_E2E_SKIP_ALLOWED" unless gate_script.include?(expected)
 end
 %w[
+  cli-e2e-02-browser
   cli-e2e-02-playwright
 ].each do |job_name|
-  expected = "check_result \"#{job_name}\" \"${{ needs.#{job_name}.result }}\" \"${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}\""
-  raise "CI gate must check #{job_name} with the browser E2E policy" unless gate_script.include?(expected)
+  expected = "check_result \"#{job_name}\" \"${{ needs.#{job_name}.result }}\" \"true\""
+  raise "CI gate must reject failed or cancelled #{job_name}" unless gate_script.include?(expected)
 end
 %w[
   cli-e2e-02-playwright-finalize

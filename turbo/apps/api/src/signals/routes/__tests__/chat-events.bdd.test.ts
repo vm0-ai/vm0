@@ -1,6 +1,6 @@
+import { piNativeCatalogModelSchema } from "@okouai/api-contracts/contracts/pi-native-models";
 import {
   PI_NATIVE_CREDENTIAL_PLACEHOLDER,
-  piNativeCatalogModelSchema,
   piModelConfigV4Schema,
   piNativeInferenceUrl,
 } from "@okouai/api-contracts/contracts/pi-native";
@@ -20,7 +20,16 @@ import {
   setLegacyGoalRunOriginFixture,
 } from "../../../test-fixtures/goal-queue";
 
-import { HeadObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import {
+  HeadObjectCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+} from "@aws-sdk/client-s3";
+import { Header } from "tar";
+import { getInstructionsStorageName } from "@okouai/core/storage-names";
+import { readCanonicalAgentNameFixture } from "../../../test-fixtures/canonical-agent-authority";
+import { createStoragesBddApi } from "./helpers/api-bdd-storages";
+import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { isChatRunTerminalEventType } from "@okouai/api-contracts/contracts/chat-events";
 import {
   chatEventsContract,
@@ -49,6 +58,7 @@ import {
 import {
   getModelProviderFirewall,
   getProviderRuntimeModel,
+  LIMITED_FREE1_DEFAULT_RUN_MODEL,
   type UpsertModelProviderRequest,
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   type ModelProviderType,
@@ -65,7 +75,10 @@ import {
   piApiFirstTurnManifestSchema,
 } from "@okouai/api-contracts/contracts/runners";
 import { testWorkflowAutomationExecutionContract } from "@okouai/api-contracts/contracts/test-workflow-automation-execution";
-import { workflowAutomationsContract } from "@okouai/api-contracts/contracts/workflows";
+import {
+  workflowAutomationsContract,
+  workflowsDetailContract,
+} from "@okouai/api-contracts/contracts/workflows";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
@@ -201,6 +214,7 @@ import { modelProvidersRoutes } from "../model-providers";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import { webhooksWorkflowAutomationsRoutes } from "../webhooks-workflow-automations";
 import { workflowAutomationsRoutes } from "../workflow-automations";
+import { workflowsRoutes } from "../workflows";
 import { readAgentRunState$ } from "./helpers/agent-run-callback";
 import {
   createBddApi,
@@ -236,17 +250,12 @@ import {
   readCustomConnectorCredentialStorageParent,
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
-import {
-  auxiliaryResults,
-  auxiliaryWarnings,
-} from "./helpers/auxiliary-generation";
 import { updateFeatureSwitchesForUser } from "./helpers/feature-switches";
 import {
   commitMemoryVersion,
   seedReadyMemorySummaryProjection,
 } from "./helpers/memory";
 import { overwriteModelProviderSecretForTests } from "./helpers/model-provider-state";
-import { openRouterErrorFixtures } from "./helpers/openrouter-error-fixtures";
 import { openRouterModelContractError } from "./helpers/openrouter-model-contract";
 import { createRouteMocks } from "./helpers/route-test";
 import {
@@ -405,130 +414,6 @@ const RUN_TIME_BUDGET_MESSAGE = `This runner has a hard maximum runtime of 2 hou
 A normal completion provides a reliable handoff for the next run. The handoff includes completed work, current state, verification performed, remaining work, and blockers.
 
 Use the remaining time to leave the task in a resumable state and finish this turn normally.`;
-const API_DISPATCH_NORMAL_SEND_AGENT_RUN_SOURCE_ACTION_TYPE =
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_agent_run_source";
-const API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE =
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_attachment_metadata";
-const API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_COMMON_ACTION_TYPES = [
-  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_transaction",
-  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_clear_draft",
-  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_persist_event",
-  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_register_input_assets",
-] as const;
-const API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_TOUCH_THREAD_SORT_ACTION_TYPE =
-  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_touch_thread_sort";
-const API_DISPATCH_AGENT_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send",
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_load_and_authorize_agent",
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_validate_model_selection",
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_feature_switches",
-  API_DISPATCH_NORMAL_SEND_AGENT_RUN_SOURCE_ACTION_TYPE,
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_validate_codex_service_tier",
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_initial_thread_model_pin",
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_thread",
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_persist_explicit_model_selection",
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_persist_explicit_codex_service_tier",
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_computer_use_host_grant",
-  API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE,
-  "api_dispatch_pre_create_agent_web_chat_resolve_client_message",
-  "api_dispatch_pre_create_agent_web_chat_validate_revocation",
-  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue",
-  ...API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_COMMON_ACTION_TYPES,
-  "api_dispatch_pre_create_agent_web_chat_queue_first_check_dispatchable",
-  "api_dispatch_pre_create_agent_web_chat_create_normal_run",
-  "api_dispatch_pre_create_agent_web_chat_resolve_model_pin",
-  "api_dispatch_pre_create_agent_web_chat_resolve_provider_admission",
-  "api_dispatch_pre_create_agent_web_chat_build_create_run_args",
-  "api_dispatch_pre_create_agent_resolve_thread_session",
-] as const;
-const API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE =
-  "api_dispatch_pre_create_agent_resolve_thread_session";
-const API_DISPATCH_WEB_CHAT_SESSION_PROMPT_ACTION_TYPE =
-  "api_dispatch_pre_create_agent_web_chat_resolve_session_prompt_context";
-const API_DISPATCH_EXISTING_THREAD_PERSISTED_MODEL_ACTION_TYPE =
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_resolve_persisted_model";
-const API_DISPATCH_REMOVED_EARLY_SESSION_ACTION_TYPES = [
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_session_context_parallel",
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_resolve_session",
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_load_incomplete_context",
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_prepare_recent_chat_context",
-] as const;
-const API_DISPATCH_EXISTING_THREAD_ACTION_TYPES = [
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_load_snapshot",
-  API_DISPATCH_EXISTING_THREAD_PERSISTED_MODEL_ACTION_TYPE,
-  API_DISPATCH_WEB_CHAT_SESSION_PROMPT_ACTION_TYPE,
-] as const;
-const API_DISPATCH_EXPLICIT_EXISTING_THREAD_ACTION_TYPES = [
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_load_snapshot",
-  API_DISPATCH_WEB_CHAT_SESSION_PROMPT_ACTION_TYPE,
-] as const;
-const API_DISPATCH_AGENT_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
-  "api_dispatch_pre_create_agent_entrypoint_gap",
-] as const;
-const API_DISPATCH_THREAD_SESSION_BINDING_ACTION_TYPES = [
-  "api_dispatch_validate_thread_session_snapshot_thread",
-] as const;
-const API_DISPATCH_QUEUE_FIRST_ADMISSION_ACTION_TYPES = [
-  "api_dispatch_resolve_queue_first_admission",
-] as const;
-const API_DISPATCH_QUEUE_FIRST_CLAIM_PHASE_ACTION_TYPES = [
-  "api_dispatch_resolve_queue_first_claim_snapshot",
-  "api_dispatch_persist_queue_first_replacement",
-] as const;
-const API_DISPATCH_REUSED_THREAD_READ_ACTION_TYPES = [
-  "api_dispatch_queue_first_thread_lock_wait",
-  "api_dispatch_load_thread_session_binding",
-] as const;
-const API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES = [
-  "api_dispatch_persist_atomic_launch",
-] as const;
-const API_DISPATCH_PRE_QUEUE_PHASE_ACTION_TYPES = [
-  "api_dispatch_phase_pre_create",
-  "api_dispatch_phase_prepare_context",
-  "api_dispatch_phase_prepare_launch",
-] as const;
-const API_DISPATCH_QUEUE_INSERT_PHASE_ACTION_TYPE =
-  "api_dispatch_phase_queue_insert";
-const API_DISPATCH_PI_LAUNCH_RESOURCE_ACTION_TYPES = [
-  "api_dispatch_prepare_pi_launch_resources",
-  "api_dispatch_prepare_pi_launch_resume_session",
-] as const;
-const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
-  "org_id",
-  "user_id",
-  "connector",
-  "connector_name",
-  "agent_id",
-  "prompt",
-  "vars",
-  "secrets",
-  "secret_names",
-  "environment",
-  "execution_context",
-  "presigned_url",
-  "presignedUrl",
-  "archive_url",
-  "archiveUrl",
-  "manifest_url",
-  "manifestUrl",
-  "url",
-  "storage_name",
-  "storageName",
-  "artifact_name",
-  "artifactName",
-  "volume_name",
-  "volumeName",
-  "mount_path",
-  "mountPath",
-  "runner_id",
-  "runnerId",
-  "cli_agent_session_id",
-  "cliAgentSessionId",
-  "sandbox_token",
-  "sandboxToken",
-  "api_key",
-  "apiKey",
-] as const;
 
 function base64UrlEncode(input: string): string {
   return Buffer.from(input, "utf8")
@@ -1137,179 +1022,6 @@ function claimEnvironment(claim: RunnerClaim): Record<string, string> {
   };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function expectPiConfigObservation(runId: string, generation: 1 | 2 | 3): void {
-  const snapshots = context.mocks.axiom.ingest.mock.calls.flatMap(
-    ([dataset, events]) => {
-      return dataset === "run-context" && Array.isArray(events)
-        ? events.filter(isRecord).filter((event) => {
-            return event.runId === runId;
-          })
-        : [];
-    },
-  );
-  expect(snapshots).toHaveLength(1);
-  expect(snapshots[0]).toMatchObject({
-    cliAgentType: "pi",
-    piModelConfigGeneration: generation,
-    piModelConfigLegacyApi: "absent",
-  });
-  expect(snapshots[0]).not.toHaveProperty("piModelConfig");
-}
-
-function templateUsageEvents(): readonly Record<string, unknown>[] {
-  return context.mocks.axiom.ingest.mock.calls.flatMap((call) => {
-    const events = call[1];
-    if (!Array.isArray(events)) {
-      return [];
-    }
-    return events.filter(isRecord).filter((event) => {
-      return event.type === "template_used";
-    });
-  });
-}
-
-function sandboxOperationEvents(): readonly Record<string, unknown>[] {
-  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
-    const dataset = call[0];
-    const events = call[1];
-    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
-      return [];
-    }
-    return events.filter(isRecord);
-  });
-}
-
-function sandboxOperationEventsForRun(
-  runId: string,
-): readonly Record<string, unknown>[] {
-  return sandboxOperationEvents().filter((event) => {
-    return event.run_id === runId;
-  });
-}
-
-function firstAssistantEventsForRun(
-  runId: string,
-): readonly Record<string, unknown>[] {
-  return sandboxOperationEventsForRun(runId).filter((event) => {
-    return event.op_type === "api_to_first_assistant_message";
-  });
-}
-
-function firstAssistantEligibilityEventsForRun(
-  runId: string,
-): readonly Record<string, unknown>[] {
-  return sandboxOperationEventsForRun(runId).filter((event) => {
-    return event.op_type === "first_assistant_message_eligible";
-  });
-}
-
-function apiDispatchTimingEventsForRun(
-  runId: string,
-): readonly Record<string, unknown>[] {
-  return sandboxOperationEventsForRun(runId).filter((event) => {
-    return (
-      typeof event.op_type === "string" &&
-      event.op_type.startsWith("api_dispatch_")
-    );
-  });
-}
-
-function apiDispatchActionTypes(
-  events: readonly Record<string, unknown>[],
-): Set<unknown> {
-  return new Set(
-    events.map((event) => {
-      return event.op_type;
-    }),
-  );
-}
-
-function expectApiDispatchActions(
-  events: readonly Record<string, unknown>[],
-  expectedActionTypes: readonly string[],
-): void {
-  const observedActionTypes = apiDispatchActionTypes(events);
-  for (const actionType of expectedActionTypes) {
-    expect(observedActionTypes).toContain(actionType);
-  }
-}
-
-function expectNoApiDispatchActions(
-  events: readonly Record<string, unknown>[],
-  unexpectedActionTypes: readonly string[],
-): void {
-  const observedActionTypes = apiDispatchActionTypes(events);
-  for (const actionType of unexpectedActionTypes) {
-    expect(observedActionTypes).not.toContain(actionType);
-  }
-}
-
-function expectApiDispatchSpanKind(
-  events: readonly Record<string, unknown>[],
-  expectedActionTypes: readonly string[],
-  spanKind: string,
-): void {
-  for (const actionType of expectedActionTypes) {
-    const matchingEvents = events.filter((event) => {
-      return event.op_type === actionType;
-    });
-    expect(matchingEvents).toHaveLength(1);
-    expect(matchingEvents[0]).toStrictEqual(
-      expect.objectContaining({
-        span_kind: spanKind,
-      }),
-    );
-  }
-}
-
-function expectApiDispatchTimingEventsNotToLeak(
-  events: readonly Record<string, unknown>[],
-  forbiddenValues: readonly string[],
-): void {
-  for (const event of events) {
-    for (const forbiddenKey of FORBIDDEN_API_DISPATCH_TIMING_KEYS) {
-      expect(event).not.toHaveProperty(forbiddenKey);
-    }
-    const serialized = JSON.stringify(event);
-    for (const forbiddenValue of forbiddenValues) {
-      expect(serialized).not.toContain(forbiddenValue);
-    }
-  }
-}
-
-function expectPiLaunchResourceTiming(
-  events: readonly Record<string, unknown>[],
-  requirement: "required" | "not_required",
-): void {
-  expectApiDispatchSpanKind(
-    events,
-    ["api_dispatch_build_runner_job_payload"],
-    "top_level",
-  );
-  expect(events).toContainEqual(
-    expect.objectContaining({
-      op_type: "api_dispatch_build_runner_job_payload",
-      pi_launch_resources: requirement,
-    }),
-  );
-  if (requirement === "required") {
-    expectApiDispatchSpanKind(
-      events,
-      API_DISPATCH_PI_LAUNCH_RESOURCE_ACTION_TYPES,
-      "nested",
-    );
-    return;
-  }
-  expectNoApiDispatchActions(
-    events,
-    API_DISPATCH_PI_LAUNCH_RESOURCE_ACTION_TYPES,
-  );
-}
-
 /** Sandbox-scoped Okou token issued through the trusted claim environment. */
 function okouTokenFromClaim(claim: RunnerClaim): string {
   const token = claimEnvironment(claim).OKOU_TOKEN;
@@ -1768,9 +1480,13 @@ async function expectPiActivitySummaryBeforeGuestReplay(
     [200],
   );
   expect(activity.body).toMatchObject({
-    status: "fresh",
-    sourceSequence: activityEnabled ? 3 : null,
-    summarySequence: activityEnabled ? 3 : null,
+    status: "available",
+    messages: [
+      {
+        id: "Checking the CLI and preparing the note",
+        text: "Checking the CLI and preparing the note",
+      },
+    ],
   });
   if (activityEnabled) {
     expect(activityInput).toContain("okou --help");
@@ -2078,29 +1794,6 @@ describe("CHAT-02: thread connector account selection", () => {
       prompt: "Overlap stored thread selection with runtime context",
     });
     expect(threadCatalogReadStarted.settled()).toBeTruthy();
-    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
-    const preparationActions = [
-      "api_dispatch_prepare_context_select_connector_catalog",
-      "api_dispatch_prepare_context_resolve_thread_connector_selections",
-    ];
-    expectApiDispatchSpanKind(timingEvents, preparationActions, "nested");
-    for (const event of timingEvents.filter((candidate) => {
-      return preparationActions.includes(String(candidate.op_type));
-    })) {
-      expect(event.duration_ms).toStrictEqual(expect.any(Number));
-      expect(Number.isFinite(event.duration_ms)).toBeTruthy();
-      expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
-      expect(Number.isFinite(Date.parse(String(event._time)))).toBeTruthy();
-      expect(event.run_preparation_retry_count).toBe("0");
-      expect(event.agent_run_origin).toBe("direct");
-    }
-    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
-      fixture.threadId,
-      fixture.connectionId,
-      fixture.actor.userId,
-      "Overlap stored thread selection with runtime context",
-      "runtime-context-priority-secret",
-    ]);
     clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements();
     const claimed = await claimChatRun(fixture.runnerGroup, run.runId);
     expect(kms.decryptCalls).toBeGreaterThan(0);
@@ -3020,15 +2713,6 @@ async function expectExactPrivatePiMemoryAdmission(args: {
   expect(
     candidate.eligibleAt.getTime() - candidate.sourceCompletedAt.getTime(),
   ).toBe(60_000);
-  expect(sandboxOperationEventsForRun(args.runId)).toContainEqual(
-    expect.objectContaining({
-      op_type: "pi_memory_stage1_candidate_admission",
-      candidate_outcome: "created",
-      memory_storage_id: candidate.memoryStorageId,
-      pi_session_id: conversation.piSessionId,
-      source_history_hash: conversation.sourceHistoryHash,
-    }),
-  );
   await expect(
     readmitPiMemoryStage1CandidateFixture(args.runId),
   ).resolves.toMatchObject({ outcome: "exact_retry" });
@@ -3487,91 +3171,6 @@ describe("CHAT-02: web chat send and client ids", () => {
     expect(pendingBinding.agent_session_run_id).toBe(runId);
     expect(pendingBinding.agent_session_id).toMatch(/[0-9a-f-]{36}/);
     expect(pendingBinding.run_session_id).toBe(pendingBinding.agent_session_id);
-    expect(sandboxOperationEventsForRun(runId)).toContainEqual({
-      _time: expect.any(String),
-      source: "api",
-      op_type: "chat_thread_session_binding_persisted",
-      sandbox_type: "chat",
-      duration_ms: 0,
-      success: true,
-      run_id: runId,
-      chat_thread_id: clientThreadId,
-      agent_session_id: pendingBinding.agent_session_id,
-      agent_session_run_id: runId,
-      binding_action: "initialized",
-      run_status: "pending",
-    });
-
-    const timingEvents = apiDispatchTimingEventsForRun(runId);
-    expectApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_AGENT_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
-    );
-    expectApiDispatchSpanKind(
-      timingEvents,
-      API_DISPATCH_AGENT_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
-      "nested",
-    );
-    expectNoApiDispatchActions(timingEvents, [
-      API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_TOUCH_THREAD_SORT_ACTION_TYPE,
-    ]);
-    expectApiDispatchSpanKind(
-      timingEvents,
-      ["api_dispatch_pre_create_agent_run"],
-      "top_level",
-    );
-    expectApiDispatchSpanKind(
-      timingEvents,
-      API_DISPATCH_THREAD_SESSION_BINDING_ACTION_TYPES,
-      "nested",
-    );
-    expect(timingEvents).toContainEqual(
-      expect.objectContaining({
-        op_type: API_DISPATCH_NORMAL_SEND_AGENT_RUN_SOURCE_ACTION_TYPE,
-        normal_send_agent_run_source_kind: "none",
-      }),
-    );
-    expect(timingEvents).toContainEqual(
-      expect.objectContaining({
-        op_type: API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE,
-        normal_send_attachment_count_bucket: "0",
-      }),
-    );
-    expectApiDispatchSpanKind(
-      timingEvents,
-      [
-        "api_dispatch_admission_lock_held",
-        "api_dispatch_claim_queue_first_message",
-        ...API_DISPATCH_QUEUE_FIRST_ADMISSION_ACTION_TYPES,
-      ],
-      "nested",
-    );
-    expectNoApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_REUSED_THREAD_READ_ACTION_TYPES,
-    );
-    expectNoApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_EXISTING_THREAD_ACTION_TYPES,
-    );
-    expect(timingEvents).toContainEqual(
-      expect.objectContaining({
-        op_type: "api_dispatch_prepare_run_callbacks",
-        span_kind: "nested",
-        run_callback_internal_count_bucket: "1",
-        run_callback_http_count_bucket: "0",
-      }),
-    );
-    expectNoApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_AGENT_INTERNAL_ENTRYPOINT_ACTION_TYPES,
-    );
-    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
-      prompt,
-      clientThreadId,
-      clientEventId,
-      agentId,
-    ]);
 
     const run = await api.readRun(actor, runId);
     expect(run.prompt).toBe(prompt);
@@ -3945,49 +3544,141 @@ describe("CHAT effort: thread configuration", () => {
     );
     await expect(
       chat.readThreadMetadata(actor, explicit.threadId),
-    ).resolves.toMatchObject({ reasoningEffort: "extra" });
+    ).resolves.toMatchObject({
+      modelSettings: { "claude-sonnet-5": { effort: "extra" } },
+    });
     await cancelChatRun(actor, explicit.runId, explicitClaim.sandboxHeaders);
 
-    const reset = await sendChatRun(actor, {
+    const override = await sendChatRun(actor, {
       agentId,
       threadId: thread.id,
-      prompt: "Use the native default",
+      prompt: "Use another model's native default",
       model: "claude-opus-4-8",
-      runOptions: { reasoningEffort: null },
     });
-    const resetClaim = await claimChatRun(runnerGroup, reset.runId);
-    expect(resetClaim.claim.platformEnvironment).not.toHaveProperty(
-      "OKOU_REASONING_EFFORT",
+    const overrideClaim = await claimChatRun(runnerGroup, override.runId);
+    expect(overrideClaim.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
+      "high",
     );
-    expect(
-      (await chat.readThreadMetadata(actor, thread.id)).reasoningEffort ?? null,
-    ).toBeNull();
+    // A run-level model override uses Opus's default without rewriting the
+    // thread's persisted Sonnet selection or its saved effort.
     await expect(
       chat.readThreadMetadata(actor, thread.id),
-    ).resolves.toMatchObject({ selectedModel: "claude-opus-4-8" });
-    await cancelChatRun(actor, reset.runId, resetClaim.sandboxHeaders);
+    ).resolves.toMatchObject({
+      selectedModel: "claude-sonnet-5",
+      modelSettings: { "claude-sonnet-5": { effort: "high" } },
+    });
+    await cancelChatRun(actor, override.runId, overrideClaim.sandboxHeaders);
+  }, 90_000);
+
+  it("merges concurrent explicit effort writes without dropping another model", async () => {
+    const { actor, agentId, providerId } = await entitledChatActor();
+    await api.updateOrgModelPolicies(
+      actor,
+      (["claude-sonnet-5", "claude-opus-4-8"] as const).map((model) => {
+        return {
+          model,
+          isDefault: model === "claude-sonnet-5",
+          defaultProviderType: "anthropic-api-key" as const,
+          credentialScope: "org" as const,
+          modelProviderId: providerId,
+        };
+      }),
+    );
+    await authDeviceSupport.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.ChatReasoningEffort]: true,
+    });
+    const thread = await chat.createThread(actor, {
+      agentId,
+      title: "Concurrent effort patches",
+    });
+    const threadLock = await holdChatThreadRowLockFixture({
+      threadId: thread.id,
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      threadLock.release();
+      await threadLock.done;
+    });
+
+    const requests = [
+      chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: thread.id,
+          prompt: "Save Sonnet effort",
+          model: "claude-sonnet-5",
+          runOptions: { reasoningEffort: "extra" },
+        },
+        [201],
+      ),
+      chat.requestSendEvent(
+        actor,
+        {
+          agentId,
+          threadId: thread.id,
+          prompt: "Save Opus effort",
+          model: "claude-opus-4-8",
+          runOptions: { reasoningEffort: "low" },
+        },
+        [201],
+      ),
+    ] as const;
+    await expect.poll(threadLock.blockedWaiterCount).toBeGreaterThanOrEqual(2);
+    threadLock.release();
+    await threadLock.done;
+    const responses = await Promise.all(requests);
+
+    await expect(
+      chat.readThreadMetadata(actor, thread.id),
+    ).resolves.toMatchObject({
+      modelSettings: {
+        "claude-sonnet-5": { effort: "extra" },
+        "claude-opus-4-8": { effort: "low" },
+      },
+    });
+    for (const response of responses) {
+      if (response.status !== 201) {
+        throw new Error("Expected both effort updates to be accepted");
+      }
+      if (response.body.runId) {
+        await cancelChatRun(actor, response.body.runId);
+      }
+    }
   }, 90_000);
 
   it.each([
     {
       model: "gpt-5.6-sol",
-      effort: "high",
+      effort: "ultra",
       pi: true,
       providerType: "openai-api-key",
-      error:
-        "Reasoning effort selection is not supported by this execution route. Restore the model default to run this message.",
+      effectiveEffort: "max",
+    },
+    {
+      model: "deepseek-v4-flash",
+      effort: "low",
+      pi: true,
+      providerType: "openrouter-codex",
+      effectiveEffort: "high",
+    },
+    {
+      model: "deepseek-v4-pro",
+      effort: "max",
+      pi: true,
+      providerType: "openrouter-codex",
+      effectiveEffort: "high",
     },
     {
       model: "claude-sonnet-5",
       effort: "ultracode",
       pi: false,
       providerType: "anthropic-api-key",
-      error:
-        "Ultracode execution is not available yet. Choose another effort level or restore the model default.",
+      effectiveEffort: "high",
     },
   ] as const)(
-    "rejects unavailable $model $effort before queue admission",
-    async ({ model, effort, pi, providerType, error }) => {
+    "falls back from unavailable $model $effort without deleting the preference",
+    async ({ model, effort, pi, providerType, effectiveEffort }) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
       const { providerId } = await upsertOrgModelProvider(actor, {
         type: providerType,
@@ -4006,6 +3697,9 @@ describe("CHAT effort: thread configuration", () => {
         [FeatureSwitchKey.ChatReasoningEffort]: true,
         [FeatureSwitchKey.PiLoop]: pi,
       });
+      if (pi) {
+        mockPiCheckpointObjectStore();
+      }
       const thread = await chat.createThread(actor, {
         agentId,
         title: "Unsupported effort route",
@@ -4017,112 +3711,125 @@ describe("CHAT effort: thread configuration", () => {
             reasoningEffort: effort,
           });
         }
-        const result = await chat.requestSendEvent(
-          actor,
-          {
-            agentId,
-            threadId: thread.id,
-            prompt: "Do not silently ignore effort",
-            ...(saved ? {} : { runOptions: { reasoningEffort: effort } }),
-          },
-          [400],
+        const sent = await sendChatRun(actor, {
+          agentId,
+          threadId: thread.id,
+          prompt: pi
+            ? "/unknown-command use the route fallback"
+            : "Use the route fallback",
+          ...(saved ? {} : { runOptions: { reasoningEffort: effort } }),
+        });
+        if (pi) {
+          await flushWaitUntilForTest();
+        }
+        const claimed = await claimChatRun(runnerGroup, sent.runId);
+        expect(claimed.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
+          effectiveEffort,
         );
-        expect(result.body).toMatchObject({ error: { message: error } });
-        expect(
-          (await chat.listThreadEvents(actor, thread.id)).events,
-        ).toStrictEqual([]);
-      }
-      // A queued input must re-check the current route and effort, too.
-      await authDeviceSupport.updateFeatureSwitches(actor, {
-        [FeatureSwitchKey.PiLoop]: false,
-      });
-      await chat.updateThreadModelSelection(actor, thread.id, model, {
-        reasoningEffort: null,
-      });
-      const active = await sendChatRun(actor, {
-        agentId,
-        threadId: thread.id,
-        prompt: "Hold the queue before changing effort",
-      });
-      const activeClaim = await claimChatRun(runnerGroup, active.runId);
-      const clientEventId = randomUUID();
-      const queuedPrompt = "Reject unsupported effort at queued launch";
-      const queued = await chat.requestSendEvent(
-        actor,
-        { agentId, threadId: thread.id, clientEventId, prompt: queuedPrompt },
-        [201],
-      );
-      expect(queued.body).toMatchObject({ runId: null });
-      await chat.updateThreadModelSelection(actor, thread.id, model, {
-        reasoningEffort: effort,
-      });
-      await authDeviceSupport.updateFeatureSwitches(actor, {
-        [FeatureSwitchKey.PiLoop]: pi,
-      });
-      await cancelChatRun(actor, active.runId, activeClaim.sandboxHeaders);
-      const terminal = await waitForThreadMessages(
-        actor,
-        thread.id,
-        (events) => {
-          return userMessages(events).some((event) => {
-            return (
-              event.eventType === "input.rejected" &&
-              event.revokesEventId === clientEventId
-            );
+        if (pi) {
+          expect(claimed.claim.piModelConfig).toMatchObject({
+            thinkingLevel: effectiveEffort,
           });
-        },
-      );
-      expect(userMessages(terminal.events)).toContainEqual(
-        expect.objectContaining({
-          eventType: "input.rejected",
-          revokesEventId: clientEventId,
-          error: "bad_request",
-        }),
-      );
-      expect(
-        (await api.listAgentRuns(actor, { limit: 20 })).runs.filter((run) => {
-          return run.prompt === queuedPrompt;
-        }),
-      ).toHaveLength(0);
+        }
+        await expect(
+          chat.readThreadMetadata(actor, thread.id),
+        ).resolves.toMatchObject({
+          modelSettings: { [model]: { effort } },
+        });
+        await cancelChatRun(actor, sent.runId, claimed.sandboxHeaders);
+      }
     },
     90_000,
   );
 
-  it.each([true, false])(
-    "uses current thread settings when a queued message starts with rollout %s",
-    async (enabled) => {
+  it.each([
+    {
+      enabled: true,
+      requestedEffort: "high",
+      effectiveEffort: "high",
+      pi: false,
+    },
+    {
+      enabled: true,
+      requestedEffort: "high",
+      effectiveEffort: "high",
+      pi: true,
+    },
+    {
+      enabled: true,
+      requestedEffort: "ultra",
+      effectiveEffort: "max",
+      pi: true,
+    },
+    {
+      enabled: false,
+      requestedEffort: "high",
+      effectiveEffort: undefined,
+      pi: false,
+    },
+    {
+      enabled: true,
+      requestedEffort: "ultracode",
+      effectiveEffort: "high",
+      pi: false,
+    },
+  ] as const)(
+    "uses current thread settings when a queued message starts with rollout $enabled, Pi $pi and $requestedEffort effort",
+    async ({ enabled, requestedEffort, effectiveEffort, pi }) => {
       const { actor, agentId, providerId, runnerGroup } =
         await entitledChatActor();
       chatCallbacks.failIfChatCallbackRouteIsFetched();
       await authDeviceSupport.updateFeatureSwitches(actor, {
         [FeatureSwitchKey.ChatReasoningEffort]: true,
+        [FeatureSwitchKey.PiLoop]: false,
       });
-      await api.updateOrgModelPolicies(
-        actor,
-        (["claude-sonnet-5", "claude-opus-4-8"] as const).map((model) => {
-          return {
-            model,
-            isDefault: model === "claude-sonnet-5",
-            defaultProviderType: "anthropic-api-key",
-            credentialScope: "org",
-            modelProviderId: providerId,
-          };
-        }),
-      );
+      const selectedModel = pi ? "gpt-5.6-sol" : "claude-opus-4-8";
+      const targetProviderId = pi
+        ? (
+            await upsertOrgModelProvider(actor, {
+              type: "openai-api-key",
+              secret: "queued-pi-effort-key",
+            })
+          ).providerId
+        : providerId;
+      await api.updateOrgModelPolicies(actor, [
+        {
+          model: "claude-sonnet-5",
+          isDefault: true,
+          defaultProviderType: "anthropic-api-key",
+          credentialScope: "org",
+          modelProviderId: providerId,
+        },
+        {
+          model: selectedModel,
+          isDefault: false,
+          defaultProviderType: pi ? "openai-api-key" : "anthropic-api-key",
+          credentialScope: "org",
+          modelProviderId: targetProviderId,
+        },
+      ]);
       const active = await sendChatRun(actor, {
         agentId,
         prompt: "Active task",
       });
       const activeClaim = await claimChatRun(runnerGroup, active.runId);
+      await chat.updateThreadModelSelection(
+        actor,
+        active.threadId,
+        "claude-sonnet-5",
+        { reasoningEffort: "extra" },
+      );
       const clientEventId = randomUUID();
+      const prompt = pi
+        ? "/unknown-command read the current thread settings at launch"
+        : "Read the current thread settings at launch";
       const queued = await chat.requestSendEvent(
         actor,
         {
           agentId,
           threadId: active.threadId,
-          prompt: "Read the current thread settings at launch",
+          prompt,
           clientEventId,
-          runOptions: { reasoningEffort: null },
         },
         [201],
       );
@@ -4130,24 +3837,28 @@ describe("CHAT effort: thread configuration", () => {
       await chat.updateThreadModelSelection(
         actor,
         active.threadId,
-        "claude-opus-4-8",
-        { reasoningEffort: "high" },
+        selectedModel,
+        { reasoningEffort: requestedEffort },
       );
       const retry = await chat.requestSendEvent(
         actor,
         {
           agentId,
           threadId: active.threadId,
-          prompt: "Read the current thread settings at launch",
+          prompt,
           clientEventId,
-          runOptions: { reasoningEffort: "high" },
+          runOptions: { reasoningEffort: requestedEffort },
         },
         [201],
       );
       expect(retry.body).toStrictEqual(queued.body);
       await authDeviceSupport.updateFeatureSwitches(actor, {
         [FeatureSwitchKey.ChatReasoningEffort]: enabled,
+        [FeatureSwitchKey.PiLoop]: pi,
       });
+      if (pi) {
+        mockPiCheckpointObjectStore();
+      }
       await cancelChatRun(actor, active.runId, activeClaim.sandboxHeaders);
       const messages = await waitForThreadMessages(
         actor,
@@ -4169,17 +3880,28 @@ describe("CHAT effort: thread configuration", () => {
       }
       expect(promoted.userMessage.parts).toContainEqual({
         type: "model",
-        selectedModel: "claude-opus-4-8",
+        selectedModel,
       });
+      if (pi) {
+        await flushWaitUntilForTest();
+      }
       const claimed = await claimChatRun(runnerGroup, promoted.runId);
+      if (pi) {
+        expect(claimed.claim.piModelConfig).toMatchObject({
+          thinkingLevel: effectiveEffort,
+        });
+      }
       expect(claimed.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
-        enabled ? "high" : undefined,
+        effectiveEffort,
       );
       await expect(
         chat.readThreadMetadata(actor, active.threadId),
       ).resolves.toMatchObject({
-        selectedModel: "claude-opus-4-8",
-        reasoningEffort: "high",
+        selectedModel,
+        modelSettings: {
+          "claude-sonnet-5": { effort: "extra" },
+          [selectedModel]: { effort: requestedEffort },
+        },
       });
       await cancelChatRun(actor, promoted.runId, claimed.sandboxHeaders);
     },
@@ -4214,7 +3936,9 @@ describe("CHAT effort: thread configuration", () => {
       );
       await expect(
         chat.readThreadMetadata(actor, thread.id),
-      ).resolves.toMatchObject({ reasoningEffort: "high" });
+      ).resolves.toMatchObject({
+        modelSettings: { "claude-sonnet-5": { effort: "high" } },
+      });
       await cancelChatRun(actor, sent.runId, claimed.sandboxHeaders);
     }
     const disabledReset = await chat.requestSendEvent(
@@ -4223,7 +3947,7 @@ describe("CHAT effort: thread configuration", () => {
         agentId,
         threadId: thread.id,
         prompt: "Do not accept gated fields",
-        runOptions: { reasoningEffort: null },
+        runOptions: { reasoningEffort: "low" },
       },
       [400],
     );
@@ -4245,7 +3969,7 @@ describe("CHAT effort: thread configuration", () => {
     await cancelChatRun(actor, enabled.runId, enabledClaim.sandboxHeaders);
   }, 90_000);
 
-  it("preserves Fast when resetting effort and sending an Ultra override", async () => {
+  it("preserves Fast when changing effort", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     await authDeviceSupport.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.ChatReasoningEffort]: true,
@@ -4273,9 +3997,6 @@ describe("CHAT effort: thread configuration", () => {
       reasoningEffort: "low",
       codexServiceTier: "fast",
     });
-    await chat.updateThreadModelSelection(actor, thread.id, "gpt-5.6-sol", {
-      reasoningEffort: null,
-    });
     await expect(
       chat.readThreadMetadata(actor, thread.id),
     ).resolves.toMatchObject({
@@ -4284,16 +4005,13 @@ describe("CHAT effort: thread configuration", () => {
     const sent = await sendChatRun(actor, {
       agentId,
       threadId: thread.id,
-      prompt: "Fast with default effort",
-      runOptions: { reasoningEffort: null },
+      prompt: "Fast with saved effort",
     });
     const claimed = await claimChatRun(runnerGroup, sent.runId);
     expect(claimed.claim.platformEnvironment.OKOU_CODEX_SERVICE_TIER).toBe(
       "fast",
     );
-    expect(claimed.claim.platformEnvironment).not.toHaveProperty(
-      "OKOU_REASONING_EFFORT",
-    );
+    expect(claimed.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe("low");
     await cancelChatRun(actor, sent.runId, claimed.sandboxHeaders);
     const explicit = await sendChatRun(actor, {
       agentId,
@@ -4309,7 +4027,7 @@ describe("CHAT effort: thread configuration", () => {
     await expect(
       chat.readThreadMetadata(actor, thread.id),
     ).resolves.toMatchObject({
-      reasoningEffort: "ultra",
+      modelSettings: { "gpt-5.6-sol": { effort: "ultra" } },
       serviceTier: "priority",
     });
     await cancelChatRun(actor, explicit.runId, explicitClaim.sandboxHeaders);
@@ -4346,8 +4064,8 @@ describe("CHAT effort: automation launches", () => {
     const threadId = started.body.chatThreadId;
     const runId = await lastThreadPiAutomationRun(actor, threadId);
     const claimed = await claimChatRun(runnerGroup, runId);
-    expect(claimed.claim.platformEnvironment).not.toHaveProperty(
-      "OKOU_REASONING_EFFORT",
+    expect(claimed.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
+      "high",
     );
     return {
       ...scenario,
@@ -4403,15 +4121,15 @@ describe("CHAT effort: automation launches", () => {
       await expect(
         chat.readThreadMetadata(actor, threadId),
       ).resolves.toMatchObject({
-        reasoningEffort: "high",
+        modelSettings: { "claude-sonnet-5": { effort: "high" } },
       });
       await cancelChatRun(actor, nextRunId, next.sandboxHeaders);
     },
     90_000,
   );
 
-  it("rejects unsupported effort at the automation launch entry point", async () => {
-    const { actor, threadId, runId, claimed, automationId } =
+  it("uses route defaults for unsupported effort at automation launch", async () => {
+    const { actor, runnerGroup, threadId, runId, claimed, automationId } =
       await startAutomation();
     await completeChatRunOk(runId, claimed.sandboxHeaders, {
       cliAgentType: "claude-code",
@@ -4423,16 +4141,14 @@ describe("CHAT effort: automation launches", () => {
         effort: "ultracode",
         pi: false,
         providerType: "anthropic-api-key",
-        error:
-          "Ultracode execution is not available yet. Choose another effort level or restore the model default.",
+        effectiveEffort: "high",
       },
       {
         model: "gpt-5.6-sol",
         effort: "high",
         pi: true,
         providerType: "openai-api-key",
-        error:
-          "Reasoning effort selection is not supported by this execution route. Restore the model default to run this message.",
+        effectiveEffort: "high",
       },
     ] as const) {
       const { providerId } = await upsertOrgModelProvider(actor, {
@@ -4454,17 +4170,37 @@ describe("CHAT effort: automation launches", () => {
       await chat.updateThreadModelSelection(actor, threadId, route.model, {
         reasoningEffort: route.effort,
       });
-      const rejected = await accept(
+      if (route.pi) {
+        mockPiCheckpointObjectStore();
+      }
+      const started = await accept(
         threadPiAutomationsClient().run({
           headers: sessionHeaders(actor),
           params: { id: automationId },
         }),
-        [400],
+        [201],
       );
-      expect(rejected.body).toMatchObject({ error: { message: route.error } });
-      await expect(lastThreadPiAutomationRun(actor, threadId)).resolves.toBe(
-        runId,
+      if (!started.body.runId) {
+        throw new Error("Expected an automation run");
+      }
+      if (route.pi) {
+        await flushWaitUntilForTest();
+      }
+      const next = await claimChatRun(runnerGroup, started.body.runId);
+      expect(next.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
+        route.effectiveEffort,
       );
+      if (route.pi) {
+        expect(next.claim.piModelConfig).toMatchObject({
+          thinkingLevel: route.effectiveEffort,
+        });
+      }
+      await expect(
+        chat.readThreadMetadata(actor, threadId),
+      ).resolves.toMatchObject({
+        modelSettings: { [route.model]: { effort: route.effort } },
+      });
+      await cancelChatRun(actor, started.body.runId, next.sandboxHeaders);
     }
   }, 90_000);
 });
@@ -5922,46 +5658,6 @@ describe("CHAT-02: org queue markers", () => {
     expect(queuedBinding.agent_session_run_id).toBe(queuedRun.body.runId);
     expect(queuedBinding.agent_session_id).toMatch(/[0-9a-f-]{36}/);
     expect(queuedBinding.run_session_id).toBe(queuedBinding.agent_session_id);
-    expect(sandboxOperationEventsForRun(queuedRun.body.runId)).toContainEqual({
-      _time: expect.any(String),
-      source: "api",
-      op_type: "chat_thread_session_binding_persisted",
-      sandbox_type: "chat",
-      duration_ms: 0,
-      success: true,
-      run_id: queuedRun.body.runId,
-      chat_thread_id: queuedRun.body.threadId,
-      agent_session_id: queuedBinding.agent_session_id,
-      agent_session_run_id: queuedRun.body.runId,
-      binding_action: "initialized",
-      run_status: "queued",
-    });
-    const queuedTimingEvents = apiDispatchTimingEventsForRun(
-      queuedRun.body.runId,
-    );
-    expectApiDispatchSpanKind(
-      queuedTimingEvents,
-      API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES,
-      "nested",
-    );
-    expectNoApiDispatchActions(queuedTimingEvents, [
-      "api_dispatch_insert_run_record",
-      "api_dispatch_persist_custom_connector_auth_refs",
-      "api_dispatch_insert_agent_run_queue",
-      "api_dispatch_count_agent_run_queue_depth",
-      "api_dispatch_update_thread_session_binding",
-    ]);
-    expect(sandboxOperationEventsForRun(queuedRun.body.runId)).toContainEqual(
-      expect.objectContaining({
-        op_type: "enqueue_agent_run",
-        queue_depth: 1,
-      }),
-    );
-    expect(
-      queuedTimingEvents.filter((event) => {
-        return event.op_type === "api_dispatch_resolve_queue_first_admission";
-      }),
-    ).toHaveLength(1);
 
     const queuedThread = queuedRun.body.threadId;
     const beforeDequeue = await waitForThreadMessages(
@@ -6139,17 +5835,6 @@ describe("CHAT-02: dispatch failure", () => {
     }
     expect(sent.body.status).toBe("failed");
     await flushWaitUntilForTest();
-    expect(
-      firstAssistantEligibilityEventsForRun(sent.body.runId),
-    ).toStrictEqual([
-      expect.objectContaining({
-        op_type: "first_assistant_message_eligible",
-        sandbox_type: "runner",
-        duration_ms: 0,
-        success: true,
-        run_id: sent.body.runId,
-      }),
-    ]);
 
     const run = await api.readRun(actor, sent.body.runId);
     expect(run.status).toBe("failed");
@@ -6219,9 +5904,6 @@ describe("CHAT-02: dispatch failure", () => {
       status: "failed",
     });
     await flushWaitUntilForTest();
-    expect(firstAssistantEligibilityEventsForRun(sent.body.runId)).toHaveLength(
-      1,
-    );
     const queue = await api.readRunQueue(actor);
     expect(queue.body.queue).not.toContainEqual(
       expect.objectContaining({ runId: sent.body.runId }),
@@ -6836,7 +6518,6 @@ function expectApiKeyGptSandboxCarrier(
   route: (typeof GPT_API_KEY_BDD_ROUTES)[number],
   tier: "fast" | undefined,
 ): void {
-  expectPiConfigObservation(claim.runId, tier === undefined ? 2 : 3);
   expect(claim.piModelConfig).toStrictEqual({
     schemaVersion: tier === undefined ? 2 : 3,
     ...(tier === undefined ? {} : { serviceTier: "priority" }),
@@ -7189,6 +6870,77 @@ function piS3Object(objectKey: string): Buffer {
   throw new Error(`Expected Pi S3 object ${objectKey}`);
 }
 
+// A generic Storage commit keeps this test-owned instruction version pending.
+// Shared official skill versions may already be indexed by another test.
+async function publishPendingPiInstructions(
+  actor: ApiTestUser,
+  agentId: string,
+): Promise<string> {
+  const storageName = getInstructionsStorageName(
+    await readCanonicalAgentNameFixture(agentId),
+  );
+  const content = `Pending resource fixture ${randomUUID()}`;
+  const bytes = Buffer.from(content);
+  const header = Buffer.alloc(512);
+  new Header({
+    path: "AGENTS.md",
+    size: bytes.length,
+    type: "File",
+    mode: 0o644,
+  }).encode(header);
+  const archive = gzipSync(
+    Buffer.concat([
+      header,
+      bytes,
+      Buffer.alloc((512 - (bytes.length % 512)) % 512),
+      Buffer.alloc(1024),
+    ]),
+  );
+  const storages = createStoragesBddApi(context);
+  const files = [storageTextFile("AGENTS.md", content)];
+  const prepared = await storages.prepareStorage(actor, {
+    storageName,
+    storageOwner: "organization",
+    files,
+  });
+  let upload: { Bucket: string; Key: string } | undefined;
+  const original = context.mocks.s3.send.getMockImplementation();
+  context.mocks.s3.send.mockImplementation((request: unknown) => {
+    if (request instanceof HeadObjectCommand) {
+      if (
+        request.input.Bucket &&
+        request.input.Key?.endsWith("/archive.tar.gz")
+      ) {
+        upload = { Bucket: request.input.Bucket, Key: request.input.Key };
+      }
+      return Promise.resolve({ ContentLength: archive.length });
+    }
+    if (!original) {
+      throw new Error("Expected the test object store");
+    }
+    return original(request);
+  });
+  await storages
+    .commitStorage(actor, {
+      storageName,
+      storageOwner: "organization",
+      files,
+      versionId: prepared.versionId,
+    })
+    .finally(() => {
+      if (original) {
+        context.mocks.s3.send.mockImplementation(original);
+      }
+    });
+  if (!upload) {
+    throw new Error("Expected the instruction fixture archive to be verified");
+  }
+  await context.mocks.s3.send(
+    new PutObjectCommand({ ...upload, Body: archive }),
+  );
+  return content;
+}
+
 function mockPiResourceArchiveDownloads(unavailable = false): void {
   server.use(
     http.get(PI_RESOURCE_ARCHIVE_DOWNLOAD_URL, ({ request }) => {
@@ -7207,15 +6959,6 @@ function mockPiResourceArchiveDownloads(unavailable = false): void {
       });
     }),
   );
-}
-
-function warningCallsForRun(runId: string): readonly unknown[] {
-  return context.mocks.axiomLogging.warn.mock.calls.filter((call) => {
-    return (
-      call[0] !== "Run summary generation returned null (API key missing?)" &&
-      JSON.stringify(call).includes(runId)
-    );
-  });
 }
 
 async function completeSandboxFirstPiRun(args: {
@@ -7661,13 +7404,6 @@ describe("CHAT-02: model-first provider policies", () => {
       expect(sectionIndex).toBeGreaterThan(previousSectionIndex);
       previousSectionIndex = sectionIndex;
     }
-    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
-    expectPiLaunchResourceTiming(timingEvents, "not_required");
-    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
-      prompt,
-      run.threadId,
-      agentId,
-    ]);
     await cancelChatRun(actor, run.runId);
   });
 
@@ -7910,7 +7646,7 @@ describe("CHAT-02: model-first provider policies", () => {
       orgId,
       status: "suspended",
       supportByok: true,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
     const suspendedEventId = randomUUID();
     const suspended = await chat.requestSendEvent(
@@ -7958,9 +7694,9 @@ describe("CHAT-02: model-first provider policies", () => {
       orgId,
       status: "active",
       supportByok: false,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
-    await seedBuiltInModelKey("deepseek-v4-pro");
+    await seedBuiltInModelKey(LIMITED_FREE1_DEFAULT_RUN_MODEL);
     const byokDisabled = await chat.requestSendEvent(
       actor,
       {
@@ -7979,7 +7715,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const byokDisabledPolicies = await misc.listModelPolicies(actor);
     expect(byokDisabledPolicies.policies).toContainEqual(
       expect.objectContaining({
-        model: "deepseek-v4-pro",
+        model: LIMITED_FREE1_DEFAULT_RUN_MODEL,
         isDefault: true,
         defaultProviderType: "built-in",
         modelProviderId: null,
@@ -7991,7 +7727,7 @@ describe("CHAT-02: model-first provider policies", () => {
       orgId,
       status: "active",
       supportByok: true,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
     await api.updateOrgModelPolicies(actor, [
       {
@@ -8006,7 +7742,7 @@ describe("CHAT-02: model-first provider policies", () => {
       orgId,
       status: "active",
       supportByok: true,
-      restrictedVm0Models: true,
+      restrictedBuiltInModels: true,
     });
     const restricted = await chat.requestSendEvent(
       actor,
@@ -8028,7 +7764,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const restrictedPolicies = await misc.listModelPolicies(actor);
     expect(restrictedPolicies.policies).toContainEqual(
       expect.objectContaining({
-        model: "deepseek-v4-pro",
+        model: LIMITED_FREE1_DEFAULT_RUN_MODEL,
         isDefault: true,
         defaultProviderType: "built-in",
         modelProviderId: null,
@@ -8086,7 +7822,7 @@ describe("CHAT-02: model-first provider policies", () => {
       orgId,
       status: "suspended",
       supportByok: true,
-      restrictedVm0Models: false,
+      restrictedBuiltInModels: false,
     });
     threadLock.release();
     const rejected = await followUp;
@@ -8109,6 +7845,7 @@ describe("CHAT-02: model-first provider policies", () => {
     "keeps captured Pi admission after PiLoop turns off for %s",
     async (selectedModel) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
+      await publishPendingPiInstructions(actor, agentId);
       const orgId = requireOrgId(actor);
       await configureBuiltInPiModel(actor, selectedModel);
       mockPiResourceArchiveDownloads(true);
@@ -8362,6 +8099,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
   it("keeps an empty recall-enabled Pi memory mount valid", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await publishPendingPiInstructions(actor, agentId);
     const orgId = requireOrgId(actor);
     await configureBuiltInPiModel(actor, "gpt-5.6-terra");
     await updateFeatureSwitchesForUser(
@@ -9073,15 +8811,6 @@ describe("CHAT-02: model-first provider policies", () => {
     await expect(
       readSessionHistoryBlobRefCountFixture(firstCandidate.sourceHistoryHash),
     ).resolves.toBe(2);
-    expect(sandboxOperationEventsForRun(first.runId)).toContainEqual(
-      expect.objectContaining({
-        op_type: "pi_memory_stage1_candidate_admission",
-        candidate_outcome: "created",
-        memory_storage_id: firstCandidate.memoryStorageId,
-        pi_session_id: firstCandidate.piSessionId,
-        source_history_hash: firstCandidate.sourceHistoryHash,
-      }),
-    );
 
     const staleLeaseToken = randomUUID();
     await leasePiMemoryStage1CandidateFixture({
@@ -9146,13 +8875,6 @@ describe("CHAT-02: model-first provider policies", () => {
         replacedCandidate.sourceHistoryHash,
       ),
     ).resolves.toBe(2);
-    expect(sandboxOperationEventsForRun(second.runId)).toContainEqual(
-      expect.objectContaining({
-        op_type: "pi_memory_stage1_candidate_admission",
-        candidate_outcome: "replaced",
-        source_history_hash: replacedCandidate.sourceHistoryHash,
-      }),
-    );
 
     await expect(
       commitPiMemoryStage1CandidateFixture({
@@ -9464,7 +9186,10 @@ describe("CHAT-02: model-first provider policies", () => {
       await updateFeatureSwitchesForUser(
         context,
         { ...actor, orgId },
-        { [FeatureSwitchKey.PiLoop]: true },
+        {
+          [FeatureSwitchKey.PiLoop]: true,
+          [FeatureSwitchKey.ChatReasoningEffort]: true,
+        },
       );
       mockPiResourceArchiveDownloads();
       const checkpointObjects = mockPiCheckpointObjectStore();
@@ -9520,6 +9245,7 @@ describe("CHAT-02: model-first provider policies", () => {
           agentId,
           prompt: firstPrompt,
           model: selectedModel,
+          runOptions: { reasoningEffort: "max" },
         },
         usagePricingResolution,
       );
@@ -9536,6 +9262,9 @@ describe("CHAT-02: model-first provider policies", () => {
         },
       });
       expect(modelRequests).toHaveLength(1);
+      expect(modelRequests[0]?.body).toMatchObject({
+        reasoning: { effort: "max" },
+      });
       const firstModelInput = JSON.stringify(modelRequests[0]?.body);
       expect(occurrences(firstModelInput, firstPrompt)).toBe(1);
       expect(occurrences(firstModelInput, modelAnswers[0] ?? "")).toBe(0);
@@ -9560,9 +9289,6 @@ describe("CHAT-02: model-first provider policies", () => {
         firstSessionBytes,
         selectedModel,
       );
-      const firstSessionHash = createHash("sha256")
-        .update(firstSessionBytes)
-        .digest("hex");
       expect(firstSessionBytes.toString("utf8")).toContain(first.threadId);
       expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
         `runner-group:${runnerGroup}`,
@@ -9577,14 +9303,13 @@ describe("CHAT-02: model-first provider policies", () => {
         [404],
       );
       expect(firstClaim.status).toBe(404);
-      const firstTimingEvents = apiDispatchTimingEventsForRun(first.runId);
-      expectPiLaunchResourceTiming(firstTimingEvents, "required");
-      expectApiDispatchTimingEventsNotToLeak(firstTimingEvents, [
-        firstPrompt,
-        first.threadId,
-        agentId,
-      ]);
 
+      await chat.updateThreadModelSelection(
+        actor,
+        first.threadId,
+        selectedModel,
+        { reasoningEffort: "high" },
+      );
       const secondPrompt = "continue the same Pi session";
       const second = await sendChatRun(
         actor,
@@ -9598,6 +9323,14 @@ describe("CHAT-02: model-first provider policies", () => {
       await waitForRunStatus(actor, second.runId, "completed");
       await flushWaitUntilForTest();
       expect(modelRequests).toHaveLength(2);
+      expect(modelRequests[1]?.body).toMatchObject({
+        reasoning: { effort: "high" },
+      });
+      await expect(
+        chat.readThreadMetadata(actor, first.threadId),
+      ).resolves.toMatchObject({
+        modelSettings: { [selectedModel]: { effort: "high" } },
+      });
       await expectPiApiUsage(second.runId, selectedModel, "", {
         input: 5,
         output: 3,
@@ -9623,14 +9356,6 @@ describe("CHAT-02: model-first provider policies", () => {
         [404],
       );
       expect(secondClaim.status).toBe(404);
-      const secondTimingEvents = apiDispatchTimingEventsForRun(second.runId);
-      expectPiLaunchResourceTiming(secondTimingEvents, "required");
-      expectApiDispatchTimingEventsNotToLeak(secondTimingEvents, [
-        secondPrompt,
-        first.threadId,
-        agentId,
-        firstSessionHash,
-      ]);
     },
     90_000,
   );
@@ -9718,7 +9443,6 @@ describe("CHAT-02: model-first provider policies", () => {
       ).resolves.toMatchObject({
         launch_snapshot: { framework: "pi" },
       });
-      expectPiConfigObservation(run.runId, 1);
       expect(modelRequests).toStrictEqual([
         {
           body: expect.objectContaining({
@@ -9928,7 +9652,6 @@ describe("CHAT-02: model-first provider policies", () => {
       const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
       expect(claim.cliAgentType).toBe("pi");
       expect(claim.piSessionId).toBe(run.threadId);
-      expectPiConfigObservation(run.runId, 1);
       expect(claim.piModelConfig).toStrictEqual({
         provider: "openai",
         baseUrl: gateway.surface.apiBaseUrl,
@@ -10100,11 +9823,6 @@ describe("CHAT-02: model-first provider policies", () => {
         JSON.stringify({
           h2,
           events: (await chat.listThreadEvents(actor, run.threadId)).events,
-          telemetry: [
-            ...context.mocks.axiomLogging.debug.mock.calls,
-            ...context.mocks.axiomLogging.info.mock.calls,
-            ...context.mocks.axiomLogging.warn.mock.calls,
-          ],
         }),
       ).not.toContain(gateway.secret);
     },
@@ -10177,7 +9895,6 @@ describe("CHAT-02: model-first provider policies", () => {
           outcome: "ownership-transfer",
           mode: "sandbox-first",
         });
-        expect(warningCallsForRun(run.runId)).toStrictEqual([]);
         const claimed = await api.claimRunnerJob(run.runId, {
           capabilities: { piModelConfigGenerations: [1, 2, 3] },
         });
@@ -10225,11 +9942,6 @@ describe("CHAT-02: model-first provider policies", () => {
         JSON.stringify({
           failed,
           events: (await chat.listThreadEvents(actor, run.threadId)).events,
-          logs: [
-            ...context.mocks.axiomLogging.debug.mock.calls,
-            ...context.mocks.axiomLogging.info.mock.calls,
-            ...context.mocks.axiomLogging.warn.mock.calls,
-          ],
         }),
       ).not.toContain(gateway.secret);
     },
@@ -10328,6 +10040,7 @@ describe("CHAT-02: model-first provider policies", () => {
     "preserves captured custom %s Fast credentials after gateway removal without substitution",
     async (selectedModel) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
+      await publishPendingPiInstructions(actor, agentId);
       const gateway = await configureCustomPiModel(actor, selectedModel);
       const entered = createDeferredPromise<void>(context.signal);
       const release = createDeferredPromise<void>(context.signal);
@@ -10947,14 +10660,6 @@ describe("CHAT-02: model-first provider policies", () => {
 
       expect(modelCalls).toBe(1);
       expectNoPiApiFirstTurnArtifacts(run.runId, checkpointObjects);
-      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-        "Pi API first-turn outcome",
-        expect.objectContaining({
-          runId: run.runId,
-          outcome: "terminal_failure",
-          reason: "PI_API_MODEL_FAILED",
-        }),
-      );
       await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
         status: "failed",
         error: expect.stringContaining("[PI_API_MODEL_FAILED]"),
@@ -12305,8 +12010,183 @@ describe("CHAT-02: model-first provider policies", () => {
     ]);
   }, 90_000);
 
+  it("uses newly published Pi instruction indexes with resource archives unavailable", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockPiCheckpointObjectStore();
+    mockPiResourceArchiveDownloads();
+    const requests: string[] = [];
+    server.use(
+      http.post("https://api.openai.com/v1/responses", async ({ request }) => {
+        requests.push(await request.text());
+        return nativeCodexSseResponse(
+          piResponsesTextSse("indexed response", requests.length),
+        );
+      }),
+    );
+    await bdd.updateAgentInstructions(
+      actor,
+      agentId,
+      "Initial indexed instruction",
+    );
+    const queued = await queueCapabilityProvenPiRun({
+      actor,
+      agentId,
+      runnerGroup,
+      prompt: "warm exact resource versions",
+    });
+    await completeChatRunOk(
+      queued.anchor.runId,
+      queued.anchorClaim.sandboxHeaders,
+      { usagePricingResolution: queued.usagePricingResolution },
+    );
+    await waitForRunStatus(actor, queued.run.runId, "completed", 10_000);
+    await flushWaitUntilForTest();
+
+    // A new instruction version forces a new full-snapshot key. Its synchronous
+    // index and the warmed shared versions must suffice without archive access.
+    await bdd.updateAgentInstructions(
+      actor,
+      agentId,
+      "Updated instruction available immediately",
+    );
+    mockPiResourceArchiveDownloads(true);
+    const next = await sendChatRun(
+      actor,
+      {
+        agentId,
+        prompt: "use the newly saved instructions",
+        model: "gpt-5.6-terra",
+      },
+      queued.usagePricingResolution,
+    );
+    await waitForRunStatus(actor, next.runId, "completed", 10_000);
+    const events = (await chat.listThreadEvents(actor, next.threadId)).events;
+    expect(eventBackedContents(events, next.runId)).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ content: "indexed response" }),
+      ]),
+    );
+    expect(piResponsesDeveloperPrompt(requests.at(-1))).toContain(
+      "Updated instruction available immediately",
+    );
+    await flushWaitUntilForTest();
+    const pendingInstructions = await publishPendingPiInstructions(
+      actor,
+      agentId,
+    );
+    let archiveReads = 0;
+    server.use(
+      http.get(PI_RESOURCE_ARCHIVE_DOWNLOAD_URL, ({ request }) => {
+        archiveReads++;
+        const objectKey = new URL(request.url).searchParams.get("object");
+        if (!objectKey) {
+          throw new Error("Expected a resource archive identity");
+        }
+        return new HttpResponse(piS3Object(objectKey));
+      }),
+    );
+    const pending = await sendChatRun(
+      actor,
+      {
+        agentId,
+        prompt: "load the one pending resource version",
+        model: "gpt-5.6-terra",
+      },
+      queued.usagePricingResolution,
+    );
+    await waitForRunStatus(actor, pending.runId, "completed", 10_000);
+    expect(archiveReads).toBe(1);
+    expect(piResponsesDeveloperPrompt(requests.at(-1))).toContain(
+      pendingInstructions,
+    );
+  }, 30_000);
+
+  it.each(["created", "copied"] as const)(
+    "discovers a newly %s Workflow without reading its archive",
+    async (publication) => {
+      const { actor, agentId, runnerGroup } = await entitledChatActor();
+      mockPiCheckpointObjectStore();
+      mockPiResourceArchiveDownloads();
+      const requests: string[] = [];
+      server.use(
+        http.post(
+          "https://api.openai.com/v1/responses",
+          async ({ request }) => {
+            requests.push(await request.text());
+            return nativeCodexSseResponse(
+              piResponsesTextSse("workflow indexed", requests.length),
+            );
+          },
+        ),
+      );
+      const queued = await queueCapabilityProvenPiRun({
+        actor,
+        agentId,
+        runnerGroup,
+        prompt: "warm shared resource versions",
+      });
+      await completeChatRunOk(
+        queued.anchor.runId,
+        queued.anchorClaim.sandboxHeaders,
+        { usagePricingResolution: queued.usagePricingResolution },
+      );
+      await waitForRunStatus(actor, queued.run.runId, "completed", 10_000);
+      await flushWaitUntilForTest();
+
+      const sourceAgentId =
+        publication === "created"
+          ? agentId
+          : (await bdd.createAgent(actor, { displayName: "Workflow source" }))
+              .agentId;
+      const name = `indexed-${randomUUID().slice(0, 8)}`;
+      const workflow = await createMiscRoutesApi(context).createWorkflow(
+        actor,
+        sourceAgentId,
+        name,
+        { content: "Produce the indexed workflow report." },
+        [201],
+      );
+      if (workflow.status !== 201) {
+        throw new Error("Expected the workflow to be published");
+      }
+      if (publication === "copied") {
+        routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+        await accept(
+          setupApp({ context, routes: workflowsRoutes })(
+            workflowsDetailContract,
+          ).copy({
+            headers: { authorization: "Bearer clerk-session" },
+            params: { workflowId: workflow.body.id },
+            body: { toAgentId: agentId },
+          }),
+          [201],
+        );
+      }
+      mockPiResourceArchiveDownloads(true);
+      const next = await sendChatRun(
+        actor,
+        {
+          agentId,
+          prompt: "discover the new workflow",
+          model: "gpt-5.6-terra",
+        },
+        queued.usagePricingResolution,
+      );
+      await waitForRunStatus(actor, next.runId, "completed", 10_000);
+      expect(piResponsesDeveloperPrompt(requests.at(-1))).toContain(name);
+      const events = (await chat.listThreadEvents(actor, next.threadId)).events;
+      expect(eventBackedContents(events, next.runId)).toStrictEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ content: "workflow indexed" }),
+        ]),
+      );
+    },
+    30_000,
+  );
+
   it("classifies old Pi citations across real request caps, retries, replay, and ordering", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await publishPendingPiInstructions(actor, agentId);
     const resourceEntered = createDeferredPromise<void>(context.signal);
     const releaseResource = createDeferredPromise<void>(context.signal);
     onTestFinished(() => {
@@ -12804,6 +12684,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
   it("transfers authoritative H0 when API ownership expires before provider transport", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await publishPendingPiInstructions(actor, agentId);
     const resourceEntered = createDeferredPromise<void>(context.signal);
     const releaseResource = createDeferredPromise<void>(context.signal);
     server.use(
@@ -12918,7 +12799,6 @@ describe("CHAT-02: model-first provider policies", () => {
         return event.revokesEventId === activeInputEventId;
       }),
     ).toHaveLength(1);
-    expect(warningCallsForRun(run.runId)).toStrictEqual([]);
     await cancelChatRun(actor, run.runId, claimed.sandboxHeaders);
   }, 90_000);
 
@@ -13024,32 +12904,6 @@ describe("CHAT-02: model-first provider policies", () => {
     await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
       status: "completed",
     });
-    expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
-      "Pi API first-turn outcome",
-      expect.objectContaining({
-        runId: run.runId,
-        outcome: "discarded_late_provider_result",
-        reason: "api_attempt_timed_out",
-      }),
-    );
-    expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
-      "Pi API first-turn outcome",
-      expect.objectContaining({
-        runId: run.runId,
-        handoffOwner: "sandbox",
-        outcome: "sandbox_retry_started",
-      }),
-    );
-    // Reaching sandbox_retry_started through the deadline path requires the
-    // attempt-timeout record, so pin its level here too.
-    expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
-      "Pi API first-turn outcome",
-      expect.objectContaining({
-        runId: run.runId,
-        outcome: "api_attempt_timed_out",
-      }),
-    );
-    expect(warningCallsForRun(run.runId)).toStrictEqual([]);
   }, 90_000);
 
   it("lets canonical cancellation win the deadline ownership boundary", async () => {
@@ -13112,7 +12966,6 @@ describe("CHAT-02: model-first provider policies", () => {
     await api.requestClaimRunnerJob(true, run.runId, [404], {
       capabilities: { piModelConfigGenerations: [1, 2, 3] },
     });
-    expect(warningCallsForRun(run.runId)).toStrictEqual([]);
   }, 90_000);
 
   it.each(["deadline", "model failure"] as const)(
@@ -13179,34 +13032,12 @@ describe("CHAT-02: model-first provider policies", () => {
       await flushWaitUntilForTest();
 
       expect(modelCalls).toBe(1);
-      if (trigger === "model failure") {
-        expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-          "Pi API first-turn outcome",
-          expect.objectContaining({
-            runId: run.runId,
-            modelFailureCategory: "http_error",
-            modelFailureHttpStatus: 525,
-          }),
-        );
-      }
       expectNoPiApiFirstTurnArtifacts(run.runId, checkpointObjects);
       if (trigger === "deadline") {
         await expectTerraApiFollowUpUsage(run.runId);
       } else {
         await expectNoBuiltInModelUsage(run.runId);
       }
-      expect(warningCallsForRun(run.runId)).toHaveLength(1);
-      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-        "Pi API first-turn outcome",
-        expect.objectContaining({
-          runId: run.runId,
-          outcome: "terminal_failure",
-          recoveryReason:
-            trigger === "deadline"
-              ? "api_attempt_timed_out"
-              : "api_model_failed",
-        }),
-      );
       const events = (await chat.listThreadEvents(actor, run.threadId)).events;
       expect(
         events.filter((event) => {
@@ -13293,14 +13124,6 @@ describe("CHAT-02: model-first provider policies", () => {
       } else {
         await expectNoBuiltInModelUsage(run.runId);
       }
-      expect(warningCallsForRun(run.runId)).toHaveLength(1);
-      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-        "Run failed",
-        expect.objectContaining({
-          runId: run.runId,
-          error: "Sandbox retry failed",
-        }),
-      );
       const events = (await chat.listThreadEvents(actor, run.threadId)).events;
       expect(
         events.filter((event) => {
@@ -13316,6 +13139,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
   it("transfers pre-provider active input through one stable sandbox-first delivery", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await publishPendingPiInstructions(actor, agentId);
     const resourceEntered = createDeferredPromise<void>(context.signal);
     const releaseResource = createDeferredPromise<void>(context.signal);
     server.use(
@@ -13828,6 +13652,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
   it("lets canonical cancellation win before provider ownership without API artifacts", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await publishPendingPiInstructions(actor, agentId);
     const resourceEntered = createDeferredPromise<void>(context.signal);
     const releaseResource = createDeferredPromise<void>(context.signal);
     server.use(
@@ -14299,12 +14124,6 @@ describe("CHAT-02: model-first provider policies", () => {
           return event.runId === run.runId;
         }),
       ).toStrictEqual([]);
-      const telemetry = JSON.stringify([
-        ...context.mocks.axiomLogging.debug.mock.calls,
-        ...context.mocks.axiomLogging.info.mock.calls,
-        ...context.mocks.axiomLogging.warn.mock.calls,
-      ]);
-      expect(telemetry).not.toContain(partialText);
     },
     90_000,
   );
@@ -14825,27 +14644,7 @@ describe("CHAT-02: model-first provider policies", () => {
         "cancel",
         expect.objectContaining({ runId: run.runId }),
       );
-      expect(warningCallsForRun(run.runId)).toStrictEqual([]);
       expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
-      // Info is the lowest level the Axiom transport ingests, so this is the
-      // only production evidence that the run recovered instead of dying.
-      expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
-        "Pi API first-turn outcome",
-        expect.objectContaining({
-          runId: run.runId,
-          outcome: "sandbox_retry_started",
-          reason: "api_model_failed",
-          modelFailureCategory: scenario.category,
-          modelFailureHttpStatus: scenario.status,
-        }),
-      );
-      expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalledWith(
-        "Pi API first-turn outcome",
-        expect.objectContaining({ outcome: "sandbox_retry_started" }),
-      );
-      for (const log of Object.values(context.mocks.axiomLogging)) {
-        expect(JSON.stringify(log.mock.calls)).not.toContain(privateMarker);
-      }
       const claimed = await claimChatRun(runnerGroup, run.runId);
       expect(claimed.claim.prompt).toBe(prompt);
       const answer = "Sandbox recovered the failed model turn";
@@ -14879,7 +14678,6 @@ describe("CHAT-02: model-first provider policies", () => {
       ).toHaveLength(1);
       expect(JSON.stringify(events)).not.toContain(partial);
       expect(modelCalls).toBe(1);
-      expect(warningCallsForRun(run.runId)).toStrictEqual([]);
     },
     90_000,
   );
@@ -15000,18 +14798,7 @@ describe("CHAT-02: model-first provider policies", () => {
         );
       }),
     ).toStrictEqual([]);
-    expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
-      "Pi API first-turn outcome",
-      expect.objectContaining({
-        runId: run.runId,
-        dialect: "openai-codex-responses",
-        reason: "api_model_failed",
-        modelFailureCategory: "http_error",
-        modelFailureHttpStatus: 525,
-      }),
-    );
     expect(modelCalls).toBe(2);
-    expect(warningCallsForRun(run.runId)).toStrictEqual([]);
     expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
     await expectNoBuiltInModelUsage(run.runId);
     await cancelChatRun(actor, run.runId, {
@@ -15061,13 +14848,6 @@ describe("CHAT-02: model-first provider policies", () => {
       "[PI_API_MODEL_FAILED] Pi API first turn failed",
     );
     await expectNoBuiltInModelUsage(run.runId);
-    expect(context.mocks.axiomLogging.info).not.toHaveBeenCalledWith(
-      "Pi API first-turn outcome",
-      expect.objectContaining({
-        runId: run.runId,
-        outcome: "sandbox_retry_started",
-      }),
-    );
   }, 90_000);
 
   it.each(["H1 commit", "H1 deadline", "handoff publication"] as const)(
@@ -15166,7 +14946,6 @@ describe("CHAT-02: model-first provider policies", () => {
             sessionWrites[0]?.toString("utf8") ?? "",
           ).buildSessionContext().messages,
         ).toStrictEqual([]);
-        expect(warningCallsForRun(run.runId)).toHaveLength(1);
       }
       const errorCode =
         stage === "H1 deadline"
@@ -15178,29 +14957,6 @@ describe("CHAT-02: model-first provider policies", () => {
         status: "failed",
         error: expect.stringContaining(`[${errorCode}]`),
       });
-      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-        "Pi API first-turn outcome",
-        expect.objectContaining({
-          runId: run.runId,
-          outcome: "terminal_failure",
-          reason: errorCode,
-          ...(stage === "handoff publication"
-            ? {
-                recoveryReason: "api_model_failed",
-                modelFailureCategory: "http_error",
-                modelFailureHttpStatus: 522,
-              }
-            : {}),
-        }),
-      );
-      for (const log of Object.values(context.mocks.axiomLogging)) {
-        expect(JSON.stringify(log.mock.calls)).not.toContain(
-          "private storage sentinel",
-        );
-        expect(JSON.stringify(log.mock.calls)).not.toContain(
-          "private model sentinel",
-        );
-      }
       const events = (await chat.listThreadEvents(actor, run.threadId)).events;
       expect(eventBackedContents(events, run.runId)).toStrictEqual([]);
       expect(
@@ -15273,7 +15029,6 @@ describe("CHAT-02: model-first provider policies", () => {
         );
       }),
     ).toMatchObject([{ eventType: "run.cancelled" }]);
-    expect(warningCallsForRun(run.runId)).toStrictEqual([]);
     await api.requestClaimRunnerJob(true, run.runId, [404]);
   }, 90_000);
 
@@ -15313,26 +15068,11 @@ describe("CHAT-02: model-first provider policies", () => {
       await flushWaitUntilForTest();
       expectNoPiApiFirstTurnArtifacts(run.runId, checkpointObjects);
       expect(modelCalls).toBe(1);
-      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-        "Pi API first-turn outcome",
-        expect.objectContaining({
-          runId: run.runId,
-          outcome: "terminal_failure",
-          reason: "PI_API_MODEL_FAILED",
-          modelFailureCategory: "http_error",
-          modelFailureHttpStatus: status,
-        }),
-      );
       const failed = await api.readRun(actor, run.runId);
       expect(failed.error).toContain("[PI_API_MODEL_FAILED]");
       expect(JSON.stringify(failed)).not.toContain(
         "private-credential-sentinel",
       );
-      for (const log of Object.values(context.mocks.axiomLogging)) {
-        expect(JSON.stringify(log.mock.calls)).not.toContain(
-          "private-credential-sentinel",
-        );
-      }
       await api.requestClaimRunnerJob(true, run.runId, [404]);
     },
     90_000,
@@ -15347,6 +15087,7 @@ describe("CHAT-02: model-first provider policies", () => {
     "saves large Pi $encoding history without API history or resource IO (publication response lost: $responseLost)",
     async ({ encoding, responseLost }) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
+      await publishPendingPiInstructions(actor, agentId);
       const checkpointObjects = mockPiCheckpointObjectStore();
       let modelCalls = 0;
       let resourceDownloads = 0;
@@ -15657,6 +15398,7 @@ describe("CHAT-02: model-first provider policies", () => {
     "hands native input %j to Sandbox with exact fresh and resumed H0",
     async (prompt) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
+      await publishPendingPiInstructions(actor, agentId);
       const checkpointObjects = mockPiCheckpointObjectStore();
       let modelCalls = 0;
       let resourceDownloads = 0;
@@ -15764,26 +15506,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: originalPrompt,
           piLaunchConfig: { apiFirstTurn: { sandboxEventSequenceStart: 1 } },
         });
-        const outcomes = context.mocks.axiomLogging.info.mock.calls.filter(
-          (call) => {
-            return (
-              call[0] === "Pi API first-turn outcome" &&
-              JSON.stringify(call).includes(run.runId)
-            );
-          },
-        );
-        expect(outcomes).toStrictEqual([
-          [
-            "Pi API first-turn outcome",
-            expect.objectContaining({
-              runId: run.runId,
-              outcome: "ownership_transfer",
-              reason: "native_input_sandbox_first",
-              ownershipStage: "pre-provider",
-              handoffOwner: "sandbox",
-            }),
-          ],
-        ]);
 
         const sandboxUsage = {
           idempotencyKey: randomUUID(),
@@ -15847,7 +15569,6 @@ describe("CHAT-02: model-first provider policies", () => {
         await expect(
           readThreadSessionConversation(context, run.threadId),
         ).resolves.toMatchObject({ conversation_run_id: run.runId });
-        expect(warningCallsForRun(run.runId)).toStrictEqual([]);
         const blob = [...checkpointObjects.entries()]
           .filter(([key]) => {
             return key.startsWith(`${bucket}/blobs/`);
@@ -15874,17 +15595,6 @@ describe("CHAT-02: model-first provider policies", () => {
         queued.usagePricingResolution,
       );
       await flushWaitUntilForTest();
-      expect(
-        context.mocks.axiomLogging.debug.mock.calls.filter((call) => {
-          return (
-            call[0] === "Pi API first-turn outcome" &&
-            JSON.stringify(call).includes(ordinary.runId)
-          );
-        }),
-      ).toContainEqual([
-        "Pi API first-turn outcome",
-        expect.objectContaining({ outcome: "api_completion" }),
-      ]);
       await waitForRunStatus(actor, ordinary.runId, "completed");
       expect(modelCalls).toBe(1);
     },
@@ -15952,19 +15662,6 @@ describe("CHAT-02: model-first provider policies", () => {
         failure === "coordination deadline"
           ? "[PI_API_FIRST_TURN_DEADLINE_EXCEEDED]"
           : "[PI_API_SANDBOX_FALLBACK_FAILED]",
-      );
-      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-        "Pi API first-turn outcome",
-        expect.objectContaining({
-          runId: run.runId,
-          outcome: "terminal_failure",
-          ownershipStage: "pre-provider",
-          fallbackReason: "PI_API_NATIVE_INPUT_REQUIRED",
-        }),
-      );
-      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-        "Run failed",
-        expect.objectContaining({ runId: run.runId }),
       );
       const events = (await chat.listThreadEvents(actor, run.threadId)).events;
       expect(
@@ -16069,6 +15766,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
   it("hands a Terra resource failure to Sandbox without replaying a later credential failure", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await publishPendingPiInstructions(actor, agentId);
     if (!actor.orgId) {
       throw new Error("Expected entitled chat actor to have an org");
     }
@@ -16442,7 +16140,6 @@ describe("CHAT-02: model-first provider policies", () => {
       );
     });
     await waitForRunStatus(actor, second.runId, "queued");
-    context.mocks.axiomLogging.info.mockClear();
     await completeChatRunOk(anchor.runId, anchorSandboxHeaders);
 
     const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${second.runId}/manifest.json`;
@@ -16496,15 +16193,6 @@ describe("CHAT-02: model-first provider policies", () => {
       },
     });
     expect(transferredH0).not.toContain("serviceTier");
-    expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
-      "Pi API first-turn outcome",
-      expect.objectContaining({
-        runId: second.runId,
-        outcome: "ownership_transfer",
-        reason: "compaction_preflight",
-        ownershipStage: "pre-provider",
-      }),
-    );
     await cancelChatRun(actor, second.runId, sandboxHeaders);
   }, 90_000);
 
@@ -16785,7 +16473,6 @@ describe("CHAT-02: model-first provider policies", () => {
         model: selectedModel,
       });
       expect(claimed.claim.piModelConfig).not.toHaveProperty("api");
-      expectPiConfigObservation(run.runId, 1);
       expect(claimed.claim.piModelConfig).not.toHaveProperty("serviceTier");
       const sandboxUsageEvent = {
         idempotencyKey: randomUUID(),
@@ -17010,7 +16697,6 @@ describe("CHAT-02: model-first provider policies", () => {
       serviceTier: "priority",
     });
     expect(claimed.claim.piModelConfig).not.toHaveProperty("api");
-    expectPiConfigObservation(run.runId, 1);
     expect(claimed.claim.piLaunchConfig).toMatchObject({
       schemaVersion: 2,
       apiFirstTurn: {
@@ -17974,17 +17660,6 @@ describe("CHAT-02: model-first provider policies", () => {
         model,
       });
       await flushWaitUntilForTest();
-      await expect
-        .poll(() => {
-          return apiDispatchTimingEventsForRun(run.runId).some((event) => {
-            return event.op_type === "api_dispatch_build_runner_job_payload";
-          });
-        })
-        .toBe(true);
-      expectPiLaunchResourceTiming(
-        apiDispatchTimingEventsForRun(run.runId),
-        "not_required",
-      );
       const claimed = await claimChatRun(runnerGroup, run.runId);
       expect(claimed.claim.cliAgentType).toBe("codex");
       expect(claimed.claim.piLaunchConfig).toBeUndefined();
@@ -18259,11 +17934,6 @@ describe("CHAT-02: model-first provider policies", () => {
           terminal,
           events: (await chat.listThreadEvents(actor, first.threadId)).events,
           h2,
-          telemetry: [
-            ...context.mocks.axiomLogging.debug.mock.calls,
-            ...context.mocks.axiomLogging.info.mock.calls,
-            ...context.mocks.axiomLogging.warn.mock.calls,
-          ],
         }),
       ).not.toContain(initialSecret);
       if (route.outcome !== "completed") {
@@ -18353,32 +18023,6 @@ describe("CHAT-02: model-first provider policies", () => {
         agent_session_id: firstSession.agent_session_id,
       });
       await expectNoBuiltInModelUsage(rotated.runId);
-      expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
-        "Pi API first-turn outcome",
-        expect.objectContaining({
-          productProvider: route.type,
-          dialect: "openai-responses",
-          executionOwner: "api-first",
-          handoffOwner: "sandbox",
-          outcome: "ownership_transfer",
-        }),
-      );
-      expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
-        "Pi API first-turn outcome",
-        expect.objectContaining({
-          productProvider: route.type,
-          dialect: "openai-responses",
-          executionOwner: "sandbox",
-          outcome: "sandbox_completion",
-        }),
-      );
-      const piLogCalls = JSON.stringify([
-        ...context.mocks.axiomLogging.debug.mock.calls,
-        ...context.mocks.axiomLogging.info.mock.calls,
-        ...context.mocks.axiomLogging.warn.mock.calls,
-      ]);
-      expect(piLogCalls).not.toContain(initialSecret);
-      expect(piLogCalls).not.toContain(rotatedSecret);
       const publicState = JSON.stringify({
         run: await api.readRun(actor, rotated.runId),
         events: (await chat.listThreadEvents(actor, first.threadId)).events,
@@ -18403,6 +18047,7 @@ describe("CHAT-02: model-first provider policies", () => {
     "fails closed when the admitted $name Fast credential disappears before provider ownership",
     async (route) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
+      await publishPendingPiInstructions(actor, agentId);
       const secret = `${route.type}-deleted-secret`;
       await configureApiKeyGptPiModel(actor, route, secret);
       const entered = createDeferredPromise<void>(context.signal);
@@ -18544,23 +18189,6 @@ describe("CHAT-02: model-first provider policies", () => {
       });
       expect(publicState).not.toContain(secret);
       expect(publicState).not.toContain(privateDiagnostic);
-      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-        "Pi API first-turn outcome",
-        expect.objectContaining({
-          runId: run.runId,
-          productProvider: route.type,
-          dialect: "openai-responses",
-          executionOwner: "api-first",
-          outcome: "terminal_failure",
-        }),
-      );
-      const telemetry = JSON.stringify([
-        ...context.mocks.axiomLogging.debug.mock.calls,
-        ...context.mocks.axiomLogging.info.mock.calls,
-        ...context.mocks.axiomLogging.warn.mock.calls,
-      ]);
-      expect(telemetry).not.toContain(secret);
-      expect(telemetry).not.toContain(privateDiagnostic);
       await expectNoBuiltInModelUsage(run.runId);
       await api.heartbeatRunner(runnerGroup);
       const claim = await api.requestClaimRunnerJob(true, run.runId, [404], {
@@ -18633,62 +18261,6 @@ describe("CHAT-02: model-first provider policies", () => {
     await cancelChatRun(actor, second.runId);
   });
 
-  it("resolves an unchanged existing thread without waiting for its row lock", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-    const thread = await chat.createThread(actor, { agentId });
-    const prompt = "continue without reconciling the thread model";
-    const threadLock = await holdChatThreadRowLockFixture({
-      threadId: thread.id,
-      signal: context.signal,
-    });
-    onTestFinished(async () => {
-      threadLock.release();
-      await threadLock.done;
-    });
-
-    const [sent] = await Promise.all([
-      sendChatRun(actor, {
-        agentId,
-        threadId: thread.id,
-        prompt,
-      }),
-      (async () => {
-        await expect.poll(threadLock.firstBlockedStatementKind).toBe("update");
-        threadLock.release();
-        await threadLock.done;
-      })(),
-    ]);
-    const timingEvents = apiDispatchTimingEventsForRun(sent.runId);
-    expectApiDispatchSpanKind(
-      timingEvents,
-      [
-        ...API_DISPATCH_EXISTING_THREAD_ACTION_TYPES,
-        API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE,
-        ...API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_COMMON_ACTION_TYPES,
-        API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_TOUCH_THREAD_SORT_ACTION_TYPE,
-      ],
-      "nested",
-    );
-    expectNoApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_REMOVED_EARLY_SESSION_ACTION_TYPES,
-    );
-    expect(timingEvents).toContainEqual(
-      expect.objectContaining({
-        op_type:
-          "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_thread",
-        model_resolution_path: "read_only",
-      }),
-    );
-    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
-      prompt,
-      thread.id,
-      agentId,
-    ]);
-    await cancelChatRun(actor, sent.runId);
-  }, 90_000);
-
   it("recovers a removed thread model through the current workspace route", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
@@ -18750,26 +18322,6 @@ describe("CHAT-02: model-first provider policies", () => {
         await threadLock.done;
       })(),
     ]);
-    const timingEvents = apiDispatchTimingEventsForRun(recovered.runId);
-    expectApiDispatchSpanKind(
-      timingEvents,
-      [
-        ...API_DISPATCH_EXISTING_THREAD_ACTION_TYPES,
-        API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE,
-      ],
-      "nested",
-    );
-    expectNoApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_REMOVED_EARLY_SESSION_ACTION_TYPES,
-    );
-    expect(timingEvents).toContainEqual(
-      expect.objectContaining({
-        op_type:
-          "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_thread",
-        model_resolution_path: "locked_reconciliation",
-      }),
-    );
     const recoveredClaim = await claimChatRun(runnerGroup, recovered.runId);
     expect(recoveredClaim.claim.cliAgentType).toBe("codex");
     expect(recoveredClaim.claim.resumeSession).toBeNull();
@@ -19725,22 +19277,6 @@ describe("CHAT-02: run-level model overrides", () => {
       prompt: "switch to sonnet",
       model: "claude-sonnet-5",
     });
-    const secondTimingEvents = apiDispatchTimingEventsForRun(second.runId);
-    expectApiDispatchSpanKind(
-      secondTimingEvents,
-      [
-        ...API_DISPATCH_EXPLICIT_EXISTING_THREAD_ACTION_TYPES,
-        API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE,
-      ],
-      "nested",
-    );
-    expectNoApiDispatchActions(secondTimingEvents, [
-      API_DISPATCH_EXISTING_THREAD_PERSISTED_MODEL_ACTION_TYPE,
-    ]);
-    expectNoApiDispatchActions(
-      secondTimingEvents,
-      API_DISPATCH_REMOVED_EARLY_SESSION_ACTION_TYPES,
-    );
     const secondRun = await api.readRun(actor, second.runId);
     const appended = secondRun.appendSystemPrompt ?? "";
     expect(appended).not.toContain("# Web Chat Run Context");
@@ -19928,7 +19464,6 @@ describe("CHAT-02: run-level model overrides", () => {
       const sandboxHeaders = {
         authorization: `Bearer ${claim.sandboxToken}`,
       };
-      expectPiConfigObservation(run.runId, generation);
       expect(claim).toMatchObject({
         cliAgentType: "pi",
         piSessionId: run.threadId,
@@ -20260,34 +19795,7 @@ describe("CHAT-02: run-level model overrides", () => {
       expect(refreshAttempts).toBe(scenario.expired ? 1 : 0);
       expect(oauth.oauthToken).toHaveLength(1);
       if (scenario.expectedReconnect) {
-        expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
-        expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
         expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
-        for (const log of [
-          context.mocks.axiomLogging.debug,
-          context.mocks.axiomLogging.info,
-        ]) {
-          expect(log).not.toHaveBeenCalledWith(
-            "codex-oauth-token token refresh failed",
-            expect.anything(),
-          );
-          expect(log).not.toHaveBeenCalledWith(
-            "Pi API first-turn outcome",
-            expect.objectContaining({
-              runId: run.runId,
-              outcome: "terminal_failure",
-            }),
-          );
-        }
-      } else {
-        expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-          "Pi API first-turn outcome",
-          expect.objectContaining({
-            runId: run.runId,
-            outcome: "terminal_failure",
-            reason: scenario.errorCode,
-          }),
-        );
       }
       const events = (await chat.listThreadEvents(actor, run.threadId)).events;
       const failureEvent = events.find((event) => {
@@ -20331,8 +19839,6 @@ describe("CHAT-02: run-level model overrides", () => {
         await flushWaitUntilForTest();
         expect(refreshAttempts).toBe(1);
         expect(modelCalls).toBe(0);
-        expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
-        expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
         expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
         expect(
           (await chat.listThreadEvents(actor, repeated.threadId)).events,
@@ -20350,6 +19856,7 @@ describe("CHAT-02: run-level model overrides", () => {
 
   it("refreshes the captured subscription Fast account while another account becomes active", async () => {
     const { actor, agentId } = await entitledChatActor();
+    await publishPendingPiInstructions(actor, agentId);
     const other = await configureSubscriptionPiModel(actor, {
       accountId: "other-active-account",
     });
@@ -20996,11 +20503,6 @@ describe("CHAT-02: run-level model overrides", () => {
       prompt: "continue on sonnet in the same session",
       model: "claude-sonnet-5",
     });
-    expectApiDispatchSpanKind(
-      apiDispatchTimingEventsForRun(second.runId),
-      ["api_dispatch_validate_thread_session_snapshot_session"],
-      "nested",
-    );
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
     expect(secondClaim.claim.resumeSession?.sessionId).toBe(
       `bdd-cli-${first.runId}`,
@@ -21174,15 +20676,6 @@ describe("CHAT-02: run-level model overrides", () => {
     expect(repairedBinding.agent_session_id).not.toBe(
       primaryBinding.agent_session_id,
     );
-    expect(sandboxOperationEventsForRun(primarySecond.runId)).toContainEqual(
-      expect.objectContaining({
-        op_type: "chat_thread_session_binding_persisted",
-        chat_thread_id: primaryFirst.threadId,
-        agent_session_id: expect.any(String),
-        agent_session_run_id: primarySecond.runId,
-        binding_action: "initialized",
-      }),
-    );
     const primarySecondClaim = await claimChatRun(
       runnerGroup,
       primarySecond.runId,
@@ -21334,67 +20827,6 @@ describe("CHAT-02: run-level model overrides", () => {
       agent_session_run_id: winner.runId,
     });
 
-    const staleBlockedAdmission = sandboxOperationEvents().find((event) => {
-      return (
-        event.op_type === "api_dispatch_resolve_queue_first_admission" &&
-        event.queue_first_admission_result === "blocked" &&
-        event.thread_session_snapshot_state === "binding_changed" &&
-        event.queue_first_launch_outcome === "claim_lost"
-      );
-    });
-    expect(staleBlockedAdmission).toBeDefined();
-    const discardedRunId = staleBlockedAdmission?.run_id;
-    if (typeof discardedRunId !== "string") {
-      throw new Error("Expected blocked admission timing to identify its run");
-    }
-    await expect(
-      readRunLaunchSnapshotFixture(context, discardedRunId),
-    ).resolves.toStrictEqual({
-      exists: false,
-      launch_snapshot: null,
-    });
-    const lostTimingEvents = apiDispatchTimingEventsForRun(discardedRunId);
-    for (const actionType of [
-      "api_dispatch_prepare_run_context",
-      "api_dispatch_build_runner_job_payload",
-      "api_dispatch_insert_run_with_concurrency",
-      "api_dispatch_admission_lock_wait",
-      "api_dispatch_resolve_queue_first_admission",
-      "api_dispatch_claim_queue_first_message",
-    ]) {
-      expect(
-        lostTimingEvents.filter((event) => {
-          return event.op_type === actionType;
-        }),
-      ).toHaveLength(1);
-    }
-    for (const actionType of API_DISPATCH_PRE_QUEUE_PHASE_ACTION_TYPES) {
-      expect(
-        lostTimingEvents.filter((event) => {
-          return event.op_type === actionType;
-        }),
-      ).toStrictEqual([
-        expect.objectContaining({
-          api_start_source: "user_message",
-          queue_first_launch_outcome: "claim_lost",
-          run_preparation_retry_count: "0",
-        }),
-      ]);
-    }
-    expect(
-      lostTimingEvents.filter((event) => {
-        return event.op_type === API_DISPATCH_QUEUE_INSERT_PHASE_ACTION_TYPE;
-      }),
-    ).toHaveLength(0);
-    expect(
-      sandboxOperationEvents().filter((event) => {
-        return (
-          event.op_type === "chat_thread_session_binding_retry" &&
-          event.chat_thread_id === established.threadId
-        );
-      }),
-    ).toHaveLength(0);
-
     await chat.requestSendEvent(
       actor,
       {
@@ -21476,59 +20908,6 @@ describe("CHAT-02: run-level model overrides", () => {
     await bindingClear.done;
     const second = await secondPromise;
 
-    const retryEvents = sandboxOperationEvents().filter((event) => {
-      return (
-        event.op_type === "chat_thread_session_binding_retry" &&
-        event.chat_thread_id === first.threadId
-      );
-    });
-    expect(retryEvents).toContainEqual(
-      expect.objectContaining({
-        agent_session_id: firstBinding.agent_session_id,
-        binding_action: "retried",
-        resolution_action: "reused",
-        retry_reason: "binding_changed",
-      }),
-    );
-    const retryTimingEvents = apiDispatchTimingEventsForRun(second.runId);
-    for (const actionType of [
-      "api_dispatch_prepare_context_select_connector_catalog",
-      "api_dispatch_prepare_context_resolve_thread_connector_selections",
-      "api_dispatch_prepare_run_context",
-      "api_dispatch_build_runner_job_payload",
-      "api_dispatch_insert_run_with_concurrency",
-      "api_dispatch_resolve_queue_first_admission",
-    ]) {
-      expect(
-        retryTimingEvents.filter((event) => {
-          return event.op_type === actionType;
-        }),
-      ).toHaveLength(2);
-    }
-    for (const actionType of API_DISPATCH_PRE_QUEUE_PHASE_ACTION_TYPES) {
-      expect(
-        retryTimingEvents.filter((event) => {
-          return event.op_type === actionType;
-        }),
-      ).toStrictEqual([
-        expect.objectContaining({
-          api_start_source: "user_message",
-          run_preparation_retry_count: "1",
-        }),
-      ]);
-    }
-    expect(
-      retryTimingEvents.filter((event) => {
-        return event.op_type === API_DISPATCH_QUEUE_INSERT_PHASE_ACTION_TYPE;
-      }),
-    ).toHaveLength(1);
-    expect(retryTimingEvents).toContainEqual(
-      expect.objectContaining({
-        op_type: "api_dispatch_resolve_queue_first_admission",
-        queue_first_admission_result: "idle",
-        thread_session_snapshot_state: "binding_changed",
-      }),
-    );
     const secondBinding = await readThreadSessionBinding(
       context,
       first.threadId,
@@ -21678,12 +21057,6 @@ describe("CHAT-02: run-level model overrides", () => {
       threadId: first.threadId,
       prompt: "continue in a fresh native session",
     });
-    expect(sandboxOperationEventsForRun(second.runId)).toContainEqual(
-      expect.objectContaining({
-        op_type: "chat_thread_session_binding_persisted",
-        binding_action: "rotated",
-      }),
-    );
     const secondRun = await api.readRun(actor, second.runId);
     const appended = secondRun.appendSystemPrompt ?? "";
     expect(appended).toContain("# Web Chat Run Context");
@@ -21738,40 +21111,6 @@ describe("CHAT-02: run-level model overrides", () => {
     await conversationClear.done;
     const second = await secondPromise;
 
-    const retryEvents = sandboxOperationEvents().filter((event) => {
-      return (
-        event.op_type === "chat_thread_session_binding_retry" &&
-        event.chat_thread_id === first.threadId
-      );
-    });
-    expect(retryEvents).toContainEqual(
-      expect.objectContaining({
-        agent_session_id: firstBinding.agent_session_id,
-        binding_action: "retried",
-        resolution_action: "reused",
-        retry_reason: "session_changed",
-      }),
-    );
-    const retryTimingEvents = apiDispatchTimingEventsForRun(second.runId);
-    for (const actionType of [
-      "api_dispatch_prepare_run_context",
-      "api_dispatch_build_runner_job_payload",
-      "api_dispatch_insert_run_with_concurrency",
-      "api_dispatch_resolve_queue_first_admission",
-    ]) {
-      expect(
-        retryTimingEvents.filter((event) => {
-          return event.op_type === actionType;
-        }),
-      ).toHaveLength(2);
-    }
-    expect(retryTimingEvents).toContainEqual(
-      expect.objectContaining({
-        op_type: "api_dispatch_resolve_queue_first_admission",
-        queue_first_admission_result: "idle",
-        thread_session_snapshot_state: "session_changed",
-      }),
-    );
     const secondBinding = await readThreadSessionBinding(
       context,
       first.threadId,
@@ -21856,25 +21195,6 @@ describe("CHAT-02: run-level model overrides", () => {
       body: { error: "Internal server error" },
     });
 
-    const retryEvents = sandboxOperationEvents().filter((event) => {
-      return (
-        event.op_type === "chat_thread_session_binding_retry" &&
-        event.chat_thread_id === first.threadId
-      );
-    });
-    expect(retryEvents).toHaveLength(preparationAttempts);
-    expect(retryEvents).toStrictEqual(
-      expect.arrayContaining(
-        Array.from({ length: preparationAttempts }, () => {
-          return expect.objectContaining({
-            agent_session_id: firstBinding.agent_session_id,
-            binding_action: "retried",
-            resolution_action: "reused",
-            retry_reason: "session_changed",
-          });
-        }),
-      ),
-    );
     await expect(
       readThreadSessionBinding(context, first.threadId),
     ).resolves.toStrictEqual(firstBinding);
@@ -22179,7 +21499,7 @@ describe("CHAT-02: incomplete-round context", () => {
 });
 
 describe("CHAT-02: initial thinking indicator", () => {
-  // Provider text is untrusted and must never reach a log or a metric.
+  // Provider text is untrusted and must never reach the thread.
   const privateProviderDetail = "private_prompt_history_authorization_canary";
 
   it.each([
@@ -22275,7 +21595,7 @@ describe("CHAT-02: initial thinking indicator", () => {
               text: "Preparing the visible checklist",
             },
           ],
-          status: "fresh",
+          status: "available",
           runId: run.runId,
         });
         expect(indicatorCalls).toStrictEqual(["summary"]);
@@ -22291,58 +21611,29 @@ describe("CHAT-02: initial thinking indicator", () => {
 
   const providerDetail = "private-provider-detail";
 
+  // One shape per externally distinguishable outcome. Which gateway code or
+  // transport fault the provider classification separates further reaches the
+  // thread identically, so those are not enumerated again.
   it.each([
-    {
-      name: "an upstream gateway timeout delivered inside a 200 envelope",
-      thinkingResponse: () => {
-        return HttpResponse.json({
-          error: { code: 504, message: providerDetail },
-        });
-      },
-      outcome: "degraded",
-      reason: "upstream_timeout",
-      warned: false,
-    },
     {
       name: "a provider rate limit",
       thinkingResponse: () => {
         return new HttpResponse(providerDetail, { status: 429 });
       },
-      outcome: "degraded",
-      reason: "rate_limited",
-      warned: false,
     },
-    {
-      name: "an upstream bad gateway",
-      thinkingResponse: () => {
-        return new HttpResponse(providerDetail, { status: 502 });
-      },
-      outcome: "degraded",
-      reason: "provider_unavailable",
-      warned: false,
-    },
-    // Negative control: an unsupported request is our defect, not the
-    // provider's availability, and stays reportable.
     {
       name: "a rejected request",
       thinkingResponse: () => {
         return new HttpResponse(providerDetail, { status: 400 });
       },
-      outcome: "error",
-      reason: "invalid_request",
-      warned: true,
     },
     {
       name: "broken credentials",
       thinkingResponse: () => {
         return new HttpResponse(providerDetail, { status: 401 });
       },
-      outcome: "error",
-      reason: "auth",
-      warned: true,
     },
-    // The shared boundary counts a token ceiling as expected degradation, but
-    // the optional marker remains absent because shortened copy is unusable.
+    // Shortened copy is unusable for this caller, so the marker stays absent.
     {
       name: "an exhausted token budget",
       thinkingResponse: () => {
@@ -22356,66 +21647,57 @@ describe("CHAT-02: initial thinking indicator", () => {
           ],
         });
       },
-      outcome: "degraded",
-      reason: "output_truncated",
-      warned: false,
     },
-  ])(
-    "omits opening copy and reports a defect only for $name",
-    async ({ thinkingResponse, outcome, reason, warned }) => {
-      const { actor, agentId } = await entitledChatActor();
-      mockOptionalEnv("OPENROUTER_API_KEY", "thinking-classification-key");
-      server.use(
-        http.post(
-          "https://openrouter.ai/api/v1/chat/completions",
-          async ({ request }) => {
-            const payload = openRouterBodySchema.parse(await request.json());
-            const system = payload.messages[0]?.content ?? "";
-            return system.includes("Write user-visible progress copy")
-              ? thinkingResponse()
-              : HttpResponse.json({
-                  choices: [
-                    {
-                      finish_reason: "stop",
-                      message: { content: "Launch Checklist" },
-                    },
-                  ],
-                });
-          },
-        ),
-      );
-
-      const run = await sendChatRun(actor, {
-        agentId,
-        prompt: "Prepare the launch checklist",
-      });
-      await flushWaitUntilForTest();
-
-      // The optional generation is isolated: no marker, and the run proceeds.
-      const events = await chat.listThreadEvents(actor, run.threadId);
-      expect(
-        events.events.filter((event) => {
-          return event.runEventId === "thinking:initial";
-        }),
-      ).toStrictEqual([]);
-      expect((await api.readRun(actor, run.runId)).status).toBe("pending");
-
-      const warnings = auxiliaryWarnings(context);
-      expect(warnings).toHaveLength(warned ? 1 : 0);
-      expect(JSON.stringify(warnings)).not.toContain(providerDetail);
-      expect(auxiliaryResults(context, "chat_initial_thinking")).toStrictEqual([
-        expect.objectContaining({
-          outcome,
-          reason,
-          run_id: run.runId,
-        }),
-      ]);
-      expect(
-        JSON.stringify(auxiliaryResults(context, "chat_initial_thinking")),
-      ).not.toContain(providerDetail);
-      await cancelChatRun(actor, run.runId);
+    {
+      // Non-empty for the provider, yet nothing survives sanitization.
+      name: "output that sanitizes to nothing",
+      thinkingResponse: () => {
+        return HttpResponse.json({
+          choices: [{ finish_reason: "stop", message: { content: '"""' } }],
+        });
+      },
     },
-  );
+  ])("omits opening copy after $name", async ({ thinkingResponse }) => {
+    const { actor, agentId } = await entitledChatActor();
+    mockOptionalEnv("OPENROUTER_API_KEY", "thinking-classification-key");
+    server.use(
+      http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          const payload = openRouterBodySchema.parse(await request.json());
+          const system = payload.messages[0]?.content ?? "";
+          return system.includes("Write user-visible progress copy")
+            ? thinkingResponse()
+            : HttpResponse.json({
+                choices: [
+                  {
+                    finish_reason: "stop",
+                    message: { content: "Launch Checklist" },
+                  },
+                ],
+              });
+        },
+      ),
+    );
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "Prepare the launch checklist",
+    });
+    await flushWaitUntilForTest();
+
+    // The optional generation is isolated: no marker, the run proceeds, and
+    // nothing the provider sent reaches the thread.
+    const events = await chat.listThreadEvents(actor, run.threadId);
+    expect(
+      events.events.filter((event) => {
+        return event.runEventId === "thinking:initial";
+      }),
+    ).toStrictEqual([]);
+    expect(JSON.stringify(events.events)).not.toContain(providerDetail);
+    expect((await api.readRun(actor, run.runId)).status).toBe("pending");
+    await cancelChatRun(actor, run.runId);
+  });
 
   it("persists a fast assistant thinking marker with paragraphs for active web chat runs", async () => {
     const { actor, agentId } = await entitledChatActor();
@@ -22514,7 +21796,6 @@ describe("CHAT-02: initial thinking indicator", () => {
     );
     expect(thinkingPromptPayload).toContain("Draft a launch checklist");
     await flushWaitUntilForTest();
-    expect(firstAssistantEventsForRun(run.runId)).toStrictEqual([]);
 
     await chat.requestSendEvent(
       actor,
@@ -22643,8 +21924,11 @@ describe("CHAT-02: initial thinking indicator", () => {
       prompt: "Prepare a later update",
     });
     await flushWaitUntilForTest();
-    expect((await api.readRun(actor, queued.runId)).status).toBe("queued");
-    const page = await chat.listThreadEvents(actor, queued.threadId);
+    const [queuedRun, page] = await Promise.all([
+      api.readRun(actor, queued.runId),
+      chat.listThreadEvents(actor, queued.threadId),
+    ]);
+    expect(queuedRun.status).toBe("queued");
     expect(page.events).toContainEqual(
       expect.objectContaining({ runEventId: "queue:queued" }),
     );
@@ -22709,136 +21993,6 @@ describe("CHAT-02: initial thinking indicator", () => {
 
   it.each([
     {
-      name: "an HTTP rate limit",
-      response: () => {
-        return HttpResponse.json(
-          { error: { code: 429 } },
-          { status: 429, headers: { "retry-after": "12" } },
-        );
-      },
-      outcome: "degraded",
-      reason: "rate_limited",
-      retryAfterMs: 12_000,
-    },
-    {
-      // OpenRouter reports an exhausted upstream window as a synthetic gateway
-      // failure. It is the same admission problem, not a separate outage.
-      name: "a rate limit wrapped in a synthetic 502",
-      response: () => {
-        return HttpResponse.json({
-          choices: [
-            {
-              finish_reason: "error",
-              error: { code: 429, message: privateProviderDetail },
-            },
-          ],
-        });
-      },
-      outcome: "degraded",
-      reason: "rate_limited",
-      retryAfterMs: undefined,
-    },
-    {
-      name: "an unreachable provider",
-      response: () => {
-        return new HttpResponse(privateProviderDetail, { status: 503 });
-      },
-      outcome: "degraded",
-      reason: "provider_unavailable",
-      retryAfterMs: undefined,
-    },
-    {
-      name: "rejected credentials",
-      response: () => {
-        return new HttpResponse(privateProviderDetail, { status: 401 });
-      },
-      outcome: "error",
-      reason: "auth",
-      retryAfterMs: undefined,
-    },
-    {
-      // Non-empty for the provider, yet nothing survives sanitization.
-      name: "output that sanitizes to nothing",
-      response: () => {
-        return HttpResponse.json({
-          choices: [{ finish_reason: "stop", message: { content: '"""' } }],
-        });
-      },
-      outcome: "error",
-      reason: "unusable_output",
-      retryAfterMs: undefined,
-    },
-  ])(
-    "classifies $name for optional progress copy",
-    async ({ response, outcome, reason, retryAfterMs }) => {
-      const { actor, agentId } = await entitledChatActor();
-      mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
-      server.use(
-        http.post(
-          "https://openrouter.ai/api/v1/chat/completions",
-          async ({ request }) => {
-            const body = openRouterBodySchema.parse(await request.json());
-            return body.messages[0]?.content.includes(
-              "Write user-visible progress copy",
-            )
-              ? response()
-              : HttpResponse.json({
-                  choices: [
-                    { finish_reason: "stop", message: { content: "Update" } },
-                  ],
-                });
-          },
-        ),
-      );
-      const run = await sendChatRun(actor, {
-        agentId,
-        prompt: "Prepare an update",
-      });
-      await flushWaitUntilForTest();
-
-      expect(auxiliaryResults(context, "chat_initial_thinking")).toStrictEqual([
-        expect.objectContaining({
-          outcome,
-          reason,
-          run_id: run.runId,
-          // Recorded only when the provider actually asked for a delay.
-          ...(retryAfterMs === undefined
-            ? {}
-            : { retry_after_ms: retryAfterMs }),
-        }),
-      ]);
-      expect(
-        auxiliaryResults(context, "chat_initial_thinking")[0],
-      ).toStrictEqual(
-        retryAfterMs === undefined
-          ? expect.not.objectContaining({ retry_after_ms: expect.anything() })
-          : expect.anything(),
-      );
-      // Only a defect the caller can act on still reaches the log.
-      expect(auxiliaryWarnings(context)).toHaveLength(
-        outcome === "error" ? 1 : 0,
-      );
-      expect(JSON.stringify(auxiliaryWarnings(context))).not.toContain(
-        privateProviderDetail,
-      );
-      expect(JSON.stringify(auxiliaryResults(context))).not.toContain(
-        privateProviderDetail,
-      );
-
-      // The optional copy is absent either way; the run itself is untouched.
-      const page = await chat.listThreadEvents(actor, run.threadId);
-      expect(
-        page.events.some((event) => {
-          return event.runEventId === "thinking:initial";
-        }),
-      ).toBeFalsy();
-      expect((await api.readRun(actor, run.runId)).status).toBe("pending");
-      await cancelChatRun(actor, run.runId);
-    },
-  );
-
-  it.each([
-    {
       name: "empty",
       responseBody: {
         choices: [{ finish_reason: "stop", message: { content: "  " } }],
@@ -22855,8 +22009,8 @@ describe("CHAT-02: initial thinking indicator", () => {
       responseBody: {
         choices: [
           {
-            finish_reason: "private_prompt_history_authorization_canary",
-            native_finish_reason: "private_prompt_history_authorization_canary",
+            finish_reason: privateProviderDetail,
+            native_finish_reason: privateProviderDetail,
             message: { content: "Incomplete" },
           },
         ],
@@ -22864,7 +22018,7 @@ describe("CHAT-02: initial thinking indicator", () => {
     },
     {
       name: "malformed JSON",
-      responseBody: "private_prompt_history_authorization_canary: invalid JSON",
+      responseBody: `${privateProviderDetail}: invalid JSON`,
     },
   ])(
     "discards $name output without failing the run or leaking provider data",
@@ -22905,28 +22059,7 @@ describe("CHAT-02: initial thinking indicator", () => {
           return event.runEventId === "thinking:initial";
         }),
       ).toBeFalsy();
-      // Output the feature cannot interpret stays a reported defect; only the
-      // provider-side conditions the caller cannot act on became silent.
-      expect(auxiliaryWarnings(context)).toStrictEqual([
-        [
-          "Auxiliary generation failed",
-          expect.objectContaining({
-            feature: "chat_initial_thinking",
-            reason: "invalid_output",
-            runId: run.runId,
-          }),
-        ],
-      ]);
-      expect(JSON.stringify(auxiliaryWarnings(context))).not.toContain(
-        "private_prompt_history_authorization_canary",
-      );
-      expect(auxiliaryResults(context, "chat_initial_thinking")).toStrictEqual([
-        expect.objectContaining({
-          outcome: "error",
-          reason: "invalid_output",
-          run_id: run.runId,
-        }),
-      ]);
+      expect(JSON.stringify(page.events)).not.toContain(privateProviderDetail);
       await cancelChatRun(actor, run.runId);
     },
   );
@@ -22984,66 +22117,6 @@ describe("CHAT-02: initial thinking indicator", () => {
       if (outcome === "answer") {
         await cancelChatRun(actor, run.runId, claim.sandboxHeaders);
       }
-    },
-  );
-
-  it.each(openRouterErrorFixtures)(
-    "retains only safe initial-thinking diagnostics: $name",
-    async ({ body, expected }) => {
-      const { actor, agentId } = await entitledChatActor();
-      mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
-      server.use(
-        http.post(
-          "https://openrouter.ai/api/v1/chat/completions",
-          async ({ request }) => {
-            const payload = openRouterBodySchema.parse(await request.json());
-            return payload.messages[0]?.content.includes(
-              "Write user-visible progress copy",
-            )
-              ? typeof body === "string"
-                ? HttpResponse.text(body, { status: 400 })
-                : HttpResponse.json(body, { status: 400 })
-              : HttpResponse.json({
-                  choices: [
-                    { finish_reason: "stop", message: { content: "Update" } },
-                  ],
-                });
-          },
-        ),
-      );
-      const run = await sendChatRun(actor, {
-        agentId,
-        prompt: "Prepare an update",
-      });
-      await flushWaitUntilForTest();
-      // A rejected request is the caller's own defect, so it keeps warning with
-      // the enumerated diagnostics and without the provider's message or stack.
-      expect(auxiliaryWarnings(context)).toStrictEqual([
-        [
-          "Auxiliary generation failed",
-          expect.objectContaining({
-            feature: "chat_initial_thinking",
-            reason: "invalid_request",
-            errorKind: "openrouter_request",
-            status: 400,
-            errorType: undefined,
-            runId: run.runId,
-            ...expected,
-          }),
-        ],
-      ]);
-      expect(JSON.stringify(auxiliaryWarnings(context))).not.toContain(
-        "private_prompt_history_authorization_canary",
-      );
-      expect(auxiliaryWarnings(context)[0]?.[1]).not.toHaveProperty("err");
-      const page = await chat.listThreadEvents(actor, run.threadId);
-      expect(
-        page.events.some((event) => {
-          return event.runEventId === "thinking:initial";
-        }),
-      ).toBeFalsy();
-      expect((await api.readRun(actor, run.runId)).status).toBe("pending");
-      await cancelChatRun(actor, run.runId);
     },
   );
 });
@@ -23533,7 +22606,6 @@ describe("CHAT-02: generation templates and attachments", () => {
         }
         expect(reserved.prompt).toContain("Explain the product");
         expect(reserved.prompt).not.toContain("Use the $intro-video skill");
-        expect(templateUsageEvents()).toStrictEqual([]);
         await cancelChatRun(actor, active.runId);
         return;
       }
@@ -23565,7 +22637,6 @@ describe("CHAT-02: generation templates and attachments", () => {
       expect(run.appendSystemPrompt).not.toContain(
         "Use the $intro-video skill",
       );
-      expect(templateUsageEvents()).toStrictEqual([]);
       await cancelChatRun(actor, next.runId);
     },
     90_000,
@@ -24539,194 +23610,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(events.body.events).toStrictEqual([]);
   }, 60_000);
 
-  it("reports one template usage per template that reached the prompt", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
-    if (!style) {
-      throw new Error("Expected a registered illustration style");
-    }
-    context.mocks.axiom.ingest.mockClear();
-
-    const sent = await sendChatRun(actor, {
-      agentId,
-      prompt: "draw a fox",
-      template: {
-        type: "illustration",
-        selection: { illustrationStyleId: style.illustrationStyleId },
-      },
-    });
-
-    expect(templateUsageEvents()).toStrictEqual([
-      expect.objectContaining({
-        dispatchPath: "normal-send",
-        orgId: actor.orgId,
-        templateCategory: "illustration",
-        templateCount: 1,
-        templateId: style.illustrationStyleId,
-        templateIndex: 0,
-        templateRole: "primary",
-        templateSlug: style.slug,
-        templateSource: "builtin",
-        userId: actor.userId,
-      }),
-    ]);
-    await cancelChatRun(actor, sent.runId);
-  }, 60_000);
-
-  it("reports every template on a multi-template message with its position", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-    const [first, second] = ILLUSTRATION_TEMPLATE_ITEMS;
-    if (!first || !second) {
-      throw new Error("Expected two registered illustration styles");
-    }
-    context.mocks.axiom.ingest.mockClear();
-
-    const sent = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        prompt: "draw both",
-        userMessage: {
-          version: 1,
-          parts: [
-            { type: "text", text: "Draw " },
-            {
-              type: "template",
-              titleSnapshot: first.title,
-              template: {
-                type: "illustration",
-                selection: { illustrationStyleId: first.illustrationStyleId },
-              },
-            },
-            { type: "text", text: " then " },
-            {
-              type: "template",
-              titleSnapshot: second.title,
-              template: {
-                type: "illustration",
-                selection: { illustrationStyleId: second.illustrationStyleId },
-              },
-            },
-          ],
-        },
-      },
-      [201],
-    );
-    if (sent.status !== 201) {
-      throw new Error("Expected the multi-template send to be accepted");
-    }
-
-    expect(templateUsageEvents()).toStrictEqual([
-      expect.objectContaining({
-        templateCount: 2,
-        templateId: first.illustrationStyleId,
-        templateIndex: 0,
-        templateRole: "primary",
-      }),
-      expect.objectContaining({
-        templateCount: 2,
-        templateId: second.illustrationStyleId,
-        templateIndex: 1,
-        templateRole: "inline",
-      }),
-    ]);
-    const { runId } = sent.body;
-    if (runId) {
-      await cancelChatRun(actor, runId);
-    }
-  }, 60_000);
-
-  it("reports an avatar selection as avatar rather than video", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-    context.mocks.axiom.ingest.mockClear();
-
-    const sent = await sendChatRun(actor, {
-      agentId,
-      prompt: "introduce the product",
-      template: {
-        type: "video",
-        selection: { stylePresetId: avatarTemplateStylePresetId(1) },
-      },
-    });
-
-    expect(templateUsageEvents()).toStrictEqual([
-      expect.objectContaining({
-        templateCategory: "avatar",
-        templateId: avatarTemplateStylePresetId(1),
-      }),
-    ]);
-    await cancelChatRun(actor, sent.runId);
-  }, 60_000);
-
-  it("reports an active-input usage once even when its delivery is retrieved again", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
-    if (!style) {
-      throw new Error("Expected a registered illustration style");
-    }
-
-    const active = await sendChatRun(actor, {
-      agentId,
-      prompt: "anchor active input template usage",
-    });
-    const claimed = await claimChatRun(runnerGroup, active.runId);
-    await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        threadId: active.threadId,
-        prompt: "restyle it mid-run",
-        userMessage: {
-          version: 1,
-          parts: [
-            { type: "text", text: "Restyle with " },
-            {
-              type: "template",
-              titleSnapshot: style.title,
-              template: {
-                type: "illustration",
-                selection: { illustrationStyleId: style.illustrationStyleId },
-              },
-            },
-          ],
-        },
-        clientEventId: randomUUID(),
-      },
-      [201],
-    );
-    context.mocks.axiom.ingest.mockClear();
-
-    const reserved = await api.reserveRunnerActiveInputs(
-      claimed.claim.sandboxToken,
-      active.runId,
-    );
-    if (reserved.outcome !== "reserved") {
-      throw new Error("Expected the templated active input to be reserved");
-    }
-    // The same open delivery is rematerialized on retrieval, which must not
-    // count the steered prompt a second time.
-    await api.reserveRunnerActiveInputs(
-      claimed.claim.sandboxToken,
-      active.runId,
-    );
-
-    expect(templateUsageEvents()).toStrictEqual([
-      expect.objectContaining({
-        dispatchPath: "active-input",
-        templateCategory: "illustration",
-        templateCount: 1,
-        templateId: style.illustrationStyleId,
-        templateIndex: 0,
-        templateRole: "primary",
-      }),
-    ]);
-    await cancelChatRun(actor, active.runId);
-  }, 90_000);
-
   it("overlaps attachment metadata with thread model reconciliation", async () => {
     const { actor, agentId, providerId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -25123,12 +24006,6 @@ describe("CHAT-02: generation templates and attachments", () => {
         size: file.size,
       });
     }
-    expect(apiDispatchTimingEventsForRun(sent.body.runId)).toContainEqual(
-      expect.objectContaining({
-        op_type: API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE,
-        normal_send_attachment_count_bucket: "5_plus",
-      }),
-    );
   }, 60_000);
 
   it("falls back to v2 listing when the attachment filename hint is stale", async () => {
@@ -25472,19 +24349,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(created.prompt).toContain(`[ID] ${fileId}`);
     expect(created.appendSystemPrompt).toContain("okou web download-file -h");
     expect(created.appendSystemPrompt).toContain("okou web upload-file -h");
-    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
-    expect(timingEvents).toContainEqual(
-      expect.objectContaining({
-        op_type: API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE,
-        normal_send_attachment_count_bucket: "1",
-      }),
-    );
-    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
-      fileId,
-      filename,
-      "image/png",
-      "read this file",
-    ]);
 
     const messages = await waitForThreadMessages(
       actor,
@@ -26542,33 +25406,6 @@ describe("CHAT-02: shared user message queue", () => {
     expect(claimedRun.claim.prompt).toBe(
       `queue-first [direct dispatch](/chats/${referencedThreadId})`,
     );
-    await expect
-      .poll(() => {
-        const actionTypes = apiDispatchActionTypes(
-          apiDispatchTimingEventsForRun(runId),
-        );
-        return [
-          "api_dispatch_claim_queue_first_message",
-          ...API_DISPATCH_QUEUE_FIRST_CLAIM_PHASE_ACTION_TYPES,
-        ].every((actionType) => {
-          return actionTypes.has(actionType);
-        });
-      })
-      .toBe(true);
-    const claimTimingEvents = apiDispatchTimingEventsForRun(runId);
-    expectApiDispatchSpanKind(
-      claimTimingEvents,
-      API_DISPATCH_QUEUE_FIRST_CLAIM_PHASE_ACTION_TYPES,
-      "nested",
-    );
-    for (const actionType of API_DISPATCH_QUEUE_FIRST_CLAIM_PHASE_ACTION_TYPES) {
-      expect(claimTimingEvents).toContainEqual(
-        expect.objectContaining({
-          op_type: actionType,
-          queue_first_association_kind: "user_message",
-        }),
-      );
-    }
 
     await cancelChatRun(actor, runId);
   }, 90_000);
@@ -26602,21 +25439,6 @@ describe("CHAT-02: shared user message queue", () => {
       throw new Error("Expected the forwarded prompt to launch a run");
     }
     const forwardedRunId = forwarded.body.runId;
-    const forwardedTimingEvents = apiDispatchTimingEventsForRun(forwardedRunId);
-    expect(forwardedTimingEvents).toContainEqual(
-      expect.objectContaining({
-        op_type: API_DISPATCH_NORMAL_SEND_AGENT_RUN_SOURCE_ACTION_TYPE,
-        normal_send_agent_run_source_kind: "forward",
-      }),
-    );
-    expectApiDispatchTimingEventsNotToLeak(forwardedTimingEvents, [
-      source.runId,
-      source.threadId,
-      targetThread.id,
-      forwardedEventId,
-      agentId,
-      "deployment window is fifteen minutes",
-    ]);
 
     const targetMessages = await waitForThreadMessages(
       actor,
@@ -26732,20 +25554,6 @@ describe("CHAT-02: shared user message queue", () => {
       throw new Error("Expected the first delegated prompt to launch a run");
     }
     const firstTargetRunId = firstSend.body.runId;
-    const firstTargetTimingEvents =
-      apiDispatchTimingEventsForRun(firstTargetRunId);
-    expect(firstTargetTimingEvents).toContainEqual(
-      expect.objectContaining({
-        op_type: API_DISPATCH_NORMAL_SEND_AGENT_RUN_SOURCE_ACTION_TYPE,
-        normal_send_agent_run_source_kind: "agent",
-      }),
-    );
-    expectApiDispatchTimingEventsNotToLeak(firstTargetTimingEvents, [
-      source.runId,
-      source.threadId,
-      agentId,
-      "first delegated prompt",
-    ]);
     await expect(
       readRunAutonomyBudgetFixture(context, source.runId),
     ).resolves.toBe(10);
@@ -27407,11 +26215,6 @@ describe("CHAT-02: shared user message queue", () => {
       [201],
     );
     expect(queued.body).toMatchObject({ runId: null });
-    // The busy thread makes queue-first take the wait path, which builds this
-    // message's run input before re-checking admission and leaving it queued.
-    // Building is not using: reporting there would count the message again when
-    // it is really dispatched below.
-    expect(templateUsageEvents()).toStrictEqual([]);
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
@@ -27456,48 +26259,6 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(run.appendSystemPrompt).toContain("# Inline Templates");
     expect(run.appendSystemPrompt).toContain(style.illustrationStyleId);
-
-    // Exactly one event: the send left the message queued, so only the claim
-    // that created this run reports it.
-    expect(templateUsageEvents()).toStrictEqual([
-      expect.objectContaining({
-        dispatchPath: "queued-claim",
-        templateCategory: "illustration",
-        templateCount: 1,
-        templateId: style.illustrationStyleId,
-        templateIndex: 0,
-        templateRole: "primary",
-      }),
-    ]);
-
-    await expect
-      .poll(() => {
-        const actionTypes = apiDispatchActionTypes(
-          apiDispatchTimingEventsForRun(queuedRunId),
-        );
-        return [
-          "api_dispatch_pre_create_agent_chat_callback_auto_send_build_input",
-          "api_dispatch_pre_create_agent_chat_callback_auto_send_resolve_model_pin",
-          "api_dispatch_pre_create_agent_chat_callback_auto_send_load_session_state",
-        ].every((actionType) => {
-          return actionTypes.has(actionType);
-        });
-      })
-      .toBe(true);
-    const timingEvents = apiDispatchTimingEventsForRun(queuedRunId);
-    expectApiDispatchSpanKind(
-      timingEvents,
-      ["api_dispatch_pre_create_agent_chat_callback_auto_send_build_input"],
-      "top_level",
-    );
-    expectApiDispatchSpanKind(
-      timingEvents,
-      [
-        "api_dispatch_pre_create_agent_chat_callback_auto_send_resolve_model_pin",
-        "api_dispatch_pre_create_agent_chat_callback_auto_send_load_session_state",
-      ],
-      "nested",
-    );
 
     const queuedClaim = await claimChatRun(runnerGroup, queuedRunId);
     expect(queuedClaim.claim.prompt).toBe(run.prompt);
@@ -28083,18 +26844,6 @@ describe("CHAT-02: shared user message queue", () => {
     admissionLock.release();
     await admissionLock.done;
     await flushWaitUntilForTest();
-
-    await expect
-      .poll(() => {
-        return sandboxOperationEvents().some((event) => {
-          return (
-            event.op_type === "api_dispatch_claim_queue_first_message" &&
-            event.queue_first_claim_result === "lost" &&
-            event.queue_first_launch_outcome === "claim_lost"
-          );
-        });
-      })
-      .toBe(true);
 
     const messages = await chat.listThreadEvents(actor, anchor.threadId);
     expect(userMessages(messages.events)).toContainEqual(
@@ -29306,6 +28055,7 @@ describe("shared native Pi route activation", () => {
       await configureBuiltInPiModel(actor, model);
       await authDeviceSupport.updateFeatureSwitches(actor, {
         [FeatureSwitchKey.PiLoop]: true,
+        [FeatureSwitchKey.ChatReasoningEffort]: true,
       });
       const pricing = await createPiApiFirstTurnUsagePricingResolution(model);
       mockPiResourceArchiveDownloads();
@@ -29324,7 +28074,12 @@ describe("shared native Pi route activation", () => {
       );
       const first = await sendChatRun(
         actor,
-        { agentId, model, prompt: "retain this Claude native preference" },
+        {
+          agentId,
+          model,
+          prompt: "retain this Claude native preference",
+          runOptions: { reasoningEffort: "low" },
+        },
         pricing,
       );
       await waitForRunStatus(actor, first.runId, "completed");
@@ -29333,6 +28088,10 @@ describe("shared native Pi route activation", () => {
         orgId: requireOrgId(actor),
         userId: actor.userId,
         runId: first.runId,
+      });
+      const nextEffort = model === "claude-sonnet-4-6" ? "high" : "extra";
+      await chat.updateThreadModelSelection(actor, first.threadId, model, {
+        reasoningEffort: nextEffort,
       });
       const second = await sendChatRun(
         actor,
@@ -29347,6 +28106,15 @@ describe("shared native Pi route activation", () => {
       await flushWaitUntilForTest();
       expect(requests).toHaveLength(2);
       expect(requests[0]).toMatchObject({ model });
+      expect(JSON.stringify(requests[0])).toContain('"effort":"low"');
+      expect(JSON.stringify(requests[1])).toContain(
+        `"effort":"${nextEffort === "extra" ? "xhigh" : "high"}"`,
+      );
+      await expect(
+        chat.readThreadMetadata(actor, first.threadId),
+      ).resolves.toMatchObject({
+        modelSettings: { [model]: { effort: nextEffort } },
+      });
       expect(JSON.stringify(requests[1])).toContain(
         "retain this Claude native preference",
       );

@@ -12,6 +12,7 @@ import {
 } from "@okouai/api-contracts/contracts/chat-threads";
 import type { ImageModel } from "@okouai/core/image-model-catalog";
 import type { VideoModel } from "@okouai/core/video-model-catalog";
+import type { ModelSettingsPatch } from "@okouai/api-contracts/contracts/model-reasoning-effort";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { apiClient$ } from "../api-client.ts";
@@ -28,6 +29,7 @@ import {
   chatThreadMetaMap$,
   optimisticChatThreadCreateUnsettled,
   registerOptimisticChatThreadEvent$,
+  type ThreadMeta,
 } from "./chat-thread-event-sourcing.ts";
 import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
 
@@ -78,6 +80,32 @@ interface SubscribeRealtimeArgs {
   readonly handlers: ChatThreadRealtimeHandlers;
 }
 
+function changedModelSettingsPatch(args: {
+  readonly enabled: boolean;
+  readonly threadMeta: ThreadMeta | undefined;
+  readonly selection: ModelProviderSelection | null;
+}): ModelSettingsPatch | undefined {
+  const selection = args.selection;
+  const selectedModel = selection?.selectedModel;
+  if (
+    !args.enabled ||
+    !args.threadMeta ||
+    !selection ||
+    args.threadMeta.selectedModel !== selectedModel ||
+    selectedModel === undefined
+  ) {
+    return undefined;
+  }
+  const selectedEffort = selection.modelSettings?.[selectedModel]?.effort;
+  if (
+    selectedEffort === undefined ||
+    args.threadMeta.modelSettings[selectedModel]?.effort === selectedEffort
+  ) {
+    return undefined;
+  }
+  return { model: selectedModel, effort: selectedEffort };
+}
+
 type ChatRealtimeSubscription =
   | {
       readonly kind: "invalidate";
@@ -119,14 +147,17 @@ export const patchChatThreadModelSelection$ = command(
     { threadId, modelSelection }: PatchModelSelectionArgs,
     signal: AbortSignal,
   ) => {
-    const reasoningEffort = get(chatReasoningEffortEnabled$)
-      ? modelSelection?.reasoningEffort
-      : undefined;
+    const threadMeta = get(chatThreadMetaMap$).get(threadId);
+    const modelSettingsPatch = changedModelSettingsPatch({
+      enabled: get(chatReasoningEffortEnabled$),
+      threadMeta,
+      selection: modelSelection,
+    });
+    const reasoningEffort = modelSettingsPatch?.effort;
     const effortUpdate =
       reasoningEffort === undefined ? {} : { reasoningEffort };
     const modelSelectionEventId = crypto.randomUUID();
     const serviceTierEventId = crypto.randomUUID();
-    const threadMeta = get(chatThreadMetaMap$).get(threadId);
     if (threadMeta) {
       const createdAt = nowDate().toISOString();
       set(registerOptimisticChatThreadEvent$, {
@@ -135,7 +166,7 @@ export const patchChatThreadModelSelection$ = command(
         chatThreadId: threadId,
         agentId: threadMeta.agentId,
         selectedModel: modelSelection?.selectedModel ?? null,
-        ...effortUpdate,
+        ...(modelSettingsPatch === undefined ? {} : { modelSettingsPatch }),
         createdAt,
       });
       set(registerOptimisticChatThreadEvent$, {

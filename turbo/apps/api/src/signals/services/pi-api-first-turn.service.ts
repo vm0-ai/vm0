@@ -765,6 +765,7 @@ const loadApiFirstTurnResource$ = command(
             db: args.db,
             mounts: executionContext.storageMounts,
             memoryRecall: executionContext.piLaunchConfig.memoryRecall,
+            runId: args.activation.runId,
           },
           signal,
         ),

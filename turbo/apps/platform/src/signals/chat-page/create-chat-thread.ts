@@ -84,7 +84,6 @@ import {
 } from "@okouai/api-contracts/contracts/chat-events";
 
 import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
-import { compatibleReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
 import { runOptionsFromModelProviderSelection } from "./model-selection-request.ts";
 import { accept } from "../../lib/accept.ts";
 import { apiClient$ } from "../api-client.ts";
@@ -486,13 +485,10 @@ function createModelSelection(
     },
   );
 
-  const reasoningEffort$ = computed((get) => {
+  const modelSettings$ = computed((get) => {
     return get(chatReasoningEffortEnabled$)
-      ? compatibleReasoningEffort(
-          get(selectedModel$),
-          get(threadMeta$)?.reasoningEffort,
-        )
-      : undefined;
+      ? (get(threadMeta$)?.modelSettings ?? {})
+      : {};
   });
 
   const codexFastModeActive$ = computed(async (get): Promise<boolean> => {
@@ -521,7 +517,7 @@ function createModelSelection(
   return {
     selectedModel$,
     codexFastModeActive$,
-    reasoningEffort$,
+    modelSettings$,
     selectedModelOauthAvailable$,
     configureSelectedModel$,
     setModelSelection$,
@@ -1110,6 +1106,7 @@ function createRenderedChatGroups(
               userMessage: isInputChatEvent(event)
                 ? event.userMessage
                 : undefined,
+              userMessageRenderDocument: event.userMessageRenderDocument,
               tree: event.tree,
             };
           }),
@@ -3669,10 +3666,6 @@ function createThinkingIndicatorSignals(
       }
       return {
         runId: eventId,
-        summaryRevision: eventId,
-        summarySequence: null,
-        summaryMessageCursor: null,
-        summarizedAt: null,
         messages: [
           ...new Set(
             text
@@ -3847,13 +3840,13 @@ function createChatThreadComposerSignals(
       if (!isSupportedRunModel(selectedModel)) {
         return null;
       }
-      const reasoningEffort = get(modelSelection.reasoningEffort$);
+      const modelSettings = get(modelSelection.modelSettings$);
       return {
         selectedModel,
         ...((await get(modelSelection.codexFastModeActive$))
           ? { codexServiceTier: "fast" as const }
           : {}),
-        ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+        modelSettings,
       };
     },
   );

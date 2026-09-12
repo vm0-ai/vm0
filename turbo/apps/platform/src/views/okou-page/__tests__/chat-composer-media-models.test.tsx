@@ -52,6 +52,7 @@ function preference(
   return {
     selectedModel: DEFAULT_RUN_MODEL,
     serviceTier: "priority",
+    modelSettings: {},
     selectedImageModel: DEFAULT_IMAGE_MODEL,
     selectedVideoModel: DEFAULT_VIDEO_MODEL,
     updatedAt: "2026-06-12T00:00:00.000Z",
@@ -66,7 +67,7 @@ function installModelEnvironment(
   mockOrgModelRoutes(modelPreference.selectedModel ?? DEFAULT_RUN_MODEL);
   mockBillingCapabilities({
     supportByok: true,
-    restrictedVm0Models: false,
+    restrictedBuiltInModels: false,
   });
   context.mocks.data.userModelPreference(modelPreference);
 }
