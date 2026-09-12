@@ -23,11 +23,13 @@ interface SessionFixture {
   readonly email: string;
 }
 
+// The payload carries random identifiers, so a bare secret length would match
+// them by chance without proving anything about the secret. Only derivatives
+// that reproduce the value itself are meaningful evidence of a leak.
 function expectValueFree(payload: string, values: readonly string[]): void {
   for (const value of values) {
     const forbiddenDerivatives = [
       value,
-      String(value.length),
       createHash("sha256").update(value).digest("hex"),
       JSON.stringify(value),
     ];
