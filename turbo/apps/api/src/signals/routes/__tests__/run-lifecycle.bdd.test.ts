@@ -48,6 +48,7 @@ import { v5 as uuidv5 } from "uuid";
 
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
+import { mockAxiomSdkTelemetryFailure } from "../../../__tests__/mocks";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
@@ -186,6 +187,9 @@ import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandbo
 const context = testContext();
 const callbackStore = createStore();
 const fixtureStore = createStore();
+// `sandbox-op-log.ts` composes this name from AXIOM_DATASET_SUFFIX, which the
+// test environment stubs as "dev".
+const SANDBOX_OP_LOG_DATASET = "vm0-sandbox-op-log-dev";
 const ASSISTANT_EVENT_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
 const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 
@@ -2884,6 +2888,28 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, created.runId, [200]);
   });
 
+  it("keeps a direct launch claimable when sandbox telemetry ingest fails", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const prompt = "sandbox telemetry should not block launch";
+    mockAxiomSdkTelemetryFailure({
+      mode: "ingest",
+      datasets: [SANDBOX_OP_LOG_DATASET],
+    });
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt,
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(created.status).toBe("pending");
+    const claim = await api.claimRunnerJob(created.runId);
+    expect(claim.prompt).toBe(prompt);
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
   it("resumes the Agent execution session for a continued run", async () => {
     const api = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
@@ -5414,6 +5440,44 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     await api.requestCancelRun(actor, overLimit.runId, [200]);
     await api.requestCancelRun(actor, fresh.runId, [200]);
     await api.requestCancelRun(actor, queued.runId, [200]);
+    await api.requestCancelRun(actor, second.runId, [200]);
+  });
+
+  it("keeps a queued launch visible when enqueue telemetry fails", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before telemetry failure one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before telemetry failure two",
+      modelProvider: "anthropic-api-key",
+    });
+    // Those two runs hold the concurrency limit, so the next launch is the
+    // first one whose enqueue telemetry is written after the failure starts.
+    mockAxiomSdkTelemetryFailure({
+      mode: "ingest",
+      datasets: [SANDBOX_OP_LOG_DATASET],
+    });
+
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run should survive telemetry failure",
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(queued.status).toBe("queued");
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.queue).toContainEqual(
+      expect.objectContaining({ runId: queued.runId }),
+    );
+
+    await api.requestCancelRun(actor, queued.runId, [200]);
+    await api.requestCancelRun(actor, first.runId, [200]);
     await api.requestCancelRun(actor, second.runId, [200]);
   });
 

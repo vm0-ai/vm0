@@ -4,6 +4,7 @@ import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 import { z } from "zod";
 
+import { mockAxiomSdkTelemetryFailure } from "../../../__tests__/mocks";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
@@ -286,6 +287,31 @@ describe("optional shared-thread titles", () => {
     await expectSharedSnapshot(fixture, created.body.id, "Shared conversation");
     expect(requests).toStrictEqual([]);
   });
+
+  it.each(["ingest", "flush"] as const)(
+    "preserves a valid share when telemetry %s fails",
+    async (mode) => {
+      const fixture = await prepareShare();
+      mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter");
+      server.use(
+        http.post(endpoint, () => {
+          return new HttpResponse(null, { status: 429 });
+        }),
+      );
+      mockAxiomSdkTelemetryFailure({ mode });
+      const created = await accept(
+        client().create(requestBody(fixture)),
+        [201],
+      );
+      await expect(flushWaitUntilForTest()).resolves.toBeUndefined();
+      await expectSharedSnapshot(
+        fixture,
+        created.body.id,
+        "Shared conversation",
+      );
+      expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
+    },
+  );
 
   it("preserves cancellation before request dispatch", async () => {
     const fixture = await prepareShare();
