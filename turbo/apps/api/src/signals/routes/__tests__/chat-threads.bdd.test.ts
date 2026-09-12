@@ -437,7 +437,7 @@ async function createSnapshotCursorScenario(label: string) {
   if (!actor.orgId) {
     throw new Error("Expected an organization-scoped chat actor");
   }
-  await api.ensureOrgModelProvider(actor);
+  const { providerId } = await api.ensureOrgModelProvider(actor);
   const agent = await bdd.createAgent(actor, {
     displayName: `${label} agent`,
   });
@@ -472,6 +472,7 @@ async function createSnapshotCursorScenario(label: string) {
   return {
     actor,
     orgId: actor.orgId,
+    providerId,
     agent,
     thread,
     firstEvent,
@@ -679,11 +680,27 @@ const malformedChatThreadIdRequests = [
 
 describe("CHAT-01 thread detail, create, and delete cascades", () => {
   it("preserves model settings through snapshot compaction and patch replay", async () => {
-    const { actor, thread } =
+    const { actor, providerId, thread } =
       await createSnapshotCursorScenario("Effort snapshot");
     await createBillingMediaApi(context).updateFeatureSwitches(actor, {
       [FeatureSwitchKey.ChatReasoningEffort]: true,
     });
+    await api.updateOrgModelPolicies(actor, [
+      {
+        model: "claude-sonnet-5",
+        isDefault: true,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+      {
+        model: "claude-opus-4-8",
+        isDefault: false,
+        defaultProviderType: "anthropic-api-key",
+        credentialScope: "org",
+        modelProviderId: providerId,
+      },
+    ]);
     await chat.updateThreadModelSelection(actor, thread.id, "claude-sonnet-5", {
       reasoningEffort: "high",
     });
