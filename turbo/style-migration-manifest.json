@@ -615,6 +615,32 @@
       ],
       "status": "implemented",
       "evidence": []
+    },
+    {
+      "id": "sidebar-copy-foreground",
+      "family": "navigation",
+      "tokens": [
+        "okou-nav-copy",
+        "okou-nav-copy-muted",
+        "okou-nav-copy-muted-hover"
+      ],
+      "consumers": [
+        "apps/platform/src/views/okou-page/sidebar.tsx",
+        "apps/platform/src/views/okou-page/sidebar-pinned.tsx",
+        "apps/platform/src/views/okou-page/sidebar-threads.tsx",
+        "apps/platform/src/views/okou-page/sidebar-upgrade.tsx",
+        "apps/platform/src/views/okou-page/__tests__/chat-list-test-helpers.ts"
+      ],
+      "cases": [
+        "nav-copy-gradient-light",
+        "nav-copy-gradient-dark",
+        "nav-copy-default-light",
+        "nav-copy-default-dark",
+        "nav-copy-rail-light",
+        "nav-copy-rail-dark"
+      ],
+      "status": "implemented",
+      "evidence": []
     }
   ],
   "caseFiles": [
@@ -624,6 +650,7 @@
     "../e2e/playwright/style-migration/icon-mono-cases.json",
     "../e2e/playwright/style-migration/settings-select-cases.json",
     "../e2e/playwright/style-migration/badge-cases.json",
+    "../e2e/playwright/style-migration/nav-copy-cases.json",
     "../e2e/playwright/style-migration/chat-emoji-cases.json",
     "../e2e/playwright/style-migration/running-indicator-cases.json",
     "../e2e/playwright/style-migration/swatch-cases.json",

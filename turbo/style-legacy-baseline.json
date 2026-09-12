@@ -33,9 +33,6 @@
     "okou-mobile-fixed-safe-area",
     "okou-mobile-sidebar",
     "okou-nav",
-    "okou-nav-copy",
-    "okou-nav-copy-muted",
-    "okou-nav-copy-muted-hover",
     "okou-nav-recent-label",
     "okou-nav-title",
     "okou-nav-title-row",
@@ -667,27 +664,6 @@
         "selector": ".okou-app[data-gradient-color-themes] .okou-nav",
         "property": "--color-sidebar-border",
         "value": " hsl(var(--border) / 0.5)",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-app[data-gradient-color-themes] .okou-nav .okou-nav-copy",
-        "property": "color",
-        "value": "hsl(var(--okou-nav-foreground))",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-app[data-gradient-color-themes] .okou-nav .okou-nav-copy-muted",
-        "property": "color",
-        "value": "hsl(var(--okou-nav-muted-foreground))",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-app[data-gradient-color-themes] .group:hover .okou-nav-copy-muted-hover",
-        "property": "color",
-        "value": "hsl(var(--okou-nav-foreground))",
         "important": false
       },
       {
@@ -3274,22 +3250,10 @@
       "okou-pwa-fixed-cover": 1,
       "okou-viewport-shell": 1
     },
-    "apps/platform/src/views/okou-page/sidebar-pinned.tsx": {
-      "okou-nav-copy": 2,
-      "okou-nav-copy-muted": 3,
-      "okou-nav-copy-muted-hover": 1
-    },
     "apps/platform/src/views/okou-page/sidebar-threads.tsx": {
-      "okou-nav-copy": 1,
-      "okou-nav-copy-muted": 2,
-      "okou-nav-copy-muted-hover": 1,
       "okou-nav-recent-label": 1,
       "okou-nav-title": 1,
       "okou-nav-title-row": 1
-    },
-    "apps/platform/src/views/okou-page/sidebar-upgrade.tsx": {
-      "okou-nav-copy": 1,
-      "okou-nav-copy-muted": 1
     },
     "apps/platform/src/views/okou-page/sidebar.tsx": {
       "okou-desktop-no-drag": 1,
@@ -3297,9 +3261,6 @@
       "okou-mobile-fixed-safe-area": 1,
       "okou-mobile-sidebar": 1,
       "okou-nav": 3,
-      "okou-nav-copy": 4,
-      "okou-nav-copy-muted": 2,
-      "okou-nav-copy-muted-hover": 1,
       "okou-sidebar-header": 1
     },
     "apps/platform/src/views/okou-page/tiptap-instructions-editor.tsx": {
