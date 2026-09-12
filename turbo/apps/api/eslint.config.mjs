@@ -287,10 +287,18 @@ export default [
       // One record per organization-membership creation. Failures already
       // reach Axiom at warn; the succeeded and skipped outcomes must survive
       // the info default too, or a silent dataset is indistinguishable from a
-      // working one.
+      // working one. Welcome delivery is the same shape and is one-shot: an
+      // abandoned invocation is never retried, so its only evidence is this
+      // record. The disabled outcome, which every non-staff workspace
+      // produces, stays at debug.
       "api/no-logger-info": [
         "error",
-        { allowedMessages: ["Morning Brief membership provisioning outcome"] },
+        {
+          allowedMessages: [
+            "Morning Brief membership provisioning outcome",
+            "welcome thread delivery outcome",
+          ],
+        },
       ],
     },
   },
@@ -578,6 +586,10 @@ export default [
       // exact Agent Draft writer through both rollout targets.
       "src/signals/services/__tests__/agent-draft-write.service.test.ts",
       "src/signals/services/__tests__/workflow-automation-context.test.ts",
+      // The automatic welcome thread id is a permanent uuidv5 contract with
+      // externally computed literals; route tests own generated identities and
+      // cannot pin the namespace, input order and separator.
+      "src/signals/services/__tests__/welcome-chat-thread-id.test.ts",
     ],
     rules: {
       "no-restricted-syntax": ["error", ...restrictedSyntax],
@@ -717,6 +729,12 @@ export default [
       // through the production API. This focused PostgreSQL test proves the
       // exact Agent Draft writer through both rollout targets.
       "src/signals/services/__tests__/agent-draft-write.service.test.ts",
+      // The automatic welcome thread id is a permanent uuidv5 contract: it
+      // decides, forever, whether a recipient already holds a welcome. Route
+      // tests own uniquely generated identities, so only fixed inputs with
+      // externally computed literals can pin the namespace, input order and
+      // separator.
+      "src/signals/services/__tests__/welcome-chat-thread-id.test.ts",
     ],
     rules: {
       "no-restricted-imports": [
