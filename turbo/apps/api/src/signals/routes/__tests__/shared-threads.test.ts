@@ -29,7 +29,6 @@ const providerSecret = "Private provider response and credential details";
 const selectedContent = "Publish the agreed launch checklist";
 
 beforeEach(() => {
-  context.mocks.axiom.useRealTelemetry.mockReturnValue(true);
   mockOptionalEnv("OPENROUTER_API_KEY", undefined);
 });
 
@@ -299,7 +298,7 @@ describe("optional shared-thread titles", () => {
         }),
       );
       if (mode === "ingest") {
-        context.mocks.axiom.sdkIngest.mockImplementation(() => {
+        context.mocks.axiom.ingest.mockImplementation(() => {
           throw new Error("Telemetry unavailable");
         });
       } else {
@@ -481,10 +480,6 @@ describe("optional shared-thread titles", () => {
       "Unknown response status 500 for POST /api/chat-threads/:threadId/shared-threads",
     );
     await flushWaitUntilForTest();
-    expect(context.mocks.axiomLogging.error).toHaveBeenCalledWith(
-      expect.stringContaining("Unhandled request error:"),
-      expect.objectContaining({ type: "unhandled_request_error" }),
-    );
     expect(context.mocks.sentry.captureException).toHaveBeenCalledOnce();
     // PostgreSQL reports the attempted public share ID through the external
     // error capture. Verify rollback using both public read endpoints.

@@ -414,130 +414,6 @@ const RUN_TIME_BUDGET_MESSAGE = `This runner has a hard maximum runtime of 2 hou
 A normal completion provides a reliable handoff for the next run. The handoff includes completed work, current state, verification performed, remaining work, and blockers.
 
 Use the remaining time to leave the task in a resumable state and finish this turn normally.`;
-const API_DISPATCH_NORMAL_SEND_AGENT_RUN_SOURCE_ACTION_TYPE =
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_agent_run_source";
-const API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE =
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_attachment_metadata";
-const API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_COMMON_ACTION_TYPES = [
-  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_transaction",
-  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_clear_draft",
-  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_persist_event",
-  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_register_input_assets",
-] as const;
-const API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_TOUCH_THREAD_SORT_ACTION_TYPE =
-  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue_touch_thread_sort";
-const API_DISPATCH_AGENT_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send",
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_load_and_authorize_agent",
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_validate_model_selection",
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_feature_switches",
-  API_DISPATCH_NORMAL_SEND_AGENT_RUN_SOURCE_ACTION_TYPE,
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_validate_codex_service_tier",
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_initial_thread_model_pin",
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_thread",
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_persist_explicit_model_selection",
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_persist_explicit_codex_service_tier",
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_computer_use_host_grant",
-  API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE,
-  "api_dispatch_pre_create_agent_web_chat_resolve_client_message",
-  "api_dispatch_pre_create_agent_web_chat_validate_revocation",
-  "api_dispatch_pre_create_agent_web_chat_queue_first_enqueue",
-  ...API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_COMMON_ACTION_TYPES,
-  "api_dispatch_pre_create_agent_web_chat_queue_first_check_dispatchable",
-  "api_dispatch_pre_create_agent_web_chat_create_normal_run",
-  "api_dispatch_pre_create_agent_web_chat_resolve_model_pin",
-  "api_dispatch_pre_create_agent_web_chat_resolve_provider_admission",
-  "api_dispatch_pre_create_agent_web_chat_build_create_run_args",
-  "api_dispatch_pre_create_agent_resolve_thread_session",
-] as const;
-const API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE =
-  "api_dispatch_pre_create_agent_resolve_thread_session";
-const API_DISPATCH_WEB_CHAT_SESSION_PROMPT_ACTION_TYPE =
-  "api_dispatch_pre_create_agent_web_chat_resolve_session_prompt_context";
-const API_DISPATCH_EXISTING_THREAD_PERSISTED_MODEL_ACTION_TYPE =
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_resolve_persisted_model";
-const API_DISPATCH_REMOVED_EARLY_SESSION_ACTION_TYPES = [
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_session_context_parallel",
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_resolve_session",
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_load_incomplete_context",
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_prepare_recent_chat_context",
-] as const;
-const API_DISPATCH_EXISTING_THREAD_ACTION_TYPES = [
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_load_snapshot",
-  API_DISPATCH_EXISTING_THREAD_PERSISTED_MODEL_ACTION_TYPE,
-  API_DISPATCH_WEB_CHAT_SESSION_PROMPT_ACTION_TYPE,
-] as const;
-const API_DISPATCH_EXPLICIT_EXISTING_THREAD_ACTION_TYPES = [
-  "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_existing_thread_load_snapshot",
-  API_DISPATCH_WEB_CHAT_SESSION_PROMPT_ACTION_TYPE,
-] as const;
-const API_DISPATCH_AGENT_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
-  "api_dispatch_pre_create_agent_entrypoint_gap",
-] as const;
-const API_DISPATCH_THREAD_SESSION_BINDING_ACTION_TYPES = [
-  "api_dispatch_validate_thread_session_snapshot_thread",
-] as const;
-const API_DISPATCH_QUEUE_FIRST_ADMISSION_ACTION_TYPES = [
-  "api_dispatch_resolve_queue_first_admission",
-] as const;
-const API_DISPATCH_QUEUE_FIRST_CLAIM_PHASE_ACTION_TYPES = [
-  "api_dispatch_resolve_queue_first_claim_snapshot",
-  "api_dispatch_persist_queue_first_replacement",
-] as const;
-const API_DISPATCH_REUSED_THREAD_READ_ACTION_TYPES = [
-  "api_dispatch_queue_first_thread_lock_wait",
-  "api_dispatch_load_thread_session_binding",
-] as const;
-const API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES = [
-  "api_dispatch_persist_atomic_launch",
-] as const;
-const API_DISPATCH_PRE_QUEUE_PHASE_ACTION_TYPES = [
-  "api_dispatch_phase_pre_create",
-  "api_dispatch_phase_prepare_context",
-  "api_dispatch_phase_prepare_launch",
-] as const;
-const API_DISPATCH_QUEUE_INSERT_PHASE_ACTION_TYPE =
-  "api_dispatch_phase_queue_insert";
-const API_DISPATCH_PI_LAUNCH_RESOURCE_ACTION_TYPES = [
-  "api_dispatch_prepare_pi_launch_resources",
-  "api_dispatch_prepare_pi_launch_resume_session",
-] as const;
-const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
-  "org_id",
-  "user_id",
-  "connector",
-  "connector_name",
-  "agent_id",
-  "prompt",
-  "vars",
-  "secrets",
-  "secret_names",
-  "environment",
-  "execution_context",
-  "presigned_url",
-  "presignedUrl",
-  "archive_url",
-  "archiveUrl",
-  "manifest_url",
-  "manifestUrl",
-  "url",
-  "storage_name",
-  "storageName",
-  "artifact_name",
-  "artifactName",
-  "volume_name",
-  "volumeName",
-  "mount_path",
-  "mountPath",
-  "runner_id",
-  "runnerId",
-  "cli_agent_session_id",
-  "cliAgentSessionId",
-  "sandbox_token",
-  "sandboxToken",
-  "api_key",
-  "apiKey",
-] as const;
 
 function base64UrlEncode(input: string): string {
   return Buffer.from(input, "utf8")
@@ -1144,179 +1020,6 @@ function claimEnvironment(claim: RunnerClaim): Record<string, string> {
     ...claim.environment,
     ...claim.platformEnvironment,
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function expectPiConfigObservation(runId: string, generation: 1 | 2 | 3): void {
-  const snapshots = context.mocks.axiom.ingest.mock.calls.flatMap(
-    ([dataset, events]) => {
-      return dataset === "run-context" && Array.isArray(events)
-        ? events.filter(isRecord).filter((event) => {
-            return event.runId === runId;
-          })
-        : [];
-    },
-  );
-  expect(snapshots).toHaveLength(1);
-  expect(snapshots[0]).toMatchObject({
-    cliAgentType: "pi",
-    piModelConfigGeneration: generation,
-    piModelConfigLegacyApi: "absent",
-  });
-  expect(snapshots[0]).not.toHaveProperty("piModelConfig");
-}
-
-function templateUsageEvents(): readonly Record<string, unknown>[] {
-  return context.mocks.axiom.ingest.mock.calls.flatMap((call) => {
-    const events = call[1];
-    if (!Array.isArray(events)) {
-      return [];
-    }
-    return events.filter(isRecord).filter((event) => {
-      return event.type === "template_used";
-    });
-  });
-}
-
-function sandboxOperationEvents(): readonly Record<string, unknown>[] {
-  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
-    const dataset = call[0];
-    const events = call[1];
-    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
-      return [];
-    }
-    return events.filter(isRecord);
-  });
-}
-
-function sandboxOperationEventsForRun(
-  runId: string,
-): readonly Record<string, unknown>[] {
-  return sandboxOperationEvents().filter((event) => {
-    return event.run_id === runId;
-  });
-}
-
-function firstAssistantEventsForRun(
-  runId: string,
-): readonly Record<string, unknown>[] {
-  return sandboxOperationEventsForRun(runId).filter((event) => {
-    return event.op_type === "api_to_first_assistant_message";
-  });
-}
-
-function firstAssistantEligibilityEventsForRun(
-  runId: string,
-): readonly Record<string, unknown>[] {
-  return sandboxOperationEventsForRun(runId).filter((event) => {
-    return event.op_type === "first_assistant_message_eligible";
-  });
-}
-
-function apiDispatchTimingEventsForRun(
-  runId: string,
-): readonly Record<string, unknown>[] {
-  return sandboxOperationEventsForRun(runId).filter((event) => {
-    return (
-      typeof event.op_type === "string" &&
-      event.op_type.startsWith("api_dispatch_")
-    );
-  });
-}
-
-function apiDispatchActionTypes(
-  events: readonly Record<string, unknown>[],
-): Set<unknown> {
-  return new Set(
-    events.map((event) => {
-      return event.op_type;
-    }),
-  );
-}
-
-function expectApiDispatchActions(
-  events: readonly Record<string, unknown>[],
-  expectedActionTypes: readonly string[],
-): void {
-  const observedActionTypes = apiDispatchActionTypes(events);
-  for (const actionType of expectedActionTypes) {
-    expect(observedActionTypes).toContain(actionType);
-  }
-}
-
-function expectNoApiDispatchActions(
-  events: readonly Record<string, unknown>[],
-  unexpectedActionTypes: readonly string[],
-): void {
-  const observedActionTypes = apiDispatchActionTypes(events);
-  for (const actionType of unexpectedActionTypes) {
-    expect(observedActionTypes).not.toContain(actionType);
-  }
-}
-
-function expectApiDispatchSpanKind(
-  events: readonly Record<string, unknown>[],
-  expectedActionTypes: readonly string[],
-  spanKind: string,
-): void {
-  for (const actionType of expectedActionTypes) {
-    const matchingEvents = events.filter((event) => {
-      return event.op_type === actionType;
-    });
-    expect(matchingEvents).toHaveLength(1);
-    expect(matchingEvents[0]).toStrictEqual(
-      expect.objectContaining({
-        span_kind: spanKind,
-      }),
-    );
-  }
-}
-
-function expectApiDispatchTimingEventsNotToLeak(
-  events: readonly Record<string, unknown>[],
-  forbiddenValues: readonly string[],
-): void {
-  for (const event of events) {
-    for (const forbiddenKey of FORBIDDEN_API_DISPATCH_TIMING_KEYS) {
-      expect(event).not.toHaveProperty(forbiddenKey);
-    }
-    const serialized = JSON.stringify(event);
-    for (const forbiddenValue of forbiddenValues) {
-      expect(serialized).not.toContain(forbiddenValue);
-    }
-  }
-}
-
-function expectPiLaunchResourceTiming(
-  events: readonly Record<string, unknown>[],
-  requirement: "required" | "not_required",
-): void {
-  expectApiDispatchSpanKind(
-    events,
-    ["api_dispatch_build_runner_job_payload"],
-    "top_level",
-  );
-  expect(events).toContainEqual(
-    expect.objectContaining({
-      op_type: "api_dispatch_build_runner_job_payload",
-      pi_launch_resources: requirement,
-    }),
-  );
-  if (requirement === "required") {
-    expectApiDispatchSpanKind(
-      events,
-      API_DISPATCH_PI_LAUNCH_RESOURCE_ACTION_TYPES,
-      "nested",
-    );
-    return;
-  }
-  expectNoApiDispatchActions(
-    events,
-    API_DISPATCH_PI_LAUNCH_RESOURCE_ACTION_TYPES,
-  );
 }
 
 /** Sandbox-scoped Okou token issued through the trusted claim environment. */
@@ -2091,29 +1794,6 @@ describe("CHAT-02: thread connector account selection", () => {
       prompt: "Overlap stored thread selection with runtime context",
     });
     expect(threadCatalogReadStarted.settled()).toBeTruthy();
-    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
-    const preparationActions = [
-      "api_dispatch_prepare_context_select_connector_catalog",
-      "api_dispatch_prepare_context_resolve_thread_connector_selections",
-    ];
-    expectApiDispatchSpanKind(timingEvents, preparationActions, "nested");
-    for (const event of timingEvents.filter((candidate) => {
-      return preparationActions.includes(String(candidate.op_type));
-    })) {
-      expect(event.duration_ms).toStrictEqual(expect.any(Number));
-      expect(Number.isFinite(event.duration_ms)).toBeTruthy();
-      expect(Number(event.duration_ms)).toBeGreaterThanOrEqual(0);
-      expect(Number.isFinite(Date.parse(String(event._time)))).toBeTruthy();
-      expect(event.run_preparation_retry_count).toBe("0");
-      expect(event.agent_run_origin).toBe("direct");
-    }
-    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
-      fixture.threadId,
-      fixture.connectionId,
-      fixture.actor.userId,
-      "Overlap stored thread selection with runtime context",
-      "runtime-context-priority-secret",
-    ]);
     clearApiTestConnectorCatalogRuntimeProjectionIdentityReplacements();
     const claimed = await claimChatRun(fixture.runnerGroup, run.runId);
     expect(kms.decryptCalls).toBeGreaterThan(0);
@@ -3033,15 +2713,6 @@ async function expectExactPrivatePiMemoryAdmission(args: {
   expect(
     candidate.eligibleAt.getTime() - candidate.sourceCompletedAt.getTime(),
   ).toBe(60_000);
-  expect(sandboxOperationEventsForRun(args.runId)).toContainEqual(
-    expect.objectContaining({
-      op_type: "pi_memory_stage1_candidate_admission",
-      candidate_outcome: "created",
-      memory_storage_id: candidate.memoryStorageId,
-      pi_session_id: conversation.piSessionId,
-      source_history_hash: conversation.sourceHistoryHash,
-    }),
-  );
   await expect(
     readmitPiMemoryStage1CandidateFixture(args.runId),
   ).resolves.toMatchObject({ outcome: "exact_retry" });
@@ -3500,91 +3171,6 @@ describe("CHAT-02: web chat send and client ids", () => {
     expect(pendingBinding.agent_session_run_id).toBe(runId);
     expect(pendingBinding.agent_session_id).toMatch(/[0-9a-f-]{36}/);
     expect(pendingBinding.run_session_id).toBe(pendingBinding.agent_session_id);
-    expect(sandboxOperationEventsForRun(runId)).toContainEqual({
-      _time: expect.any(String),
-      source: "api",
-      op_type: "chat_thread_session_binding_persisted",
-      sandbox_type: "chat",
-      duration_ms: 0,
-      success: true,
-      run_id: runId,
-      chat_thread_id: clientThreadId,
-      agent_session_id: pendingBinding.agent_session_id,
-      agent_session_run_id: runId,
-      binding_action: "initialized",
-      run_status: "pending",
-    });
-
-    const timingEvents = apiDispatchTimingEventsForRun(runId);
-    expectApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_AGENT_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
-    );
-    expectApiDispatchSpanKind(
-      timingEvents,
-      API_DISPATCH_AGENT_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
-      "nested",
-    );
-    expectNoApiDispatchActions(timingEvents, [
-      API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_TOUCH_THREAD_SORT_ACTION_TYPE,
-    ]);
-    expectApiDispatchSpanKind(
-      timingEvents,
-      ["api_dispatch_pre_create_agent_run"],
-      "top_level",
-    );
-    expectApiDispatchSpanKind(
-      timingEvents,
-      API_DISPATCH_THREAD_SESSION_BINDING_ACTION_TYPES,
-      "nested",
-    );
-    expect(timingEvents).toContainEqual(
-      expect.objectContaining({
-        op_type: API_DISPATCH_NORMAL_SEND_AGENT_RUN_SOURCE_ACTION_TYPE,
-        normal_send_agent_run_source_kind: "none",
-      }),
-    );
-    expect(timingEvents).toContainEqual(
-      expect.objectContaining({
-        op_type: API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE,
-        normal_send_attachment_count_bucket: "0",
-      }),
-    );
-    expectApiDispatchSpanKind(
-      timingEvents,
-      [
-        "api_dispatch_admission_lock_held",
-        "api_dispatch_claim_queue_first_message",
-        ...API_DISPATCH_QUEUE_FIRST_ADMISSION_ACTION_TYPES,
-      ],
-      "nested",
-    );
-    expectNoApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_REUSED_THREAD_READ_ACTION_TYPES,
-    );
-    expectNoApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_EXISTING_THREAD_ACTION_TYPES,
-    );
-    expect(timingEvents).toContainEqual(
-      expect.objectContaining({
-        op_type: "api_dispatch_prepare_run_callbacks",
-        span_kind: "nested",
-        run_callback_internal_count_bucket: "1",
-        run_callback_http_count_bucket: "0",
-      }),
-    );
-    expectNoApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_AGENT_INTERNAL_ENTRYPOINT_ACTION_TYPES,
-    );
-    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
-      prompt,
-      clientThreadId,
-      clientEventId,
-      agentId,
-    ]);
 
     const run = await api.readRun(actor, runId);
     expect(run.prompt).toBe(prompt);
@@ -5935,46 +5521,6 @@ describe("CHAT-02: org queue markers", () => {
     expect(queuedBinding.agent_session_run_id).toBe(queuedRun.body.runId);
     expect(queuedBinding.agent_session_id).toMatch(/[0-9a-f-]{36}/);
     expect(queuedBinding.run_session_id).toBe(queuedBinding.agent_session_id);
-    expect(sandboxOperationEventsForRun(queuedRun.body.runId)).toContainEqual({
-      _time: expect.any(String),
-      source: "api",
-      op_type: "chat_thread_session_binding_persisted",
-      sandbox_type: "chat",
-      duration_ms: 0,
-      success: true,
-      run_id: queuedRun.body.runId,
-      chat_thread_id: queuedRun.body.threadId,
-      agent_session_id: queuedBinding.agent_session_id,
-      agent_session_run_id: queuedRun.body.runId,
-      binding_action: "initialized",
-      run_status: "queued",
-    });
-    const queuedTimingEvents = apiDispatchTimingEventsForRun(
-      queuedRun.body.runId,
-    );
-    expectApiDispatchSpanKind(
-      queuedTimingEvents,
-      API_DISPATCH_ATOMIC_PERSISTENCE_ACTION_TYPES,
-      "nested",
-    );
-    expectNoApiDispatchActions(queuedTimingEvents, [
-      "api_dispatch_insert_run_record",
-      "api_dispatch_persist_custom_connector_auth_refs",
-      "api_dispatch_insert_agent_run_queue",
-      "api_dispatch_count_agent_run_queue_depth",
-      "api_dispatch_update_thread_session_binding",
-    ]);
-    expect(sandboxOperationEventsForRun(queuedRun.body.runId)).toContainEqual(
-      expect.objectContaining({
-        op_type: "enqueue_agent_run",
-        queue_depth: 1,
-      }),
-    );
-    expect(
-      queuedTimingEvents.filter((event) => {
-        return event.op_type === "api_dispatch_resolve_queue_first_admission";
-      }),
-    ).toHaveLength(1);
 
     const queuedThread = queuedRun.body.threadId;
     const beforeDequeue = await waitForThreadMessages(
@@ -6152,17 +5698,6 @@ describe("CHAT-02: dispatch failure", () => {
     }
     expect(sent.body.status).toBe("failed");
     await flushWaitUntilForTest();
-    expect(
-      firstAssistantEligibilityEventsForRun(sent.body.runId),
-    ).toStrictEqual([
-      expect.objectContaining({
-        op_type: "first_assistant_message_eligible",
-        sandbox_type: "runner",
-        duration_ms: 0,
-        success: true,
-        run_id: sent.body.runId,
-      }),
-    ]);
 
     const run = await api.readRun(actor, sent.body.runId);
     expect(run.status).toBe("failed");
@@ -6232,9 +5767,6 @@ describe("CHAT-02: dispatch failure", () => {
       status: "failed",
     });
     await flushWaitUntilForTest();
-    expect(firstAssistantEligibilityEventsForRun(sent.body.runId)).toHaveLength(
-      1,
-    );
     const queue = await api.readRunQueue(actor);
     expect(queue.body.queue).not.toContainEqual(
       expect.objectContaining({ runId: sent.body.runId }),
@@ -6849,7 +6381,6 @@ function expectApiKeyGptSandboxCarrier(
   route: (typeof GPT_API_KEY_BDD_ROUTES)[number],
   tier: "fast" | undefined,
 ): void {
-  expectPiConfigObservation(claim.runId, tier === undefined ? 2 : 3);
   expect(claim.piModelConfig).toStrictEqual({
     schemaVersion: tier === undefined ? 2 : 3,
     ...(tier === undefined ? {} : { serviceTier: "priority" }),
@@ -7291,15 +6822,6 @@ function mockPiResourceArchiveDownloads(unavailable = false): void {
       });
     }),
   );
-}
-
-function warningCallsForRun(runId: string): readonly unknown[] {
-  return context.mocks.axiomLogging.warn.mock.calls.filter((call) => {
-    return (
-      call[0] !== "Run summary generation returned null (API key missing?)" &&
-      JSON.stringify(call).includes(runId)
-    );
-  });
 }
 
 async function completeSandboxFirstPiRun(args: {
@@ -7745,13 +7267,6 @@ describe("CHAT-02: model-first provider policies", () => {
       expect(sectionIndex).toBeGreaterThan(previousSectionIndex);
       previousSectionIndex = sectionIndex;
     }
-    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
-    expectPiLaunchResourceTiming(timingEvents, "not_required");
-    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
-      prompt,
-      run.threadId,
-      agentId,
-    ]);
     await cancelChatRun(actor, run.runId);
   });
 
@@ -9159,15 +8674,6 @@ describe("CHAT-02: model-first provider policies", () => {
     await expect(
       readSessionHistoryBlobRefCountFixture(firstCandidate.sourceHistoryHash),
     ).resolves.toBe(2);
-    expect(sandboxOperationEventsForRun(first.runId)).toContainEqual(
-      expect.objectContaining({
-        op_type: "pi_memory_stage1_candidate_admission",
-        candidate_outcome: "created",
-        memory_storage_id: firstCandidate.memoryStorageId,
-        pi_session_id: firstCandidate.piSessionId,
-        source_history_hash: firstCandidate.sourceHistoryHash,
-      }),
-    );
 
     const staleLeaseToken = randomUUID();
     await leasePiMemoryStage1CandidateFixture({
@@ -9232,13 +8738,6 @@ describe("CHAT-02: model-first provider policies", () => {
         replacedCandidate.sourceHistoryHash,
       ),
     ).resolves.toBe(2);
-    expect(sandboxOperationEventsForRun(second.runId)).toContainEqual(
-      expect.objectContaining({
-        op_type: "pi_memory_stage1_candidate_admission",
-        candidate_outcome: "replaced",
-        source_history_hash: replacedCandidate.sourceHistoryHash,
-      }),
-    );
 
     await expect(
       commitPiMemoryStage1CandidateFixture({
@@ -9646,9 +9145,6 @@ describe("CHAT-02: model-first provider policies", () => {
         firstSessionBytes,
         selectedModel,
       );
-      const firstSessionHash = createHash("sha256")
-        .update(firstSessionBytes)
-        .digest("hex");
       expect(firstSessionBytes.toString("utf8")).toContain(first.threadId);
       expect(context.mocks.ably.channelGet).toHaveBeenCalledWith(
         `runner-group:${runnerGroup}`,
@@ -9663,13 +9159,6 @@ describe("CHAT-02: model-first provider policies", () => {
         [404],
       );
       expect(firstClaim.status).toBe(404);
-      const firstTimingEvents = apiDispatchTimingEventsForRun(first.runId);
-      expectPiLaunchResourceTiming(firstTimingEvents, "required");
-      expectApiDispatchTimingEventsNotToLeak(firstTimingEvents, [
-        firstPrompt,
-        first.threadId,
-        agentId,
-      ]);
 
       const secondPrompt = "continue the same Pi session";
       const second = await sendChatRun(
@@ -9709,14 +9198,6 @@ describe("CHAT-02: model-first provider policies", () => {
         [404],
       );
       expect(secondClaim.status).toBe(404);
-      const secondTimingEvents = apiDispatchTimingEventsForRun(second.runId);
-      expectPiLaunchResourceTiming(secondTimingEvents, "required");
-      expectApiDispatchTimingEventsNotToLeak(secondTimingEvents, [
-        secondPrompt,
-        first.threadId,
-        agentId,
-        firstSessionHash,
-      ]);
     },
     90_000,
   );
@@ -9804,7 +9285,6 @@ describe("CHAT-02: model-first provider policies", () => {
       ).resolves.toMatchObject({
         launch_snapshot: { framework: "pi" },
       });
-      expectPiConfigObservation(run.runId, 1);
       expect(modelRequests).toStrictEqual([
         {
           body: expect.objectContaining({
@@ -10014,7 +9494,6 @@ describe("CHAT-02: model-first provider policies", () => {
       const sandboxHeaders = { authorization: `Bearer ${claim.sandboxToken}` };
       expect(claim.cliAgentType).toBe("pi");
       expect(claim.piSessionId).toBe(run.threadId);
-      expectPiConfigObservation(run.runId, 1);
       expect(claim.piModelConfig).toStrictEqual({
         provider: "openai",
         baseUrl: gateway.surface.apiBaseUrl,
@@ -10186,11 +9665,6 @@ describe("CHAT-02: model-first provider policies", () => {
         JSON.stringify({
           h2,
           events: (await chat.listThreadEvents(actor, run.threadId)).events,
-          telemetry: [
-            ...context.mocks.axiomLogging.debug.mock.calls,
-            ...context.mocks.axiomLogging.info.mock.calls,
-            ...context.mocks.axiomLogging.warn.mock.calls,
-          ],
         }),
       ).not.toContain(gateway.secret);
     },
@@ -10263,7 +9737,6 @@ describe("CHAT-02: model-first provider policies", () => {
           outcome: "ownership-transfer",
           mode: "sandbox-first",
         });
-        expect(warningCallsForRun(run.runId)).toStrictEqual([]);
         const claimed = await api.claimRunnerJob(run.runId, {
           capabilities: { piModelConfigGenerations: [1, 2, 3] },
         });
@@ -10311,11 +9784,6 @@ describe("CHAT-02: model-first provider policies", () => {
         JSON.stringify({
           failed,
           events: (await chat.listThreadEvents(actor, run.threadId)).events,
-          logs: [
-            ...context.mocks.axiomLogging.debug.mock.calls,
-            ...context.mocks.axiomLogging.info.mock.calls,
-            ...context.mocks.axiomLogging.warn.mock.calls,
-          ],
         }),
       ).not.toContain(gateway.secret);
     },
@@ -11034,14 +10502,6 @@ describe("CHAT-02: model-first provider policies", () => {
 
       expect(modelCalls).toBe(1);
       expectNoPiApiFirstTurnArtifacts(run.runId, checkpointObjects);
-      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-        "Pi API first-turn outcome",
-        expect.objectContaining({
-          runId: run.runId,
-          outcome: "terminal_failure",
-          reason: "PI_API_MODEL_FAILED",
-        }),
-      );
       await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
         status: "failed",
         error: expect.stringContaining("[PI_API_MODEL_FAILED]"),
@@ -13181,7 +12641,6 @@ describe("CHAT-02: model-first provider policies", () => {
         return event.revokesEventId === activeInputEventId;
       }),
     ).toHaveLength(1);
-    expect(warningCallsForRun(run.runId)).toStrictEqual([]);
     await cancelChatRun(actor, run.runId, claimed.sandboxHeaders);
   }, 90_000);
 
@@ -13287,32 +12746,6 @@ describe("CHAT-02: model-first provider policies", () => {
     await expect(api.readRun(actor, run.runId)).resolves.toMatchObject({
       status: "completed",
     });
-    expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
-      "Pi API first-turn outcome",
-      expect.objectContaining({
-        runId: run.runId,
-        outcome: "discarded_late_provider_result",
-        reason: "api_attempt_timed_out",
-      }),
-    );
-    expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
-      "Pi API first-turn outcome",
-      expect.objectContaining({
-        runId: run.runId,
-        handoffOwner: "sandbox",
-        outcome: "sandbox_retry_started",
-      }),
-    );
-    // Reaching sandbox_retry_started through the deadline path requires the
-    // attempt-timeout record, so pin its level here too.
-    expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
-      "Pi API first-turn outcome",
-      expect.objectContaining({
-        runId: run.runId,
-        outcome: "api_attempt_timed_out",
-      }),
-    );
-    expect(warningCallsForRun(run.runId)).toStrictEqual([]);
   }, 90_000);
 
   it("lets canonical cancellation win the deadline ownership boundary", async () => {
@@ -13375,7 +12808,6 @@ describe("CHAT-02: model-first provider policies", () => {
     await api.requestClaimRunnerJob(true, run.runId, [404], {
       capabilities: { piModelConfigGenerations: [1, 2, 3] },
     });
-    expect(warningCallsForRun(run.runId)).toStrictEqual([]);
   }, 90_000);
 
   it.each(["deadline", "model failure"] as const)(
@@ -13442,34 +12874,12 @@ describe("CHAT-02: model-first provider policies", () => {
       await flushWaitUntilForTest();
 
       expect(modelCalls).toBe(1);
-      if (trigger === "model failure") {
-        expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-          "Pi API first-turn outcome",
-          expect.objectContaining({
-            runId: run.runId,
-            modelFailureCategory: "http_error",
-            modelFailureHttpStatus: 525,
-          }),
-        );
-      }
       expectNoPiApiFirstTurnArtifacts(run.runId, checkpointObjects);
       if (trigger === "deadline") {
         await expectTerraApiFollowUpUsage(run.runId);
       } else {
         await expectNoBuiltInModelUsage(run.runId);
       }
-      expect(warningCallsForRun(run.runId)).toHaveLength(1);
-      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-        "Pi API first-turn outcome",
-        expect.objectContaining({
-          runId: run.runId,
-          outcome: "terminal_failure",
-          recoveryReason:
-            trigger === "deadline"
-              ? "api_attempt_timed_out"
-              : "api_model_failed",
-        }),
-      );
       const events = (await chat.listThreadEvents(actor, run.threadId)).events;
       expect(
         events.filter((event) => {
@@ -13556,14 +12966,6 @@ describe("CHAT-02: model-first provider policies", () => {
       } else {
         await expectNoBuiltInModelUsage(run.runId);
       }
-      expect(warningCallsForRun(run.runId)).toHaveLength(1);
-      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-        "Run failed",
-        expect.objectContaining({
-          runId: run.runId,
-          error: "Sandbox retry failed",
-        }),
-      );
       const events = (await chat.listThreadEvents(actor, run.threadId)).events;
       expect(
         events.filter((event) => {
@@ -14564,12 +13966,6 @@ describe("CHAT-02: model-first provider policies", () => {
           return event.runId === run.runId;
         }),
       ).toStrictEqual([]);
-      const telemetry = JSON.stringify([
-        ...context.mocks.axiomLogging.debug.mock.calls,
-        ...context.mocks.axiomLogging.info.mock.calls,
-        ...context.mocks.axiomLogging.warn.mock.calls,
-      ]);
-      expect(telemetry).not.toContain(partialText);
     },
     90_000,
   );
@@ -15090,27 +14486,7 @@ describe("CHAT-02: model-first provider policies", () => {
         "cancel",
         expect.objectContaining({ runId: run.runId }),
       );
-      expect(warningCallsForRun(run.runId)).toStrictEqual([]);
       expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
-      // Info is the lowest level the Axiom transport ingests, so this is the
-      // only production evidence that the run recovered instead of dying.
-      expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
-        "Pi API first-turn outcome",
-        expect.objectContaining({
-          runId: run.runId,
-          outcome: "sandbox_retry_started",
-          reason: "api_model_failed",
-          modelFailureCategory: scenario.category,
-          modelFailureHttpStatus: scenario.status,
-        }),
-      );
-      expect(context.mocks.axiomLogging.debug).not.toHaveBeenCalledWith(
-        "Pi API first-turn outcome",
-        expect.objectContaining({ outcome: "sandbox_retry_started" }),
-      );
-      for (const log of Object.values(context.mocks.axiomLogging)) {
-        expect(JSON.stringify(log.mock.calls)).not.toContain(privateMarker);
-      }
       const claimed = await claimChatRun(runnerGroup, run.runId);
       expect(claimed.claim.prompt).toBe(prompt);
       const answer = "Sandbox recovered the failed model turn";
@@ -15144,7 +14520,6 @@ describe("CHAT-02: model-first provider policies", () => {
       ).toHaveLength(1);
       expect(JSON.stringify(events)).not.toContain(partial);
       expect(modelCalls).toBe(1);
-      expect(warningCallsForRun(run.runId)).toStrictEqual([]);
     },
     90_000,
   );
@@ -15265,18 +14640,7 @@ describe("CHAT-02: model-first provider policies", () => {
         );
       }),
     ).toStrictEqual([]);
-    expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
-      "Pi API first-turn outcome",
-      expect.objectContaining({
-        runId: run.runId,
-        dialect: "openai-codex-responses",
-        reason: "api_model_failed",
-        modelFailureCategory: "http_error",
-        modelFailureHttpStatus: 525,
-      }),
-    );
     expect(modelCalls).toBe(2);
-    expect(warningCallsForRun(run.runId)).toStrictEqual([]);
     expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
     await expectNoBuiltInModelUsage(run.runId);
     await cancelChatRun(actor, run.runId, {
@@ -15326,13 +14690,6 @@ describe("CHAT-02: model-first provider policies", () => {
       "[PI_API_MODEL_FAILED] Pi API first turn failed",
     );
     await expectNoBuiltInModelUsage(run.runId);
-    expect(context.mocks.axiomLogging.info).not.toHaveBeenCalledWith(
-      "Pi API first-turn outcome",
-      expect.objectContaining({
-        runId: run.runId,
-        outcome: "sandbox_retry_started",
-      }),
-    );
   }, 90_000);
 
   it.each(["H1 commit", "H1 deadline", "handoff publication"] as const)(
@@ -15431,7 +14788,6 @@ describe("CHAT-02: model-first provider policies", () => {
             sessionWrites[0]?.toString("utf8") ?? "",
           ).buildSessionContext().messages,
         ).toStrictEqual([]);
-        expect(warningCallsForRun(run.runId)).toHaveLength(1);
       }
       const errorCode =
         stage === "H1 deadline"
@@ -15443,29 +14799,6 @@ describe("CHAT-02: model-first provider policies", () => {
         status: "failed",
         error: expect.stringContaining(`[${errorCode}]`),
       });
-      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-        "Pi API first-turn outcome",
-        expect.objectContaining({
-          runId: run.runId,
-          outcome: "terminal_failure",
-          reason: errorCode,
-          ...(stage === "handoff publication"
-            ? {
-                recoveryReason: "api_model_failed",
-                modelFailureCategory: "http_error",
-                modelFailureHttpStatus: 522,
-              }
-            : {}),
-        }),
-      );
-      for (const log of Object.values(context.mocks.axiomLogging)) {
-        expect(JSON.stringify(log.mock.calls)).not.toContain(
-          "private storage sentinel",
-        );
-        expect(JSON.stringify(log.mock.calls)).not.toContain(
-          "private model sentinel",
-        );
-      }
       const events = (await chat.listThreadEvents(actor, run.threadId)).events;
       expect(eventBackedContents(events, run.runId)).toStrictEqual([]);
       expect(
@@ -15538,7 +14871,6 @@ describe("CHAT-02: model-first provider policies", () => {
         );
       }),
     ).toMatchObject([{ eventType: "run.cancelled" }]);
-    expect(warningCallsForRun(run.runId)).toStrictEqual([]);
     await api.requestClaimRunnerJob(true, run.runId, [404]);
   }, 90_000);
 
@@ -15578,26 +14910,11 @@ describe("CHAT-02: model-first provider policies", () => {
       await flushWaitUntilForTest();
       expectNoPiApiFirstTurnArtifacts(run.runId, checkpointObjects);
       expect(modelCalls).toBe(1);
-      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-        "Pi API first-turn outcome",
-        expect.objectContaining({
-          runId: run.runId,
-          outcome: "terminal_failure",
-          reason: "PI_API_MODEL_FAILED",
-          modelFailureCategory: "http_error",
-          modelFailureHttpStatus: status,
-        }),
-      );
       const failed = await api.readRun(actor, run.runId);
       expect(failed.error).toContain("[PI_API_MODEL_FAILED]");
       expect(JSON.stringify(failed)).not.toContain(
         "private-credential-sentinel",
       );
-      for (const log of Object.values(context.mocks.axiomLogging)) {
-        expect(JSON.stringify(log.mock.calls)).not.toContain(
-          "private-credential-sentinel",
-        );
-      }
       await api.requestClaimRunnerJob(true, run.runId, [404]);
     },
     90_000,
@@ -16031,26 +15348,6 @@ describe("CHAT-02: model-first provider policies", () => {
           prompt: originalPrompt,
           piLaunchConfig: { apiFirstTurn: { sandboxEventSequenceStart: 1 } },
         });
-        const outcomes = context.mocks.axiomLogging.info.mock.calls.filter(
-          (call) => {
-            return (
-              call[0] === "Pi API first-turn outcome" &&
-              JSON.stringify(call).includes(run.runId)
-            );
-          },
-        );
-        expect(outcomes).toStrictEqual([
-          [
-            "Pi API first-turn outcome",
-            expect.objectContaining({
-              runId: run.runId,
-              outcome: "ownership_transfer",
-              reason: "native_input_sandbox_first",
-              ownershipStage: "pre-provider",
-              handoffOwner: "sandbox",
-            }),
-          ],
-        ]);
 
         const sandboxUsage = {
           idempotencyKey: randomUUID(),
@@ -16114,7 +15411,6 @@ describe("CHAT-02: model-first provider policies", () => {
         await expect(
           readThreadSessionConversation(context, run.threadId),
         ).resolves.toMatchObject({ conversation_run_id: run.runId });
-        expect(warningCallsForRun(run.runId)).toStrictEqual([]);
         const blob = [...checkpointObjects.entries()]
           .filter(([key]) => {
             return key.startsWith(`${bucket}/blobs/`);
@@ -16141,17 +15437,6 @@ describe("CHAT-02: model-first provider policies", () => {
         queued.usagePricingResolution,
       );
       await flushWaitUntilForTest();
-      expect(
-        context.mocks.axiomLogging.debug.mock.calls.filter((call) => {
-          return (
-            call[0] === "Pi API first-turn outcome" &&
-            JSON.stringify(call).includes(ordinary.runId)
-          );
-        }),
-      ).toContainEqual([
-        "Pi API first-turn outcome",
-        expect.objectContaining({ outcome: "api_completion" }),
-      ]);
       await waitForRunStatus(actor, ordinary.runId, "completed");
       expect(modelCalls).toBe(1);
     },
@@ -16219,19 +15504,6 @@ describe("CHAT-02: model-first provider policies", () => {
         failure === "coordination deadline"
           ? "[PI_API_FIRST_TURN_DEADLINE_EXCEEDED]"
           : "[PI_API_SANDBOX_FALLBACK_FAILED]",
-      );
-      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-        "Pi API first-turn outcome",
-        expect.objectContaining({
-          runId: run.runId,
-          outcome: "terminal_failure",
-          ownershipStage: "pre-provider",
-          fallbackReason: "PI_API_NATIVE_INPUT_REQUIRED",
-        }),
-      );
-      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-        "Run failed",
-        expect.objectContaining({ runId: run.runId }),
       );
       const events = (await chat.listThreadEvents(actor, run.threadId)).events;
       expect(
@@ -16710,7 +15982,6 @@ describe("CHAT-02: model-first provider policies", () => {
       );
     });
     await waitForRunStatus(actor, second.runId, "queued");
-    context.mocks.axiomLogging.info.mockClear();
     await completeChatRunOk(anchor.runId, anchorSandboxHeaders);
 
     const manifestKey = `${env("R2_USER_STORAGES_BUCKET_NAME")}/pi-api-first-turn/${second.runId}/manifest.json`;
@@ -16764,15 +16035,6 @@ describe("CHAT-02: model-first provider policies", () => {
       },
     });
     expect(transferredH0).not.toContain("serviceTier");
-    expect(context.mocks.axiomLogging.info).toHaveBeenCalledWith(
-      "Pi API first-turn outcome",
-      expect.objectContaining({
-        runId: second.runId,
-        outcome: "ownership_transfer",
-        reason: "compaction_preflight",
-        ownershipStage: "pre-provider",
-      }),
-    );
     await cancelChatRun(actor, second.runId, sandboxHeaders);
   }, 90_000);
 
@@ -17053,7 +16315,6 @@ describe("CHAT-02: model-first provider policies", () => {
         model: selectedModel,
       });
       expect(claimed.claim.piModelConfig).not.toHaveProperty("api");
-      expectPiConfigObservation(run.runId, 1);
       expect(claimed.claim.piModelConfig).not.toHaveProperty("serviceTier");
       const sandboxUsageEvent = {
         idempotencyKey: randomUUID(),
@@ -17278,7 +16539,6 @@ describe("CHAT-02: model-first provider policies", () => {
       serviceTier: "priority",
     });
     expect(claimed.claim.piModelConfig).not.toHaveProperty("api");
-    expectPiConfigObservation(run.runId, 1);
     expect(claimed.claim.piLaunchConfig).toMatchObject({
       schemaVersion: 2,
       apiFirstTurn: {
@@ -18242,17 +17502,6 @@ describe("CHAT-02: model-first provider policies", () => {
         model,
       });
       await flushWaitUntilForTest();
-      await expect
-        .poll(() => {
-          return apiDispatchTimingEventsForRun(run.runId).some((event) => {
-            return event.op_type === "api_dispatch_build_runner_job_payload";
-          });
-        })
-        .toBe(true);
-      expectPiLaunchResourceTiming(
-        apiDispatchTimingEventsForRun(run.runId),
-        "not_required",
-      );
       const claimed = await claimChatRun(runnerGroup, run.runId);
       expect(claimed.claim.cliAgentType).toBe("codex");
       expect(claimed.claim.piLaunchConfig).toBeUndefined();
@@ -18527,11 +17776,6 @@ describe("CHAT-02: model-first provider policies", () => {
           terminal,
           events: (await chat.listThreadEvents(actor, first.threadId)).events,
           h2,
-          telemetry: [
-            ...context.mocks.axiomLogging.debug.mock.calls,
-            ...context.mocks.axiomLogging.info.mock.calls,
-            ...context.mocks.axiomLogging.warn.mock.calls,
-          ],
         }),
       ).not.toContain(initialSecret);
       if (route.outcome !== "completed") {
@@ -18621,32 +17865,6 @@ describe("CHAT-02: model-first provider policies", () => {
         agent_session_id: firstSession.agent_session_id,
       });
       await expectNoBuiltInModelUsage(rotated.runId);
-      expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
-        "Pi API first-turn outcome",
-        expect.objectContaining({
-          productProvider: route.type,
-          dialect: "openai-responses",
-          executionOwner: "api-first",
-          handoffOwner: "sandbox",
-          outcome: "ownership_transfer",
-        }),
-      );
-      expect(context.mocks.axiomLogging.debug).toHaveBeenCalledWith(
-        "Pi API first-turn outcome",
-        expect.objectContaining({
-          productProvider: route.type,
-          dialect: "openai-responses",
-          executionOwner: "sandbox",
-          outcome: "sandbox_completion",
-        }),
-      );
-      const piLogCalls = JSON.stringify([
-        ...context.mocks.axiomLogging.debug.mock.calls,
-        ...context.mocks.axiomLogging.info.mock.calls,
-        ...context.mocks.axiomLogging.warn.mock.calls,
-      ]);
-      expect(piLogCalls).not.toContain(initialSecret);
-      expect(piLogCalls).not.toContain(rotatedSecret);
       const publicState = JSON.stringify({
         run: await api.readRun(actor, rotated.runId),
         events: (await chat.listThreadEvents(actor, first.threadId)).events,
@@ -18813,23 +18031,6 @@ describe("CHAT-02: model-first provider policies", () => {
       });
       expect(publicState).not.toContain(secret);
       expect(publicState).not.toContain(privateDiagnostic);
-      expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-        "Pi API first-turn outcome",
-        expect.objectContaining({
-          runId: run.runId,
-          productProvider: route.type,
-          dialect: "openai-responses",
-          executionOwner: "api-first",
-          outcome: "terminal_failure",
-        }),
-      );
-      const telemetry = JSON.stringify([
-        ...context.mocks.axiomLogging.debug.mock.calls,
-        ...context.mocks.axiomLogging.info.mock.calls,
-        ...context.mocks.axiomLogging.warn.mock.calls,
-      ]);
-      expect(telemetry).not.toContain(secret);
-      expect(telemetry).not.toContain(privateDiagnostic);
       await expectNoBuiltInModelUsage(run.runId);
       await api.heartbeatRunner(runnerGroup);
       const claim = await api.requestClaimRunnerJob(true, run.runId, [404], {
@@ -18902,62 +18103,6 @@ describe("CHAT-02: model-first provider policies", () => {
     await cancelChatRun(actor, second.runId);
   });
 
-  it("resolves an unchanged existing thread without waiting for its row lock", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-    const thread = await chat.createThread(actor, { agentId });
-    const prompt = "continue without reconciling the thread model";
-    const threadLock = await holdChatThreadRowLockFixture({
-      threadId: thread.id,
-      signal: context.signal,
-    });
-    onTestFinished(async () => {
-      threadLock.release();
-      await threadLock.done;
-    });
-
-    const [sent] = await Promise.all([
-      sendChatRun(actor, {
-        agentId,
-        threadId: thread.id,
-        prompt,
-      }),
-      (async () => {
-        await expect.poll(threadLock.firstBlockedStatementKind).toBe("update");
-        threadLock.release();
-        await threadLock.done;
-      })(),
-    ]);
-    const timingEvents = apiDispatchTimingEventsForRun(sent.runId);
-    expectApiDispatchSpanKind(
-      timingEvents,
-      [
-        ...API_DISPATCH_EXISTING_THREAD_ACTION_TYPES,
-        API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE,
-        ...API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_COMMON_ACTION_TYPES,
-        API_DISPATCH_WEB_CHAT_QUEUE_FIRST_ENQUEUE_TOUCH_THREAD_SORT_ACTION_TYPE,
-      ],
-      "nested",
-    );
-    expectNoApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_REMOVED_EARLY_SESSION_ACTION_TYPES,
-    );
-    expect(timingEvents).toContainEqual(
-      expect.objectContaining({
-        op_type:
-          "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_thread",
-        model_resolution_path: "read_only",
-      }),
-    );
-    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
-      prompt,
-      thread.id,
-      agentId,
-    ]);
-    await cancelChatRun(actor, sent.runId);
-  }, 90_000);
-
   it("recovers a removed thread model through the current workspace route", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
@@ -19019,26 +18164,6 @@ describe("CHAT-02: model-first provider policies", () => {
         await threadLock.done;
       })(),
     ]);
-    const timingEvents = apiDispatchTimingEventsForRun(recovered.runId);
-    expectApiDispatchSpanKind(
-      timingEvents,
-      [
-        ...API_DISPATCH_EXISTING_THREAD_ACTION_TYPES,
-        API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE,
-      ],
-      "nested",
-    );
-    expectNoApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_REMOVED_EARLY_SESSION_ACTION_TYPES,
-    );
-    expect(timingEvents).toContainEqual(
-      expect.objectContaining({
-        op_type:
-          "api_dispatch_pre_create_agent_web_chat_prepare_normal_send_resolve_thread",
-        model_resolution_path: "locked_reconciliation",
-      }),
-    );
     const recoveredClaim = await claimChatRun(runnerGroup, recovered.runId);
     expect(recoveredClaim.claim.cliAgentType).toBe("codex");
     expect(recoveredClaim.claim.resumeSession).toBeNull();
@@ -19994,22 +19119,6 @@ describe("CHAT-02: run-level model overrides", () => {
       prompt: "switch to sonnet",
       model: "claude-sonnet-5",
     });
-    const secondTimingEvents = apiDispatchTimingEventsForRun(second.runId);
-    expectApiDispatchSpanKind(
-      secondTimingEvents,
-      [
-        ...API_DISPATCH_EXPLICIT_EXISTING_THREAD_ACTION_TYPES,
-        API_DISPATCH_THREAD_SESSION_RESOLUTION_ACTION_TYPE,
-      ],
-      "nested",
-    );
-    expectNoApiDispatchActions(secondTimingEvents, [
-      API_DISPATCH_EXISTING_THREAD_PERSISTED_MODEL_ACTION_TYPE,
-    ]);
-    expectNoApiDispatchActions(
-      secondTimingEvents,
-      API_DISPATCH_REMOVED_EARLY_SESSION_ACTION_TYPES,
-    );
     const secondRun = await api.readRun(actor, second.runId);
     const appended = secondRun.appendSystemPrompt ?? "";
     expect(appended).not.toContain("# Web Chat Run Context");
@@ -20197,7 +19306,6 @@ describe("CHAT-02: run-level model overrides", () => {
       const sandboxHeaders = {
         authorization: `Bearer ${claim.sandboxToken}`,
       };
-      expectPiConfigObservation(run.runId, generation);
       expect(claim).toMatchObject({
         cliAgentType: "pi",
         piSessionId: run.threadId,
@@ -20529,30 +19637,7 @@ describe("CHAT-02: run-level model overrides", () => {
       expect(refreshAttempts).toBe(scenario.expired ? 1 : 0);
       expect(oauth.oauthToken).toHaveLength(1);
       if (scenario.expectedReconnect) {
-        expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
-        expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
         expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
-        for (const log of [
-          context.mocks.axiomLogging.debug,
-          context.mocks.axiomLogging.info,
-        ]) {
-          expect(log).not.toHaveBeenCalledWith(
-            "Pi API first-turn outcome",
-            expect.objectContaining({
-              runId: run.runId,
-              outcome: "terminal_failure",
-            }),
-          );
-        }
-      } else {
-        expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-          "Pi API first-turn outcome",
-          expect.objectContaining({
-            runId: run.runId,
-            outcome: "terminal_failure",
-            reason: scenario.errorCode,
-          }),
-        );
       }
       const events = (await chat.listThreadEvents(actor, run.threadId)).events;
       const failureEvent = events.find((event) => {
@@ -20596,8 +19681,6 @@ describe("CHAT-02: run-level model overrides", () => {
         await flushWaitUntilForTest();
         expect(refreshAttempts).toBe(1);
         expect(modelCalls).toBe(0);
-        expect(context.mocks.axiomLogging.warn).not.toHaveBeenCalled();
-        expect(context.mocks.axiomLogging.error).not.toHaveBeenCalled();
         expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
         expect(
           (await chat.listThreadEvents(actor, repeated.threadId)).events,
@@ -21262,11 +20345,6 @@ describe("CHAT-02: run-level model overrides", () => {
       prompt: "continue on sonnet in the same session",
       model: "claude-sonnet-5",
     });
-    expectApiDispatchSpanKind(
-      apiDispatchTimingEventsForRun(second.runId),
-      ["api_dispatch_validate_thread_session_snapshot_session"],
-      "nested",
-    );
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
     expect(secondClaim.claim.resumeSession?.sessionId).toBe(
       `bdd-cli-${first.runId}`,
@@ -21440,15 +20518,6 @@ describe("CHAT-02: run-level model overrides", () => {
     expect(repairedBinding.agent_session_id).not.toBe(
       primaryBinding.agent_session_id,
     );
-    expect(sandboxOperationEventsForRun(primarySecond.runId)).toContainEqual(
-      expect.objectContaining({
-        op_type: "chat_thread_session_binding_persisted",
-        chat_thread_id: primaryFirst.threadId,
-        agent_session_id: expect.any(String),
-        agent_session_run_id: primarySecond.runId,
-        binding_action: "initialized",
-      }),
-    );
     const primarySecondClaim = await claimChatRun(
       runnerGroup,
       primarySecond.runId,
@@ -21600,67 +20669,6 @@ describe("CHAT-02: run-level model overrides", () => {
       agent_session_run_id: winner.runId,
     });
 
-    const staleBlockedAdmission = sandboxOperationEvents().find((event) => {
-      return (
-        event.op_type === "api_dispatch_resolve_queue_first_admission" &&
-        event.queue_first_admission_result === "blocked" &&
-        event.thread_session_snapshot_state === "binding_changed" &&
-        event.queue_first_launch_outcome === "claim_lost"
-      );
-    });
-    expect(staleBlockedAdmission).toBeDefined();
-    const discardedRunId = staleBlockedAdmission?.run_id;
-    if (typeof discardedRunId !== "string") {
-      throw new Error("Expected blocked admission timing to identify its run");
-    }
-    await expect(
-      readRunLaunchSnapshotFixture(context, discardedRunId),
-    ).resolves.toStrictEqual({
-      exists: false,
-      launch_snapshot: null,
-    });
-    const lostTimingEvents = apiDispatchTimingEventsForRun(discardedRunId);
-    for (const actionType of [
-      "api_dispatch_prepare_run_context",
-      "api_dispatch_build_runner_job_payload",
-      "api_dispatch_insert_run_with_concurrency",
-      "api_dispatch_admission_lock_wait",
-      "api_dispatch_resolve_queue_first_admission",
-      "api_dispatch_claim_queue_first_message",
-    ]) {
-      expect(
-        lostTimingEvents.filter((event) => {
-          return event.op_type === actionType;
-        }),
-      ).toHaveLength(1);
-    }
-    for (const actionType of API_DISPATCH_PRE_QUEUE_PHASE_ACTION_TYPES) {
-      expect(
-        lostTimingEvents.filter((event) => {
-          return event.op_type === actionType;
-        }),
-      ).toStrictEqual([
-        expect.objectContaining({
-          api_start_source: "user_message",
-          queue_first_launch_outcome: "claim_lost",
-          run_preparation_retry_count: "0",
-        }),
-      ]);
-    }
-    expect(
-      lostTimingEvents.filter((event) => {
-        return event.op_type === API_DISPATCH_QUEUE_INSERT_PHASE_ACTION_TYPE;
-      }),
-    ).toHaveLength(0);
-    expect(
-      sandboxOperationEvents().filter((event) => {
-        return (
-          event.op_type === "chat_thread_session_binding_retry" &&
-          event.chat_thread_id === established.threadId
-        );
-      }),
-    ).toHaveLength(0);
-
     await chat.requestSendEvent(
       actor,
       {
@@ -21742,59 +20750,6 @@ describe("CHAT-02: run-level model overrides", () => {
     await bindingClear.done;
     const second = await secondPromise;
 
-    const retryEvents = sandboxOperationEvents().filter((event) => {
-      return (
-        event.op_type === "chat_thread_session_binding_retry" &&
-        event.chat_thread_id === first.threadId
-      );
-    });
-    expect(retryEvents).toContainEqual(
-      expect.objectContaining({
-        agent_session_id: firstBinding.agent_session_id,
-        binding_action: "retried",
-        resolution_action: "reused",
-        retry_reason: "binding_changed",
-      }),
-    );
-    const retryTimingEvents = apiDispatchTimingEventsForRun(second.runId);
-    for (const actionType of [
-      "api_dispatch_prepare_context_select_connector_catalog",
-      "api_dispatch_prepare_context_resolve_thread_connector_selections",
-      "api_dispatch_prepare_run_context",
-      "api_dispatch_build_runner_job_payload",
-      "api_dispatch_insert_run_with_concurrency",
-      "api_dispatch_resolve_queue_first_admission",
-    ]) {
-      expect(
-        retryTimingEvents.filter((event) => {
-          return event.op_type === actionType;
-        }),
-      ).toHaveLength(2);
-    }
-    for (const actionType of API_DISPATCH_PRE_QUEUE_PHASE_ACTION_TYPES) {
-      expect(
-        retryTimingEvents.filter((event) => {
-          return event.op_type === actionType;
-        }),
-      ).toStrictEqual([
-        expect.objectContaining({
-          api_start_source: "user_message",
-          run_preparation_retry_count: "1",
-        }),
-      ]);
-    }
-    expect(
-      retryTimingEvents.filter((event) => {
-        return event.op_type === API_DISPATCH_QUEUE_INSERT_PHASE_ACTION_TYPE;
-      }),
-    ).toHaveLength(1);
-    expect(retryTimingEvents).toContainEqual(
-      expect.objectContaining({
-        op_type: "api_dispatch_resolve_queue_first_admission",
-        queue_first_admission_result: "idle",
-        thread_session_snapshot_state: "binding_changed",
-      }),
-    );
     const secondBinding = await readThreadSessionBinding(
       context,
       first.threadId,
@@ -21944,12 +20899,6 @@ describe("CHAT-02: run-level model overrides", () => {
       threadId: first.threadId,
       prompt: "continue in a fresh native session",
     });
-    expect(sandboxOperationEventsForRun(second.runId)).toContainEqual(
-      expect.objectContaining({
-        op_type: "chat_thread_session_binding_persisted",
-        binding_action: "rotated",
-      }),
-    );
     const secondRun = await api.readRun(actor, second.runId);
     const appended = secondRun.appendSystemPrompt ?? "";
     expect(appended).toContain("# Web Chat Run Context");
@@ -22004,40 +20953,6 @@ describe("CHAT-02: run-level model overrides", () => {
     await conversationClear.done;
     const second = await secondPromise;
 
-    const retryEvents = sandboxOperationEvents().filter((event) => {
-      return (
-        event.op_type === "chat_thread_session_binding_retry" &&
-        event.chat_thread_id === first.threadId
-      );
-    });
-    expect(retryEvents).toContainEqual(
-      expect.objectContaining({
-        agent_session_id: firstBinding.agent_session_id,
-        binding_action: "retried",
-        resolution_action: "reused",
-        retry_reason: "session_changed",
-      }),
-    );
-    const retryTimingEvents = apiDispatchTimingEventsForRun(second.runId);
-    for (const actionType of [
-      "api_dispatch_prepare_run_context",
-      "api_dispatch_build_runner_job_payload",
-      "api_dispatch_insert_run_with_concurrency",
-      "api_dispatch_resolve_queue_first_admission",
-    ]) {
-      expect(
-        retryTimingEvents.filter((event) => {
-          return event.op_type === actionType;
-        }),
-      ).toHaveLength(2);
-    }
-    expect(retryTimingEvents).toContainEqual(
-      expect.objectContaining({
-        op_type: "api_dispatch_resolve_queue_first_admission",
-        queue_first_admission_result: "idle",
-        thread_session_snapshot_state: "session_changed",
-      }),
-    );
     const secondBinding = await readThreadSessionBinding(
       context,
       first.threadId,
@@ -22122,25 +21037,6 @@ describe("CHAT-02: run-level model overrides", () => {
       body: { error: "Internal server error" },
     });
 
-    const retryEvents = sandboxOperationEvents().filter((event) => {
-      return (
-        event.op_type === "chat_thread_session_binding_retry" &&
-        event.chat_thread_id === first.threadId
-      );
-    });
-    expect(retryEvents).toHaveLength(preparationAttempts);
-    expect(retryEvents).toStrictEqual(
-      expect.arrayContaining(
-        Array.from({ length: preparationAttempts }, () => {
-          return expect.objectContaining({
-            agent_session_id: firstBinding.agent_session_id,
-            binding_action: "retried",
-            resolution_action: "reused",
-            retry_reason: "session_changed",
-          });
-        }),
-      ),
-    );
     await expect(
       readThreadSessionBinding(context, first.threadId),
     ).resolves.toStrictEqual(firstBinding);
@@ -22742,7 +21638,6 @@ describe("CHAT-02: initial thinking indicator", () => {
     );
     expect(thinkingPromptPayload).toContain("Draft a launch checklist");
     await flushWaitUntilForTest();
-    expect(firstAssistantEventsForRun(run.runId)).toStrictEqual([]);
 
     await chat.requestSendEvent(
       actor,
@@ -23550,7 +22445,6 @@ describe("CHAT-02: generation templates and attachments", () => {
         }
         expect(reserved.prompt).toContain("Explain the product");
         expect(reserved.prompt).not.toContain("Use the $intro-video skill");
-        expect(templateUsageEvents()).toStrictEqual([]);
         await cancelChatRun(actor, active.runId);
         return;
       }
@@ -23582,7 +22476,6 @@ describe("CHAT-02: generation templates and attachments", () => {
       expect(run.appendSystemPrompt).not.toContain(
         "Use the $intro-video skill",
       );
-      expect(templateUsageEvents()).toStrictEqual([]);
       await cancelChatRun(actor, next.runId);
     },
     90_000,
@@ -24556,194 +23449,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(events.body.events).toStrictEqual([]);
   }, 60_000);
 
-  it("reports one template usage per template that reached the prompt", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
-    if (!style) {
-      throw new Error("Expected a registered illustration style");
-    }
-    context.mocks.axiom.ingest.mockClear();
-
-    const sent = await sendChatRun(actor, {
-      agentId,
-      prompt: "draw a fox",
-      template: {
-        type: "illustration",
-        selection: { illustrationStyleId: style.illustrationStyleId },
-      },
-    });
-
-    expect(templateUsageEvents()).toStrictEqual([
-      expect.objectContaining({
-        dispatchPath: "normal-send",
-        orgId: actor.orgId,
-        templateCategory: "illustration",
-        templateCount: 1,
-        templateId: style.illustrationStyleId,
-        templateIndex: 0,
-        templateRole: "primary",
-        templateSlug: style.slug,
-        templateSource: "builtin",
-        userId: actor.userId,
-      }),
-    ]);
-    await cancelChatRun(actor, sent.runId);
-  }, 60_000);
-
-  it("reports every template on a multi-template message with its position", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-    const [first, second] = ILLUSTRATION_TEMPLATE_ITEMS;
-    if (!first || !second) {
-      throw new Error("Expected two registered illustration styles");
-    }
-    context.mocks.axiom.ingest.mockClear();
-
-    const sent = await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        prompt: "draw both",
-        userMessage: {
-          version: 1,
-          parts: [
-            { type: "text", text: "Draw " },
-            {
-              type: "template",
-              titleSnapshot: first.title,
-              template: {
-                type: "illustration",
-                selection: { illustrationStyleId: first.illustrationStyleId },
-              },
-            },
-            { type: "text", text: " then " },
-            {
-              type: "template",
-              titleSnapshot: second.title,
-              template: {
-                type: "illustration",
-                selection: { illustrationStyleId: second.illustrationStyleId },
-              },
-            },
-          ],
-        },
-      },
-      [201],
-    );
-    if (sent.status !== 201) {
-      throw new Error("Expected the multi-template send to be accepted");
-    }
-
-    expect(templateUsageEvents()).toStrictEqual([
-      expect.objectContaining({
-        templateCount: 2,
-        templateId: first.illustrationStyleId,
-        templateIndex: 0,
-        templateRole: "primary",
-      }),
-      expect.objectContaining({
-        templateCount: 2,
-        templateId: second.illustrationStyleId,
-        templateIndex: 1,
-        templateRole: "inline",
-      }),
-    ]);
-    const { runId } = sent.body;
-    if (runId) {
-      await cancelChatRun(actor, runId);
-    }
-  }, 60_000);
-
-  it("reports an avatar selection as avatar rather than video", async () => {
-    const { actor, agentId } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-    context.mocks.axiom.ingest.mockClear();
-
-    const sent = await sendChatRun(actor, {
-      agentId,
-      prompt: "introduce the product",
-      template: {
-        type: "video",
-        selection: { stylePresetId: avatarTemplateStylePresetId(1) },
-      },
-    });
-
-    expect(templateUsageEvents()).toStrictEqual([
-      expect.objectContaining({
-        templateCategory: "avatar",
-        templateId: avatarTemplateStylePresetId(1),
-      }),
-    ]);
-    await cancelChatRun(actor, sent.runId);
-  }, 60_000);
-
-  it("reports an active-input usage once even when its delivery is retrieved again", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-    const style = ILLUSTRATION_TEMPLATE_ITEMS[0];
-    if (!style) {
-      throw new Error("Expected a registered illustration style");
-    }
-
-    const active = await sendChatRun(actor, {
-      agentId,
-      prompt: "anchor active input template usage",
-    });
-    const claimed = await claimChatRun(runnerGroup, active.runId);
-    await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        threadId: active.threadId,
-        prompt: "restyle it mid-run",
-        userMessage: {
-          version: 1,
-          parts: [
-            { type: "text", text: "Restyle with " },
-            {
-              type: "template",
-              titleSnapshot: style.title,
-              template: {
-                type: "illustration",
-                selection: { illustrationStyleId: style.illustrationStyleId },
-              },
-            },
-          ],
-        },
-        clientEventId: randomUUID(),
-      },
-      [201],
-    );
-    context.mocks.axiom.ingest.mockClear();
-
-    const reserved = await api.reserveRunnerActiveInputs(
-      claimed.claim.sandboxToken,
-      active.runId,
-    );
-    if (reserved.outcome !== "reserved") {
-      throw new Error("Expected the templated active input to be reserved");
-    }
-    // The same open delivery is rematerialized on retrieval, which must not
-    // count the steered prompt a second time.
-    await api.reserveRunnerActiveInputs(
-      claimed.claim.sandboxToken,
-      active.runId,
-    );
-
-    expect(templateUsageEvents()).toStrictEqual([
-      expect.objectContaining({
-        dispatchPath: "active-input",
-        templateCategory: "illustration",
-        templateCount: 1,
-        templateId: style.illustrationStyleId,
-        templateIndex: 0,
-        templateRole: "primary",
-      }),
-    ]);
-    await cancelChatRun(actor, active.runId);
-  }, 90_000);
-
   it("overlaps attachment metadata with thread model reconciliation", async () => {
     const { actor, agentId, providerId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -25140,12 +23845,6 @@ describe("CHAT-02: generation templates and attachments", () => {
         size: file.size,
       });
     }
-    expect(apiDispatchTimingEventsForRun(sent.body.runId)).toContainEqual(
-      expect.objectContaining({
-        op_type: API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE,
-        normal_send_attachment_count_bucket: "5_plus",
-      }),
-    );
   }, 60_000);
 
   it("falls back to v2 listing when the attachment filename hint is stale", async () => {
@@ -25489,19 +24188,6 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(created.prompt).toContain(`[ID] ${fileId}`);
     expect(created.appendSystemPrompt).toContain("okou web download-file -h");
     expect(created.appendSystemPrompt).toContain("okou web upload-file -h");
-    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
-    expect(timingEvents).toContainEqual(
-      expect.objectContaining({
-        op_type: API_DISPATCH_NORMAL_SEND_ATTACHMENT_METADATA_ACTION_TYPE,
-        normal_send_attachment_count_bucket: "1",
-      }),
-    );
-    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
-      fileId,
-      filename,
-      "image/png",
-      "read this file",
-    ]);
 
     const messages = await waitForThreadMessages(
       actor,
@@ -26559,33 +25245,6 @@ describe("CHAT-02: shared user message queue", () => {
     expect(claimedRun.claim.prompt).toBe(
       `queue-first [direct dispatch](/chats/${referencedThreadId})`,
     );
-    await expect
-      .poll(() => {
-        const actionTypes = apiDispatchActionTypes(
-          apiDispatchTimingEventsForRun(runId),
-        );
-        return [
-          "api_dispatch_claim_queue_first_message",
-          ...API_DISPATCH_QUEUE_FIRST_CLAIM_PHASE_ACTION_TYPES,
-        ].every((actionType) => {
-          return actionTypes.has(actionType);
-        });
-      })
-      .toBe(true);
-    const claimTimingEvents = apiDispatchTimingEventsForRun(runId);
-    expectApiDispatchSpanKind(
-      claimTimingEvents,
-      API_DISPATCH_QUEUE_FIRST_CLAIM_PHASE_ACTION_TYPES,
-      "nested",
-    );
-    for (const actionType of API_DISPATCH_QUEUE_FIRST_CLAIM_PHASE_ACTION_TYPES) {
-      expect(claimTimingEvents).toContainEqual(
-        expect.objectContaining({
-          op_type: actionType,
-          queue_first_association_kind: "user_message",
-        }),
-      );
-    }
 
     await cancelChatRun(actor, runId);
   }, 90_000);
@@ -26619,21 +25278,6 @@ describe("CHAT-02: shared user message queue", () => {
       throw new Error("Expected the forwarded prompt to launch a run");
     }
     const forwardedRunId = forwarded.body.runId;
-    const forwardedTimingEvents = apiDispatchTimingEventsForRun(forwardedRunId);
-    expect(forwardedTimingEvents).toContainEqual(
-      expect.objectContaining({
-        op_type: API_DISPATCH_NORMAL_SEND_AGENT_RUN_SOURCE_ACTION_TYPE,
-        normal_send_agent_run_source_kind: "forward",
-      }),
-    );
-    expectApiDispatchTimingEventsNotToLeak(forwardedTimingEvents, [
-      source.runId,
-      source.threadId,
-      targetThread.id,
-      forwardedEventId,
-      agentId,
-      "deployment window is fifteen minutes",
-    ]);
 
     const targetMessages = await waitForThreadMessages(
       actor,
@@ -26749,20 +25393,6 @@ describe("CHAT-02: shared user message queue", () => {
       throw new Error("Expected the first delegated prompt to launch a run");
     }
     const firstTargetRunId = firstSend.body.runId;
-    const firstTargetTimingEvents =
-      apiDispatchTimingEventsForRun(firstTargetRunId);
-    expect(firstTargetTimingEvents).toContainEqual(
-      expect.objectContaining({
-        op_type: API_DISPATCH_NORMAL_SEND_AGENT_RUN_SOURCE_ACTION_TYPE,
-        normal_send_agent_run_source_kind: "agent",
-      }),
-    );
-    expectApiDispatchTimingEventsNotToLeak(firstTargetTimingEvents, [
-      source.runId,
-      source.threadId,
-      agentId,
-      "first delegated prompt",
-    ]);
     await expect(
       readRunAutonomyBudgetFixture(context, source.runId),
     ).resolves.toBe(10);
@@ -27424,11 +26054,6 @@ describe("CHAT-02: shared user message queue", () => {
       [201],
     );
     expect(queued.body).toMatchObject({ runId: null });
-    // The busy thread makes queue-first take the wait path, which builds this
-    // message's run input before re-checking admission and leaving it queued.
-    // Building is not using: reporting there would count the message again when
-    // it is really dispatched below.
-    expect(templateUsageEvents()).toStrictEqual([]);
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
@@ -27473,48 +26098,6 @@ describe("CHAT-02: shared user message queue", () => {
     );
     expect(run.appendSystemPrompt).toContain("# Inline Templates");
     expect(run.appendSystemPrompt).toContain(style.illustrationStyleId);
-
-    // Exactly one event: the send left the message queued, so only the claim
-    // that created this run reports it.
-    expect(templateUsageEvents()).toStrictEqual([
-      expect.objectContaining({
-        dispatchPath: "queued-claim",
-        templateCategory: "illustration",
-        templateCount: 1,
-        templateId: style.illustrationStyleId,
-        templateIndex: 0,
-        templateRole: "primary",
-      }),
-    ]);
-
-    await expect
-      .poll(() => {
-        const actionTypes = apiDispatchActionTypes(
-          apiDispatchTimingEventsForRun(queuedRunId),
-        );
-        return [
-          "api_dispatch_pre_create_agent_chat_callback_auto_send_build_input",
-          "api_dispatch_pre_create_agent_chat_callback_auto_send_resolve_model_pin",
-          "api_dispatch_pre_create_agent_chat_callback_auto_send_load_session_state",
-        ].every((actionType) => {
-          return actionTypes.has(actionType);
-        });
-      })
-      .toBe(true);
-    const timingEvents = apiDispatchTimingEventsForRun(queuedRunId);
-    expectApiDispatchSpanKind(
-      timingEvents,
-      ["api_dispatch_pre_create_agent_chat_callback_auto_send_build_input"],
-      "top_level",
-    );
-    expectApiDispatchSpanKind(
-      timingEvents,
-      [
-        "api_dispatch_pre_create_agent_chat_callback_auto_send_resolve_model_pin",
-        "api_dispatch_pre_create_agent_chat_callback_auto_send_load_session_state",
-      ],
-      "nested",
-    );
 
     const queuedClaim = await claimChatRun(runnerGroup, queuedRunId);
     expect(queuedClaim.claim.prompt).toBe(run.prompt);
@@ -28100,18 +26683,6 @@ describe("CHAT-02: shared user message queue", () => {
     admissionLock.release();
     await admissionLock.done;
     await flushWaitUntilForTest();
-
-    await expect
-      .poll(() => {
-        return sandboxOperationEvents().some((event) => {
-          return (
-            event.op_type === "api_dispatch_claim_queue_first_message" &&
-            event.queue_first_claim_result === "lost" &&
-            event.queue_first_launch_outcome === "claim_lost"
-          );
-        });
-      })
-      .toBe(true);
 
     const messages = await chat.listThreadEvents(actor, anchor.threadId);
     expect(userMessages(messages.events)).toContainEqual(
