@@ -4,44 +4,40 @@ import { command, computed, state } from "ccstate";
 import { registerClerkRouter } from "../lib/clerk-runtime.ts";
 import { onRef } from "./utils.ts";
 import { pageSignal$ } from "./page-signal.ts";
-import { detachedNavigateTo$ } from "./route.ts";
-import type { RoutePath } from "./route-paths.ts";
 
 type ClerkRouter = NonNullable<ClerkProviderProps["routerPush"]>;
 type ClerkRouterMetadata = Parameters<ClerkRouter>[1];
 
-/** A route-owned integration with the external Clerk runtime. */
+/**
+ * Hands every Clerk destination to the browser as a document navigation.
+ *
+ * Authenticated startup is document-scoped: feature switches, the realtime
+ * daemon, the shared database bridge and the onboarding guard all run once from
+ * `bootstrap$` and return early while signed out. A same-document sign-in would
+ * leave all of them in their signed-out state until the next load, so Clerk's
+ * completion has to replace the document. Clerk has already resolved the URL
+ * against the allowed protocols and kept cross-origin targets for itself by the
+ * time it calls this.
+ */
 export function createAuthV1ClerkSignals(clerk: Pick<Clerk, "on" | "off">) {
   const navigateClerkUrl$ = command(
-    (
-      { set },
-      url: string,
-      metadata: ClerkRouterMetadata,
-      replace: boolean,
-    ): void => {
-      const destination = new URL(url, window.location.href);
-      if (destination.origin !== window.location.origin) {
-        // Clerk keeps ownership of protocol checks and cross-origin loads.
-        metadata?.windowNavigate(url);
+    (_ctx, url: string, replace: boolean): void => {
+      const destination = new URL(url, window.location.href).href;
+      if (replace) {
+        window.location.replace(destination);
         return;
       }
-      // The route table has a final catch-all, so every same-origin pathname
-      // is a valid runtime destination even when it is not a generated route.
-      set(detachedNavigateTo$, destination.pathname as RoutePath, {
-        hash: destination.hash,
-        replace,
-        searchParams: destination.searchParams,
-      });
+      window.location.assign(destination);
     },
   );
   const clerkRouterPush$ = command(
-    ({ set }, url: string, metadata?: ClerkRouterMetadata): void => {
-      set(navigateClerkUrl$, url, metadata, false);
+    ({ set }, url: string, _metadata?: ClerkRouterMetadata): void => {
+      set(navigateClerkUrl$, url, false);
     },
   );
   const clerkRouterReplace$ = command(
-    ({ set }, url: string, metadata?: ClerkRouterMetadata): void => {
-      set(navigateClerkUrl$, url, metadata, true);
+    ({ set }, url: string, _metadata?: ClerkRouterMetadata): void => {
+      set(navigateClerkUrl$, url, true);
     },
   );
   const status$ = state<ClerkStatus>("loading");
