@@ -8,6 +8,23 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.589.0](https://github.com/vm0-ai/vm0/compare/api-v1.588.0...api-v1.589.0) (2026-09-12)
+
+
+### Features
+
+* **chat:** persist model-aware reasoning effort settings ([#33551](https://github.com/vm0-ai/vm0/issues/33551)) ([1aa1036](https://github.com/vm0-ai/vm0/commit/1aa10365da1d277a04b4968a5e4218fc5c74b2a1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.431.0
+    * @okouai/core bumped to 8.657.0
+    * @okouai/db bumped to 1.254.0
+    * @okouai/pi-agent-runtime bumped to 1.26.5
+
 ## [1.588.0](https://github.com/vm0-ai/vm0/compare/api-v1.587.0...api-v1.588.0) (2026-09-12)
 
 

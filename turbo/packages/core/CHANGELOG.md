@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.657.0](https://github.com/vm0-ai/vm0/compare/core-v8.656.0...core-v8.657.0) (2026-09-12)
+
+
+### Features
+
+* **chat:** persist model-aware reasoning effort settings ([#33551](https://github.com/vm0-ai/vm0/issues/33551)) ([1aa1036](https://github.com/vm0-ai/vm0/commit/1aa10365da1d277a04b4968a5e4218fc5c74b2a1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.431.0
+
 ## [8.656.0](https://github.com/vm0-ai/vm0/compare/core-v8.655.0...core-v8.656.0) (2026-09-12)
 
 
