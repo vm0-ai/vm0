@@ -387,13 +387,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.ChatErrorRecovery]: {
-    maintainer: "ethan@okou.ai",
-    description:
-      "Replace supported Codex and Claude Code limit errors with recovery actions in chat.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ReferenceImages]: {
     maintainer: "bingjie@okou.ai",
     description:
@@ -440,20 +433,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Let an attached image be marked up in the composer lightbox — boxes, arrows, freehand, text, highlight and redaction, each able to carry a note — and send a rendered copy carrying the editable marks.",
     enabled: false,
-  },
-  [FeatureSwitchKey.ResponsiveFollowupCards]: {
-    maintainer: "ethan@okou.ai",
-    description:
-      "Render recommended follow-ups as a horizontally scrollable rail of tappable quick replies on touch devices.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.StableChatThreadNavigation]: {
-    maintainer: "ethan@okou.ai",
-    description:
-      "Keep pinned chats in a stable, manually adjustable order, show current chats in empty search, and use numbered shortcuts inside the search dialog.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.GradientColorThemes]: {
     maintainer: "ming@okou.ai",

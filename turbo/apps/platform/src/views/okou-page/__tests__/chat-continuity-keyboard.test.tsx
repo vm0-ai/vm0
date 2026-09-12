@@ -7,7 +7,6 @@ import {
   type ChatThreadSnapshotProjection,
 } from "@okouai/api-contracts/contracts/chat-threads";
 import { expect, test } from "vitest";
-import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 
 import {
   click,
@@ -194,7 +193,6 @@ test("Open the emoji picker for the focused chat", async () => {
     context,
     path: `/chats/${current.id}`,
     ...workspace.pageOptions,
-    featureSwitches: { [FeatureSwitchKey.StableChatThreadNavigation]: true },
   });
 
   await waitFor(() => {
@@ -222,7 +220,6 @@ test("Add, replace, or remove the focused chat icon with shortcuts", async () =>
     context,
     path: `/chats/${current.id}?sidebar=${emojiOnlySide.id}`,
     ...workspace.pageOptions,
-    featureSwitches: { [FeatureSwitchKey.StableChatThreadNavigation]: true },
   });
 
   await waitFor(() => {

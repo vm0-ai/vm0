@@ -169,12 +169,6 @@ export const voiceInputV2Enabled$ = computed((get): boolean => {
   return get(featureSwitch$)[FeatureSwitchKey.VoiceInputV2] ?? false;
 });
 
-export const stableChatThreadNavigationEnabled$ = computed((get): boolean => {
-  return (
-    get(featureSwitch$)[FeatureSwitchKey.StableChatThreadNavigation] ?? false
-  );
-});
-
 const hydrateFeatureSwitch$ = command(
   async (
     { get, set },
