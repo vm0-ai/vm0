@@ -6385,6 +6385,9 @@
       "sharedHelp_one": "Les modifications de connexion s’appliquent à {{count}} hôte :",
       "sharedHelp_many": "Les modifications de connexion s’appliquent aux {{count}} hôtes :",
       "sharedHelp_other": "Les modifications de connexion s’appliquent aux {{count}} hôtes :",
+      "summary_one": "{{count}} identifiant configuré",
+      "summary_many": "{{count}} identifiants configurés",
+      "summary_other": "{{count}} identifiants configurés",
       "unused": "Aucun hôte ne les utilise"
     },
     "credentialsHelp": "Les identifiants sont accessibles uniquement en écriture et restent hors du sandbox. Collez la clé complète ; les espaces sont conservés. Les champs sont effacés à la fermeture du formulaire.",

@@ -6385,6 +6385,9 @@
       "sharedHelp_one": "Los cambios de acceso se aplican a {{count}} host:",
       "sharedHelp_many": "Los cambios de acceso se aplican a los {{count}} hosts:",
       "sharedHelp_other": "Los cambios de acceso se aplican a los {{count}} hosts:",
+      "summary_one": "{{count}} credencial configurada",
+      "summary_many": "{{count}} credenciales configuradas",
+      "summary_other": "{{count}} credenciales configuradas",
       "unused": "Ningún host las utiliza"
     },
     "credentialsHelp": "Las credenciales son de solo escritura y permanecen fuera del sandbox. Pega la clave completa; se conservan los espacios. Los campos se borran al cerrar el formulario.",
