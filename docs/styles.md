@@ -102,7 +102,7 @@ The variant uses `border-(length:--border-width-surface)` so class merging recog
 
 The pointer overlay reuses the shared `bg-state-hover-overlay` token rather than declaring a surface-specific one, so one interaction-state decision keeps one owner. Like the choice variant, it applies through `[&:hover]` to preserve the existing touch-browser hover contract as well as pointer hover, and it does not replace the card fill with a translucent background. Radius, border, shadow, and transition decisions belong to this variant; use layout utilities for padding, size, alignment, and overflow.
 
-Integration and connector tests scope controls through the documented `data-slot="integration-card"` and `data-slot="connector-card"` component boundaries. These slots carry no styles; tests must not locate surfaces through utility or legacy class names.
+Integration and connector tests scope controls through the documented `data-slot="integration-card"`, `data-slot="connector-card"`, `data-slot="badge"`, and `data-slot="sidebar-thread-title"` component boundaries. These slots carry no styles; tests must not locate surfaces through utility or legacy class names.
 
 The `okou-card` selector and its consumers have been removed. This equivalent migration also removes background, border, shadow, and focus-ring overrides that the old unlayered selector had suppressed; activating those overrides would be a separate visual change. Existing `--okou-card-*` variables still consumed by other legacy components remain frozen until those components migrate; they are not a supported API for new surfaces.
 
@@ -247,6 +247,50 @@ so a control moved onto a differently coloured surface keeps the treatment it
 has today.
 
 The `okou-btn-morandi` selector has been removed.
+
+### Sidebar copy under the gradient color themes
+
+The `okou-nav-copy`, `okou-nav-copy-muted`, and `okou-nav-copy-muted-hover`
+selectors have been removed. They were scoped to
+`.okou-app[data-gradient-color-themes]` and collapsed every nav consumer onto one
+foreground and one muted foreground, overriding whatever each consumer spelled
+for itself. The collapse now happens at the variable layer instead:
+
+```css
+:root[data-gradient-color-themes][data-color-theme] {
+  --nav-copy: hsl(var(--okou-color-theme-hue) 24% 18%);
+  --nav-copy-muted: hsl(var(--okou-color-theme-hue) 18% 38%);
+}
+```
+
+```css
+--color-nav-copy: var(--nav-copy, var(--color-sidebar-foreground));
+--color-nav-copy-muted: var(--nav-copy-muted, var(--color-muted-foreground));
+```
+
+When the gradient themes are on, the raw values exist and every consumer resolves
+to them. Everywhere else they are unset and each consumer falls back to the
+foreground it already had, so both sides keep their current appearance without a
+conditional selector. Consumers whose foreground matches a registered fallback
+use `text-nav-copy` or `text-nav-copy-muted`; the rest carry their own fallback
+in the utility, including `var(--nav-copy, inherit)` where the consumer inherits
+its colour from an ancestor `Link` or `button` and must keep inheriting that
+ancestor's hover.
+
+Measured against `main` with the App's own Tailwind compiler in Chromium over
+CDP — 18 theme states, 19 class variants, hover forced on every row and on its
+colour-bearing ancestor: zero changed computed colours on the default palette and
+zero on all eight gradient palettes. A negative control that perturbs one
+fallback reports changes on both, so the zeros are not degenerate.
+
+One difference remains on a coarse pointer: `group-hover` carries Tailwind's
+`@media (hover: hover)` guard, which the retired selector lacked, so the gradient
+themes no longer paint the hover foreground onto a sticky tap state. Removing
+that guard would need either a first-party selector or a global `hover` variant
+override, and the guard is the better behaviour.
+
+Sidebar thread titles carry `data-slot="sidebar-thread-title"` so tests select
+them through a documented slot instead of the styling class.
 
 ## Exception boundary
 

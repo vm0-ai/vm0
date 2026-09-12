@@ -422,7 +422,11 @@ function ChatThreadItemLink({
     >
       <span className="flex min-w-0 items-center gap-2 pr-8">
         <ChatThreadListPaneIcon signals={signals} />
-        <span className="okou-nav-copy okou-nav-title" ref={measureTitle}>
+        <span
+          data-slot="sidebar-thread-title"
+          className="text-[color:var(--nav-copy,inherit)] okou-nav-title"
+          ref={measureTitle}
+        >
           <span>
             {title ??
               t(($) => {
@@ -699,7 +703,7 @@ function ChatThreads({
 
   if (threadCount === 0) {
     return (
-      <p className="okou-nav-copy-muted px-2 py-2 text-xs text-muted-foreground leading-relaxed">
+      <p className="px-2 py-2 text-xs text-nav-copy-muted leading-relaxed">
         {unreadOnly
           ? t(($) => {
               return $.chat.sidebar.noUnread;
@@ -907,7 +911,7 @@ function ChatThreadsTitle({ showMarkAllRead }: { showMarkAllRead: boolean }) {
         return setCollapsed(!collapsed);
       }}
     >
-      <span className="okou-nav-copy-muted okou-nav-copy-muted-hover flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-muted-foreground group-hover:text-sidebar-foreground transition-colors">
+      <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-nav-copy-muted group-hover:text-nav-copy transition-colors">
         {titleLabel}
         <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           <ChevronRight
