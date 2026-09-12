@@ -1110,6 +1110,7 @@ function createRenderedChatGroups(
               userMessage: isInputChatEvent(event)
                 ? event.userMessage
                 : undefined,
+              userMessageRenderDocument: event.userMessageRenderDocument,
               tree: event.tree,
             };
           }),
