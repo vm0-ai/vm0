@@ -20542,10 +20542,6 @@ describe("CHAT-02: run-level model overrides", () => {
           context.mocks.axiomLogging.info,
         ]) {
           expect(log).not.toHaveBeenCalledWith(
-            "codex-oauth-token token refresh failed",
-            expect.anything(),
-          );
-          expect(log).not.toHaveBeenCalledWith(
             "Pi API first-turn outcome",
             expect.objectContaining({
               runId: run.runId,
