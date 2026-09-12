@@ -205,6 +205,43 @@ compose with the animation rather than be replaced by it.
 The `mic-starting-spinner` and `mic-volume-icon-meter` selectors have been
 removed; the `mic-starting-spin` keyframes remain.
 
+### Ancestor state without the hover media query
+
+Tailwind wraps `hover:` and `group-hover:` in `@media (hover: hover)`, so a
+`group-hover:` utility is not an equivalent replacement for a retired
+`.parent:hover .child` rule: the retired rule also fired on coarse pointers,
+where a tap leaves a sticky hover. Reproduce that contract with an arbitrary
+variant over the element's own semantic attribute, as in
+`[:is([data-sidebar-chat-thread-id]:hover,[data-sidebar-chat-thread-id]:focus-visible)_&]:…`,
+which generates the same unconditional descendant selector at the same
+specificity, and folds a two-state rule into one utility. This matches the
+unconditional `[&:hover]` form the choice and surface variants already use;
+reach for `group-hover:` only when the media gate is wanted. The sidebar copy
+foreground above is such a case: it keeps the guard deliberately, because a
+foreground that never repaints on a sticky tap state is the better behaviour
+there, while a title that never scrolls to its end would lose the affordance.
+
+Spell such a variant out at every call site. Tailwind's scanner is text-based,
+so a variant assembled from a constant produces a candidate that never appears
+in the source and therefore generates no CSS at all.
+
+A retired `@media (prefers-reduced-motion: reduce)` override that reset a value
+back to its initial becomes `motion-safe:` on the rule it used to override,
+rather than a second `motion-reduce:` utility. Both utilities land in the same
+layer at the same specificity, so a `motion-reduce:` override would depend on
+Tailwind's emission order to win; `motion-safe:` simply does not apply, and the
+registered initial value is what reduced motion resolved to anyway.
+
+The sidebar thread title keeps its `@property --okou-nav-title-shift`
+registration in the App stylesheet. A registration is an at-rule rather than a
+class selector, and it is what lets a transition interpolate the length and
+`inherits: true` carry the animated value to the text span; the mask, the
+travel and the delayed hover transition are Tailwind utilities on the component.
+The `okou-nav-title`, `okou-nav-title-row`, and `okou-nav-recent-label`
+selectors and their consumers have been removed. `okou-nav-recent-label` had no
+declarations at all. `data-slot="sidebar-thread-title"` identifies the clipping
+box for page tests and carries no styles.
+
 ### Neutral button and select variants
 
 Use `Button variant="neutral"` for neutral actions and

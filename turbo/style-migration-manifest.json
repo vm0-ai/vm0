@@ -680,6 +680,31 @@
       ],
       "status": "implemented",
       "evidence": []
+    },
+    {
+      "id": "session-list-title",
+      "family": "navigation",
+      "tokens": [
+        "okou-nav-recent-label",
+        "okou-nav-title",
+        "okou-nav-title-row"
+      ],
+      "consumers": [
+        "apps/platform/src/views/okou-page/sidebar-threads.tsx",
+        "apps/platform/src/views/okou-page/__tests__/sidebar.test.tsx"
+      ],
+      "cases": [
+        "session-list-title-light",
+        "session-list-title-dark",
+        "session-list-title-light-retina",
+        "session-list-title-dark-retina",
+        "session-list-title-narrow",
+        "session-list-title-narrow-dark"
+      ],
+      "status": "implemented",
+      "evidence": [],
+      "pullRequest": "https://github.com/vm0-ai/vm0/pull/33693",
+      "mergeCommit": null
     }
   ],
   "caseFiles": [
@@ -696,6 +721,7 @@
     "../e2e/playwright/style-migration/shared-recipe-cases.json",
     "../e2e/playwright/style-migration/mic-motion-cases.json",
     "../e2e/playwright/style-migration/control-surface-cases.json",
-    "../e2e/playwright/style-migration/hairline-rule-cases.json"
+    "../e2e/playwright/style-migration/hairline-rule-cases.json",
+    "../e2e/playwright/style-migration/sidebar-thread-title-cases.json"
   ]
 }
