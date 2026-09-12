@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.656.0](https://github.com/vm0-ai/vm0/compare/core-v8.655.0...core-v8.656.0) (2026-09-12)
+
+
+### Features
+
+* enable agent math and workflow fuzzy search for all users ([#33680](https://github.com/vm0-ai/vm0/issues/33680)) ([57b7f9b](https://github.com/vm0-ai/vm0/commit/57b7f9b726f0b7044877a6038f01d109ca0f3e06))
+* enable cal.com oauth for everyone ([#33401](https://github.com/vm0-ai/vm0/issues/33401)) ([97212da](https://github.com/vm0-ai/vm0/commit/97212daa5f952c629308bca23962636407b48737))
+
+
+### Refactoring
+
+* remove graduated chat experience switches ([#33612](https://github.com/vm0-ai/vm0/issues/33612)) ([8e51714](https://github.com/vm0-ai/vm0/commit/8e517146fbe73026d88d0a3f508150ae6ddf04a2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.430.1
+
 ## [8.655.0](https://github.com/vm0-ai/vm0/compare/core-v8.654.3...core-v8.655.0) (2026-09-12)
 
 

@@ -8,6 +8,43 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.588.0](https://github.com/vm0-ai/vm0/compare/api-v1.587.0...api-v1.588.0) (2026-09-12)
+
+
+### Features
+
+* enable cal.com oauth for everyone ([#33401](https://github.com/vm0-ai/vm0/issues/33401)) ([97212da](https://github.com/vm0-ai/vm0/commit/97212daa5f952c629308bca23962636407b48737))
+* **ssh:** add managed sessions within a run ([#33674](https://github.com/vm0-ai/vm0/issues/33674)) ([45c6643](https://github.com/vm0-ai/vm0/commit/45c6643695cfd76617ae72e5fb4b42a437cd9a70))
+
+
+### Refactoring
+
+* **api:** delete dead fields and repeated guards in agent-run-create ([#33673](https://github.com/vm0-ai/vm0/issues/33673)) ([e4fa2ce](https://github.com/vm0-ai/vm0/commit/e4fa2ce2a572272968644271060418cf6926a24a))
+* **api:** drop log-only dimensions from the image generation failure classifiers ([#33665](https://github.com/vm0-ai/vm0/issues/33665)) ([e10e4a3](https://github.com/vm0-ai/vm0/commit/e10e4a38c902d79f0454e1028667f70ba0bc5bfb)), closes [#33649](https://github.com/vm0-ai/vm0/issues/33649)
+* **api:** reduce firewall-auth refresh-failure diagnostics to one rule ([#33668](https://github.com/vm0-ai/vm0/issues/33668)) ([7056f27](https://github.com/vm0-ai/vm0/commit/7056f27d56ec92c5056702f866b900a97d975dc1))
+* **api:** remove telemetry-only computation from the custom-connector runtime build ([#33672](https://github.com/vm0-ai/vm0/issues/33672)) ([3f18fc9](https://github.com/vm0-ai/vm0/commit/3f18fc980a5f5c87f4446252450d380e4f98f2ac))
+* **api:** rename restricted vm0 models to restricted built-in models ([#33670](https://github.com/vm0-ai/vm0/issues/33670)) ([c07f349](https://github.com/vm0-ai/vm0/commit/c07f349dd5bf75d500939daa87569e40905b0e18))
+* **api:** slim the activity-summary contract to the fields the platform reads ([#33630](https://github.com/vm0-ai/vm0/issues/33630)) ([198d38f](https://github.com/vm0-ai/vm0/commit/198d38f7a6a674672aa66c0053f40e783c424793))
+* remove graduated chat experience switches ([#33612](https://github.com/vm0-ai/vm0/issues/33612)) ([8e51714](https://github.com/vm0-ai/vm0/commit/8e517146fbe73026d88d0a3f508150ae6ddf04a2))
+* remove inert retired-brand vm0 residue ([#33660](https://github.com/vm0-ai/vm0/issues/33660)) ([9c83c9b](https://github.com/vm0-ai/vm0/commit/9c83c9b87ac2f910145cd9f66c350dd7006fb23c))
+* **runner:** rename sandbox-internal and preview-only x-vm0 headers ([#33663](https://github.com/vm0-ai/vm0/issues/33663)) ([9375cec](https://github.com/vm0-ai/vm0/commit/9375cec4abaa342c41b17cc54275f9cb59031b64))
+
+
+### Performance Improvements
+
+* **api:** precompute pi resource discovery indexes on write ([#33641](https://github.com/vm0-ai/vm0/issues/33641)) ([8ce31e8](https://github.com/vm0-ai/vm0/commit/8ce31e8254d2be1e1b080782e0d33a05bea4d3e4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.430.1
+    * @okouai/connectors bumped to 3.11.0
+    * @okouai/core bumped to 8.656.0
+    * @okouai/db bumped to 1.253.3
+    * @okouai/pi-agent-runtime bumped to 1.26.4
+
 ## [1.587.0](https://github.com/vm0-ai/vm0/compare/api-v1.586.1...api-v1.587.0) (2026-09-12)
 
 

@@ -11,6 +11,34 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.891.0](https://github.com/vm0-ai/vm0/compare/app-v0.890.0...app-v0.891.0) (2026-09-12)
+
+
+### Features
+
+* **app:** add visualization task options ([#33296](https://github.com/vm0-ai/vm0/issues/33296)) ([14e6b13](https://github.com/vm0-ai/vm0/commit/14e6b137590d53ce02c173ff99437f677410f724))
+
+
+### Refactoring
+
+* **api:** rename restricted vm0 models to restricted built-in models ([#33670](https://github.com/vm0-ai/vm0/issues/33670)) ([c07f349](https://github.com/vm0-ai/vm0/commit/c07f349dd5bf75d500939daa87569e40905b0e18))
+* **api:** slim the activity-summary contract to the fields the platform reads ([#33630](https://github.com/vm0-ai/vm0/issues/33630)) ([198d38f](https://github.com/vm0-ai/vm0/commit/198d38f7a6a674672aa66c0053f40e783c424793))
+* **app:** migrate the mic spinner and volume meter to utilities ([#33345](https://github.com/vm0-ai/vm0/issues/33345)) ([767110b](https://github.com/vm0-ai/vm0/commit/767110bf5c0f781dd909efd62707f6ecd960175b))
+* remove graduated chat experience switches ([#33612](https://github.com/vm0-ai/vm0/issues/33612)) ([8e51714](https://github.com/vm0-ai/vm0/commit/8e517146fbe73026d88d0a3f508150ae6ddf04a2))
+* remove inert retired-brand vm0 residue ([#33660](https://github.com/vm0-ai/vm0/issues/33660)) ([9c83c9b](https://github.com/vm0-ai/vm0/commit/9c83c9b87ac2f910145cd9f66c350dd7006fb23c))
+* **runner:** rename sandbox-internal and preview-only x-vm0 headers ([#33663](https://github.com/vm0-ai/vm0/issues/33663)) ([9375cec](https://github.com/vm0-ai/vm0/commit/9375cec4abaa342c41b17cc54275f9cb59031b64))
+* **ui:** use neutral button and select variants ([#33335](https://github.com/vm0-ai/vm0/issues/33335)) ([10212cb](https://github.com/vm0-ai/vm0/commit/10212cb80127aef11d0e12e12b0e4980e108fa98))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.430.1
+    * @okouai/connectors bumped to 3.11.0
+    * @okouai/core bumped to 8.656.0
+    * @okouai/ui bumped to 1.8.4
+
 ## [0.890.0](https://github.com/vm0-ai/vm0/compare/app-v0.889.1...app-v0.890.0) (2026-09-12)
 
 

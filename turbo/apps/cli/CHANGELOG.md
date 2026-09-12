@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.324.0](https://github.com/vm0-ai/vm0/compare/cli-v9.323.17...cli-v9.324.0) (2026-09-12)
+
+
+### Features
+
+* **ssh:** add managed sessions within a run ([#33674](https://github.com/vm0-ai/vm0/issues/33674)) ([45c6643](https://github.com/vm0-ai/vm0/commit/45c6643695cfd76617ae72e5fb4b42a437cd9a70))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.430.1
+    * @okouai/connectors bumped to 3.11.0
+    * @okouai/core bumped to 8.656.0
+    * @okouai/pi-agent-runtime bumped to 1.26.4
+
 ## [9.323.17](https://github.com/vm0-ai/vm0/compare/cli-v9.323.16...cli-v9.323.17) (2026-09-12)
 
 
