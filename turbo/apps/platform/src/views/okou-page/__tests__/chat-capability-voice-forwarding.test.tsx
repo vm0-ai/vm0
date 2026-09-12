@@ -145,6 +145,7 @@ test.each(targets)(
       },
     );
     await setupPage({
+      locale: "en-US",
       context: { ...context, signal: initialPage.signal },
       path,
       featureSwitches: flags,
@@ -155,6 +156,7 @@ test.each(targets)(
     const saved = await recordings();
     unload(initialPage);
     await setupPage({
+      locale: "en-US",
       context: refreshedContext,
       path: RUN_PATH,
       featureSwitches: flags,

@@ -132,6 +132,7 @@ test.each([
       },
     );
     await setupPage({
+      locale: "en-US",
       context: { ...context, signal: firstPage.signal },
       path,
       featureSwitches: flags,
@@ -150,7 +151,12 @@ test.each([
     // each case needs only one reload before its successful recovery.
     if (reloadAt === "recording") {
       unload(firstPage);
-      await setupPage({ context: secondContext, path, featureSwitches: flags });
+      await setupPage({
+        locale: "en-US",
+        context: secondContext,
+        path,
+        featureSwitches: flags,
+      });
     }
     for (const retry of retries) {
       const action = retry === retries[0] ? "Stop recording" : "Retry";
@@ -162,7 +168,12 @@ test.each([
     }
     if (reloadAt === "failed retries") {
       unload(firstPage);
-      await setupPage({ context: secondContext, path, featureSwitches: flags });
+      await setupPage({
+        locale: "en-US",
+        context: secondContext,
+        path,
+        featureSwitches: flags,
+      });
     }
     const retryButton = await findEnabledButton("Retry");
     expect(queryButton("Stop recording")).toBeNull();

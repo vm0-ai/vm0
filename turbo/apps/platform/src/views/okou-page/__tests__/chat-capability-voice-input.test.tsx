@@ -635,19 +635,21 @@ test("Show a longer history of recent voice levels", async () => {
   });
 });
 
+const retryFailures = [
+  {
+    status: 503,
+    code: "PROVIDER_UNAVAILABLE",
+    message: "Voice transcription is temporarily unavailable",
+  },
+  {
+    status: 502,
+    code: "VOICE_TRANSCRIPTION_FAILED",
+    message: "Voice draft transcription failed to produce a usable response",
+  },
+] as const;
+
 test.each(
-  [
-    {
-      status: 503,
-      code: "PROVIDER_UNAVAILABLE",
-      message: "Voice transcription is temporarily unavailable",
-    },
-    {
-      status: 502,
-      code: "VOICE_TRANSCRIPTION_FAILED",
-      message: "Voice draft transcription failed to produce a usable response",
-    },
-  ].flatMap((failure) => {
+  retryFailures.flatMap((failure) => {
     return [
       { ...failure, phase: "failure feedback" },
       { ...failure, phase: "recovery after repeated failure" },
@@ -700,6 +702,7 @@ test.each(
   await setupPage({
     context,
     path: RUN_PATH,
+    locale: "en-US",
     featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
   });
 
@@ -745,17 +748,67 @@ test.each(
   expect(recordings[2]).toStrictEqual(recordings[0]);
   expectNoVoiceDraftNode();
   await findEnabledButton("Send");
-  click(await findLink("Agents"));
-  await screen.findByRole("heading", { name: "Agents" });
-  cleanup();
-  await setupPage({
-    context: refreshedContext,
-    path: RUN_PATH,
-    featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
-  });
-  await findEnabledButton("Voice input");
-  expect(queryButton("Retry")).toBeNull();
 });
+
+test.each(retryFailures)(
+  "A recovered $code recording stays cleared after navigation and reload",
+  async (failure) => {
+    let transcriptionAttempts = 0;
+    context.mocks.browser.voiceInput({ rms: 0.12 });
+    installAvailableVoiceQuota();
+    context.mocks.http.post("*/api/voice-io/transcribe/segment", () => {
+      transcriptionAttempts += 1;
+      if (transcriptionAttempts <= 2) {
+        return HttpResponse.json(
+          { error: { code: failure.code, message: failure.message } },
+          { status: failure.status },
+        );
+      }
+      return HttpResponse.json({
+        transcript: "raw launch update",
+        polishedText: "Polished launch update.",
+        language: "en-US",
+      });
+    });
+    installRunChat();
+    await setupPage({
+      context,
+      path: RUN_PATH,
+      locale: "en-US",
+      featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
+    });
+
+    const voiceInput = await readyVoiceInput();
+    await fill(currentComposer(), "Keep these notes. ");
+    click(voiceInput);
+    click(await activeVoiceDraftStopButton());
+    click(await findEnabledButton("Retry"));
+    await waitFor(() => {
+      expect(transcriptionAttempts).toBe(2);
+      expect(queryButton("Retry")).toBeEnabled();
+    });
+    click(await findEnabledButton("Retry"));
+    await waitFor(() => {
+      expect(normalizedComposerText()).toBe(
+        "Keep these notes. Polished launch update.",
+      );
+    });
+    expect(transcriptionAttempts).toBe(3);
+    await findEnabledButton("Send");
+
+    click(await findLink("Agents"));
+    await screen.findByRole("heading", { name: "Agents" });
+    cleanup();
+    await setupPage({
+      context: refreshedContext,
+      path: RUN_PATH,
+      locale: "en-US",
+      featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
+    });
+    await findEnabledButton("Voice input");
+    expect(queryButton("Retry")).toBeNull();
+  },
+);
 
 test.each([
   { path: RUN_PATH, failed: false, recovery: "navigation" },

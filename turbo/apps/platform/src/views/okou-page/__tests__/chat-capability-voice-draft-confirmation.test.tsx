@@ -146,6 +146,7 @@ test.each([false, true])(
     }
 
     await setupPage({
+      locale: "en-US",
       context: { ...context, signal: initialPage.signal },
       path: `/agents/${CHAT_LIST_AGENT_ID}/chat`,
       auth,
@@ -182,6 +183,7 @@ test.each([false, true])(
       unloadPage(initialPage);
       publishThreadConfirmation();
       await setupPage({
+        locale: "en-US",
         context: { ...refreshedContext, signal: refreshedPage.signal },
         path: `/chats/${createdThreadId}`,
         auth,

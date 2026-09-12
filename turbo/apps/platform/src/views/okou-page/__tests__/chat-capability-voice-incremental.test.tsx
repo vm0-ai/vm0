@@ -150,6 +150,7 @@ test("Resume a completed segment after reload without retranscribing its audio",
     });
   });
   await setupPage({
+    locale: "en-US",
     context: { ...context, signal: page.signal },
     path: RUN_PATH,
     featureSwitches: flags,
@@ -167,6 +168,7 @@ test("Resume a completed segment after reload without retranscribing its audio",
   vi.mocked(window.history.replaceState).mockRestore();
   vi.mocked(window.history.back).mockRestore();
   await setupPage({
+    locale: "en-US",
     context: refreshedContext,
     path: RUN_PATH,
     featureSwitches: flags,
