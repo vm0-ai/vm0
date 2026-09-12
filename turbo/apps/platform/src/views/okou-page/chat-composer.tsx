@@ -8841,11 +8841,14 @@ function MicButton({
             }
           >
             {starting || transcribing ? (
-              <span className="mic-starting-spinner" aria-hidden="true" />
+              <span
+                className="block size-[17px] rounded-full border-2 border-[rgb(255_255_255_/_0.35)] border-t-[#ffffff] pointer-events-none [transform:rotate(0deg)_translateZ(0)] origin-center [backface-visibility:hidden] [will-change:transform] animate-mic-starting-spin"
+                aria-hidden="true"
+              />
             ) : recording ? (
               <>
                 <span
-                  className="mic-volume-icon-meter"
+                  className="absolute bottom-4 left-1/2 h-2 w-[5px] rounded-full bg-[rgb(255_255_255_/_0.18)] overflow-hidden pointer-events-none [transform:translateX(-50%)] after:absolute after:right-0 after:bottom-0 after:left-0 after:h-[var(--mic-volume-fill,0%)] after:rounded-[inherit] after:bg-[linear-gradient(to_top,#bdf9ff,#ffffff)] after:content-[''] after:transition-[height] after:duration-[0.12s] after:ease-[cubic-bezier(0.25,0.1,0.25,1)]"
                   aria-hidden="true"
                   style={
                     {
