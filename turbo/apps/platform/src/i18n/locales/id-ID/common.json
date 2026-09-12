@@ -6306,6 +6306,7 @@
       "password": "Kata sandi",
       "replaceAuthentication": "Ganti autentikasi",
       "sharedHelp_other": "Perubahan login berlaku untuk seluruh {{count}} host:",
+      "summary_other": "{{count}} kredensial dikonfigurasi",
       "unused": "Tidak digunakan oleh host mana pun"
     },
     "credentialsHelp": "Kredensial hanya dapat ditulis dan tetap berada di luar sandbox. Tempelkan kunci lengkap; spasi dipertahankan. Kolom dikosongkan saat formulir ditutup.",

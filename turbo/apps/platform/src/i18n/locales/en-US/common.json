@@ -6314,6 +6314,8 @@
       "replaceAuthentication": "Replace authentication",
       "sharedHelp_one": "Login changes apply to {{count}} host:",
       "sharedHelp_other": "Login changes apply to all {{count}} hosts:",
+      "summary_one": "{{count}} credential configured",
+      "summary_other": "{{count}} credentials configured",
       "unused": "Not used by any hosts"
     },
     "credentialsHelp": "Credentials are write-only and stay outside the sandbox. Paste the complete key; whitespace is preserved. Fields are cleared when this form closes.",

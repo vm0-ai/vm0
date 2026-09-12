@@ -6306,6 +6306,7 @@
       "password": "비밀번호",
       "replaceAuthentication": "인증 정보 교체",
       "sharedHelp_other": "로그인 변경 사항은 사용하는 모든 호스트 {{count}}개에 적용됩니다:",
+      "summary_other": "자격 증명 {{count}}개 구성됨",
       "unused": "사용 중인 호스트 없음"
     },
     "credentialsHelp": "인증 정보는 쓰기 전용이며 샌드박스 외부에 보관됩니다. 전체 키를 붙여 넣으세요. 공백은 유지됩니다. 양식을 닫으면 입력란이 지워집니다.",

@@ -6385,6 +6385,9 @@
       "sharedHelp_one": "As alterações de login se aplicam a {{count}} host:",
       "sharedHelp_many": "As alterações de login se aplicam a todos os {{count}} hosts:",
       "sharedHelp_other": "As alterações de login se aplicam a todos os {{count}} hosts:",
+      "summary_one": "{{count}} credencial configurada",
+      "summary_many": "{{count}} credenciais configuradas",
+      "summary_other": "{{count}} credenciais configuradas",
       "unused": "Nenhum host utiliza esta credencial"
     },
     "credentialsHelp": "As credenciais são somente para gravação e ficam fora do sandbox. Cole a chave completa; os espaços são preservados. Os campos são limpos ao fechar o formulário.",
