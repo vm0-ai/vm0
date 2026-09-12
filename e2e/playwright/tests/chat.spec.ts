@@ -1,6 +1,5 @@
 import { resolveApiBackendUrl } from "../api-backend-url";
 import { expect, test } from "../fixtures";
-import { omitAppApiPrefetch } from "../lib/app-api-prefetch";
 import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(resolveApiBackendUrl());
@@ -419,28 +418,12 @@ test.describe("dark theme", () => {
   test.use({ colorScheme: "dark" });
 
   test("focused composer does not cast a dark veil", async ({ page }) => {
-    await omitAppApiPrefetch(page, appUrl);
-
-    await page.route("**/api/user-preferences", async (route) => {
-      if (route.request().method() !== "GET") {
-        await route.continue();
-        return;
-      }
-
-      const response = await route.fetch();
-      const preferences: unknown = await response.json();
-      if (
-        typeof preferences !== "object" ||
-        preferences === null ||
-        Array.isArray(preferences)
-      ) {
-        throw new Error("Expected user preferences to be an object");
-      }
-      await route.fulfill({
-        response,
-        json: { ...preferences, theme: "system" },
-      });
-    });
+    await page.goto(`${appUrl}/agents?settings=preference`);
+    const systemTheme = page
+      .getByRole("dialog", { name: "Settings" })
+      .getByRole("button", { name: "System", exact: true });
+    await systemTheme.click();
+    await expect(systemTheme).toHaveAttribute("aria-pressed", "true");
 
     await page.goto(appUrl);
     await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
