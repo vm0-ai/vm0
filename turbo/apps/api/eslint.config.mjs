@@ -583,6 +583,10 @@ export default [
       // exact Agent Draft writer through both rollout targets.
       "src/signals/services/__tests__/agent-draft-write.service.test.ts",
       "src/signals/services/__tests__/workflow-automation-context.test.ts",
+      // The automatic welcome thread id is a permanent uuidv5 contract with
+      // externally computed literals; route tests own generated identities and
+      // cannot pin the namespace, input order and separator.
+      "src/signals/services/__tests__/welcome-chat-thread-id.test.ts",
     ],
     rules: {
       "no-restricted-syntax": ["error", ...restrictedSyntax],
@@ -722,6 +726,12 @@ export default [
       // through the production API. This focused PostgreSQL test proves the
       // exact Agent Draft writer through both rollout targets.
       "src/signals/services/__tests__/agent-draft-write.service.test.ts",
+      // The automatic welcome thread id is a permanent uuidv5 contract: it
+      // decides, forever, whether a recipient already holds a welcome. Route
+      // tests own uniquely generated identities, so only fixed inputs with
+      // externally computed literals can pin the namespace, input order and
+      // separator.
+      "src/signals/services/__tests__/welcome-chat-thread-id.test.ts",
       // The logger is the subject here, not a diagnostic: this suite covers the
       // app factory's log wiring and flush ownership, which no route exposes.
       "src/__tests__/app-factory.test.ts",
