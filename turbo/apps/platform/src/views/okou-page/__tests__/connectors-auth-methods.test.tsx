@@ -473,7 +473,7 @@ test("Authorize visible agents only for the first manual account", async () => {
   const researchId = "c0000000-0000-4000-a000-000000000002";
   mockConnectors(context, []);
   context.mocks.data.agents([
-    listAgent("c0000000-0000-4000-a000-000000000001", "Zero"),
+    listAgent("c0000000-0000-4000-a000-000000000001", "Nova"),
     listAgent(researchId, "Research Agent"),
   ]);
   mockPublicConnectorStatus(context, [
@@ -540,10 +540,10 @@ test("Authorize visible agents only for the first manual account", async () => {
   const access = await screen.findByRole("dialog", {
     name: "Manage Public Axiom access",
   });
-  click(getConnectorSwitch("Revoke Public Axiom access for Zero", access));
+  click(getConnectorSwitch("Revoke Public Axiom access for Nova", access));
   await waitFor(() => {
     expect(
-      getConnectorSwitch("Authorize Public Axiom access for Zero", access),
+      getConnectorSwitch("Authorize Public Axiom access for Nova", access),
     ).not.toBeChecked();
   });
   click(getConnectorAction("button", "Close", access));
@@ -572,7 +572,7 @@ test("Authorize visible agents only for the first manual account", async () => {
     name: "Manage Public Axiom access",
   });
   expect(
-    getConnectorSwitch("Authorize Public Axiom access for Zero", updatedAccess),
+    getConnectorSwitch("Authorize Public Axiom access for Nova", updatedAccess),
   ).not.toBeChecked();
   expect(
     getConnectorSwitch(
@@ -727,7 +727,7 @@ test("Enable a connector that needs no credentials", async () => {
   const researchId = "c0000000-0000-4000-a000-000000000002";
   mockConnectors(context, []);
   context.mocks.data.agents([
-    listAgent("c0000000-0000-4000-a000-000000000001", "Zero"),
+    listAgent("c0000000-0000-4000-a000-000000000001", "Nova"),
     listAgent(researchId, "Research Agent"),
   ]);
   mockPublicConnectorStatus(context, [
@@ -834,7 +834,7 @@ test("Complete OAuth only after the current attempt succeeds", async () => {
   const researchId = "c0000000-0000-4000-a000-000000000002";
   let listed = mockConnectors(context, []);
   context.mocks.data.agents([
-    listAgent("c0000000-0000-4000-a000-000000000001", "Zero"),
+    listAgent("c0000000-0000-4000-a000-000000000001", "Nova"),
     listAgent(researchId, "Research Agent"),
   ]);
   mockPublicConnectorStatus(context, [
