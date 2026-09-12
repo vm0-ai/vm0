@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.323.16](https://github.com/vm0-ai/vm0/compare/cli-v9.323.15...cli-v9.323.16) (2026-09-12)
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#33582](https://github.com/vm0-ai/vm0/issues/33582)) ([d5ae0e3](https://github.com/vm0-ai/vm0/commit/d5ae0e331d31465b7302bc63e1557420caf7358b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @okouai/api-contracts bumped to 1.429.1
+    * @okouai/core bumped to 8.654.3
+    * @okouai/pi-agent-runtime bumped to 1.26.2
+
 ## [9.323.15](https://github.com/vm0-ai/vm0/compare/cli-v9.323.14...cli-v9.323.15) (2026-09-11)
 
 
