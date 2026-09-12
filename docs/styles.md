@@ -292,6 +292,32 @@ override, and the guard is the better behaviour.
 Sidebar thread titles carry `data-slot="sidebar-thread-title"` so tests select
 them through a documented slot instead of the styling class.
 
+### Horizontal hairline rules
+
+The `okou-border-t` selector and its consumers have been removed. It was one
+declaration — `border-top: 0.7px solid hsl(var(--gray-400))` — spelled at 27
+sites as the rule between rows of a settings card, list or menu. Each consumer
+now writes `border-t border-t-gray-400`.
+
+The width joins the shared hairline the same way the retired `okou-btn-morandi`
+border did: `border-t` reads `--default-border-width` rather than naming a
+value, so these rules stop being a second registry for a decision that token
+already owns. The colour is unchanged, because `border-t-gray-400` resolves to
+the registered `--color-gray-400`, which is `hsl(var(--gray-400))` — the same
+runtime variable the retired rule read. Every Dark and gradient-palette override
+it followed therefore still applies without a per-theme branch.
+
+These are rules rather than real borders, so the newer `bg-divider` guidance
+would suit them. Adopting it would change their colour, which is a visual
+decision and belongs to a separately reviewed change; this migration preserved
+the existing stroke.
+
+The shared `Select` and `DropdownMenu` separators compose these utilities
+alongside their existing `border-0`. That still paints, because Tailwind emits
+`border-width` before `border-top-width` inside the utilities layer; previously
+the legacy rule won only by sitting outside every layer. Tests continue to
+select both separators through `data-slot`.
+
 ## Exception boundary
 
 Only two exception kinds exist:

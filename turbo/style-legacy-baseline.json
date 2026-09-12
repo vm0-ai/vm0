@@ -13,7 +13,6 @@
     "okou-app",
     "okou-blocks",
     "okou-border",
-    "okou-border-t",
     "okou-chat-bubble-assistant",
     "okou-chat-bubble-user",
     "okou-chat-card",
@@ -607,13 +606,6 @@
         "atRules": [],
         "selector": ".okou-border",
         "property": "border",
-        "value": "0.7px solid hsl(var(--gray-400))",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-border-t",
-        "property": "border-top",
         "value": "0.7px solid hsl(var(--gray-400))",
         "important": false
       },
@@ -3091,9 +3083,6 @@
     "apps/platform/src/views/okou-page/banking-action-card.tsx": {
       "okou-chat-card": 3
     },
-    "apps/platform/src/views/okou-page/billing-dialog.tsx": {
-      "okou-border-t": 2
-    },
     "apps/platform/src/views/okou-page/browser-session-card.tsx": {
       "okou-chat-card": 3
     },
@@ -3120,30 +3109,15 @@
       "okou-thinking-spinner": 1,
       "okou-thinking-spinner-frame": 1
     },
-    "apps/platform/src/views/okou-page/components/org-manage/buy-credits-section.tsx": {
-      "okou-border-t": 1
-    },
     "apps/platform/src/views/okou-page/components/org-manage/org-billing-tab.tsx": {
       "okou-app": 1,
-      "okou-border": 3,
-      "okou-border-t": 7
-    },
-    "apps/platform/src/views/okou-page/components/org-manage/org-general-tab.tsx": {
-      "okou-border-t": 3
-    },
-    "apps/platform/src/views/okou-page/components/org-manage/org-invoices-tab.tsx": {
-      "okou-border-t": 3
+      "okou-border": 3
     },
     "apps/platform/src/views/okou-page/components/org-manage/org-members-tab.tsx": {
-      "okou-border": 1,
-      "okou-border-t": 5
+      "okou-border": 1
     },
     "apps/platform/src/views/okou-page/components/org-manage/org-usage-tab.tsx": {
-      "okou-border": 3,
-      "okou-border-t": 1
-    },
-    "apps/platform/src/views/okou-page/components/settings/add-connection-dialog.tsx": {
-      "okou-border-t": 1
+      "okou-border": 3
     },
     "apps/platform/src/views/okou-page/components/settings/build-info-block.tsx": {
       "okou-border": 1
@@ -3156,9 +3130,6 @@
     },
     "apps/platform/src/views/okou-page/components/settings/connection-diagnostics-block.tsx": {
       "okou-border": 1
-    },
-    "apps/platform/src/views/okou-page/components/settings/connector-account-manager-dialog.tsx": {
-      "okou-border-t": 1
     },
     "apps/platform/src/views/okou-page/components/settings/connector-catalog-diagnostics-block.tsx": {
       "okou-border": 1
@@ -3235,8 +3206,7 @@
       "okou-sidebar-header": 1
     },
     "apps/platform/src/views/okou-page/tiptap-instructions-editor.tsx": {
-      "okou-border": 1,
-      "okou-border-t": 1
+      "okou-border": 1
     },
     "apps/platform/src/views/okou-page/unsaved-bar.tsx": {
       "okou-app": 1
@@ -3289,12 +3259,6 @@
     },
     "apps/platform/src/views/unsupported-browser-page.tsx": {
       "okou-app": 1
-    },
-    "packages/ui/src/components/ui/dropdown-menu.tsx": {
-      "okou-border-t": 1
-    },
-    "packages/ui/src/components/ui/select.tsx": {
-      "okou-border-t": 1
     },
     "packages/ui/src/components/ui/sonner.tsx": {
       "toaster": 1
