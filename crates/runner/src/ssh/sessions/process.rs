@@ -31,6 +31,7 @@ pub(super) async fn run(
     };
     {
         let mut data = entry.data.lock().unwrap_or_else(|p| p.into_inner());
+        data.generation = observation.generation;
         data.state = match result.as_ref() {
             Ok(exit) => {
                 data.effects = Effects::Completed;

@@ -73,6 +73,14 @@ impl Execution {
             .wait(client::connect_stream(Arc::new(config), stream, handler))
             .await;
         observation.connecting = !authority_pending.load(Ordering::Acquire);
+        // TOFU may advance trust even when the following authentication fails.
+        observation.generation = Some(
+            self.credential
+                .trust
+                .lock()
+                .map_err(|_| FailureReason::Protocol)?
+                .generation,
+        );
         let session = connection?.map_err(|_| {
             failure
                 .lock()
