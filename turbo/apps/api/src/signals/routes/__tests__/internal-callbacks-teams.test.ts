@@ -381,10 +381,12 @@ async function setupConnectedTeamsActor(
   const defaultAgent = await authOrgApi.bootstrapLimitedFreeOnboarding(actor, {
     displayName: "Teams callback agent",
   });
-  await authOrgApi.updateAgentMetadata(actor, defaultAgent.body.agentId, {
-    visibility: "public",
-  });
-  await runsApi.grantProEntitlement(actor);
+  await Promise.all([
+    authOrgApi.updateAgentMetadata(actor, defaultAgent.body.agentId, {
+      visibility: "public",
+    }),
+    runsApi.grantProEntitlement(actor),
+  ]);
   await runsApi.ensureOrgModelProvider(actor);
   if (options.okouDebug) {
     await updateFeatureSwitchesForUser(
@@ -885,16 +887,17 @@ describe("Teams chat callbacks", () => {
     });
     expect(defaultClaim.resumeSession).toBeNull();
     clearTeamsApiCalls(teamsApi);
-    const defaultSessionId = await completeSandboxRun({
-      runId: defaultRunId,
-      sandboxToken: defaultClaim.sandboxToken,
-      exitCode: 0,
-    });
-
-    const alternateAgent = await authOrgApi.createAgent(teams.actor, {
-      displayName: "Alternate Teams DM agent",
-      visibility: "public",
-    });
+    const [defaultSessionId, alternateAgent] = await Promise.all([
+      completeSandboxRun({
+        runId: defaultRunId,
+        sandboxToken: defaultClaim.sandboxToken,
+        exitCode: 0,
+      }),
+      authOrgApi.createAgent(teams.actor, {
+        displayName: "Alternate Teams DM agent",
+        visibility: "public",
+      }),
+    ]);
     await switchTeamsAgent({
       fixture: teams.fixture,
       activityId: teamsFixtureExternalId(

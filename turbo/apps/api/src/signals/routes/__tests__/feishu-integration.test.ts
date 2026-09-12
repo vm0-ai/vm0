@@ -940,15 +940,15 @@ describe("Feishu integration", () => {
     if (!defaultAgentId) {
       throw new Error("Expected Feishu fixture to create a default agent");
     }
-    const defaultAgent = await authOrgApi.updateAgentMetadata(
-      actor,
-      defaultAgentId,
-      { visibility: "public" },
-    );
-    const alternateAgent = await authOrgApi.createAgent(actor, {
-      displayName: "Feishu alternate agent",
-      visibility: "public",
-    });
+    const [defaultAgent, alternateAgent] = await Promise.all([
+      authOrgApi.updateAgentMetadata(actor, defaultAgentId, {
+        visibility: "public",
+      }),
+      authOrgApi.createAgent(actor, {
+        displayName: "Feishu alternate agent",
+        visibility: "public",
+      }),
+    ]);
     const installationDefaultAgent = options.useAlternateInstallationDefault
       ? alternateAgent
       : defaultAgent;

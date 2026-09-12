@@ -21766,8 +21766,11 @@ describe("CHAT-02: initial thinking indicator", () => {
       prompt: "Prepare a later update",
     });
     await flushWaitUntilForTest();
-    expect((await api.readRun(actor, queued.runId)).status).toBe("queued");
-    const page = await chat.listThreadEvents(actor, queued.threadId);
+    const [queuedRun, page] = await Promise.all([
+      api.readRun(actor, queued.runId),
+      chat.listThreadEvents(actor, queued.threadId),
+    ]);
+    expect(queuedRun.status).toBe("queued");
     expect(page.events).toContainEqual(
       expect.objectContaining({ runEventId: "queue:queued" }),
     );
