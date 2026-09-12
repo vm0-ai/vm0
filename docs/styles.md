@@ -212,10 +212,15 @@ Tailwind wraps `hover:` and `group-hover:` in `@media (hover: hover)`, so a
 `.parent:hover .child` rule: the retired rule also fired on coarse pointers,
 where a tap leaves a sticky hover. Reproduce that contract with an arbitrary
 variant over the element's own semantic attribute, as in
-`[[data-sidebar-chat-thread-id]:hover_&]:…`, which generates the same
-unconditional descendant selector at the same specificity. This matches the
+`[:is([data-sidebar-chat-thread-id]:hover,[data-sidebar-chat-thread-id]:focus-visible)_&]:…`,
+which generates the same unconditional descendant selector at the same
+specificity, and folds a two-state rule into one utility. This matches the
 unconditional `[&:hover]` form the choice and surface variants already use;
 reach for `group-hover:` only when the media gate is wanted.
+
+Spell such a variant out at every call site. Tailwind's scanner is text-based,
+so a variant assembled from a constant produces a candidate that never appears
+in the source and therefore generates no CSS at all.
 
 A retired `@media (prefers-reduced-motion: reduce)` override that reset a value
 back to its initial becomes `motion-safe:` on the rule it used to override,

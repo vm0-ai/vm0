@@ -714,8 +714,17 @@ fine-pointer, coarse-pointer and reduced-motion runs. `GradientColorThemes` is
 disabled by default, so the default palette is the online-visible result and the
 palette states are a superset.
 
+The clipping box composes its utilities through `cn()` in one small
+`ChatThreadItemTitle` component rather than as a single opaque attribute string.
+`cn()` was checked to return that class list byte-identically, and the Tailwind
+`no-unknown-classes` rule was confirmed to still report an unknown class placed
+inside the call, so neither readability change costs coverage.
+
 The negative control is part of the acceptance, because a diff channel that
-cannot fail proves nothing. Dropping the text span's
+cannot fail proves nothing. Dropping the merged `:is()` hover/focus travel
+changes 10,284 pixels and 6 observations, which is what establishes that the
+merged variant is load-bearing rather than silently inert. Dropping the text
+span's
 `[transform:translateX(var(--okou-nav-title-shift))]` changes 10,266 pixels, and
 narrowing the fade from 24px to 23px changes 1,161, so the channel resolves both
 a gross and a one-pixel-scale change. Three earlier controls — dropping
