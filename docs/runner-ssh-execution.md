@@ -180,10 +180,16 @@ API credential writers remain key-only until #33468 delivers reusable credential
 SSH is staff-only, so this work adds no legacy compatibility or reader-drain gate;
 see [fallback policy](fallback.md#2-features-behind-a-feature-switch-need-no-fallback).
 
-Per-sandbox admission is 2 requests and per-Runner admission is 16, before request
-parsing and JIT. Expensive key decoding uses 2 process-wide blocking slots.
-Cancelled blocking work and system DNS retain their host capacity permits until
-they really finish. The dispatcher owns the guest stream and its existing
+Each sandbox's current Run admits up to 8 concurrent SSH requests, before request
+parsing and JIT. There is no Runner-wide SSH request or connection admission cap;
+other Runs do not consume this quota. A new Run receives a fresh 8-slot quota.
+Slots cover admitted work through parsing, authority, DNS, authentication,
+execution and host cleanup, rather than only established connections. Aggregate
+socket, memory and network use can therefore grow with active Runs and outstanding
+cleanup from retired Runs. Expensive key decoding still uses 2 process-wide
+blocking slots; authority-cache and observation-report bounds remain separate.
+Cancelled blocking work and system DNS retain their original Run's capacity
+permits until they really finish. The dispatcher owns the guest stream and its existing
 normal-operation/park reservation independently. Once request I/O closes and the
 stream drops, host-only work no longer blocks guest park, while its capacity
 remains charged until actual completion. No independent park counter is added.

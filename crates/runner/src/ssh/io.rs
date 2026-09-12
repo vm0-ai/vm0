@@ -12,24 +12,11 @@ use tokio::{
     sync::OwnedSemaphorePermit,
 };
 
-pub(super) struct Lease {
-    _sandbox: OwnedSemaphorePermit,
-    _runner: OwnedSemaphorePermit,
-}
-impl Lease {
-    pub(super) fn new(sandbox: OwnedSemaphorePermit, runner: OwnedSemaphorePermit) -> Self {
-        Self {
-            _sandbox: sandbox,
-            _runner: runner,
-        }
-    }
-}
-
 pub(super) type GuestIo = Box<dyn GuestRpcStream>;
 
 pub(super) struct SshSocket {
     stream: tokio::net::TcpStream,
-    _lease: Arc<Lease>,
+    _lease: Arc<OwnedSemaphorePermit>,
 }
 
 pub(super) struct SocketGuard(std::net::TcpStream);
@@ -37,7 +24,7 @@ pub(super) struct SocketGuard(std::net::TcpStream);
 impl SshSocket {
     pub(super) fn new(
         stream: tokio::net::TcpStream,
-        lease: Arc<Lease>,
+        lease: Arc<OwnedSemaphorePermit>,
     ) -> io::Result<(Self, SocketGuard)> {
         let stream = stream.into_std()?;
         let guard = SocketGuard(stream.try_clone()?);

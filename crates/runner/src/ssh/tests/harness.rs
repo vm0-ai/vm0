@@ -65,6 +65,7 @@ pub(super) struct Observed {
     pub(super) commands: Mutex<Vec<Vec<u8>>>,
     pub(super) attempts: Mutex<Vec<SocketAddr>>,
     pub(super) queries: Mutex<Vec<(String, u16)>>,
+    pub(super) resolved: AtomicUsize,
     pub(super) reservations: AtomicUsize,
 }
 
@@ -86,7 +87,9 @@ impl Network for TestNetwork {
         if let Some(gate) = gate {
             let _permit = gate.acquire().await.unwrap();
         }
-        Ok(self.answers.lock().unwrap().clone())
+        let answers = self.answers.lock().unwrap().clone();
+        self.observed.resolved.fetch_add(1, Ordering::SeqCst);
+        Ok(answers)
     }
     async fn connect(&self, address: SocketAddr) -> io::Result<TcpStream> {
         self.observed.attempts.lock().unwrap().push(address);
@@ -166,6 +169,53 @@ pub(super) struct Harness {
     dispatcher: Option<SshRun>,
     incoming: mpsc::Sender<sandbox::AcceptedGuestRpc>,
     peer: JoinHandle<()>,
+}
+
+pub(super) struct AdditionalRun {
+    sandbox: String,
+    control: guest_control_client::GuestControlClient,
+    _control_peer: tokio::net::UnixStream,
+    observed: Arc<Observed>,
+    lifecycle: CancellationToken,
+    incoming: mpsc::Sender<sandbox::AcceptedGuestRpc>,
+    dispatcher: SshRun,
+}
+
+impl AdditionalRun {
+    pub(super) async fn new(runtime: &Arc<SshRuntime>, sandbox: &str) -> Self {
+        let (control, control_peer) = control_connection().await;
+        let (incoming, receiver) = mpsc::channel(32);
+        let dispatcher = runtime.start(
+            Arc::new(Acceptor(tokio::sync::Mutex::new(receiver))),
+            sandbox.into(),
+            RunId::new_v4(),
+            &CancellationToken::new(),
+        );
+        Self {
+            sandbox: sandbox.into(),
+            control,
+            _control_peer: control_peer,
+            observed: Arc::new(Observed::default()),
+            lifecycle: CancellationToken::new(),
+            incoming,
+            dispatcher,
+        }
+    }
+
+    pub(super) async fn open(&self) -> DuplexStream {
+        open_rpc(
+            &self.incoming,
+            &self.sandbox,
+            &self.control,
+            &self.observed,
+            &self.lifecycle,
+        )
+        .await
+    }
+
+    pub(super) async fn shutdown(self) {
+        self.dispatcher.shutdown().await;
+    }
 }
 
 impl Harness {
@@ -283,28 +333,17 @@ impl Harness {
         .await
     }
     pub(super) async fn raw(&self, json: String) -> Vec<Value> {
-        let mut guest = self.open().await;
-        guest.write_u32(json.len() as u32).await.unwrap();
-        guest.write_all(json.as_bytes()).await.unwrap();
-        guest.shutdown().await.unwrap();
-        frames(guest).await
+        request_frames(self.open().await, json).await
     }
     pub(super) async fn open(&self) -> DuplexStream {
-        let (guest, stream) = tokio::io::duplex(64 * 1024);
-        self.observed.reservations.fetch_add(1, Ordering::SeqCst);
-        self.incoming
-            .send(sandbox::AcceptedGuestRpc {
-                sandbox_id: "sandbox-authoritative".into(),
-                stream: Box::new(ReservedStream {
-                    stream,
-                    observed: Arc::clone(&self.observed),
-                    _reservation: self.control.reserve_external_operation().unwrap(),
-                }),
-                cancelled: self.lifecycle.clone(),
-            })
-            .await
-            .unwrap();
-        guest
+        open_rpc(
+            &self.incoming,
+            "sandbox-authoritative",
+            &self.control,
+            &self.observed,
+            &self.lifecycle,
+        )
+        .await
     }
     pub(super) async fn shutdown(&mut self) {
         if let Some(dispatcher) = self.dispatcher.take() {
@@ -334,6 +373,30 @@ impl Drop for Harness {
         self.cancel.cancel();
         self.peer.abort();
     }
+}
+
+async fn open_rpc(
+    incoming: &mpsc::Sender<sandbox::AcceptedGuestRpc>,
+    sandbox: &str,
+    control: &guest_control_client::GuestControlClient,
+    observed: &Arc<Observed>,
+    lifecycle: &CancellationToken,
+) -> DuplexStream {
+    let (guest, stream) = tokio::io::duplex(64 * 1024);
+    observed.reservations.fetch_add(1, Ordering::SeqCst);
+    incoming
+        .send(sandbox::AcceptedGuestRpc {
+            sandbox_id: sandbox.into(),
+            stream: Box::new(ReservedStream {
+                stream,
+                observed: Arc::clone(observed),
+                _reservation: control.reserve_external_operation().unwrap(),
+            }),
+            cancelled: lifecycle.clone(),
+        })
+        .await
+        .unwrap();
+    guest
 }
 
 async fn control_connection() -> (
@@ -423,6 +486,12 @@ pub(super) async fn respond(socket: &mut TcpStream, body: Value) -> io::Result<(
 }
 pub(super) fn params() -> Value {
     json!({"sshConnectionId":CONNECTION,"command":"printf test-command"})
+}
+pub(super) async fn request_frames(mut guest: DuplexStream, json: String) -> Vec<Value> {
+    guest.write_u32(json.len() as u32).await.unwrap();
+    guest.write_all(json.as_bytes()).await.unwrap();
+    guest.shutdown().await.unwrap();
+    frames(guest).await
 }
 pub(super) async fn frames(mut guest: DuplexStream) -> Vec<Value> {
     let read = async {
