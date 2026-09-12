@@ -8,6 +8,16 @@ Releases before September 2026 are archived by month:
 - [2026-05](changelog/2026-05/CHANGELOG.md)
 - [2026-04](changelog/2026-04/CHANGELOG.md)
 
+## [1.590.2](https://github.com/vm0-ai/vm0/compare/api-v1.590.1...api-v1.590.2) (2026-09-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.660.0
+    * @okouai/db bumped to 1.254.3
+
 ## [1.590.1](https://github.com/vm0-ai/vm0/compare/api-v1.590.0...api-v1.590.1) (2026-09-12)
 
 

@@ -11,6 +11,20 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.893.2](https://github.com/vm0-ai/vm0/compare/app-v0.893.1...app-v0.893.2) (2026-09-12)
+
+
+### Refactoring
+
+* **auth:** replace auth v2 with hosted clerk ([#33450](https://github.com/vm0-ai/vm0/issues/33450)) ([3b1bca6](https://github.com/vm0-ai/vm0/commit/3b1bca622a808b130516b6d058050466a20369a9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.660.0
+
 ## [0.893.1](https://github.com/vm0-ai/vm0/compare/app-v0.893.0...app-v0.893.1) (2026-09-12)
 
 

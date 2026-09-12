@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.660.0](https://github.com/vm0-ai/vm0/compare/core-v8.659.0...core-v8.660.0) (2026-09-12)
+
+
+### Features
+
+* **core:** roll out markdown time ([#33704](https://github.com/vm0-ai/vm0/issues/33704)) ([a8970b8](https://github.com/vm0-ai/vm0/commit/a8970b8e481c29ebb4d0b7277820c2dd179f1c2b))
+
 ## [8.659.0](https://github.com/vm0-ai/vm0/compare/core-v8.658.0...core-v8.659.0) (2026-09-12)
 
 
