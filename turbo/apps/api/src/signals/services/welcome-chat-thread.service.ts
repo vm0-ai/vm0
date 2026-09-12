@@ -62,10 +62,7 @@ export type WelcomeThreadDeliveryOutcome =
     }
   | {
       readonly outcome: "skipped";
-      readonly reason:
-        | "disabled"
-        | "default-agent-not-ready"
-        | "workspace-not-ready";
+      readonly reason: "disabled" | "default-agent-not-ready";
     };
 
 export const createWelcomeChatThread$ = command(
@@ -190,6 +187,11 @@ export const deliverWelcomeChatThread$ = command(
     if (result.status === 409) {
       return { outcome: "skipped", reason: "default-agent-not-ready" };
     }
-    return { outcome: "skipped", reason: "workspace-not-ready" };
+    // Creation's only remaining answer is the invalid-connector-selection 400,
+    // which automatic delivery cannot reach because it selects no connectors.
+    // Report it as the broken invariant it would be, not as a routine skip.
+    throw new Error(
+      `Unexpected welcome thread creation status ${result.status}`,
+    );
   },
 );
