@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "batch": "scattered-token-drain",
+  "cases": [
+    {
+      "id": "scattered-browser-session-light",
+      "path": "/browsers/:browserThreadId",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "deviceScaleFactor": 1
+    },
+    {
+      "id": "scattered-browser-session-dark",
+      "path": "/browsers/:browserThreadId",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "deviceScaleFactor": 1
+    },
+    {
+      "id": "scattered-browser-session-narrow",
+      "path": "/browsers/:browserThreadId",
+      "theme": "light",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "deviceScaleFactor": 2
+    },
+    {
+      "id": "scattered-browser-session-narrow-dark",
+      "path": "/browsers/:browserThreadId",
+      "theme": "dark",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "deviceScaleFactor": 2
+    },
+    {
+      "id": "scattered-queue-drawer-light",
+      "path": "/agents",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "deviceScaleFactor": 1
+    },
+    {
+      "id": "scattered-queue-drawer-dark",
+      "path": "/agents",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "deviceScaleFactor": 1
+    },
+    {
+      "id": "scattered-queue-drawer-narrow",
+      "path": "/agents",
+      "theme": "light",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "deviceScaleFactor": 2
+    },
+    {
+      "id": "scattered-toast-light",
+      "path": "/agents?settings=preference",
+      "theme": "light",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "deviceScaleFactor": 1
+    },
+    {
+      "id": "scattered-toast-dark",
+      "path": "/agents?settings=preference",
+      "theme": "dark",
+      "viewport": {
+        "width": 1440,
+        "height": 1000
+      },
+      "deviceScaleFactor": 1
+    },
+    {
+      "id": "scattered-toast-narrow",
+      "path": "/agents?settings=preference",
+      "theme": "light",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "deviceScaleFactor": 2
+    }
+  ]
+}

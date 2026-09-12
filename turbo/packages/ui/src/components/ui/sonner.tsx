@@ -56,7 +56,7 @@ function Toaster({ onReady, ...props }: ToasterProps) {
   const toaster = (
     <>
       <Sonner
-        className="toaster group !flex !flex-col !items-center"
+        className="group !flex !flex-col !items-center"
         duration={3000}
         icons={{ warning: DEFAULT_WARNING_ICON, ...icons }}
         mobileOffset={mobileOffset}
@@ -68,7 +68,7 @@ function Toaster({ onReady, ...props }: ToasterProps) {
         toastOptions={{
           classNames: {
             toast:
-              "group toast group-[.toaster]:bg-popover group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg group-[.toaster]:!rounded-[10px] group-[.toaster]:!text-sm group-[.toaster]:!font-medium group-[.toaster]:!w-auto group-[.toaster]:!max-w-[calc(100dvw-2rem)] sm:group-[.toaster]:!max-w-none group-[.toaster]:!whitespace-normal sm:group-[.toaster]:!whitespace-nowrap group-[.toaster]:!left-auto group-[.toaster]:!top-auto group-[.toaster]:!relative [&_[data-icon]]:text-green-600 [&[data-type=error]_[data-icon]]:text-red-500",
+              "group toast group-[[data-sonner-toaster]]:bg-popover group-[[data-sonner-toaster]]:text-foreground group-[[data-sonner-toaster]]:border-border group-[[data-sonner-toaster]]:shadow-lg group-[[data-sonner-toaster]]:!rounded-[10px] group-[[data-sonner-toaster]]:!text-sm group-[[data-sonner-toaster]]:!font-medium group-[[data-sonner-toaster]]:!w-auto group-[[data-sonner-toaster]]:!max-w-[calc(100dvw-2rem)] sm:group-[[data-sonner-toaster]]:!max-w-none group-[[data-sonner-toaster]]:!whitespace-normal sm:group-[[data-sonner-toaster]]:!whitespace-nowrap group-[[data-sonner-toaster]]:!left-auto group-[[data-sonner-toaster]]:!top-auto group-[[data-sonner-toaster]]:!relative [&_[data-icon]]:text-green-600 [&[data-type=error]_[data-icon]]:text-red-500",
             description: "group-[.toast]:text-muted-foreground",
             actionButton:
               "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",

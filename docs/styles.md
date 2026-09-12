@@ -355,6 +355,48 @@ alongside their existing `border-0`. That still paints, because Tailwind emits
 the legacy rule won only by sitting outside every layer. Tests continue to
 select both separators through `data-slot`.
 
+### Fixed viewport shells
+
+`okou-fixed-viewport-shell` has been removed. Its one consumer, the browser
+session page, now spells the retired rule's decisions itself:
+`h-[var(--okou-viewport-height)] max-h-[var(--okou-viewport-height)]
+overflow-hidden` and `pt-[var(--sat)] pr-[var(--sar)] pb-[var(--sab)]
+pl-[var(--sal)]`, the same shape the artifact and thread sidebars already use
+for a fixed shell. The four safe-area edges need four utilities because `p-*`
+cannot carry four different values.
+
+Two of the retired declarations are not reinstated. `box-sizing: border-box`
+already reaches every element from the App's own base layer. The retired
+`min-height` is left out because the consumer also writes `min-h-0`: the legacy
+rule was unlayered and outranked that utility, while a replacement utility
+would land in the same layer and lose to it, so restating it would be a class
+that never applies. The used height cannot move either way, because `height`
+and `max-height` are the same viewport value. `okou-viewport-shell` and the
+other shell selectors keep their definitions until their own consumers migrate.
+
+### Shared base rules and third-party hooks
+
+A class is not a way to opt into a shared base rule. The queue drawer's
+hand-written check icon wore `lucide` only so that
+`svg[class*="lucide"][stroke-width="2"]:not([data-stroke])` would normalize its
+stroke to `--icon-stroke-width`. It now asks for that token directly through
+`stroke-(length:--icon-stroke-width)`. Its `strokeWidth="2"` attribute stays,
+inert, because author CSS outranks a presentation attribute; icons that come
+from lucide-react keep the base rule. `lucide` has been removed.
+
+`toaster` has been removed. The toast variants used that first-party hook class
+both to scope themselves to the toast container and to outweigh sonner's own
+rules; they now key off sonner's `[data-sonner-toaster]` attribute, which is
+the same element at the same specificity. Reach for the upstream attribute
+rather than adding a first-party class to DOM another package owns.
+
+Sonner injects its stylesheet unlayered, so it outranks every Tailwind layer
+whatever the specificity. That is why those toast variants carry `!`, and it
+means the four that do not — `bg-popover`, `text-foreground`, `border-border`
+and `shadow-lg` — have never applied: a toast paints sonner's own light surface
+in both themes. Recorded here as an existing defect; repairing it is a visible
+change and belongs to its own review.
+
 ## Exception boundary
 
 Only two exception kinds exist:

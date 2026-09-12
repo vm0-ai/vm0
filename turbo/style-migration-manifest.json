@@ -705,6 +705,40 @@
       "evidence": [],
       "pullRequest": "https://github.com/vm0-ai/vm0/pull/33693",
       "mergeCommit": null
+    },
+    {
+      "id": "scattered-token-drain",
+      "family": "platform-shell",
+      "tokens": ["okou-fixed-viewport-shell", "lucide", "toaster"],
+      "consumers": [
+        "apps/platform/src/views/browser-session/browser-session-page.tsx",
+        "apps/platform/src/views/queue-page/queue-drawer.tsx",
+        "packages/ui/src/components/ui/sonner.tsx"
+      ],
+      "cases": [
+        "scattered-browser-session-light",
+        "scattered-browser-session-dark",
+        "scattered-browser-session-narrow",
+        "scattered-browser-session-narrow-dark",
+        "scattered-queue-drawer-light",
+        "scattered-queue-drawer-dark",
+        "scattered-queue-drawer-narrow",
+        "scattered-toast-light",
+        "scattered-toast-dark",
+        "scattered-toast-narrow"
+      ],
+      "status": "implemented",
+      "evidence": []
+    },
+    {
+      "id": "table-wrapper-injection",
+      "family": "motion-and-injection",
+      "tokens": ["table-wrapper"],
+      "consumers": ["packages/ui/src/components/ui/table.tsx"],
+      "cases": ["scattered-browser-session-light"],
+      "status": "blocked",
+      "evidence": [],
+      "blockedReason": "The injected rule paints the table head rule at a hard-coded 1px (`thead { border-bottom: 1px solid hsl(var(--border)) !important }`), measured as 1px used width at DPR 1 and 2px device pixels at DPR 2. Its eight other declarations are provably inert: the two row overrides are already supplied by TableRow's own `last:!border-b-0`, and the six scrollbar declarations are byte-identical to the App's global `@layer base` scrollbar rules. Draining the token therefore reduces to one decision the style guide and the batch contract answer differently: `border-b border-b-border` adopts the shared 0.5px `--default-border-width` hairline and matches the body-row separators, but halves this line at DPR >= 2, while `border-b-[1px]` is pixel-exact and hand-writes a width the hairline token already owns (docs/styles.md). A third form, a painted `--divider` rule, changes the colour. The injection fingerprint is atomic, so the inert declarations cannot be drained without also answering this. Needs a design owner to choose the head rule's width; do not pick one in an equivalence batch. The consumer is reachable only behind the `_debug` feature switch (enabled: false, staff org hashes only)."
     }
   ],
   "caseFiles": [
@@ -722,6 +756,7 @@
     "../e2e/playwright/style-migration/mic-motion-cases.json",
     "../e2e/playwright/style-migration/control-surface-cases.json",
     "../e2e/playwright/style-migration/hairline-rule-cases.json",
-    "../e2e/playwright/style-migration/sidebar-thread-title-cases.json"
+    "../e2e/playwright/style-migration/sidebar-thread-title-cases.json",
+    "../e2e/playwright/style-migration/scattered-token-cases.json"
   ]
 }

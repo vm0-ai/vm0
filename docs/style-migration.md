@@ -736,3 +736,100 @@ in this composition and were kept only because the retired rule declared them.
 This is bounded local Chromium evidence against a reconstructed ancestor chain,
 not a deployed-preview capture: it does not certify the Base UI scroll area's
 own DOM, WebKit, native surfaces, or real navigation and virtualization.
+
+## Scattered token drain
+
+The `scattered-token-drain` batch takes three unrelated single-consumer tokens
+in one pass: `okou-fixed-viewport-shell` (browser session shell),
+`lucide` (the queue drawer's hand-written check icon) and `toaster` (the shared
+sonner wrapper). Each has exactly one consumption site, they share no file with
+each other, and none of them needs a new token or shared component. The
+[style guide](styles.md) records what replaced each one.
+
+Only two of the three sit on a path a signed-in user reaches today, and both
+are unconditional: the browser session route is not switch-gated, and the
+`Toaster` is mounted unconditionally in `views/main.tsx`. The queue drawer is
+also ungated. `GradientColorThemes` is `enabled: false` with no staff
+allowance, so the eight palette variants are a switched-off path and are
+reported as a footnote rather than as the headline.
+
+### Local equivalence harness
+
+The three consumers are claimed to be pixel-neutral, so this batch is accepted
+by an unchanged-render comparison rather than by a reviewed delta list. The
+deployed per-page runners in this document remain the acceptance protocol for
+batches that touch a page they already cover; this batch's surfaces (the
+browser route, the queue sheet, the toast layer) have no runner yet, and its
+cases are registered in `scattered-token-cases.json` for whoever adds one.
+
+The comparison is local and bounded. Both sides compile the App's real
+stylesheet with the App's own `@tailwindcss/vite` pipeline — `before` from the
+`origin/main` state of the changed files, `after` from the branch — and both
+mount the same probe, which imports the real `@okouai/ui` components and lifts
+the two hand-written consumers' JSX verbatim out of the tree being measured, so
+a class string and its stylesheet always travel together. Each of the four
+fixtures reproduces its real ancestor chain: `#root` under the document theme
+attributes for the shell, the portaled sheet popup and upgrade card for the
+icon, sonner's own injected stylesheet after the App sheet for the toast.
+
+216 states cover four fixtures, their variants, nine palettes (default plus all
+eight gradient presets) and Light/Dark. Every capture is required to settle to
+three byte-identical frames, and computed styles are read from that settled
+paint. Full-frame raw changed pixels are counted with no masks and no rounding
+budget. Desktop Chromium reports every safe-area inset as `0px`, which would
+make the retired padding unobservable, so the shell fixture also runs a variant
+that sets the four App inset variables to 12/8/20/6px; it changes no measured
+element. Headless Chromium also reports `(hover: hover)` as false, which
+silently drops every `hover:` and `group-hover:` utility, so the whole sweep
+runs twice: once with the hover and pointer types forced to a fine pointer, and
+once without, which is the coarse-pointer result.
+
+Both sweeps report 0 changed pixels across all 216 states. The only computed
+difference besides the intended class strings is the shell's `min-height`,
+700px to 0px, on a box whose used height is pinned by `height` and
+`max-height`; the styles guide records why it is not restated. An independent
+clean-room scanner, which handles multi-line template literals, ternary
+branches and module constants and never sorts variants, confirms the site
+counts pairwise: `okou-fixed-viewport-shell` 2 to 0 (one consumer, one
+selector), `lucide` 1 to 0, `toaster` 1 to 0, `table-wrapper` 1 to 1.
+
+Three negative controls delete one replacement utility each from the migrated
+code and re-measure: dropping `stroke-(length:--icon-stroke-width)` changes
+19,143 pixels over 36 of 36 states and moves `stroke-width` from 1.5px to 2px;
+dropping `pb-[var(--sab)]` changes 10,660,644 pixels over 54 of 72 states, the
+remaining 18 being the zero-inset variant where the padding is genuinely 0;
+dropping `group-[[data-sonner-toaster]]:!rounded-[10px]` changes 44,234 pixels
+over 54 of 54 states. A fourth attempt, dropping
+`group-[[data-sonner-toaster]]:bg-popover`, changed nothing, which is how the
+dead unlayered-specificity variants recorded in the style guide were found.
+
+This is bounded local Chromium equivalence for the fixtures described. It does
+not exercise the deployed App, real routing, authentication, WebKit, native
+PWA or Desktop shells, or normal-motion behaviour, and a zero-pixel fixture
+result is not visual acceptance of the pages themselves.
+
+### table-wrapper remains blocked
+
+The fourth token in the batch, `table-wrapper`, is recorded as a `blocked`
+batch instead. It is the shared `Table`'s injected stylesheet, reachable only
+through the `_debug` feature switch (`enabled: false`, staff org hashes only).
+
+Eight of its nine declarations are provably inert. The two row overrides
+duplicate what `TableRow` already spells with `last:!border-b-0`: the measured
+header row and last body row both compute `border-bottom-width: 0px` from the
+component's own class. The six scrollbar declarations are value-identical to
+the App's global `@layer base` scrollbar rules, which already give every
+scrollport `thin`, the same `--muted-foreground` thumb at the same 3px radius,
+a transparent track and the same 6px size.
+
+The ninth declaration decides the batch. `thead { border-bottom: 1px solid
+hsl(var(--border)) !important }` paints the head rule at a hard-coded 1px,
+measured as one device pixel at DPR 1 and two at DPR 2. `border-b
+border-b-border` takes the shared `--default-border-width` hairline and would
+match the body separators beside it, but halves this line wherever the device
+pixel ratio is at least 2; `border-b-[1px]` is pixel-exact and hand-writes a
+width the hairline token already owns; a painted `--divider` rule changes the
+colour. The injected-style fingerprint is atomic, so the inert declarations
+cannot be drained without also answering that. The manifest's `blockedReason`
+carries the same summary; the batch needs a design owner to pick the head
+rule's width rather than an equivalence pass picking one for them.
