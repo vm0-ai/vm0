@@ -674,18 +674,6 @@ body {
 }
 
 /* Morandi outline buttons */
-.okou-app .okou-btn-morandi {
-  background-color: hsl(var(--gray-50));
-  border: 0.7px solid hsl(var(--gray-400));
-  color: hsl(var(--foreground));
-}
-.okou-app .okou-btn-morandi:hover {
-  background-image: linear-gradient(
-    var(--color-state-hover),
-    var(--color-state-hover)
-  );
-  border-color: hsl(var(--gray-400));
-}
 
 /* Cards inside the chat transcript: notice cards, action cards, artifact and
    media frames. One surface, one border, one shadow, one radius — before this

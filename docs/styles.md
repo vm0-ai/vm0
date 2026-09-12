@@ -183,6 +183,49 @@ The `running-indicator`, `running-indicator-center`, and
 `running-indicator-ripple` recipes have been removed; their keyframes remain,
 since keyframes are not class selectors.
 
+### Neutral button and select variants
+
+Use `Button variant="neutral"` for neutral actions and
+`SelectTrigger variant="neutral"` for neutral select controls. Each component
+owns its utilities; their public API does not export class strings.
+Use `Button asChild variant="neutral"` around a router `Link` for navigation
+styled as a button, and compose `Button` with `DialogTrigger` for dialog
+actions. The existing components own the interaction contract; `neutral` is
+only a visual variant. Link composition preserves the native anchor, ref,
+and navigation behavior without adding a wrapper.
+
+The components compose `border border-control-border bg-control-surface
+text-foreground [&:hover]:bg-state-hover-overlay` internally. This is the treatment the
+settings-select batch established, extended with the border and foreground the
+retired `okou-btn-morandi` selector owned. Language, timezone, and voice-input
+settings all use the select variant. Dimensions, padding, and radius remain
+with the existing component and caller.
+
+The neutral button adds the existing outline interaction fills
+(`hover:bg-state-hover active:bg-state-pressed`) to the shared surface, keeping
+the hover overlay above those fills. Select triggers retain the opaque surface
+and hover overlay. The existing recovery links and Add automation trigger
+preserve that same interaction treatment with `hover:bg-control-surface
+active:bg-control-surface` on their `Button` instances.
+
+Preserve consumer-specific interaction colors when extracting shared styles.
+The official workflow Configure button, for example, retains its existing
+`hover:bg-primary-hover active:bg-primary-pressed` overrides.
+
+The retired rule hard-coded a `0.7px` border while the rest of the product had
+already moved to `--default-border-width`. The replacement takes the shared
+hairline instead of naming a width. Blink and Gecko round both values up to one
+device pixel, so the change is invisible there and layout is unchanged; WebKit
+may draw the true hairline on a high-density display, which is the product
+behaviour the shared token already describes.
+
+`text-foreground` is currently redundant at every consumer, because each one
+already inherits that foreground. It is kept because the retired rule set it,
+so a control moved onto a differently coloured surface keeps the treatment it
+has today.
+
+The `okou-btn-morandi` selector has been removed.
+
 ## Exception boundary
 
 Only two exception kinds exist:
