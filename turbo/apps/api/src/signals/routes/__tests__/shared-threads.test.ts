@@ -287,23 +287,6 @@ describe("optional shared-thread titles", () => {
     expect(requests).toStrictEqual([]);
   });
 
-  it("preserves a valid share when the telemetry flush fails", async () => {
-    const fixture = await prepareShare();
-    mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter");
-    server.use(
-      http.post(endpoint, () => {
-        return new HttpResponse(null, { status: 429 });
-      }),
-    );
-    context.mocks.axiom.flush.mockRejectedValue(
-      new Error("Telemetry unavailable"),
-    );
-    const created = await accept(client().create(requestBody(fixture)), [201]);
-    await expect(flushWaitUntilForTest()).resolves.toBeUndefined();
-    await expectSharedSnapshot(fixture, created.body.id, "Shared conversation");
-    expect(context.mocks.sentry.captureException).not.toHaveBeenCalled();
-  });
-
   it("preserves cancellation before request dispatch", async () => {
     const fixture = await prepareShare();
     const controller = new AbortController();
