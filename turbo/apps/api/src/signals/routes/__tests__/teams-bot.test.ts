@@ -70,11 +70,11 @@ const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT =
 const TEAMS_LOGIN_PROMPT_CARD_TEXT =
   "Please connect your account to use Okou in this Teams workspace.";
 const TEAMS_WELCOME_TEXT = [
-  "Hi, I'm Zero. I connect Teams conversations to AI agents for research, triage, reports, engineering work, operations, and support.",
+  "Hi, I'm Nova. I connect Teams conversations to AI agents for research, triage, reports, engineering work, operations, and support.",
   "",
   "To get started, use `connect` to link this Teams workspace to Okou. An org admin may need to complete workspace setup first.",
   "",
-  "Commands: `help`, `connect`, `disconnect`, `switch`, `model`. Mention `@Zero` with a task or send a DM to work privately.",
+  "Commands: `help`, `connect`, `disconnect`, `switch`, `model`. Mention `@Nova` with a task or send a DM to work privately.",
 ].join("\n");
 const BOT_FRAMEWORK_METADATA_URL =
   "https://login.botframework.com/v1/.well-known/openidconfiguration";
@@ -596,13 +596,13 @@ function teamsMessageActivity(
       aadObjectId: fixture.teamsAadObjectId,
       userPrincipalName: fixture.teamsUserPrincipalName,
     },
-    recipient: { id: fixture.teamsBotId, name: "Zero" },
-    text: "<at>Zero</at> deploy the preview",
+    recipient: { id: fixture.teamsBotId, name: "Nova" },
+    text: "<at>Nova</at> deploy the preview",
     entities: [
       {
         type: "mention",
-        text: "<at>Zero</at>",
-        mentioned: { id: fixture.teamsBotId, name: "Zero" },
+        text: "<at>Nova</at>",
+        mentioned: { id: fixture.teamsBotId, name: "Nova" },
       },
     ],
     replyToId: fixture.teamsThreadId,
@@ -633,8 +633,8 @@ function teamsBotRemovedActivity(
       channel: { id: fixture.teamsChannelId, name: "General" },
       teamsAppId: fixture.teamsAppId,
     },
-    recipient: { id: fixture.teamsBotId, name: "Zero" },
-    membersRemoved: [{ id: fixture.teamsBotId, name: "Zero" }],
+    recipient: { id: fixture.teamsBotId, name: "Nova" },
+    membersRemoved: [{ id: fixture.teamsBotId, name: "Nova" }],
   };
 }
 
@@ -667,8 +667,8 @@ function teamsBotInstalledActivity(
       aadObjectId: fixture.teamsAadObjectId,
       userPrincipalName: fixture.teamsUserPrincipalName,
     },
-    recipient: { id: fixture.teamsBotId, name: "Zero" },
-    membersAdded: [{ id: fixture.teamsBotId, name: "Zero" }],
+    recipient: { id: fixture.teamsBotId, name: "Nova" },
+    membersAdded: [{ id: fixture.teamsBotId, name: "Nova" }],
   };
 }
 
@@ -702,7 +702,7 @@ function teamsBotInstallationAddedActivity(
       aadObjectId: fixture.teamsAadObjectId,
       userPrincipalName: fixture.teamsUserPrincipalName,
     },
-    recipient: { id: fixture.teamsBotId, name: "Zero" },
+    recipient: { id: fixture.teamsBotId, name: "Nova" },
   };
 }
 
@@ -1035,11 +1035,11 @@ describe("POST /api/webhooks/teams/bot", () => {
         },
         recipient: {
           id: fixture.teamsBotId,
-          name: "Zero",
+          name: "Nova",
           aadObjectId: null,
           userPrincipalName: null,
         },
-        rawText: "<at>Zero</at> deploy the preview",
+        rawText: "<at>Nova</at> deploy the preview",
         text: "deploy the preview",
         mentionsRecipient: true,
         idempotencyKey: `${fixture.teamsConversationId}:message:${fixture.teamsActivityId}`,
@@ -1072,7 +1072,7 @@ describe("POST /api/webhooks/teams/bot", () => {
     expect(connectUrl.searchParams.get("teamId")).toBe(fixture.teamsTeamId);
     expect(connectUrl.searchParams.get("teamName")).toBe("Team One");
     expect(connectUrl.searchParams.get("conversationType")).toBe("channel");
-    expect(connectUrl.searchParams.get("botName")).toBe("Zero");
+    expect(connectUrl.searchParams.get("botName")).toBe("Nova");
     expect(body).not.toHaveProperty("dispatch");
     await flushWaitUntilForTest();
     expect(outboundRequests).toHaveLength(1);
@@ -1306,7 +1306,7 @@ describe("POST /api/webhooks/teams/bot", () => {
       body: {
         type: "message",
         text: expect.stringContaining(
-          "<at>Ada Lovelace</at> added Zero to this Teams workspace.",
+          "<at>Ada Lovelace</at> added Nova to this Teams workspace.",
         ),
         textFormat: "markdown",
         entities: [
@@ -1470,10 +1470,10 @@ describe("POST /api/webhooks/teams/bot", () => {
       greetingActivityId,
     ]);
     expect(outboundRequests[0]?.body).toMatchObject({
-      text: expect.stringContaining("Zero Teams Bot Help"),
+      text: expect.stringContaining("Nova Teams Bot Help"),
     });
     expect(outboundRequests[2]?.body).toMatchObject({
-      text: expect.stringContaining("Zero Teams Bot Help"),
+      text: expect.stringContaining("Nova Teams Bot Help"),
     });
     expect(outboundRequests[3]?.body).toMatchObject({
       text: TEAMS_WELCOME_TEXT,
@@ -1489,7 +1489,7 @@ describe("POST /api/webhooks/teams/bot", () => {
     const response = await postTeamsActivity({
       activity: teamsMessageActivity(fixture, {
         id: activityId,
-        text: "<at>Zero</at> Hi",
+        text: "<at>Nova</at> Hi",
       }),
       token: teamsToken(),
     });
@@ -1738,7 +1738,7 @@ describe("POST /api/webhooks/teams/bot", () => {
               filenameSnapshot: "spec.png",
               contentType: "image/png",
             },
-            { type: "text", text: "@Zero please inspect this" },
+            { type: "text", text: "@Nova please inspect this" },
             {
               type: "source",
               kind: "teams",
@@ -1916,12 +1916,12 @@ describe("POST /api/webhooks/teams/bot", () => {
     const response = await postTeamsActivity({
       activity: teamsMessageActivity(fixture, {
         id: teamsFixtureExternalId(fixture, "activity-user-mention"),
-        text: "<at>Zero</at> ask <at>Grace Hopper</at> to review",
+        text: "<at>Nova</at> ask <at>Grace Hopper</at> to review",
         entities: [
           {
             type: "mention",
-            text: "<at>Zero</at>",
-            mentioned: { id: fixture.teamsBotId, name: "Zero" },
+            text: "<at>Nova</at>",
+            mentioned: { id: fixture.teamsBotId, name: "Nova" },
           },
           {
             type: "mention",
@@ -2094,7 +2094,7 @@ describe("POST /api/webhooks/teams/bot", () => {
     ]);
     expect(outboundRequests[0]?.body).toMatchObject({
       type: "message",
-      text: expect.stringContaining("Zero Teams Bot Help"),
+      text: expect.stringContaining("Nova Teams Bot Help"),
     });
     expect(outboundRequests[1]?.body).toMatchObject({
       type: "message",
@@ -2637,7 +2637,7 @@ describe("POST /api/webhooks/teams/bot", () => {
     const failedResponse = await postTeamsActivity({
       activity: teamsMessageActivity(fixture, {
         id: failedActivityId,
-        text: "<at>Zero</at> run without entitlement",
+        text: "<at>Nova</at> run without entitlement",
       }),
       token: teamsToken(),
     });
@@ -2903,7 +2903,7 @@ describe("POST /api/webhooks/teams/bot", () => {
           activity: teamsMessageActivity(fixture, {
             id: channelContextActivityId,
             replyToId: null,
-            text: "<at>Zero</at>",
+            text: "<at>Nova</at>",
           }),
           token: teamsToken(),
         });
@@ -2921,7 +2921,7 @@ describe("POST /api/webhooks/teams/bot", () => {
             reactionType: "1f4ad_thoughtballoon",
           },
         ]);
-        const channelContextRunId = await runIdForPrompt(actor, "@Zero");
+        const channelContextRunId = await runIdForPrompt(actor, "@Nova");
         await runsApi.heartbeatRunner(runnerGroup);
         const channelContextClaim =
           await runsApi.claimRunnerJob(channelContextRunId);
@@ -2931,7 +2931,7 @@ describe("POST /api/webhooks/teams/bot", () => {
           channelContextAppendSystemPrompt,
           "# Recent Channel Messages",
         );
-        expect(channelContextClaim.prompt).toBe("@Zero");
+        expect(channelContextClaim.prompt).toBe("@Nova");
         expect(graphRequests).toContain("channel-messages");
         expect(recentChannelContext).toContain("api channel planning");
         expect(recentChannelContext).not.toContain("start another topic");
@@ -2968,7 +2968,7 @@ describe("POST /api/webhooks/teams/bot", () => {
         activity: teamsMessageActivity(fixture, {
           id: dispatchActivityId,
           replyToId: rootDispatchId,
-          text: "<at>Zero</at> ship the Teams dispatch",
+          text: "<at>Nova</at> ship the Teams dispatch",
           attachments: [
             {
               id: currentAttachmentId,
@@ -3314,7 +3314,7 @@ describe("POST /api/webhooks/teams/bot", () => {
     const response = await postTeamsActivity({
       activity: teamsMessageActivity(fixture, {
         id: activityId,
-        text: "<at>Zero</at> hello",
+        text: "<at>Nova</at> hello",
       }),
       token: teamsToken(),
     });
@@ -3357,7 +3357,7 @@ describe("POST /api/webhooks/teams/bot", () => {
         membersRemoved: [
           {
             id: fixture.teamsBotId,
-            name: "Zero",
+            name: "Nova",
             aadObjectId: null,
             userPrincipalName: null,
           },
