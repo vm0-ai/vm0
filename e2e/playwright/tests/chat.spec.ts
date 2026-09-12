@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-import type { Page } from "@playwright/test";
 import { resolveApiBackendUrl } from "../api-backend-url";
 import { expect, test } from "../fixtures";
 import { omitAppApiPrefetch } from "../lib/app-api-prefetch";
@@ -8,47 +6,16 @@ import { deriveAppUrl } from "../playwright.config";
 const appUrl = deriveAppUrl(resolveApiBackendUrl());
 const MOBILE_VIEWPORT = { width: 402, height: 874 } as const;
 
-async function dialogImageFixture(page: Page) {
-  const buffer = Buffer.from(
-    "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGMIqFhAEmIY1TCqYfhqAAATWWgQLeF+owAAAABJRU5ErkJggg==",
-    "base64",
-  );
-  const metadata = {
-    id: randomUUID(),
-    filename: "dialog-safe-area.png",
-    contentType: "image/png",
-    size: buffer.length,
-    url: new URL("/__e2e__/dialog-safe-area.png", appUrl).href,
+function dialogImageFixture() {
+  // Upload through the composer so the preview URL resolves a registered file.
+  return {
+    name: "dialog-safe-area.png",
+    mimeType: "image/png",
+    buffer: Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAFklEQVR4nGMIqFhAEmIY1TCqYfhqAAATWWgQLeF+owAAAABJRU5ErkJggg==",
+      "base64",
+    ),
   };
-  // Geometry coverage owns its image transport; it does not test R2 uploads.
-  await page.route(metadata.url, async (route) => {
-    await route.fulfill({ contentType: "image/png", body: buffer });
-  });
-  await page.route(
-    (url) =>
-      url.origin === new URL(resolveApiBackendUrl()).origin &&
-      ["/api/uploads/prepare", "/api/uploads/complete"].includes(url.pathname),
-    async (route) => {
-      const request = route.request();
-      const body = request.postDataJSON();
-      const prepare = new URL(request.url()).pathname.endsWith("/prepare");
-      if (
-        request.method() !== "POST" ||
-        (prepare
-          ? body.filename !== metadata.filename
-          : body.id !== metadata.id)
-      ) {
-        await route.fallback();
-        return;
-      }
-      await route.fulfill({
-        json: prepare
-          ? { ...metadata, uploadUrl: metadata.url, uploadHeaders: {} }
-          : metadata,
-      });
-    },
-  );
-  return { name: metadata.filename, mimeType: metadata.contentType, buffer };
 }
 
 test("dialog width caps preserve the sm breakpoint and shrink on narrow screens", async ({
@@ -128,7 +95,7 @@ for (const scenario of [
     ).toBeEditable();
     await threadPage
       .locator('input[type="file"][multiple]')
-      .setInputFiles(await dialogImageFixture(page));
+      .setInputFiles(dialogImageFixture());
     const imagePreview = threadPage.getByRole("button", {
       name: "Open image preview for dialog-safe-area.png",
       exact: true,

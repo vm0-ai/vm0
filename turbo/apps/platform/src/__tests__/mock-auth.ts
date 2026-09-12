@@ -4,6 +4,7 @@ import type {
   BrowserClerk,
   ClerkAPIError,
   CreateOrganizationParams,
+  PasswordSettingsData,
   PasswordValidation,
   UpdateUserPasswordParams,
 } from "@clerk/react/types";
@@ -131,6 +132,7 @@ interface MockedSignUpConfiguration {
   readonly captchaEnabled?: boolean;
   readonly captchaWidgetType?: "invisible" | "smart" | null;
   readonly legalConsentEnabled?: boolean;
+  readonly passwordSettings?: Partial<PasswordSettingsData>;
   readonly privacyPolicyUrl?: string;
   readonly progressive?: boolean;
   readonly termsUrl?: string;
@@ -278,6 +280,7 @@ let internalMockedSignUpConfiguration: Required<MockedSignUpConfiguration> = {
   captchaEnabled: false,
   captchaWidgetType: null,
   legalConsentEnabled: false,
+  passwordSettings: {},
   privacyPolicyUrl: "https://okou.ai/privacy",
   progressive: true,
   termsUrl: "https://okou.ai/terms",
@@ -377,6 +380,7 @@ export function mockSignUpConfiguration(
       configuration.captchaWidgetType ??
       (configuration.captchaEnabled ? "smart" : null),
     legalConsentEnabled: configuration.legalConsentEnabled ?? false,
+    passwordSettings: configuration.passwordSettings ?? {},
     privacyPolicyUrl:
       configuration.privacyPolicyUrl ?? "https://okou.ai/privacy",
     progressive: configuration.progressive ?? true,
@@ -1321,6 +1325,19 @@ export const mockedClerk = {
         ],
         passkeySettings: {
           show_sign_in_button: internalMockedAuthV2Capabilities.passkey,
+        },
+        passwordSettings: {
+          allowed_special_characters: "",
+          disable_hibp: false,
+          min_length: 8,
+          max_length: 72,
+          require_special_char: false,
+          require_numbers: false,
+          require_uppercase: false,
+          require_lowercase: false,
+          show_zxcvbn: true,
+          min_zxcvbn_strength: 2,
+          ...internalMockedSignUpConfiguration.passwordSettings,
         },
         signUp: {
           legal_consent_enabled:

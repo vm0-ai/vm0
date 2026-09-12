@@ -1,4 +1,5 @@
 import { act, screen, waitFor } from "@testing-library/react";
+import { ClerkAPIResponseError, ClerkOfflineError } from "@clerk/shared/error";
 import { expect, test, vi } from "vitest";
 
 import {
@@ -133,7 +134,7 @@ test("A rejected password stays editable and can be corrected", async () => {
   await fill(screen.getByLabelText("Confirm password"), "weak");
   click(await button("Reset password"));
   await screen.findByText(
-    "Your password could not be updated. Choose a stronger password and try again.",
+    "This password has been found as part of a breach and can not be used, please try another password instead.",
   );
   expect(document.body).not.toHaveTextContent("password=secret");
   expect(mockedClerk.setActive).not.toHaveBeenCalled();
@@ -149,6 +150,105 @@ test("A rejected password stays editable and can be corrected", async () => {
   await waitFor(() => {
     return expect(location.pathname).toBe("/agents");
   });
+});
+
+test.each([
+  {
+    name: "configured password length",
+    error: new ClerkAPIResponseError("Private detail", {
+      status: 422,
+      data: [
+        {
+          code: "form_password_length_too_short",
+          message: "Private detail",
+          meta: { param_name: "new_password" },
+        },
+        {
+          code: "form_password_no_uppercase",
+          message: "Private detail",
+          meta: { param_name: "new_password" },
+        },
+      ],
+    }),
+    message: "Your password must contain 12 or more characters.",
+  },
+  {
+    name: "the current password",
+    error: new ClerkAPIResponseError("Private detail", {
+      status: 422,
+      data: [
+        {
+          code: "form_new_password_matches_current",
+          message: "Private detail",
+          meta: { param_name: "new_password" },
+        },
+      ],
+    }),
+    message: "New password cannot be the same as the current password.",
+  },
+  {
+    name: "an offline connection",
+    error: new ClerkOfflineError("Private detail"),
+    message: "You appear to be offline. Reconnect and try again.",
+  },
+  {
+    name: "rate limiting even with a password error in the response",
+    error: new ClerkAPIResponseError("Private detail", {
+      status: 429,
+      data: [
+        { code: "form_password_length_too_short", message: "Private detail" },
+      ],
+    }),
+    message: "Too many attempts. Please wait a moment before trying again.",
+  },
+])("A mandatory password reset explains $name", async ({ error, message }) => {
+  mockSignUpConfiguration({ passwordSettings: { min_length: 12 } });
+  mockedClerk.userUpdatePassword.mockRejectedValueOnce(error);
+  await setupTask("reset-password");
+  await fill(await screen.findByLabelText("New password"), "weak");
+  await fill(screen.getByLabelText("Confirm password"), "weak");
+  click(await button("Reset password"));
+  await expect(screen.findByRole("alert")).resolves.toHaveTextContent(message);
+  expect(screen.getByLabelText("New password")).toBeEnabled();
+  expect(document.body).not.toHaveTextContent("Private detail");
+  expect(mockedClerk.setActive).not.toHaveBeenCalled();
+});
+
+test("Authenticator enrollment explains an incorrect Clerk verification code", async () => {
+  mockSignUpConfiguration({
+    attributes: {
+      authenticator_app: {
+        enabled: true,
+        required: false,
+        used_for_first_factor: false,
+      },
+    },
+  });
+  mockedClerk.userCreateTOTP.mockResolvedValueOnce({
+    secret: "AUTHENTICATOR-SETUP-KEY",
+    backupCodes: [],
+  });
+  mockedClerk.userVerifyTOTP.mockRejectedValueOnce(
+    new ClerkAPIResponseError("Private detail", {
+      status: 422,
+      data: [
+        {
+          code: "form_code_incorrect",
+          message: "Private detail",
+          meta: { param_name: "code" },
+        },
+      ],
+    }),
+  );
+  await setupTask("setup-mfa");
+  click(await button("Use an authenticator app"));
+  await fill(await screen.findByLabelText("Verification code"), "123456");
+  click(await button("Verify"));
+  await expect(screen.findByRole("alert")).resolves.toHaveTextContent(
+    "Incorrect verification code. Please try again.",
+  );
+  expect(screen.getByLabelText("Verification code")).toBeEnabled();
+  expect(document.body).not.toHaveTextContent("Private detail");
 });
 
 test("Authenticator enrollment retries an invalid code, displays backup codes, then continues to the next task", async () => {

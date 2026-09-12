@@ -33,11 +33,17 @@ import {
   startAuthV2OAuth,
 } from "./sign-in-external-strategies.ts";
 import type { AuthV2ContinuationFlowHandoff } from "./continuation.ts";
+import { normalizeClerkAuthError } from "./clerk-errors.ts";
 import type { AuthV2Navigation } from "./navigation.ts";
 import {
   isAuthV2OAuthStrategy,
   type AuthV2OAuthStrategy,
 } from "./oauth-strategies.ts";
+import {
+  clerkPasswordError,
+  clerkPasswordSettings$,
+  type AuthV2PasswordError,
+} from "./password-errors.ts";
 import {
   AUTH_V2_SIGN_IN_RESEND_COOLDOWN_STORAGE_KEY,
   createAuthV2ResendCooldownStorage,
@@ -135,6 +141,8 @@ export type AuthV2SignInErrorField =
 
 export interface AuthV2SignInError {
   readonly clerkCode?: string;
+  readonly clerkParamName?: string;
+  readonly passwordError?: AuthV2PasswordError;
   readonly code:
     | "access-not-allowed"
     | "clerk"
@@ -143,6 +151,7 @@ export interface AuthV2SignInError {
     | "passkey-cancelled"
     | "passkey-unavailable"
     | "password-mismatch"
+    | "rate-limited"
     | "user-banned"
     | "unknown";
   readonly field: AuthV2SignInErrorField;
@@ -439,18 +448,25 @@ function preparedFactorForSnapshot(
 }
 
 function clerkErrorField(
-  error: Record<string, unknown>,
+  parameter: string | undefined,
   fallbackField: AuthV2SignInErrorField,
 ): AuthV2SignInErrorField {
-  const meta = error.meta;
-  const parameter = isRecord(meta) ? stringProperty(meta, "paramName") : null;
-  if (parameter === "identifier") {
+  if (
+    parameter === "identifier" ||
+    parameter === "email_address" ||
+    parameter === "emailAddress" ||
+    parameter === "username"
+  ) {
     return "identifier";
   }
   if (parameter === "code") {
     return "code";
   }
-  if (parameter === "password") {
+  if (
+    parameter === "password" ||
+    parameter === "new_password" ||
+    parameter === "newPassword"
+  ) {
     return fallbackField === "new-password" ? "new-password" : "password";
   }
   return fallbackField;
@@ -501,14 +517,18 @@ function normalizeClerkError(
   error: unknown,
   fallbackField: AuthV2SignInErrorField,
 ): AuthV2SignInError {
+  const normalized = normalizeClerkAuthError(error);
   if (!isRecord(error)) {
-    return { code: "unknown", field: fallbackField };
+    return { ...normalized, field: fallbackField };
+  }
+  if (normalized.code === "rate-limited") {
+    return { ...normalized, field: fallbackField };
   }
   const apiError = Array.isArray(error.errors)
     ? error.errors.find(isRecord)
     : null;
   const normalizedError = apiError ?? error;
-  const clerkCode = stringProperty(normalizedError, "code");
+  const { clerkCode, clerkParamName } = normalized;
   const errorName = stringProperty(normalizedError, "name");
   const errorMessage = stringProperty(normalizedError, "message");
   const normalizedPasskeyCode = passkeyErrorCode(
@@ -516,13 +536,11 @@ function normalizeClerkError(
     errorName,
     errorMessage,
   );
-  if (!apiError && !clerkCode && !normalizedPasskeyCode) {
+  if (normalized.code === "unknown" && !normalizedPasskeyCode) {
     return { code: "unknown", field: fallbackField };
   }
   const code =
-    fallbackField === "code" &&
-    (clerkCode?.toLowerCase().includes("expired") === true ||
-      clerkCode?.toLowerCase().includes("timeout") === true)
+    fallbackField === "code" && clerkCode === "verification_expired"
       ? "code-expired"
       : fallbackField === "code" && clerkCode === "form_code_incorrect"
         ? "invalid-code"
@@ -533,9 +551,9 @@ function normalizeClerkError(
               ? "user-banned"
               : "clerk"));
   return {
-    ...(clerkCode ? { clerkCode } : {}),
+    ...normalized,
     code,
-    field: clerkErrorField(normalizedError, fallbackField),
+    field: clerkErrorField(clerkParamName, fallbackField),
   };
 }
 
@@ -1208,10 +1226,20 @@ function createSubmitOperation$(
 
     const result = await settle(preparation.request, signal);
     if (!result.ok) {
-      set(
-        atoms.error$,
-        normalizeClerkError(result.error, preparation.fallbackField),
+      const error = normalizeClerkError(
+        result.error,
+        preparation.fallbackField,
       );
+      if (flowState.step === "new-password") {
+        const settings = await get(clerkPasswordSettings$);
+        signal.throwIfAborted();
+        set(atoms.error$, {
+          ...error,
+          passwordError: clerkPasswordError(result.error, settings),
+        });
+      } else {
+        set(atoms.error$, error);
+      }
       return;
     }
     if (flowState.step === "identifier") {
