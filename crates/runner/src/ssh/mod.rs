@@ -407,8 +407,9 @@ impl SshRuntime {
                 });
             }
         };
-        let cpu = Arc::clone(&self.cpu)
-            .try_acquire_owned()
+        let cpu = scope
+            .wait(Arc::clone(&self.cpu).acquire_owned())
+            .await?
             .map_err(|_| FailureReason::ResourceExhausted)?;
         let worker_scope = scope.clone();
         let generation = credential.generation;
