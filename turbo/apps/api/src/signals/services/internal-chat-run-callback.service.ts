@@ -3230,6 +3230,9 @@ async function buildCreateQueuedChatRunInput(
   const reasoningEffort = resolveReasoningEffortForDispatch({
     selectedModel: routedModel.modelPin.selectedModel,
     effort: routedModel.reasoningEffort ?? undefined,
+    runtimeProviderType:
+      routedModel.builtInModelRuntimeRoute?.providerType ??
+      routedModel.effectiveModelProvider,
     piExecution,
   });
 

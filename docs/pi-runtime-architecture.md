@@ -57,7 +57,7 @@ services or a command accessor.
 | Route normalization and credentials | [execution-route.ts](../turbo/packages/pi-agent-runtime/src/execution-route.ts) normalizes supported carriers into the in-process `PiExecutionRoute`; [credential.ts](../turbo/packages/pi-agent-runtime/src/credential.ts) snapshots it before asynchronous materialization. The original wire remains authoritative for claim capability and telemetry. Credential references are captured; secrets are materialized only at the API or firewall execution edge.                                                                                                                                                                                                                           |
 | API-first ownership                 | [registration](../turbo/apps/api/src/signals/services/pi-api-first-turn-registration.service.ts) owns cancellation registration/release; [coordinator](../turbo/apps/api/src/signals/services/pi-api-first-turn.service.ts) owns preparation and guarded effects; [policy](../turbo/apps/api/src/lib/pi-api-first-turn-policy.ts) receives immutable facts. The [lifecycle lock](../turbo/apps/api/src/signals/services/pi-api-first-turn-lifecycle.service.ts) is shared with cancellation and active-input reservation.                                                                                                                                                                    |
 | SDK model boundary                  | [session-model.ts](../turbo/packages/pi-agent-runtime/src/session-model.ts) owns explicit resource-registry initialization, registered model description, and fixed `ModelRuntime` bootstrap. [model.ts](../turbo/packages/pi-agent-runtime/src/model.ts), [native-stream.ts](../turbo/packages/pi-agent-runtime/src/native-stream.ts), and [native-http.ts](../turbo/packages/pi-agent-runtime/src/native-http.ts) own catalog/transport adaptation and request guards.                                                                                                                                                                                                                     |
-| Session shells                      | [session-runtime.ts](../turbo/packages/pi-agent-runtime/src/session-runtime.ts) owns foreground settings, resources, tools, harness prompt, and persisted thinking precedence. [phase2-memory.ts](../turbo/packages/pi-agent-runtime/src/phase2-memory.ts) owns the separate restricted session, caller/model arbitration, validation, and cleanup.                                                                                                                                                                                                                                                                                                                                          |
+| Session shells                      | [session-runtime.ts](../turbo/packages/pi-agent-runtime/src/session-runtime.ts) owns foreground settings, resources, tools, harness prompt, and captured run effort precedence. [phase2-memory.ts](../turbo/packages/pi-agent-runtime/src/phase2-memory.ts) owns the separate restricted session, caller/model arbitration, validation, and cleanup.                                                                                                                                                                                                                                                                                                                                         |
 | API history and one response        | [session-memory.ts](../turbo/packages/pi-agent-runtime/src/session-memory.ts) adapts byte-backed history through official parser/context helpers. [api-turn.ts](../turbo/packages/pi-agent-runtime/src/api-turn.ts) borrows the foreground shell's prompt/tool schemas, makes one model response, and disposes the shell. It never executes the returned tools.                                                                                                                                                                                                                                                                                                                              |
 | Sandbox execution                   | [CLI loop](../turbo/apps/cli/src/lib/pi-agent-loop.ts) consumes private launch data, validates the [handoff](../turbo/apps/cli/src/lib/pi-api-first-turn-handoff.ts), then enters [rpc.ts](../turbo/packages/pi-agent-runtime/src/rpc.ts). [Guest Pi RPC](../crates/guest-agent/src/cli/pi_rpc.rs) owns the process/transport adapter and public settlement projection; the official SDK owns tools and its native input queues.                                                                                                                                                                                                                                                             |
 | Memory work and publication         | [Stage 1 worker](../turbo/apps/api/src/signals/services/pi-memory-stage1-worker.service.ts) owns extraction claims; [Phase 2 worker](../turbo/apps/api/src/signals/services/pi-memory-phase2-worker.service.ts) and [jobs](../turbo/apps/api/src/signals/services/pi-memory-phase2-job.service.ts) own durable leases. [Local filesystem boundary](../turbo/packages/pi-agent-runtime/src/phase2-memory-filesystem.ts) prepares/applies validated bytes; ordinary checkpoint publication owns durable Storage changes. [Maintenance completion](../turbo/apps/api/src/signals/services/pi-memory-phase2-maintenance.service.ts) observes the exact run/checkpoint, not a new Storage writer. |
@@ -133,7 +133,7 @@ SDK registration's existing local refresh behavior.
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | API with preheated snapshot                         | Explicit `InMemoryCredentialStore`; the API attempt still owns its transport signal. Bootstrap adds no foreground cancellation owner. | Trusted in-memory settings and frozen resources; one response; no local pending-tool execution.                                                                                                   |
 | Native foreground Messages/Bedrock without snapshot | Explicit in-memory credentials; captured native materialization remains authoritative.                                                | Existing foreground settings, resource behavior, and lifecycle.                                                                                                                                   |
-| Other foreground Sandbox without snapshot           | Omit explicit credentials, preserving the SDK's existing default store.                                                               | File-backed production history, normal discovery, and persisted thinking precedence.                                                                                                              |
+| Other foreground Sandbox without snapshot           | Omit explicit credentials, preserving the SDK's existing default store.                                                               | File-backed production history, normal discovery, and captured run effort precedence.                                                                                                             |
 | Restricted Phase 2                                  | Explicit in-memory credentials; the exact input signal goes to ModelRuntime and `services.modelRuntimeSignal`.                        | In-memory session at fixed private cwd, restricted tools, no discovered extensions/skills/prompts/themes/context files, disabled retry/compaction, fixed reasoning, exact system-prompt equality. |
 
 Model lookup and error classification stay with each caller. Phase 2 applies
@@ -279,7 +279,7 @@ provider requests, temporary files, native RPC/cancellation tests, and session
 compatibility fixtures. Existing Phase 2 tests observe restricted tools/prompt,
 abort/cleanup, and the corrected context's serialized output ceiling; they must
 continue to catch re-resolution to the stale catalog. Foreground tests preserve
-captured route/headers/account/tier and persisted thinking. CLI handoff/loop and
+captured route/headers/account/tier and run effort. CLI handoff/loop and
 API/Guest common-event consumers cover the neighboring edges.
 
 Run affected formatting, types, lint, Knip, build/public declarations and required
@@ -289,3 +289,28 @@ local Vitest process at a time and bounded logs; use the repository's
 the PR, distinguishing unselected/skipped/environment-limited checks and older
 fixture evidence from current-head passes. None of these local/CI checks is
 production release or fleet-drain evidence.
+
+## Model-aware foreground effort
+
+Chat stores effort preferences per model in `model_settings`. At run admission,
+normal sends, queued inputs, and workflow launches resolve the preference against
+the selected runtime and concrete provider. An unsupported route choice falls
+back to the model default without rewriting the preference. DeepSeek defaults to
+`high`, supported by both its direct and OpenRouter routes; their other choices
+remain distinct. Claude's `extra` product label maps to Pi's `xhigh` level.
+
+The effective preference is captured in `agent_runs.reasoning_effort` and applied
+to the existing `piModelConfig.thinkingLevel` field before the execution context
+is persisted. API-first and Sandbox consume the same captured configuration.
+When starting a new run from prior JSONL, both session owners append a thinking
+change if the captured level differs. Historical entries remain intact, and a
+handoff within one run keeps the same level. Launches without a configured level
+retain the SDK session/default behavior. Memory learning and consolidation keep
+their own model policies.
+
+The model-policy API advertises the current concrete built-in provider to the
+picker; server admission resolves it again when the run starts. This advisory
+response does not reserve a route. The API, commit-addressed CLI, and runtime ship
+together; queued execution contexts retain the CLI and configuration they captured.
+The existing Pi model-config generations and Runner/Guest schemas are unchanged.
+`ChatReasoningEffort` and `PiLoop` retain their existing rollout gates.

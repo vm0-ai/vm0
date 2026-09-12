@@ -1,26 +1,69 @@
+import { isPiExecutionRoute } from "@okouai/core/pi-execution";
+import {
+  isBuiltInModelProviderType,
+  type OrgModelPolicy,
+} from "@okouai/api-contracts/contracts/model-providers";
 import {
   defaultModelReasoningEffort,
-  getModelReasoningEfforts,
+  getRouteReasoningEfforts,
   modelReasoningEffort,
   type ReasoningEffort,
 } from "@okouai/api-contracts/contracts/model-reasoning-effort";
 import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { ModelProviderSelection } from "../../views/okou-page/components/model-provider-picker.tsx";
 
-/** Native chat choices only; Pi effort is owned by a separate rollout. */
-export function availableChatReasoningEfforts(
-  model: string | null | undefined,
+/** Saved preferences remain independent of the route's current capability. */
+export function preferredChatReasoningEffort(
+  selection: ModelProviderSelection | null | undefined,
   switches: Partial<Record<FeatureSwitchKey, boolean>>,
+): ReasoningEffort | undefined {
+  if (!switches[FeatureSwitchKey.ChatReasoningEffort]) {
+    return undefined;
+  }
+  return modelReasoningEffort(
+    selection?.selectedModel,
+    selection?.modelSettings,
+  );
+}
+
+/** Resolve the same model/provider runtime policy used by server admission. */
+export function availableChatReasoningEfforts(
+  selection: ModelProviderSelection | null | undefined,
+  switches: Partial<Record<FeatureSwitchKey, boolean>>,
+  policy: OrgModelPolicy | undefined,
 ): readonly ReasoningEffort[] {
   if (
-    !switches[FeatureSwitchKey.ChatReasoningEffort] ||
-    (switches[FeatureSwitchKey.PiLoop] && !model?.startsWith("claude-"))
+    !selection ||
+    !policy ||
+    policy.routeStatus !== "valid" ||
+    !switches[FeatureSwitchKey.ChatReasoningEffort]
   ) {
     return [];
   }
-  return getModelReasoningEfforts(model).filter((effort) => {
-    // The native flag alone does not establish Ultracode mode availability.
-    return effort !== "ultracode";
+  const runtimeProviderType = isBuiltInModelProviderType(
+    policy.defaultProviderType,
+  )
+    ? policy.runtimeProviderType
+    : policy.defaultProviderType;
+  // An older API has not advertised the captured built-in route yet.
+  if (runtimeProviderType === null || runtimeProviderType === undefined) {
+    return [];
+  }
+  const piExecution = isPiExecutionRoute({
+    selectedModel: selection.selectedModel,
+    modelProviderType: policy.defaultProviderType,
+    runtimeProviderType,
+    codexServiceTier: selection.codexServiceTier ?? undefined,
+    piEnabled: switches[FeatureSwitchKey.PiLoop] === true,
+    codexFastModeEnabled: Boolean(
+      switches[FeatureSwitchKey.ModelPickerMenu] ||
+      switches[FeatureSwitchKey.CodexFastMode],
+    ),
+  });
+  return getRouteReasoningEfforts({
+    model: selection.selectedModel,
+    piExecution,
+    runtimeProviderType,
   });
 }
 
@@ -28,18 +71,13 @@ export function availableChatReasoningEfforts(
 export function effectiveChatReasoningEffort(
   selection: ModelProviderSelection | null | undefined,
   switches: Partial<Record<FeatureSwitchKey, boolean>>,
+  policy: OrgModelPolicy | undefined,
 ): ReasoningEffort | undefined {
   if (!selection) {
     return undefined;
   }
-  const available = availableChatReasoningEfforts(
-    selection.selectedModel,
-    switches,
-  );
-  const preferred = modelReasoningEffort(
-    selection.selectedModel,
-    selection.modelSettings,
-  );
+  const available = availableChatReasoningEfforts(selection, switches, policy);
+  const preferred = preferredChatReasoningEffort(selection, switches);
   if (preferred && available.includes(preferred)) {
     return preferred;
   }

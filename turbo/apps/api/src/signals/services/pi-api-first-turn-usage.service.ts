@@ -13,7 +13,7 @@ import { inArray } from "drizzle-orm";
 import { v5 as uuidv5 } from "uuid";
 
 import type { Db } from "../external/db";
-import { isPiGptModel, type PiGptModel } from "./pi-gpt-model";
+import { isPiGptModel, type PiGptModel } from "@okouai/core/pi-execution";
 
 const PI_API_FIRST_TURN_USAGE_NAMESPACE =
   "26e1c547-485d-4438-bf6d-4b77959da0cb";

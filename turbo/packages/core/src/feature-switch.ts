@@ -323,7 +323,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ChatReasoningEffort]: {
     maintainer: "bingjie@okou.ai",
     description:
-      "Choose model reasoning effort for Codex and Claude Code chats.",
+      "Choose model reasoning effort for Codex, Claude Code, and Pi chats.",
     enabled: false,
     enabledUserHashes: ["032a75d8"], // Bingjie's account, including API contexts without email
     enabledEmailHashes: ["6490c77f"], // bingjie@okou.ai

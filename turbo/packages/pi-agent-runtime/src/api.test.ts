@@ -437,6 +437,7 @@ describe("Pi API facade", () => {
             | "openai-codex-responses"
             | "openai-responses"
             | undefined,
+          thinkingLevel: "low" | "high" = "low",
         ) => {
           const result = await runPiApiFirstTurn({
             cwd: "/home/user/workspace",
@@ -455,7 +456,7 @@ describe("Pi API facade", () => {
                       provider: "openai-codex",
                       baseUrl: `http://127.0.0.1:${address.port}/v1`,
                       model: "gpt-5.6-terra",
-                      thinkingLevel: "low",
+                      thinkingLevel,
                       ...(serviceTier === undefined ? {} : { serviceTier }),
                       credentialBindings: [
                         {
@@ -485,7 +486,7 @@ describe("Pi API facade", () => {
                       ...(api === undefined ? {} : { api }),
                       apiKeyEnv: "OPENAI_API_KEY",
                       credentialSecretName: "OPENAI_API_KEY",
-                      thinkingLevel: "low",
+                      thinkingLevel,
                       ...(serviceTier ? { serviceTier } : {}),
                     }),
                     target: "direct",
@@ -503,6 +504,7 @@ describe("Pi API facade", () => {
         const priorityResult = await runTurn(
           route === "native" ? "fast" : "priority",
           "openai-codex-responses",
+          "high",
         );
         const standardReturnResult = await runTurn(undefined, undefined);
         const publicResult = await runTurn(undefined, "openai-responses");
@@ -537,7 +539,7 @@ describe("Pi API facade", () => {
           url: route === "native" ? "/v1/codex/responses" : "/v1/responses",
           body: {
             model: "gpt-5.6-terra",
-            reasoning: { effort: "low" },
+            reasoning: { effort: "high" },
             service_tier: "priority",
           },
         });
@@ -567,7 +569,10 @@ describe("Pi API facade", () => {
           MemoryPiSession.fromJsonl(
             priorityResult.sessionJsonl,
           ).buildSessionContext().thinkingLevel,
-        ).toBe("low");
+        ).toBe("high");
+        expect(providerRequests[2]?.body).toMatchObject({
+          reasoning: { effort: "low" },
+        });
       } finally {
         await new Promise<void>((resolve, reject) => {
           server.close((error) => {

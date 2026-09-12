@@ -1567,6 +1567,8 @@ export const orgModelPolicySchema = z.object({
   modelLabel: z.string(),
   isDefault: z.boolean(),
   defaultProviderType: modelProviderTypeSchema,
+  // Current built-in failover candidate; absent on older API responses.
+  runtimeProviderType: modelProviderTypeSchema.nullable().optional(),
   credentialScope: modelProviderCredentialScopeSchema,
   modelProviderId: z.uuid().nullable(),
   modelProviderSurfaceId: z.uuid().nullable().optional(),
