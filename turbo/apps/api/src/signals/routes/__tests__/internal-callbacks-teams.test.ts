@@ -427,7 +427,7 @@ async function dispatchTeamsRun(args: {
     activity: teamsMessageActivityForTest(args.fixture, {
       id: args.activityId,
       replyToId: args.threadId,
-      text: `<at>Zero</at> ${args.text}`,
+      text: `<at>Nova</at> ${args.text}`,
       from: {
         id: args.fixture.teamsUserId,
         name: args.senderName ?? "Ada Lovelace",
@@ -449,7 +449,7 @@ async function dispatchTeamsRun(args: {
     orgId: args.fixture.orgId,
     orgRole: "org:admin",
   });
-  return await runIdForPrompt(actor, `@Zero ${args.text}`);
+  return await runIdForPrompt(actor, `@Nova ${args.text}`);
 }
 
 async function postTeamsPersonalMessage(args: {
@@ -864,7 +864,7 @@ describe("Teams chat callbacks", () => {
     expect(queuedClaim.appendSystemPrompt).toContain(
       `Bot ID: ${teams.fixture.teamsBotId}`,
     );
-    expect(queuedClaim.appendSystemPrompt).toContain("Bot name: Zero");
+    expect(queuedClaim.appendSystemPrompt).toContain("Bot name: Nova");
     await runsApi.requestCancelRun(teams.actor, queuedRunId, [200]);
   });
 
@@ -1086,7 +1086,7 @@ describe("Teams chat callbacks", () => {
           userMessage: {
             version: 1,
             parts: [
-              { type: "text", text: "@Zero finish the task" },
+              { type: "text", text: "@Nova finish the task" },
               {
                 type: "source",
                 kind: "teams",

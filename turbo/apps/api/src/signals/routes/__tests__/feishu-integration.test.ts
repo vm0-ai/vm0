@@ -671,7 +671,7 @@ function groupMessage(
             {
               key: mentionKey,
               id: { open_id: options.mentionOpenId ?? BOT_OPEN_ID },
-              name: "Zero",
+              name: "Nova",
             },
           ]
         : [],
@@ -5286,7 +5286,7 @@ describe("Feishu integration", () => {
     expect(
       (await runsApi.listAgentRuns(secondActor, { limit: 20 })).runs.some(
         (run) => {
-          return run.prompt === "@Zero unconnected group task";
+          return run.prompt === "@Nova unconnected group task";
         },
       ),
     ).toBeFalsy();
@@ -5323,9 +5323,9 @@ describe("Feishu integration", () => {
     expect(
       controlRuns.runs.some((run) => {
         return [
-          "@Zero unconnected group task",
-          "@Zero /help",
-          "@Zero unavailable group task",
+          "@Nova unconnected group task",
+          "@Nova /help",
+          "@Nova unavailable group task",
         ].includes(run.prompt);
       }),
     ).toBeFalsy();
@@ -5346,7 +5346,7 @@ describe("Feishu integration", () => {
       { encrypted: true },
     );
     await flushWaitUntilForTest();
-    const firstRun = await findRun(secondActor, `@Zero ${firstPrompt}`);
+    const firstRun = await findRun(secondActor, `@Nova ${firstPrompt}`);
 
     await postEvent(
       callbackUrl,
@@ -5361,13 +5361,13 @@ describe("Feishu integration", () => {
     expect(
       (await runsApi.listAgentRuns(secondActor, { limit: 20 })).runs.some(
         (run) => {
-          return run.prompt === `@Zero ${secondPrompt}`;
+          return run.prompt === `@Nova ${secondPrompt}`;
         },
       ),
     ).toBeFalsy();
     const queuedFeishuParams = await findPendingChatEventByPromptFixture({
       userId: secondActor.userId,
-      prompt: `@Zero ${secondPrompt}`,
+      prompt: `@Nova ${secondPrompt}`,
     });
     expect(queuedFeishuParams).toMatchObject({
       eventId: expect.any(String),
@@ -5386,10 +5386,10 @@ describe("Feishu integration", () => {
       assistantText: "First canonical group answer",
     });
 
-    const secondRun = await findRun(secondActor, `@Zero ${secondPrompt}`);
+    const secondRun = await findRun(secondActor, `@Nova ${secondPrompt}`);
     await runsApi.heartbeatRunner(runnerGroup);
     const secondClaim = await runsApi.claimRunnerJob(secondRun.id);
-    expect(secondClaim.prompt).toBe(`@Zero ${secondPrompt}`);
+    expect(secondClaim.prompt).toBe(`@Nova ${secondPrompt}`);
     expect(secondClaim.appendSystemPrompt).toContain("Scope: Group mention");
     expect(secondClaim.resumeSession?.sessionId).toBe(firstCliSessionId);
     await runsApi.requestCancelRun(secondActor, secondRun.id, [200]);
@@ -5488,7 +5488,7 @@ describe("Feishu integration", () => {
     await flushWaitUntilForTest();
     const groupRuns = await runsApi.listAgentRuns(actor, { limit: 20 });
     const matchingGroupRuns = groupRuns.runs.filter((candidate) => {
-      return candidate.prompt === "@Zero";
+      return candidate.prompt === "@Nova";
     });
     expect(matchingGroupRuns).toHaveLength(1);
     const groupRun = requireValue(
@@ -5497,7 +5497,7 @@ describe("Feishu integration", () => {
     );
     await runsApi.heartbeatRunner(runnerGroup);
     const groupClaim = await runsApi.claimRunnerJob(groupRun.id);
-    expect(groupClaim.prompt).toBe("@Zero");
+    expect(groupClaim.prompt).toBe("@Nova");
     expect(groupClaim.appendSystemPrompt).toContain("Scope: Group mention");
     expect(groupClaim.appendSystemPrompt).toContain(
       `Tenant key: ${TENANT_KEY}`,
@@ -5558,7 +5558,7 @@ describe("Feishu integration", () => {
     await flushWaitUntilForTest();
     const initialGroupRun = await findRun(
       actor,
-      "@Zero establish group reply attribution",
+      "@Nova establish group reply attribution",
     );
     await runsApi.heartbeatRunner(runnerGroup);
     await runsApi.claimRunnerJob(initialGroupRun.id);
@@ -5587,7 +5587,7 @@ describe("Feishu integration", () => {
     await flushWaitUntilForTest();
     const secondGroupRun = await findRun(
       secondActor,
-      "@Zero handle this group task as another user",
+      "@Nova handle this group task as another user",
     );
     await runsApi.heartbeatRunner(runnerGroup);
     const secondGroupClaim = await runsApi.claimRunnerJob(secondGroupRun.id);
@@ -5625,7 +5625,7 @@ describe("Feishu integration", () => {
       { encrypted: true },
     );
     await flushWaitUntilForTest();
-    const groupRun = await findRun(actor, "@Zero handle this group task");
+    const groupRun = await findRun(actor, "@Nova handle this group task");
     await runsApi.heartbeatRunner(runnerGroup);
     const groupClaim = await runsApi.claimRunnerJob(groupRun.id);
     const groupCliSessionId = `bdd-feishu-group-cli-${groupRun.id}`;
@@ -5646,7 +5646,7 @@ describe("Feishu integration", () => {
     await flushWaitUntilForTest();
     const groupFollowUp = await findRun(
       actor,
-      "@Zero continue this group task",
+      "@Nova continue this group task",
     );
     await runsApi.heartbeatRunner(runnerGroup);
     const groupFollowUpClaim = await runsApi.claimRunnerJob(groupFollowUp.id);
