@@ -11,6 +11,33 @@ Releases before September 2026 are archived by month:
 - [2026-02](changelog/2026-02/CHANGELOG.md)
 - [2026-01](changelog/2026-01/CHANGELOG.md)
 
+## [0.890.0](https://github.com/vm0-ai/vm0/compare/app-v0.889.1...app-v0.890.0) (2026-09-12)
+
+
+### Features
+
+* add deepseek v4.1 flash ([#33591](https://github.com/vm0-ai/vm0/issues/33591)) ([b7b8854](https://github.com/vm0-ai/vm0/commit/b7b885498764b690c4a194f86da198815daae4c9))
+* **artifacts:** share presigned thumbnails across composer and chat ([#33288](https://github.com/vm0-ai/vm0/issues/33288)) ([c21ce81](https://github.com/vm0-ai/vm0/commit/c21ce817535587b323a523abcef983f689365e9d))
+
+
+### Bug Fixes
+
+* **app:** show specific clerk authentication and password errors ([#33509](https://github.com/vm0-ai/vm0/issues/33509)) ([1088d9c](https://github.com/vm0-ai/vm0/commit/1088d9c6db489a743487ff3a751cdbebe18b324f))
+
+
+### Refactoring
+
+* **api:** remove the retired zero desktop auth callback schemes ([#33615](https://github.com/vm0-ai/vm0/issues/33615)) ([60653a2](https://github.com/vm0-ai/vm0/commit/60653a23fdb82dbe96a1aa2affcafdad8a8a1388))
+* **platform:** remove the dead default-agent branch from the welcome thread card ([#33609](https://github.com/vm0-ai/vm0/issues/33609)) ([01eb73f](https://github.com/vm0-ai/vm0/commit/01eb73fc332a404f76ce802ab9cfb947186f98a2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.430.0
+    * @okouai/core bumped to 8.655.0
+
 ## [0.889.1](https://github.com/vm0-ai/vm0/compare/app-v0.889.0...app-v0.889.1) (2026-09-12)
 
 

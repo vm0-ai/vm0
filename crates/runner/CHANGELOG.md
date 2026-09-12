@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.190.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.190.7...runner-rs-v0.190.8) (2026-09-12)
+
+
+### Bug Fixes
+
+* **ssh:** release guest park protection when rpc closes ([#33534](https://github.com/vm0-ai/vm0/issues/33534)) ([1fb21f7](https://github.com/vm0-ai/vm0/commit/1fb21f794131078cdfc87c970eaf7f2c5d9f1c6f))
+
+
+### Refactoring
+
+* **runner:** share finalizing reservation activation ([#33550](https://github.com/vm0-ai/vm0/issues/33550)) ([94937b7](https://github.com/vm0-ai/vm0/commit/94937b79b1990bb2fe3a650ec8bf43e98a5c7533))
+
+
+### Performance Improvements
+
+* **runner:** refill doctor io slots independently of result order ([#33575](https://github.com/vm0-ai/vm0/issues/33575)) ([620dbb4](https://github.com/vm0-ai/vm0/commit/620dbb477e06fabb378e8b09c2d59484ade0d52e))
+
 ## [0.190.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.190.6...runner-rs-v0.190.7) (2026-09-11)
 
 ## [0.190.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.190.5...runner-rs-v0.190.6) (2026-09-11)
