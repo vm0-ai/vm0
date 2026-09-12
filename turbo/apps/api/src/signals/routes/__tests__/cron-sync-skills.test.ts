@@ -23,6 +23,7 @@ import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
+import { readPiResourceIndexStatusFixture } from "../../../test-fixtures/pi-resource-index";
 import {
   cleanupOwnedSkillsState,
   findSkillByUrlState,
@@ -678,6 +679,32 @@ describe("GET /api/cron/sync-skills", () => {
       findSkillByUrl(testSkillUrl(badSkill.name)),
     ).resolves.toBeNull();
   });
+
+  it("retains archive expansion limits when indexing unchanged skill versions", async () => {
+    const fixture = useCronSyncSkillsFixture();
+    const oversized: MockSkillEntry = {
+      ...fixture.alphaSkill,
+      files: [
+        ...fixture.alphaSkill.files,
+        { path: "large.bin", content: "x".repeat(65 * 1024 * 1024) },
+      ],
+    };
+    // The old API can leave a current version without an index. Production
+    // sync cannot create that historical state after synchronous indexing ships.
+    await seedCurrentSkillVersions(fixture, [oversized]);
+    const commitSha = newCommitSha();
+    setupMswHandlers(commitSha, createFullTarball(fixture, [oversized]));
+    const response = await syncOwnedSkills(fixture);
+    expect(response).toMatchObject({ success: true, skipped: 1, failed: 0 });
+    await expect(
+      findSkillByUrl(testSkillUrl(oversized.name)),
+    ).resolves.toMatchObject({ commitSha });
+    // Indexability is internal worker state with no production read endpoint.
+    // The tiny metadata projection must not admit this oversized archive.
+    await expect(
+      readPiResourceIndexStatusFixture(computeMockSkillVersionHash(oversized)),
+    ).resolves.toBe("unindexable");
+  }, 30_000);
 
   it("only uploads changed skills during incremental sync", async () => {
     const fixture = useCronSyncSkillsFixture();
