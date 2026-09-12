@@ -5821,7 +5821,6 @@
         "welcomeThread": {
           "create": "Crear chat de bienvenida",
           "creating": "Creando…",
-          "defaultAgentNotReady": "Configura el agente predeterminado del espacio de trabajo e inténtalo de nuevo.",
           "description": "Crea un chat de bienvenida con la introducción y los ejemplos.",
           "failed": "No se pudo crear el chat de bienvenida. Inténtalo de nuevo.",
           "title": "Chat de bienvenida"
