@@ -3959,13 +3959,10 @@ function RecommendedFollowupList({
   source: RecommendedFollowupSource;
 }) {
   const { t } = useTranslation();
-  const responsiveFollowupCards =
-    useGet(featureSwitch$)[FeatureSwitchKey.ResponsiveFollowupCards] ?? false;
   // Quick replies only on actual mobile/touch text-entry devices, mirroring the
   // composer auto-focus heuristic. A desktop window dragged narrow must still
   // render the flat list, so container width is not the deciding factor.
-  const showFollowupCards =
-    responsiveFollowupCards && isMobileTextInputDevice();
+  const showFollowupCards = isMobileTextInputDevice();
   const selectOrAppendComposerText = useSet(
     thread.composer.editor.selectOrAppendText$,
   );

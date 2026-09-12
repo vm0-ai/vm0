@@ -187,7 +187,6 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.OkouDebug]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.AgentMessageMath]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ProgressiveArtifactPreview]).toBe(
       true,
@@ -213,7 +212,6 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.OkouDebug]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.AgentMessageMath]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ProgressiveArtifactPreview]).toBe(
       false,
