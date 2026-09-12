@@ -4,9 +4,12 @@ import {
   chatEventsContract,
 } from "../chat-threads";
 import {
-  compatibleReasoningEffort,
+  defaultModelReasoningEffort,
   getModelReasoningEfforts,
   isModelReasoningEffortSupported,
+  modelSettingsSchema,
+  modelReasoningEffort,
+  withModelReasoningEffort,
 } from "../model-reasoning-effort";
 
 describe("chat reasoning effort capabilities", () => {
@@ -27,26 +30,37 @@ describe("chat reasoning effort capabilities", () => {
       "max",
       "ultracode",
     ]);
-    expect(compatibleReasoningEffort("claude-fable-5-1", "ultracode")).toBe(
-      "ultracode",
-    );
-    expect(compatibleReasoningEffort("gpt-5.6-sol", null)).toBeNull();
-    expect(compatibleReasoningEffort("gpt-5.6-sol", undefined)).toBeNull();
+    expect(defaultModelReasoningEffort("gpt-5.6-sol")).toBe("max");
+    expect(defaultModelReasoningEffort("deepseek-v4-flash")).toBeUndefined();
   });
 
-  it("resets incompatible choices on a model change", () => {
-    expect(compatibleReasoningEffort("gpt-6-astra", "ultracode")).toBeNull();
-    expect(compatibleReasoningEffort("gpt-5.5", "max")).toBeNull();
-    expect(compatibleReasoningEffort("gpt-5.6-luna", "ultra")).toBeNull();
-    expect(compatibleReasoningEffort("gpt-5.6-terra", "ultra")).toBe("ultra");
-    expect(compatibleReasoningEffort("claude-sonnet-4-6", "extra")).toBeNull();
-    expect(compatibleReasoningEffort("claude-sonnet-5", "xhigh")).toBeNull();
-    expect(compatibleReasoningEffort("gpt-6-astra", "extra")).toBeNull();
-    expect(compatibleReasoningEffort("claude-sonnet-5", "extra")).toBe("extra");
-    expect(compatibleReasoningEffort("gpt-6-astra", "xhigh")).toBe("xhigh");
-    expect(compatibleReasoningEffort("claude-sonnet-5", "high")).toBe("high");
-    expect(compatibleReasoningEffort("deepseek-v4.1-flash", "high")).toBeNull();
-    expect(compatibleReasoningEffort("deepseek-v4-flash", "high")).toBeNull();
+  it("keeps each model's override independent", () => {
+    const settings = withModelReasoningEffort(
+      { "gpt-6-astra": { effort: "ultra" } },
+      { model: "claude-sonnet-5", effort: "extra" },
+    );
+    expect(modelReasoningEffort("gpt-6-astra", settings)).toBe("ultra");
+    expect(modelReasoningEffort("claude-sonnet-5", settings)).toBe("extra");
+    expect(modelReasoningEffort("gpt-5.6-sol", settings)).toBe("max");
+    expect(
+      modelReasoningEffort("deepseek-v4.1-flash", settings),
+    ).toBeUndefined();
+    expect(modelReasoningEffort("deepseek-v4-flash", settings)).toBeUndefined();
+    expect(
+      modelSettingsSchema.safeParse({
+        "deepseek-v4.1-flash": { effort: "high" },
+      }).success,
+    ).toBe(false);
+    expect(
+      modelSettingsSchema.safeParse({
+        "deepseek-v4-flash": { effort: "high" },
+      }).success,
+    ).toBe(false);
+    expect(
+      modelSettingsSchema.safeParse({
+        "gpt-5.6-sol": { effort: null },
+      }).success,
+    ).toBe(false);
   });
 
   it("recognizes native and provider-prefixed model identities", () => {
@@ -63,18 +77,18 @@ describe("chat reasoning effort capabilities", () => {
     expect(getModelReasoningEfforts("future-model")).toStrictEqual([]);
   });
 
-  it("preserves omission, reset, and Fast independently on the wire", () => {
+  it("preserves omission and Fast while rejecting reset on the wire", () => {
     const schema = chatThreadModelSelectionContract.update.body;
     expect(schema.parse({ model: "gpt-5.6-sol" })).not.toHaveProperty(
       "reasoningEffort",
     );
     expect(
-      schema.parse({
+      schema.safeParse({
         model: "gpt-5.6-sol",
         reasoningEffort: null,
         codexServiceTier: "fast",
-      }),
-    ).toMatchObject({ reasoningEffort: null, codexServiceTier: "fast" });
+      }).success,
+    ).toBe(false);
     expect(
       schema.safeParse({ model: "gpt-5.6-sol", reasoningEffort: "none" })
         .success,

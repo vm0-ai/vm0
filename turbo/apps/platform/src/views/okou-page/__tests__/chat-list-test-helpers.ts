@@ -282,6 +282,7 @@ export function installActiveChatBoundaries(
       agentId: thread.agentId,
       title: thread.title,
       selectedModel: thread.selectedModel ?? null,
+      modelSettings: thread.modelSettings ?? {},
       serviceTier: thread.serviceTier ?? null,
       pinnedAt: thread.pinnedAt,
       computerUseHostId: thread.computerUseHostId ?? null,

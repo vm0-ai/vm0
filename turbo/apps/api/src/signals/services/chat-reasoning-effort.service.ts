@@ -1,72 +1,75 @@
 import {
-  compatibleReasoningEffort,
+  defaultModelReasoningEffort,
   isModelReasoningEffortSupported,
+  modelReasoningEffort,
+  withModelReasoningEffort,
+  type ModelSettings,
+  type ModelSettingsPatch,
   type ReasoningEffort,
 } from "@okouai/api-contracts/contracts/model-reasoning-effort";
+import { isSupportedRunModel } from "@okouai/api-contracts/contracts/model-providers";
 import { badRequestMessage } from "../../lib/error";
 
 /** Keep saved preferences dormant while rollout is disabled. */
 export function resolveChatReasoningEffort(args: {
   readonly selectedModel: string | null;
-  readonly stored?: ReasoningEffort | null;
-  readonly requested?: ReasoningEffort | null;
+  readonly modelSettings?: ModelSettings | null;
+  readonly requested?: ReasoningEffort;
   readonly enabled: boolean;
 }):
   | {
-      readonly reasoningEffort: ReasoningEffort | null;
-      readonly persistedReasoningEffort: ReasoningEffort | null;
+      readonly reasoningEffort: ReasoningEffort | undefined;
+      readonly modelSettings: ModelSettings;
+      readonly modelSettingsPatch: ModelSettingsPatch | undefined;
     }
   | ReturnType<typeof badRequestMessage> {
+  const storedSettings = args.modelSettings ?? {};
   if (!args.enabled) {
     if (args.requested !== undefined) {
       return badRequestMessage("Reasoning effort selection is not enabled");
     }
     return {
-      reasoningEffort: null,
-      persistedReasoningEffort: args.stored ?? null,
+      reasoningEffort: undefined,
+      modelSettings: storedSettings,
+      modelSettingsPatch: undefined,
     };
   }
-  if (args.requested !== undefined && args.requested !== null) {
+  if (args.requested !== undefined) {
     if (!isModelReasoningEffortSupported(args.selectedModel, args.requested)) {
       return badRequestMessage(
         "Reasoning effort is not supported by the selected model",
       );
     }
   }
-  const reasoningEffort =
-    args.requested === null
-      ? null
-      : (args.requested ??
-        compatibleReasoningEffort(args.selectedModel, args.stored));
+  const modelSettingsPatch =
+    args.requested !== undefined && isSupportedRunModel(args.selectedModel)
+      ? { model: args.selectedModel, effort: args.requested }
+      : undefined;
+  const modelSettings = modelSettingsPatch
+    ? withModelReasoningEffort(storedSettings, modelSettingsPatch)
+    : storedSettings;
   return {
-    reasoningEffort,
-    persistedReasoningEffort: reasoningEffort,
+    reasoningEffort: modelReasoningEffort(args.selectedModel, modelSettings),
+    modelSettings,
+    modelSettingsPatch,
   };
 }
 
 /**
- * Native admission requires #32999 deployed and incompatible old runners drained.
- * Keep unsupported routes and modes closed even under a user flag override.
+ * Preserve the preference while adapting execution to the route that actually
+ * runs it. Pi has no effort input, while Ultracode currently falls back to the
+ * selected model's ordinary default outside its orchestration route.
  */
-export function validateReasoningEffortDispatch(
-  effort: ReasoningEffort | null | undefined,
-  piExecution: boolean,
-) {
-  if (effort === null || effort === undefined) {
+export function resolveReasoningEffortForDispatch(args: {
+  readonly selectedModel: string | null | undefined;
+  readonly effort: ReasoningEffort | undefined;
+  readonly piExecution: boolean;
+}): ReasoningEffort | undefined {
+  if (args.effort === undefined || args.piExecution) {
     return undefined;
   }
-  if (piExecution) {
-    return badRequestMessage(
-      "Reasoning effort selection is not supported by this execution route. Restore the model default to run this message.",
-    );
+  if (args.effort === "ultracode") {
+    return defaultModelReasoningEffort(args.selectedModel);
   }
-  // Claude Code accepts --effort ultracode but silently uses ordinary xhigh
-  // when workflow orchestration is unavailable. Keep admission closed until the
-  // runtime can establish mode availability for the actual provider/session.
-  if (effort === "ultracode") {
-    return badRequestMessage(
-      "Ultracode execution is not available yet. Choose another effort level or restore the model default.",
-    );
-  }
-  return undefined;
+  return args.effort;
 }

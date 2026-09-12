@@ -5754,8 +5754,6 @@
         "categoryVideo": "Video",
         "chatModels": "Model chat",
         "effort": "Upaya penalaran",
-        "effortReset": "Pulihkan default model",
-        "effortUnavailable": "Upaya tidak tersedia untuk koneksi model ini. Pulihkan default untuk melanjutkan.",
         "fast": "Cepat",
         "fastImpact": "Kecepatan model 1,5× · penggunaan kredit 2,5×",
         "generationPriceTiers": {

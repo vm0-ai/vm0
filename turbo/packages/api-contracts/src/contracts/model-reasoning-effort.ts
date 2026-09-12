@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-import { normalizeBuiltInModelId } from "./model-providers";
+import {
+  isSupportedRunModel,
+  normalizeBuiltInModelId,
+  supportedRunModelSchema,
+} from "./model-providers";
 
 const CODEX_REASONING_EFFORTS = [
   "low",
@@ -25,6 +29,38 @@ export const reasoningEffortSchema = z.union([
 ]);
 
 export type ReasoningEffort = z.infer<typeof reasoningEffortSchema>;
+
+const modelSettingSchema = z
+  .object({
+    effort: reasoningEffortSchema.optional(),
+  })
+  .strict();
+
+export const modelSettingsSchema = z
+  .partialRecord(supportedRunModelSchema, modelSettingSchema)
+  .superRefine((settings, context) => {
+    for (const model of supportedRunModelSchema.options) {
+      const effort = settings[model]?.effort;
+      if (effort && !isModelReasoningEffortSupported(model, effort)) {
+        context.addIssue({
+          code: "custom",
+          path: [model, "effort"],
+          message: "Reasoning effort is not supported by this model",
+        });
+      }
+    }
+  });
+
+export type ModelSettings = z.infer<typeof modelSettingsSchema>;
+
+export const modelSettingsPatchSchema = z
+  .object({
+    model: supportedRunModelSchema,
+    effort: reasoningEffortSchema,
+  })
+  .strict();
+
+export type ModelSettingsPatch = z.infer<typeof modelSettingsPatchSchema>;
 
 /** Native CLI choices, further restricted by the selected model. */
 export function getModelReasoningEfforts(
@@ -63,12 +99,60 @@ export function isModelReasoningEffortSupported(
   return getModelReasoningEfforts(model).includes(effort);
 }
 
-/** Retain a saved choice across compatible model changes; null uses defaults. */
-export function compatibleReasoningEffort(
+/** Match Okou's native launch defaults when a model has no saved override. */
+export function defaultModelReasoningEffort(
   model: string | null | undefined,
-  effort: ReasoningEffort | null | undefined,
-): ReasoningEffort | null {
-  return effort && isModelReasoningEffortSupported(model, effort)
-    ? effort
-    : null;
+): ReasoningEffort | undefined {
+  const bareModel = model?.startsWith("openai/")
+    ? model.slice("openai/".length)
+    : model;
+  switch (normalizeBuiltInModelId(bareModel ?? "")) {
+    case "gpt-6-astra":
+    case "gpt-5.6-sol":
+    case "gpt-5.6-terra":
+    case "gpt-5.6-luna":
+    case "claude-fable-5-1":
+      return "max";
+    case "gpt-5.5":
+      return "xhigh";
+    case "claude-opus-5":
+    case "claude-opus-4-8":
+    case "claude-sonnet-5":
+    case "claude-sonnet-4-6":
+      return "high";
+    default:
+      return undefined;
+  }
+}
+
+/** Resolve one model's preferred effort without borrowing another model's value. */
+export function modelReasoningEffort(
+  model: string | null | undefined,
+  settings: ModelSettings | null | undefined,
+): ReasoningEffort | undefined {
+  if (!isSupportedRunModel(model)) {
+    return undefined;
+  }
+  const saved = settings?.[model]?.effort;
+  if (saved === undefined) {
+    return defaultModelReasoningEffort(model);
+  }
+  if (!isModelReasoningEffortSupported(model, saved)) {
+    throw new Error(`Reasoning effort ${saved} is not supported by ${model}`);
+  }
+  return saved;
+}
+
+/** Apply one concrete override. Deleting overrides is intentionally unsupported. */
+export function withModelReasoningEffort(
+  settings: ModelSettings | null | undefined,
+  patch: ModelSettingsPatch,
+): ModelSettings {
+  return {
+    ...settings,
+    [patch.model]: {
+      ...settings?.[patch.model],
+      effort: patch.effort,
+    },
+  };
 }

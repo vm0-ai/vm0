@@ -36,6 +36,7 @@ function installVideoEnvironment(): void {
   const preference: UserModelPreferenceResponse = {
     selectedModel: "claude-fable-5-1",
     serviceTier: null,
+    modelSettings: {},
     selectedImageModel: "fal-ai/nano-banana-2",
     selectedVideoModel: "dreamina-seedance-2-0-260128",
     updatedAt: "2026-06-13T00:00:00.000Z",

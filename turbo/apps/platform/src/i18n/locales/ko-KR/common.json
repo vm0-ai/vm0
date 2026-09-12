@@ -5754,8 +5754,6 @@
         "categoryVideo": "동영상",
         "chatModels": "채팅 모델",
         "effort": "추론 강도",
-        "effortReset": "모델 기본값 복원",
-        "effortUnavailable": "이 모델 연결에서는 추론 강도를 사용할 수 없습니다. 계속하려면 기본값으로 복원하세요.",
         "fast": "빠름",
         "fastImpact": "모델 속도 1.5× · 크레딧 사용량 2.5×",
         "generationPriceTiers": {

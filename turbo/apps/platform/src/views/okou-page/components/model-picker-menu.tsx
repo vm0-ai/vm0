@@ -3,8 +3,9 @@ import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import { featureSwitch$ } from "../../../signals/external/feature-switch.ts";
 import {
   availableChatReasoningEfforts,
-  defaultChatReasoningEffort,
+  effectiveChatReasoningEffort,
 } from "../../../signals/okou-page/model-reasoning-effort.ts";
+import { withModelReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
 import type { KeyboardEvent, ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
 import {
@@ -206,7 +207,7 @@ function ModelPickerOverview({
   const switches = useGet(featureSwitch$);
   const efforts = availableChatReasoningEfforts(value?.selectedModel, switches);
   const savedEffort = switches[FeatureSwitchKey.ChatReasoningEffort]
-    ? value?.reasoningEffort
+    ? effectiveChatReasoningEffort(value, switches)
     : undefined;
   const showModels = useSet(signals.showModels$);
   const editSettings = useSet(signals.editSettings$);
@@ -309,17 +310,16 @@ function ChatReasoningEffortSettings({
     selection.selectedModel,
     switches,
   );
-  if (
-    !switches[FeatureSwitchKey.ChatReasoningEffort] ||
-    (efforts.length === 0 && !selection.reasoningEffort)
-  ) {
+  if (!switches[FeatureSwitchKey.ChatReasoningEffort] || efforts.length === 0) {
     return null;
   }
   const label = t(($) => {
     return $.settings.models.picker.effort;
   });
-  const defaultEffort = defaultChatReasoningEffort(selection.selectedModel);
-  const value = selection.reasoningEffort ?? defaultEffort;
+  const value = effectiveChatReasoningEffort(selection, switches);
+  if (value === undefined) {
+    return null;
+  }
   const displayValue = formatChatEffort(selection.selectedModel, value);
   const index = efforts.findIndex((effort) => {
     return effort === value;
@@ -345,33 +345,15 @@ function ChatReasoningEffortSettings({
             if (effort !== undefined) {
               onChange({
                 ...selection,
-                reasoningEffort: effort,
+                modelSettings: withModelReasoningEffort(
+                  selection.modelSettings,
+                  { model: selection.selectedModel, effort },
+                ),
               });
             }
           }}
         />
-      ) : (
-        <>
-          <p className="text-[11px] leading-relaxed text-muted-foreground">
-            {t(($) => {
-              return $.settings.models.picker.effortUnavailable;
-            })}
-          </p>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="-ml-2 h-7 self-start px-2 text-xs text-muted-foreground hover:text-foreground"
-            disabled={disabled}
-            onClick={() => {
-              onChange({ ...selection, reasoningEffort: null });
-            }}
-          >
-            {t(($) => {
-              return $.settings.models.picker.effortReset;
-            })}
-          </Button>
-        </>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -785,7 +767,7 @@ function ModelPickerFlyoutPanel({
     switches,
   );
   const savedEffort = switches[FeatureSwitchKey.ChatReasoningEffort]
-    ? props.value?.reasoningEffort
+    ? effectiveChatReasoningEffort(props.value, switches)
     : undefined;
   const showSettingsRow =
     !activeMedia &&

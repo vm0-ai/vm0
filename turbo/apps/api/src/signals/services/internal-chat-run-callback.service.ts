@@ -1,5 +1,5 @@
 import { historicalRunGroupId } from "./run-event-provenance.service";
-import { validateReasoningEffortDispatch } from "./chat-reasoning-effort.service";
+import { resolveReasoningEffortForDispatch } from "./chat-reasoning-effort.service";
 import type { ReasoningEffort } from "@okouai/api-contracts/contracts/model-reasoning-effort";
 import { loadIntroVideoTemplateAccess } from "./intro-video-access.service";
 import { randomBytes } from "node:crypto";
@@ -3227,17 +3227,11 @@ async function buildCreateQueuedChatRunInput(
       featureSwitchContext,
     });
 
-  const effortError = validateReasoningEffortDispatch(
-    routedModel.reasoningEffort,
+  const reasoningEffort = resolveReasoningEffortForDispatch({
+    selectedModel: routedModel.modelPin.selectedModel,
+    effort: routedModel.reasoningEffort ?? undefined,
     piExecution,
-  );
-  if (effortError) {
-    return queuedMessageAdmissionFailure(
-      args,
-      launchMaterial,
-      effortError.body.error,
-    );
-  }
+  });
 
   const { incompleteContext, priorContext } =
     await loadQueuedMessageSessionContext(args, routedModel);
@@ -3289,7 +3283,7 @@ async function buildCreateQueuedChatRunInput(
     cliAgentType: routedModel.cliAgentType,
     piExecution,
     codexServiceTier: routedModel.codexServiceTier,
-    reasoningEffort: routedModel.reasoningEffort,
+    reasoningEffort,
     computerUseHostGrant,
     triggerSource,
     realAgentInPreview: isFeatureEnabled(

@@ -5825,8 +5825,6 @@
         "categoryVideo": "Vídeo",
         "chatModels": "Modelos de chat",
         "effort": "Esforço de raciocínio",
-        "effortReset": "Restaurar padrão do modelo",
-        "effortUnavailable": "O esforço não está disponível nesta conexão do modelo. Restaure o padrão para continuar.",
         "fast": "Rápido",
         "fastImpact": "Velocidade do modelo 1,5× · uso de créditos 2,5×",
         "generationPriceTiers": {
