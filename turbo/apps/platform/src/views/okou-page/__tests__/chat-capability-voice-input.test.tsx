@@ -10,6 +10,7 @@ import { expect, test, vi } from "vitest";
 import { click, fill, setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { currentLeftThread$ } from "../../../signals/chat-page/chat-thread-panes.ts";
+import { createChildAbortController } from "../../../signals/utils.ts";
 import { AGENT_ID } from "./chat-lifecycle-test-helpers.ts";
 import {
   assistantEvent,
@@ -26,6 +27,14 @@ import {
 } from "./chat-run-test-fixtures.ts";
 
 const refreshedContext = testContext();
+
+function unloadVoicePage(page: AbortController): void {
+  page.abort(new DOMException("Page reloaded", "AbortError"));
+  cleanup();
+  vi.mocked(window.history.pushState).mockRestore();
+  vi.mocked(window.history.replaceState).mockRestore();
+  vi.mocked(window.history.back).mockRestore();
+}
 
 interface CapturedVoiceSend {
   readonly prompt: string;
@@ -749,12 +758,17 @@ test.each(
 });
 
 test.each([
-  { path: RUN_PATH, failed: false },
-  { path: RUN_PATH, failed: true },
-  { path: NEW_CHAT_PATH, failed: true },
+  { path: RUN_PATH, failed: false, recovery: "navigation" },
+  { path: RUN_PATH, failed: false, recovery: "reload" },
+  { path: RUN_PATH, failed: true, recovery: "navigation" },
+  { path: RUN_PATH, failed: true, recovery: "reload" },
+  { path: NEW_CHAT_PATH, failed: true, recovery: "navigation" },
+  { path: NEW_CHAT_PATH, failed: true, recovery: "reload" },
 ])(
-  "Restore a retryable recording at $path after reload (failed: $failed)",
-  async ({ path, failed }) => {
+  "Restore a retryable recording at $path after $recovery (failed: $failed)",
+  async ({ path, failed, recovery }) => {
+    // eslint-disable-next-line ccstate/no-create-child-abort-controller -- migrate this lifetime to the ccstate signal hierarchy
+    const initialPage = createChildAbortController(context.signal);
     const firstRequest = context.mocks.deferred<void>();
     const firstResponse = context.mocks.deferred<void>();
     const recordings: ArrayBuffer[] = [];
@@ -793,7 +807,7 @@ test.each([
     );
     installRunChat();
     await setupPage({
-      context,
+      context: { ...context, signal: initialPage.signal },
       path,
       featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
     });
@@ -805,17 +819,25 @@ test.each([
       : screen.findByText("Transcribing");
     await expect(pendingRecording).resolves.toBeVisible();
 
-    click(await findLink("Agents"));
-    await screen.findByRole("heading", { name: "Agents" });
+    if (recovery === "navigation") {
+      click(await findLink("Agents"));
+      await screen.findByRole("heading", { name: "Agents" });
+    } else {
+      // A browser reload ends the old page's daemons as well as its React tree.
+      unloadVoicePage(initialPage);
+    }
     if (!failed) {
       firstResponse.resolve(undefined);
     }
-    cleanup();
-    await setupPage({
-      context: refreshedContext,
-      path,
-      featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
-    });
+    if (recovery === "navigation") {
+      window.history.back();
+    } else {
+      await setupPage({
+        context: refreshedContext,
+        path,
+        featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
+      });
+    }
 
     await screen.findByRole("textbox", { name: "Message" });
     click(await findButton("Retry"));
@@ -866,6 +888,8 @@ test("Keep a saved voice recording isolated from another signed-in user", async 
 });
 
 test("Discard a failed recording without removing typed notes", async () => {
+  // eslint-disable-next-line ccstate/no-create-child-abort-controller -- migrate this lifetime to the ccstate signal hierarchy
+  const initialPage = createChildAbortController(context.signal);
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installAvailableVoiceQuota();
   context.mocks.http.post("*/api/voice-io/transcribe/segment", () => {
@@ -881,7 +905,7 @@ test("Discard a failed recording without removing typed notes", async () => {
   });
   installRunChat();
   await setupPage({
-    context,
+    context: { ...context, signal: initialPage.signal },
     path: RUN_PATH,
     featureSwitches: { [FeatureSwitchKey.VoiceInputV2]: true },
   });
@@ -900,7 +924,7 @@ test("Discard a failed recording without removing typed notes", async () => {
 
   click(await findLink("Agents"));
   await screen.findByRole("heading", { name: "Agents" });
-  cleanup();
+  unloadVoicePage(initialPage);
   await setupPage({
     context: refreshedContext,
     path: RUN_PATH,

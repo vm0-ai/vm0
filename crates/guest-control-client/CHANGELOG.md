@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.20.5](https://github.com/vm0-ai/vm0/compare/guest-control-client-v0.20.4...guest-control-client-v0.20.5) (2026-09-11)
+
+## [0.20.4](https://github.com/vm0-ai/vm0/compare/guest-control-client-v0.20.3...guest-control-client-v0.20.4) (2026-09-11)
+
+
+### Bug Fixes
+
+* **rust:** unify guest restore timezone validation ([#33458](https://github.com/vm0-ai/vm0/issues/33458)) ([4bba414](https://github.com/vm0-ai/vm0/commit/4bba414be2b0c16aee4f67fcf7a72d3771dc9135))
+
 ## [0.20.3](https://github.com/vm0-ai/vm0/compare/guest-control-client-v0.20.2...guest-control-client-v0.20.3) (2026-09-11)
 
 ## [0.20.2](https://github.com/vm0-ai/vm0/compare/guest-control-client-v0.20.1...guest-control-client-v0.20.2) (2026-09-10)

@@ -71,20 +71,22 @@ function createBrowserSharedDatabaseBridge(
   diagnosticsEnabled: boolean,
 ): SharedDatabaseBridge {
   const workerUrl = new URL(sharedDatabaseWorkerAssetUrl, location.href);
-  workerUrl.search = "";
-  workerUrl.searchParams.set("userId", identity.userId);
-  workerUrl.searchParams.set("orgId", identity.orgId);
+  const workerParams = new URLSearchParams({
+    userId: identity.userId,
+    orgId: identity.orgId,
+  });
   const apiBaseUrl = derivePlatformServiceOrigin(location.origin, "api");
   const vercelProtectionBypass = getCapturedPreviewBypassForTarget(apiBaseUrl);
   if (vercelProtectionBypass) {
-    workerUrl.searchParams.set(
-      VERCEL_PROTECTION_BYPASS_NAME,
-      vercelProtectionBypass,
-    );
+    workerParams.set(VERCEL_PROTECTION_BYPASS_NAME, vercelProtectionBypass);
   }
   if (diagnosticsEnabled) {
-    workerUrl.searchParams.set(CONNECTION_DIAGNOSTICS_PARAM, "1");
+    workerParams.set(CONNECTION_DIAGNOSTICS_PARAM, "1");
   }
+  // Preserve Vite's bare `worker_file` query marker. Rebuilding the query with
+  // URLSearchParams normalizes it to `worker_file=`, which skips Vite's worker
+  // environment bootstrap in development.
+  workerUrl.search += `${workerUrl.search ? "&" : "?"}${workerParams.toString()}`;
   const worker = new SharedWorker(workerUrl, {
     // The capture decision is part of the URL, so it has to be part of the
     // name too: a tab that disagrees gets its own Worker instead of a

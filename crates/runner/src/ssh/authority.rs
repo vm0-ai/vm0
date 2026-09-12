@@ -25,8 +25,15 @@ pub(super) struct Credential {
     pub(super) username: String,
     pub(super) generation: i64,
     pub(super) pin: Option<ResolveResponseResolvedLearnedHostKey>,
-    pub(super) private_key: api_contracts::SecretText<65536>,
-    pub(super) passphrase: Option<api_contracts::SecretText<4096>>,
+    pub(super) auth: CredentialAuth,
+}
+
+pub(super) enum CredentialAuth {
+    PrivateKey {
+        private_key: api_contracts::SecretText<65536>,
+        passphrase: Option<api_contracts::SecretText<4096>>,
+    },
+    Password(api_contracts::SecretText<4096>),
 }
 
 pub(super) struct PreparedCredential {
@@ -34,7 +41,12 @@ pub(super) struct PreparedCredential {
     pub(super) port: u16,
     pub(super) username: String,
     pub(super) trust: Mutex<Trust>,
-    pub(super) key: SigningKey,
+    pub(super) auth: PreparedAuth,
+}
+
+pub(super) enum PreparedAuth {
+    PrivateKey(SigningKey),
+    Password(api_contracts::SecretText<4096>),
 }
 
 pub(super) struct Trust {
@@ -161,17 +173,42 @@ impl Authority {
                 &body,
             )
             .await?;
-        let ResolveResponse::Resolved {
-            host,
-            port,
-            username,
-            generation,
-            learned_host_key,
-            private_key,
-            passphrase,
-        } = response
-        else {
-            return Err(FailureReason::Unavailable);
+        let (host, port, username, generation, learned_host_key, auth) = match response {
+            ResolveResponse::Unavailable => return Err(FailureReason::Unavailable),
+            ResolveResponse::Resolved {
+                host,
+                port,
+                username,
+                generation,
+                learned_host_key,
+                private_key,
+                passphrase,
+            } => (
+                host,
+                port,
+                username,
+                generation,
+                learned_host_key,
+                CredentialAuth::PrivateKey {
+                    private_key,
+                    passphrase,
+                },
+            ),
+            ResolveResponse::ResolvedPassword {
+                host,
+                port,
+                username,
+                generation,
+                learned_host_key,
+                password,
+            } => (
+                host,
+                port,
+                username,
+                generation,
+                learned_host_key,
+                CredentialAuth::Password(password),
+            ),
         };
         let port = u16::try_from(port).map_err(|_| FailureReason::AuthorityFailure)?;
         if port == 0
@@ -192,8 +229,7 @@ impl Authority {
             username,
             generation,
             pin: learned_host_key,
-            private_key,
-            passphrase,
+            auth,
         })
     }
 

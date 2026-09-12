@@ -18,6 +18,7 @@ import { onRejection, safeSync, settle } from "../utils";
 type AuxiliaryFeature =
   | "chat_title"
   | "shared_thread_title"
+  | "chat_activity_summary"
   | "chat_initial_thinking"
   | "run_summary"
   | "recommended_followups"
@@ -30,6 +31,13 @@ type Reason =
   | "not_applicable"
   // The provider returned well-formed text the feature itself cannot use.
   | "unusable_output";
+
+/**
+ * Severity a caller's actionable failures deserve. Only a caller that has
+ * characterized its own outcomes can raise this, so the shared default stays
+ * `warn` for features whose failure classification is not established.
+ */
+type AuxiliaryFailureLevel = "warn" | "error";
 
 /**
  * Provider-outcome detail the generation closure observes and the boundary
@@ -143,8 +151,9 @@ function diagnose(
   reason: Reason,
   error: unknown,
   context: Readonly<{ runId?: string; threadId?: string }> | undefined,
+  level: AuxiliaryFailureLevel,
 ): void {
-  log.warn("Auxiliary generation failed", {
+  const fields = {
     feature,
     reason,
     ...context,
@@ -165,7 +174,12 @@ function diagnose(
           retryAfterMs: error.retryAfterMs,
         }
       : {}),
-  });
+  };
+  if (level === "error") {
+    log.error("Auxiliary generation failed", fields);
+    return;
+  }
+  log.warn("Auxiliary generation failed", fields);
 }
 
 /** Only generation and feature output interpretation belong inside this boundary. */
@@ -174,6 +188,14 @@ export async function generateAuxiliary<T>(
     readonly feature: AuxiliaryFeature;
     readonly generate: (record: RecordAuxiliaryGenerationDetail) => Promise<T>;
     readonly usable: (value: T) => boolean;
+    /**
+     * Set by a caller whose empty interpreted result is an omission it already
+     * handles: the outcome stays counted in `auxiliary_generation_result` and
+     * produces no diagnostic at any level. It describes the interpreted return
+     * value only, never a thrown provider error.
+     */
+    readonly unusableOutput?: "expected";
+    readonly failureLevel?: AuxiliaryFailureLevel;
     readonly diagnosticContext?: Readonly<{
       runId?: string;
       threadId?: string;
@@ -182,6 +204,11 @@ export async function generateAuxiliary<T>(
   signal?: AbortSignal,
 ): Promise<T | undefined> {
   const startedAt = now();
+  // The caller's level applies to whatever this boundary already classifies as
+  // an error. It cannot reach an outcome that is counted silently: transient
+  // provider failures, truncation, an unexpected tool call, a cancellation and
+  // a caller's expected empty result never get here.
+  const failureLevel = args.failureLevel ?? "warn";
   const runId = args.diagnosticContext?.runId;
   let detail: AuxiliaryGenerationDetail | undefined;
   const result = await settle(
@@ -208,13 +235,24 @@ export async function generateAuxiliary<T>(
         // be unusable: the token ceiling is the known, non-actionable cause, and
         // reporting it as a defect would restore the noise this replaces.
         const truncated = detail?.truncated === true;
-        const outcome = truncated ? "degraded" : usable ? "success" : "error";
+        // A caller that declares its empty result expected keeps the reason and
+        // the counted event; only the diagnostic goes away. Truncation still
+        // classifies ahead of it, so a usable shortened sibling output stays
+        // `output_truncated` rather than being reported as a plain success.
+        const outcome = truncated
+          ? "degraded"
+          : usable
+            ? "success"
+            : args.unusableOutput === "expected"
+              ? "degraded"
+              : "error";
         if (outcome === "error") {
           diagnose(
             args.feature,
             "unusable_output",
             undefined,
             args.diagnosticContext,
+            failureLevel,
           );
         }
         recordResult({
@@ -244,7 +282,13 @@ export async function generateAuxiliary<T>(
             ? "degraded"
             : "error";
         if (outcome === "error") {
-          diagnose(args.feature, reason, error, args.diagnosticContext);
+          diagnose(
+            args.feature,
+            reason,
+            error,
+            args.diagnosticContext,
+            failureLevel,
+          );
         }
         const retryAfterMs = retryAfterMilliseconds(error);
         recordResult({

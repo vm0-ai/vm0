@@ -402,6 +402,8 @@ export function resetSignal(): Command<AbortSignal, AbortSignal[]> {
 /**
  * Create a local cancellation owner that always cascades its parent signal.
  * Aborting the child also removes its listener from the parent immediately.
+ *
+ * @deprecated Inherit an existing owner or use a stable resetSignal() command.
  */
 export function createChildAbortController(
   parentSignal: AbortSignal,

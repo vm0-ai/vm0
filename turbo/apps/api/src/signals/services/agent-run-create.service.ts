@@ -1,7 +1,9 @@
 import { isCloudModelMappingValid } from "@okouai/api-contracts/contracts/cloud-model-mapping";
 import {
   assertPiNativeCredential,
-  materializePiAgentModelConfig,
+  materializePiExecutionRoute,
+  normalizePiExecutionRoute,
+  type PiExecutionRoute,
 } from "@okouai/pi-agent-runtime";
 import {
   PI_NATIVE_CREDENTIAL_PLACEHOLDER,
@@ -2187,6 +2189,40 @@ function modelProviderFirewallAuthMaps(
   return { secretConnectorMap, secretConnectorMetadataMap };
 }
 
+function resolveModelProviderCodexRuntimeConfig(args: {
+  readonly type: ModelProviderType;
+  readonly logicalModel: string | null;
+  readonly runtimeModel: string;
+  readonly environment: Readonly<Record<string, string>>;
+}): ModelProviderCodexRuntimeConfig | undefined {
+  const providerConfig = getModelProviderCodexRuntimeConfig(args.type);
+  if (providerConfig || !args.logicalModel || !args.runtimeModel) {
+    return providerConfig;
+  }
+  const modelCatalog = getModelProviderCodexCatalogForModel(
+    args.logicalModel,
+    args.runtimeModel,
+    args.type,
+  );
+  if (!modelCatalog) {
+    return undefined;
+  }
+  const baseUrl = args.environment.OPENAI_BASE_URL;
+  if (!baseUrl) {
+    throw new Error(`Missing OPENAI_BASE_URL for Codex provider ${args.type}`);
+  }
+  return {
+    providerId: args.type,
+    name: MODEL_PROVIDER_TYPES[args.type].label,
+    baseUrl,
+    envKey: "OPENAI_API_KEY",
+    requiresOpenaiAuth: false,
+    wireApi: "responses",
+    supportsWebsockets: false,
+    modelCatalog,
+  };
+}
+
 function modelProviderEnvironment(args: {
   readonly id: string | null;
   readonly type: ModelProviderType;
@@ -2226,7 +2262,12 @@ function modelProviderEnvironment(args: {
       .replaceAll("$secret", environmentSecret)
       .replaceAll("$model", runtimeModel);
   }
-  const codexRuntimeConfig = getModelProviderCodexRuntimeConfig(args.type);
+  const codexRuntimeConfig = resolveModelProviderCodexRuntimeConfig({
+    type: args.type,
+    logicalModel: model,
+    runtimeModel,
+    environment,
+  });
 
   return {
     id: args.id,
@@ -2557,34 +2598,12 @@ async function builtInModelProviderEnvironment(
     key.apiKey,
     route.upstreamModel,
   );
-  let codexRuntimeConfig = getModelProviderCodexRuntimeConfig(
-    route.providerType,
-  );
-  if (!codexRuntimeConfig) {
-    const modelCatalog = getModelProviderCodexCatalogForModel(
-      selectedModel,
-      route.upstreamModel,
-      route.providerType,
-    );
-    if (modelCatalog) {
-      const baseUrl = environment.OPENAI_BASE_URL;
-      if (!baseUrl) {
-        throw new Error(
-          `Missing OPENAI_BASE_URL for built-in Codex provider ${route.providerType}`,
-        );
-      }
-      codexRuntimeConfig = {
-        providerId: route.providerType,
-        name: MODEL_PROVIDER_TYPES[route.providerType].label,
-        baseUrl,
-        envKey: "OPENAI_API_KEY",
-        requiresOpenaiAuth: false,
-        wireApi: "responses",
-        supportsWebsockets: false,
-        modelCatalog,
-      };
-    }
-  }
+  const codexRuntimeConfig = resolveModelProviderCodexRuntimeConfig({
+    type: route.providerType,
+    logicalModel: selectedModel,
+    runtimeModel: route.upstreamModel,
+    environment,
+  });
 
   return {
     id: null,
@@ -6692,15 +6711,22 @@ function assertNativeCredentialOverrides(
   }
 }
 
-function nativeCredentialEnvironment(
+function capturedPiExecutionRoute(
   provider: ResolvedModelProviderEnvironment | null,
+): PiExecutionRoute | undefined {
+  return provider?.piModelConfig
+    ? normalizePiExecutionRoute(provider.piModelConfig)
+    : undefined;
+}
+
+function nativeCredentialEnvironment(
+  route: PiExecutionRoute | undefined,
 ): Record<string, string> {
-  const nativeConfig = provider?.piModelConfig;
-  return nativeConfig &&
-    "schemaVersion" in nativeConfig &&
-    nativeConfig.schemaVersion === 4
+  return route &&
+    (route.dialect === "anthropic-messages" ||
+      route.dialect === "bedrock-converse-stream")
     ? Object.fromEntries(
-        nativeConfig.credentialBindings.map((binding) => {
+        route.credentialBindings.map((binding) => {
           return [binding.environment, PI_NATIVE_CREDENTIAL_PLACEHOLDER];
         }),
       )
@@ -6796,7 +6822,9 @@ async function buildStoredExecutionContextDraft(args: {
       connectorVars: args.connectorContext.vars,
     }),
   );
-  const nativeEnvironment = nativeCredentialEnvironment(args.modelProvider);
+  const nativeEnvironment = nativeCredentialEnvironment(
+    capturedPiExecutionRoute(args.modelProvider),
+  );
   const platformEnvironment = buildStoredPlatformEnvironment({
     platformEnvironment: { ...args.platformEnvironment, ...nativeEnvironment },
     canonicalOkouRuntime: args.includeOkouTokenSecret === true,
@@ -8930,8 +8958,9 @@ async function materializePreparedPiProvider(
     );
   }
   const secrets: Record<string, string> = {};
-  await materializePiAgentModelConfig({
-    config,
+  const route = normalizePiExecutionRoute(config);
+  await materializePiExecutionRoute({
+    route,
     target: "direct",
     resolveCredential(binding) {
       const value = provider.secrets[binding.secretName];
@@ -8955,11 +8984,7 @@ async function materializePreparedPiProvider(
   return {
     ...provider,
     piModelConfig: config,
-    environment: Object.fromEntries(
-      config.credentialBindings.map((binding) => {
-        return [binding.environment, PI_NATIVE_CREDENTIAL_PLACEHOLDER];
-      }),
-    ),
+    environment: nativeCredentialEnvironment(route),
     secrets,
     secretConnectorMap: undefined,
     secretConnectorMetadataMap: undefined,

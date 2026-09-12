@@ -99,6 +99,30 @@ class SnapshotInspectionTest(unittest.TestCase):
         self.assertEqual(report["failure"], "snapshot_identity_mismatch")
         self.assertTrue(all(c["method"] == "GET" for c in state["calls"]))
 
+    def test_created_endpoint_is_read_back_without_project_list_visibility(self):
+        result, report, state = self.invoke("endpoint-absent-from-project-list")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(report["collectionComplete"])
+        self.assertTrue(report["cleanupComplete"])
+        self.assertEqual(report["previewEndpointCountBeforeCreate"], 0)
+        self.assertEqual(report["createdPreviewEndpointId"], "ep-preview")
+        self.assertEqual(state["sqlCalls"], 1)
+
+    def test_endpoint_readback_cannot_retarget_production(self):
+        result, report, state = self.invoke("endpoint-readback-production")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(report["failure"], "preview_endpoint_identity_mismatch")
+        self.assertTrue(report["cleanupComplete"])
+        self.assertNotIn("sqlCalls", state)
+
+    def test_multiple_preview_endpoints_report_count_without_connecting(self):
+        result, report, state = self.invoke("ambiguous-preview-endpoints")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(report["failure"], "preview_endpoint_not_unique")
+        self.assertEqual(report["previewEndpointCountBeforeCreate"], 2)
+        self.assertTrue(report["cleanupComplete"])
+        self.assertNotIn("sqlCalls", state)
+
     def test_production_returned_as_preview_never_connects_or_deletes(self):
         result, report, state = self.invoke("production-returned")
         self.assertEqual(result.returncode, 1)

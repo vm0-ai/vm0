@@ -74,16 +74,15 @@ credential-shaped argument keys are additionally redacted.
   current task, with 700-character excerpts. Queued messages enter the context
   after the runtime acknowledges delivery. Indicator copy is excluded.
 - Reuse `FAST_PATH_MODEL` and `generateText`, a reasoning-inclusive 1024-token
-  budget with low reasoning, and a 10-second provider deadline. No request
-  means no new summarizer call. Invalid/unconfigured/failed generation keeps
-  the last phrase or `null`; it never retries inside the request.
-- Failed attempts use a shared 60-second cooldown. HTTP `Retry-After` can extend
-  it up to five minutes. Expired or replaced claim owners cannot write results.
-  An attempt whose request lifetime ended first — today the API instance
-  stopping — charges no cooldown: its lease expires like any owner that stopped
-  reporting, and the attempt interval written at claim time still bounds the
-  next provider call. A phrase that finished first is still stored for the next
-  viewer.
+  budget with low reasoning, and a 10-second provider deadline, all through the
+  shared `generateAuxiliary` boundary that every other optional generation uses.
+  No request means no new summarizer call. An unconfigured, rejected or failed
+  generation keeps the last phrase or `null`; it never retries inside the request.
+- Failed attempts use a fixed 60-second cooldown; HTTP `Retry-After` does not
+  extend it. Expired or replaced claim owners cannot write results. An attempt
+  whose request lifetime ended first — today the API instance stopping — charges
+  no cooldown: its lease expires like any owner that stopped reporting, and the
+  attempt interval written at claim time still bounds the next provider call.
 - Relevant capture or visible messages retain evidence for at most 24 hours
   from activity; first observing an old message does not restart its retention. Expired evidence is never returned. An expiry index supports
   one cleanup batch of at most 500 rows with `FOR UPDATE SKIP LOCKED`, attached
@@ -91,49 +90,18 @@ credential-shaped argument keys are additionally redacted.
 
 ## Production diagnostics
 
-The existing activity records use `info` for outcomes nobody can act on and
-`warn` for operations that need an operator, so they survive the default Axiom
-transport's `info` threshold. The shared logger and unrelated debug filtering
-are unchanged. Axiom events retain `source: api`, the stable message, and the
-following nested `fields`:
+Summary generation itself reports nothing from this service: it runs through the
+shared `generateAuxiliary` boundary, so every attempt is counted exactly once in
+the shared `auxiliary_generation_result` Axiom event under
+`feature: chat_activity_summary`, like every other auxiliary generation, and only
+the outcomes that boundary classifies as failures produce a diagnostic. The
+remaining records this feature writes are:
 
-| Message                        | Context                | Level                                                                                     | Safe fields besides context                                                                                |
-| ------------------------------ | ---------------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `Activity summary cache`       | `api:activity-summary` | info                                                                                      | `runId`, `outcome` (existing response status)                                                              |
-| `Activity summary attempt`     | `api:activity-summary` | info                                                                                      | `runId`                                                                                                    |
-| `Activity summary completion`  | `api:activity-summary` | info for success/timeout/cancelled; warn for provider_failure and invalid_or_unconfigured | `runId`, `outcome`, `durationMs`, `cooldownMs`; numeric `providerStatus` only for `OpenRouterRequestError` |
-| `Activity summary unavailable` | `api:activity-summary` | warn                                                                                      | `runId`, `outcome: storage_failed`                                                                         |
-| `Activity snapshot capture`    | `api:run-activity`     | info for written/unchanged and for an expected failure; warn otherwise                    | `runId`, `outcome`, `eventCount`; `stage` and `errorCode` on failure                                       |
-| `Activity snapshot cleanup`    | `api:run-activity`     | info on success; warn on failure                                                          | `outcome`, `removed`, `retentionMs`; `errorCode` on failure                                                |
-
-Completion outcomes are `success`, `timeout`, `cancelled`, `provider_failure`,
-and `invalid_or_unconfigured`. A provider HTTP 429 is distinguishable by
-`fields.providerStatus: 429`; no error object or provider body is attached.
-
-`timeout` and `cancelled` are accepted degradations of an optional output, not
-failed operations, so they record at `info`. Missing the deadline leaves the
-response truthful (`cooldown` with the caller's last usable phrase) and bounds
-recovery at the shared cooldown; `cancelled` means the request's own lifetime
-ended before the provider answered. Neither has an operator action, so a
-per-event `warn` only trains operators to ignore the record. Persistent
-provider failure and contract or configuration defects keep their `warn`,
-including a repeated 429.
-
-Deadline pressure is a rate, not an event. Detect it from the same records
-instead of a per-event level:
-
-```
-['vm0-web-logs-prod']
-| where ['fields.context'] == 'api:activity-summary' and message == 'Activity summary completion'
-| summarize total=count(),
-            timeouts=countif(['fields.outcome'] == 'timeout'),
-            provider=countif(['fields.outcome'] == 'provider_failure'),
-            invalid=countif(['fields.outcome'] == 'invalid_or_unconfigured')
-        by bin(_time, 30m)
-| extend timeoutRate = todouble(timeouts) / total
-```
-
-Alerting on that rate is an operator decision and is not configured here.
+| Message                        | Context                | Level                                                                  | Safe fields besides context                                          |
+| ------------------------------ | ---------------------- | ---------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `Activity summary unavailable` | `api:activity-summary` | warn                                                                   | `runId`, `outcome: storage_failed`                                   |
+| `Activity snapshot capture`    | `api:run-activity`     | info for written/unchanged and for an expected failure; warn otherwise | `runId`, `outcome`, `eventCount`; `stage` and `errorCode` on failure |
+| `Activity snapshot cleanup`    | `api:run-activity`     | info on success; warn on failure                                       | `outcome`, `removed`, `retentionMs`; `errorCode` on failure          |
 
 A failed capture is classified into a finite set instead of one opaque
 `write_failed`. `contended` (`55P03`) and `run_missing` (`23503`) are expected
@@ -149,23 +117,18 @@ validated before it is published, and omitted when the driver reports no
 SQLSTATE. Driver messages, statement text, constraint details and bound
 parameters are never attached.
 
-Granularity is unchanged: one cache record for a request resolved without a
-claim, one attempt/completion pair per generation attempt, one unavailable
-record for an optional summary storage failure, one capture record per relevant
-batch (including unchanged duplicates), and one cleanup record per maintenance
-operation (including zero removals). Disabled, irrelevant, and ineligible
-captures remain silent. `eventCount` counts the submitted batch, not new retained
-entries. Failed cleanup reports `removed: 0` with `outcome: failed`; that is not a
+Granularity is otherwise unchanged: one unavailable record for an optional
+summary storage failure, one capture record per relevant batch (including
+unchanged duplicates), and one cleanup record per maintenance operation
+(including zero removals). Disabled, irrelevant, and ineligible captures remain
+silent. `eventCount` counts the submitted batch, not new retained entries.
+Failed cleanup reports `removed: 0` with `outcome: failed`; that is not a
 successful empty cleanup. A skipped capture still drops that batch's evidence:
 the runner already holds its `200`, and no redelivery or retry is attempted.
 
 These records never contain prompts, phrases, messages, arguments, evidence,
-credentials, database-driver errors, or provider response bodies. The tests call
-real endpoints and exercise the production logger and real Axiom SDK/transport,
-with ingestion captured by MSW and unrelated debug records verified as filtered.
-No test logs go to production. Attempt records measure this service's generation
-attempts; they do not establish provider billing, token usage, or cost savings.
-Production verification remains controller-owned after release.
+credentials, database-driver errors, or provider response bodies. Production
+verification remains controller-owned after release.
 
 ## Visible viewer lifecycle
 

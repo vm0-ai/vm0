@@ -118,6 +118,7 @@ function isSharedDatabaseAppRealtimeSubscription(
 ): boolean {
   return (
     (scope === "user" && userRealtimeTopicSchema.safeParse(topic).success) ||
+    (scope === "credential" && topic === "morningBriefChanged") ||
     (scope === "org" && topic === "presentationTemplatesChanged")
   );
 }

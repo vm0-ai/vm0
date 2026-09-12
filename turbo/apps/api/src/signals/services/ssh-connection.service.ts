@@ -9,7 +9,14 @@ import type {
 import type { FeatureSwitchContext } from "@okouai/core/feature-switch";
 import { agents } from "@okouai/db/schema/agent";
 import { agentSshAccess } from "@okouai/db/schema/agent-ssh-access";
-import { sshConnectionCredentials } from "@okouai/db/schema/ssh-connection-credential";
+import { sshCredentials } from "@okouai/db/schema/ssh-credential";
+import {
+  findSshCredential,
+  lockSshOwner,
+  prepareSshCredentialSelection,
+  selectSshCredential,
+  sshCredentialFailure,
+} from "./ssh-credential.service";
 import { sshConnections } from "@okouai/db/schema/ssh-connection";
 import { and, asc, count, eq, sql } from "drizzle-orm";
 
@@ -20,10 +27,7 @@ import {
 import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
 import { visibleJoinedAgentCondition } from "./agent-data.service";
-import {
-  decryptStoredSecretValue,
-  encryptStoredSecretValue,
-} from "./crypto.utils";
+import { decryptStoredSecretValue } from "./crypto.utils";
 import { publishSshRuntimeInvalidation } from "./ssh-runtime-wakeup.service";
 
 type SshConnectionRow = typeof sshConnections.$inferSelect;
@@ -118,7 +122,10 @@ function canonicalizeSshHost(host: string): SshConnectionResult<string> {
   return { ok: true, value: ascii };
 }
 
-function toSshConnectionResponse(row: SshConnectionRow): SshConnectionResponse {
+function toSshConnectionResponse(
+  row: SshConnectionRow,
+  credential: { readonly name: string; readonly username: string },
+): SshConnectionResponse {
   const hasAlgorithm = row.learnedHostKeyAlgorithm !== null;
   const hasFingerprint = row.learnedHostKeyFingerprint !== null;
   if (hasAlgorithm !== hasFingerprint) {
@@ -130,7 +137,9 @@ function toSshConnectionResponse(row: SshConnectionRow): SshConnectionResponse {
     displayName: row.displayName,
     host: row.host,
     port: row.port,
-    username: row.username,
+    username: credential.username,
+    credentialId: row.credentialId,
+    credentialName: credential.name,
     generation: row.generation,
     learnedHostKey:
       row.learnedHostKeyAlgorithm === null ||
@@ -143,18 +152,6 @@ function toSshConnectionResponse(row: SshConnectionRow): SshConnectionResponse {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
-}
-
-type WriteTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
-
-async function lockSshConnectionOwner(
-  tx: Pick<WriteTransaction, "execute">,
-  orgId: string,
-  userId: string,
-): Promise<void> {
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtextextended(${`ssh_connection_owner:${orgId}:${userId}`}, 0))`,
-  );
 }
 
 async function findOwnerConnection(
@@ -202,13 +199,25 @@ export async function listSshConnections(
   userId: string,
 ): Promise<readonly SshConnectionResponse[]> {
   const rows = await db
-    .select()
+    .select({
+      connection: sshConnections,
+      credential: {
+        name: sshCredentials.name,
+        username: sshCredentials.username,
+      },
+    })
     .from(sshConnections)
+    .innerJoin(
+      sshCredentials,
+      eq(sshCredentials.id, sshConnections.credentialId),
+    )
     .where(
       and(eq(sshConnections.orgId, orgId), eq(sshConnections.userId, userId)),
     )
     .orderBy(asc(sshConnections.createdAt), asc(sshConnections.id));
-  return rows.map(toSshConnectionResponse);
+  return rows.map(({ connection, credential }) => {
+    return toSshConnectionResponse(connection, credential);
+  });
 }
 
 export async function summarizeSshConnections(
@@ -218,28 +227,6 @@ export async function summarizeSshConnections(
 ): Promise<{ readonly configuredCount: number }> {
   return {
     configuredCount: await countOwnerConnections(db, orgId, userId),
-  };
-}
-
-async function encryptSshCredentials(
-  credentials: {
-    readonly privateKey: string;
-    readonly passphrase: string | null;
-  },
-  featureContext: FeatureSwitchContext,
-) {
-  return {
-    encryptedPrivateKey: await encryptStoredSecretValue(
-      credentials.privateKey,
-      featureContext,
-    ),
-    encryptedPassphrase:
-      credentials.passphrase === null
-        ? null
-        : await encryptStoredSecretValue(
-            credentials.passphrase,
-            featureContext,
-          ),
   };
 }
 
@@ -255,13 +242,17 @@ export async function createSshConnection(args: {
     return canonicalHost;
   }
 
-  const encryptedCredentials = await encryptSshCredentials(
-    args.body,
+  const preparedCredential = await prepareSshCredentialSelection(
+    args.body.credential,
     args.featureContext,
   );
 
   const result = await args.db.transaction(async (tx) => {
-    await lockSshConnectionOwner(tx, args.orgId, args.userId);
+    await lockSshOwner(tx, args);
+    const credential = await selectSshCredential(tx, args, preparedCredential);
+    if (!credential.ok) {
+      return credential;
+    }
     // Match Connector's zero-to-one account transition, including re-adding
     // after all hosts were deleted. The owner lock serializes concurrent adds.
     const firstHost =
@@ -287,16 +278,12 @@ export async function createSshConnection(args: {
         displayName: args.body.displayName,
         host: canonicalHost.value,
         port: args.body.port,
-        username: args.body.username,
+        credentialId: credential.value.id,
       })
       .returning();
     if (!connection) {
       throw new Error("SSH connection insert returned no row");
     }
-    await tx.insert(sshConnectionCredentials).values({
-      connectionId: connection.id,
-      ...encryptedCredentials,
-    });
     if (visibleAgents.length > 0) {
       await tx
         .insert(agentSshAccess)
@@ -313,15 +300,17 @@ export async function createSshConnection(args: {
     }
     return {
       ok: true as const,
-      value: toSshConnectionResponse(connection),
+      value: toSshConnectionResponse(connection, credential.value),
       authorizedAgents: visibleAgents.length > 0,
     };
   });
-  await publishSshRuntimeInvalidation(args.db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    connectionId: result.authorizedAgents ? null : result.value.id,
-  });
+  if (result.ok) {
+    await publishSshRuntimeInvalidation(args.db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      connectionId: result.authorizedAgents ? null : result.value.id,
+    });
+  }
   return result;
 }
 
@@ -348,15 +337,18 @@ export async function updateSshConnection(args: {
   if (preflight.generation !== args.body.expectedGeneration) {
     return failure("generationConflict");
   }
-  const encryptedCredentials =
-    args.body.credentials === undefined
+  const preparedCredential =
+    args.body.credential === undefined
       ? undefined
-      : await encryptSshCredentials(args.body.credentials, args.featureContext);
+      : await prepareSshCredentialSelection(
+          args.body.credential,
+          args.featureContext,
+        );
 
   const result = await args.db.transaction<
     SshConnectionResult<SshConnectionResponse>
   >(async (tx) => {
-    await lockSshConnectionOwner(tx, args.orgId, args.userId);
+    await lockSshOwner(tx, args);
     const [current] = await tx
       .select()
       .from(sshConnections)
@@ -376,6 +368,22 @@ export async function updateSshConnection(args: {
       return failure("generationConflict");
     }
 
+    if (current.generation === 2_147_483_647) {
+      return sshCredentialFailure("exhausted");
+    }
+    const selected =
+      preparedCredential === undefined
+        ? undefined
+        : await selectSshCredential(tx, args, preparedCredential);
+    if (selected && !selected.ok) {
+      return selected;
+    }
+    const credential =
+      selected?.value ??
+      (await findSshCredential(tx, args, current.credentialId));
+    if (!credential) {
+      throw new Error("SSH connection credential is missing");
+    }
     const host = canonicalHost?.value ?? current.host;
     const port = args.body.port ?? current.port;
     const endpointChanged = host !== current.host || port !== current.port;
@@ -385,7 +393,7 @@ export async function updateSshConnection(args: {
         displayName: args.body.displayName,
         host,
         port,
-        username: args.body.username,
+        credentialId: credential.id,
         learnedHostKeyAlgorithm: endpointChanged
           ? null
           : current.learnedHostKeyAlgorithm,
@@ -401,17 +409,7 @@ export async function updateSshConnection(args: {
       throw new Error("SSH connection update returned no row");
     }
 
-    if (encryptedCredentials !== undefined) {
-      const [credential] = await tx
-        .update(sshConnectionCredentials)
-        .set({ ...encryptedCredentials, updatedAt: nowDate() })
-        .where(eq(sshConnectionCredentials.connectionId, current.id))
-        .returning({ connectionId: sshConnectionCredentials.connectionId });
-      if (!credential) {
-        throw new Error("SSH connection credential row is missing");
-      }
-    }
-    return { ok: true, value: toSshConnectionResponse(updated) };
+    return { ok: true, value: toSshConnectionResponse(updated, credential) };
   });
   if (result.ok) {
     await publishSshRuntimeInvalidation(args.db, {
@@ -431,7 +429,7 @@ export async function deleteSshConnection(args: {
 }): Promise<SshConnectionResult<undefined>> {
   const result = await args.db.transaction<SshConnectionResult<undefined>>(
     async (tx) => {
-      await lockSshConnectionOwner(tx, args.orgId, args.userId);
+      await lockSshOwner(tx, args);
       const [deleted] = await tx
         .delete(sshConnections)
         .where(
@@ -468,7 +466,7 @@ export async function resetSshConnectionHostKey(args: {
   const result = await args.db.transaction<
     SshConnectionResult<SshConnectionResponse>
   >(async (tx) => {
-    await lockSshConnectionOwner(tx, args.orgId, args.userId);
+    await lockSshOwner(tx, args);
     const [current] = await tx
       .select()
       .from(sshConnections)
@@ -488,6 +486,13 @@ export async function resetSshConnectionHostKey(args: {
       return failure("generationConflict");
     }
 
+    if (current.generation === 2_147_483_647) {
+      return sshCredentialFailure("exhausted");
+    }
+    const credential = await findSshCredential(tx, args, current.credentialId);
+    if (!credential) {
+      throw new Error("SSH connection credential is missing");
+    }
     const [updated] = await tx
       .update(sshConnections)
       .set({
@@ -501,7 +506,7 @@ export async function resetSshConnectionHostKey(args: {
     if (!updated) {
       throw new Error("SSH host-key reset returned no row");
     }
-    return { ok: true, value: toSshConnectionResponse(updated) };
+    return { ok: true, value: toSshConnectionResponse(updated, credential) };
   });
   if (result.ok) {
     await publishSshRuntimeInvalidation(args.db, {
@@ -534,16 +539,19 @@ export async function matchSshConnectionCredentials(args: {
 
   const [credential] = await args.db
     .select({
-      encryptedPrivateKey: sshConnectionCredentials.encryptedPrivateKey,
-      encryptedPassphrase: sshConnectionCredentials.encryptedPassphrase,
+      encryptedPrivateKey: sshCredentials.encryptedPrivateKey,
+      encryptedPassphrase: sshCredentials.encryptedPassphrase,
     })
-    .from(sshConnectionCredentials)
-    .where(eq(sshConnectionCredentials.connectionId, args.connectionId))
+    .from(sshCredentials)
+    .where(eq(sshCredentials.id, connection.credentialId))
     .limit(1);
   if (!credential) {
     throw new Error("SSH connection credential row is missing");
   }
 
+  if (credential.encryptedPrivateKey === null) {
+    return { privateKeyMatches: false, passphraseMatches: false };
+  }
   const privateKey = await decryptStoredSecretValue(
     credential.encryptedPrivateKey,
   );

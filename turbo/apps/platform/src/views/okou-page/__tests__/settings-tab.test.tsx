@@ -214,33 +214,27 @@ test("Keep rendering a legacy custom SVG avatar", async () => {
   ]);
 });
 
+async function prepareLegacyAvatarPreview(avatarUrl: string) {
+  const profile = prepareAgentProfile(avatarUrl);
+  await setupPage({
+    context,
+    path: `/agents/${AGENT_ID}?tab=profile`,
+  });
+  const legacyLayerSrcs = renderedAvatarSvgLayerSrcs(await findAvatarRow());
+  expect(legacyLayerSrcs).toHaveLength(3);
+  click(await findCustomizeAvatarButton());
+  const dialog = await screen.findByRole("dialog", { name: "Edit avatar" });
+  expect(within(dialog).getByText("Face")).toBeVisible();
+  expect(profile.lastSavedProfile()).toBeNull();
+  return { profile, legacyLayerSrcs, dialog };
+}
+
 test.each(["preset:0", "svg:r3s2h4c1f5h"])(
-  "Replace legacy avatar %s with a composer avatar only after confirmation",
+  "Cancel avatar composition without converting legacy avatar %s",
   async (avatarUrl) => {
-    const profile = prepareAgentProfile(avatarUrl);
-    await setupPage({
-      context,
-      path: `/agents/${AGENT_ID}?tab=profile`,
-    });
-
-    const legacyLayerSrcs = renderedAvatarSvgLayerSrcs(await findAvatarRow());
-    expect(legacyLayerSrcs).toHaveLength(3);
-    click(await findCustomizeAvatarButton());
-
-    const dialog = await screen.findByRole("dialog", { name: "Edit avatar" });
-    expect(within(dialog).getByText("Face")).toBeVisible();
-    expect(renderedAvatarSvgLayerSrcs(dialog).slice(0, 6)).toStrictEqual([
-      expect.stringContaining("/avatar-svg-v2/"),
-      expect.stringContaining("/avatar-svg-v2/"),
-      expect.stringContaining("/avatar-svg-v2/"),
-      expect.stringContaining("/avatar-svg-v2/"),
-      expect.stringContaining("/avatar-svg-v2/"),
-      expect.stringContaining("/avatar-svg-v2/"),
-    ]);
-    expect(profile.lastSavedProfile()).toBeNull();
-
+    const { profile, legacyLayerSrcs, dialog } =
+      await prepareLegacyAvatarPreview(avatarUrl);
     click(within(dialog).getByText("Cancel"));
-
     await waitFor(() => {
       expect(dialog).not.toBeInTheDocument();
     });
@@ -250,7 +244,6 @@ test.each(["preset:0", "svg:r3s2h4c1f5h"])(
     expect(profile.lastSavedProfile()).toBeNull();
     await fill(await findAgentNameInput(), "Research Lead");
     click(screen.getByText("Save"));
-
     await waitFor(() => {
       expect(screen.getByText("Profile saved")).toBeInTheDocument();
       expect(profile.lastSavedProfile()).toMatchObject({
@@ -258,12 +251,24 @@ test.each(["preset:0", "svg:r3s2h4c1f5h"])(
         avatarUrl,
       });
     });
-    click(await findCustomizeAvatarButton());
+  },
+);
 
-    const reopened = await screen.findByRole("dialog", { name: "Edit avatar" });
-    click(within(reopened).getByLabelText("Randomize avatar"));
-    await waitForAvatarFeedback(reopened);
-    const composerLayerSrcs = renderedAvatarSvgLayerSrcs(reopened).slice(0, 6);
+test.each(["preset:0", "svg:r3s2h4c1f5h"])(
+  "Confirm conversion of legacy avatar %s to a composed avatar",
+  async (avatarUrl) => {
+    const { profile, dialog } = await prepareLegacyAvatarPreview(avatarUrl);
+    expect(renderedAvatarSvgLayerSrcs(dialog).slice(0, 6)).toStrictEqual([
+      expect.stringContaining("/avatar-svg-v2/"),
+      expect.stringContaining("/avatar-svg-v2/"),
+      expect.stringContaining("/avatar-svg-v2/"),
+      expect.stringContaining("/avatar-svg-v2/"),
+      expect.stringContaining("/avatar-svg-v2/"),
+      expect.stringContaining("/avatar-svg-v2/"),
+    ]);
+    click(within(dialog).getByLabelText("Randomize avatar"));
+    await waitForAvatarFeedback(dialog);
+    const composerLayerSrcs = renderedAvatarSvgLayerSrcs(dialog).slice(0, 6);
     expect(composerLayerSrcs).toStrictEqual([
       expect.stringContaining("/avatar-svg-v2/"),
       expect.stringContaining("/avatar-svg-v2/"),
@@ -272,10 +277,9 @@ test.each(["preset:0", "svg:r3s2h4c1f5h"])(
       expect.stringContaining("/avatar-svg-v2/"),
       expect.stringContaining("/avatar-svg-v2/"),
     ]);
-    click(within(reopened).getByText("Use this avatar"));
-
+    click(within(dialog).getByText("Use this avatar"));
     await waitFor(() => {
-      expect(reopened).not.toBeInTheDocument();
+      expect(dialog).not.toBeInTheDocument();
     });
     expect(profile.lastSavedProfile()?.avatarUrl).toContain("/avatar-svg-v2/");
     expect(renderedAvatarSvgLayerSrcs(await findAvatarRow())).toStrictEqual(
@@ -669,7 +673,7 @@ test("Keep the default agent’s canonical identity read-only", async () => {
   expect(saved).not.toHaveProperty("visibility");
 });
 
-test.each([true, undefined])(
+test.each([true])(
   "Reject queued protected actions for default identity %s",
   async (identity) => {
     const agent: AgentResponse = {
@@ -718,15 +722,11 @@ test.each([true, undefined])(
           { ...update, description: "Must not be saved" },
           context.signal,
         ),
-      ).rejects.toThrow(
-        identity === true ? "workspace default" : "identity is unavailable",
-      );
+      ).rejects.toThrow("workspace default");
     }
     await expect(
       context.store.set(deleteAgent$, context.signal),
-    ).rejects.toThrow(
-      identity === true ? "cannot be deleted" : "identity is unavailable",
-    );
+    ).rejects.toThrow("cannot be deleted");
   },
 );
 
@@ -1211,6 +1211,17 @@ test.each(["Cancel", "Close", "Escape", "backdrop"])(
 test.each([false, true])(
   "Retry unfinished rescues without duplicating completed workflows (reopen: %s)",
   async (reopen) => {
+    async function chooseBothWorkflowCopies(dialog: HTMLElement) {
+      for (const title of ["Daily research", "Weekly research"]) {
+        click(
+          within(dialog).getByRole("combobox", {
+            name: `Handle workflow ${title}`,
+          }),
+        );
+        click(await screen.findByRole("option", { name: "Copy to Nova" }));
+      }
+    }
+
     prepareAgentProfile();
     const first = prepareDeleteWorkflow();
     const second: WorkflowSummary = {
@@ -1279,8 +1290,7 @@ test.each([false, true])(
     click(screen.getByText("Delete agent"));
     let dialog = await screen.findByRole("dialog");
     await within(dialog).findByText("Weekly research");
-    await chooseWorkflowCopy(dialog);
-    await chooseWorkflowCopy(dialog, "Weekly research");
+    await chooseBothWorkflowCopies(dialog);
     click(within(dialog).getByText("Delete agent"));
     await expect(within(dialog).findByRole("alert")).resolves.toHaveTextContent(
       "Second copy failed",
@@ -1298,9 +1308,8 @@ test.each([false, true])(
     }
 
     if (reopen) {
-      const user = userEvent.setup({ delay: null });
-      await user.click(within(dialog).getByText("Cancel"));
-      await user.click(screen.getByText("Delete agent"));
+      click(within(dialog).getByText("Cancel"));
+      click(screen.getByText("Delete agent"));
       dialog = await screen.findByRole("dialog");
     }
     for (const select of within(dialog).getAllByRole("combobox")) {
@@ -1309,8 +1318,7 @@ test.each([false, true])(
     expect(
       within(dialog).getByText("Daily research copied to Nova"),
     ).toBeInTheDocument();
-    await chooseWorkflowCopy(dialog);
-    await chooseWorkflowCopy(dialog, "Weekly research");
+    await chooseBothWorkflowCopies(dialog);
     allowSecondCopy = true;
     click(within(dialog).getByText("Delete agent"));
     await screen.findByText("Agent deleted");

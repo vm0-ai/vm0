@@ -29,7 +29,10 @@ import {
 } from "../external/stripe-client";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 import { persistOrgAcquisitionAttribution$ } from "./acquisition-attribution.service";
-import { impactStripeMetadata$ } from "./impact-attribution.service";
+import {
+  impactStripeMetadata$,
+  readOrgImpactMetadata,
+} from "./impact-attribution.service";
 import {
   addStripeConcurrencySubscriptionItem$,
   previewStripeConcurrencySubscriptionChange$,
@@ -1450,7 +1453,7 @@ export const createCreditCheckoutSession$ = command(
     const baseMetadata = {
       purpose: "credit_purchase",
       orgId: args.orgId,
-      ...(await set(impactStripeMetadata$, args.orgId, signal)),
+      ...(await readOrgImpactMetadata(set(writeDb$), args.orgId, signal)),
       ...stripePreviewMetadata(),
     };
     const customCreditUnitPriceId = activeCustomCreditUnitPriceId();

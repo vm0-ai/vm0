@@ -17,6 +17,7 @@
 
 #![allow(dead_code)] // consumed across multiple test binaries
 
+pub(crate) mod delivery_image;
 pub(crate) mod process_session;
 mod system_log;
 

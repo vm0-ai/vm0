@@ -1681,6 +1681,7 @@ test("Redirect a cold Morning Brief detail to its preference", async () => {
   context.mocks.api(morningBriefPreferenceContract.get, ({ respond }) => {
     return respond(200, {
       enabled: true,
+      status: "enabled",
       nextRunAt: null,
       timezone: "UTC",
       unavailableReason: null,
@@ -4207,11 +4208,7 @@ function mockCalendarReconnect(
         }
         return dialog;
       });
-      const connectorChangedSubscribe = context.mocks.ably.deferNextSubscribe();
       click(buttonByText("Reconnect", connectDialog));
-
-      await connectorChangedSubscribe.started;
-      connectorChangedSubscribe.attach();
       await waitFor(() => {
         expect(authWindow.location.href).toBe(
           "https://oauth.test/google-calendar/authorize",

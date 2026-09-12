@@ -408,9 +408,19 @@ def main():
         validate_preview(
             api(f"/branches/{preview_id}")["branch"], name, snapshot_id, existing_ids
         )
-        endpoints = [
-            e for e in listing("endpoints") if e.get("branch_id") == preview_id
-        ]
+        # Discover only this preview's computes. The project-wide listing is not
+        # an acknowledgement of a just-created endpoint; pin its returned ID.
+        endpoints = api(f"/branches/{preview_id}/endpoints")["endpoints"]
+        require(
+            isinstance(endpoints, list)
+            and all(
+                isinstance(e, dict) and e.get("branch_id") == preview_id
+                for e in endpoints
+            ),
+            "preview_endpoint_listing_mismatch",
+        )
+        report["previewEndpointCountBeforeCreate"] = len(endpoints)
+        checkpoint()
         if not endpoints:
             created = api(
                 "/endpoints",
@@ -429,15 +439,22 @@ def main():
                 created["endpoint"].get("branch_id") == preview_id,
                 "created_endpoint_branch_mismatch",
             )
+            endpoint_id = identifier(created["endpoint"].get("id"), "ep-")
+            require(
+                endpoint_id not in {e["id"] for e in before_endpoints},
+                "created_endpoint_is_existing",
+            )
+            report["createdPreviewEndpointId"] = endpoint_id
+            checkpoint()
             wait_operations(created)
-            endpoints = [
-                e for e in listing("endpoints") if e.get("branch_id") == preview_id
-            ]
+            endpoints = [created["endpoint"]]
         require(len(endpoints) == 1, "preview_endpoint_not_unique")
-        endpoint = endpoints[0]
-        identifier(endpoint.get("id"), "ep-")
+        endpoint_id = identifier(endpoints[0].get("id"), "ep-")
+        endpoint = api(f"/endpoints/{endpoint_id}")["endpoint"]
         require(
-            isinstance(endpoint.get("host"), str)
+            endpoint.get("id") == endpoint_id
+            and endpoint.get("branch_id") == preview_id
+            and isinstance(endpoint.get("host"), str)
             and endpoint["host"].startswith(endpoint["id"] + ".")
             and endpoint["host"].endswith(".neon.tech")
             and endpoint["id"] not in {e["id"] for e in before_endpoints},

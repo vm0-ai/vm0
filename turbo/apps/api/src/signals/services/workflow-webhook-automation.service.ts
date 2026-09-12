@@ -245,8 +245,8 @@ function sanitizedHeaders(
     if (
       lower === "authorization" ||
       lower === "cookie" ||
-      lower === "x-vm0-signature" ||
-      lower === "x-vm0-timestamp" ||
+      lower === "x-okou-signature" ||
+      lower === "x-okou-timestamp" ||
       lower.includes("secret") ||
       lower.includes("token") ||
       lower.includes("key")

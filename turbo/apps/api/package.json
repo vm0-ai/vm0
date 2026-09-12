@@ -1,6 +1,6 @@
 {
   "name": "api",
-  "version": "1.584.0",
+  "version": "1.586.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -38,6 +38,7 @@
     "@slack/web-api": "^7.13.0",
     "@t3-oss/env-core": "^0.13.11",
     "@vercel/functions": "^3.4.4",
+    "@vercel/oidc": "^3.2.1",
     "@vercel/otel": "^2.1.2",
     "@okouai/api-contracts": "workspace:*",
     "@okouai/connectors": "workspace:*",

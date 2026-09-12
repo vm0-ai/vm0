@@ -1,5 +1,60 @@
 # Changelog
 
+## [1.8.1](https://github.com/vm0-ai/vm0/compare/app-worker-v1.8.0...app-worker-v1.8.1) (2026-09-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.654.3
+
+## [1.8.0](https://github.com/vm0-ai/vm0/compare/app-worker-v1.7.2...app-worker-v1.8.0) (2026-09-11)
+
+
+### Features
+
+* **connectors:** support posthog cimd oauth and regional accounts ([#33490](https://github.com/vm0-ai/vm0/issues/33490)) ([37967c7](https://github.com/vm0-ai/vm0/commit/37967c79fbe0658e97adfa1c1d3c2138e2469099))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.654.2
+
+## [1.7.2](https://github.com/vm0-ai/vm0/compare/app-worker-v1.7.1...app-worker-v1.7.2) (2026-09-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.654.1
+
+## [1.7.1](https://github.com/vm0-ai/vm0/compare/app-worker-v1.7.0...app-worker-v1.7.1) (2026-09-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.654.0
+
+## [1.7.0](https://github.com/vm0-ai/vm0/compare/app-worker-v1.6.21...app-worker-v1.7.0) (2026-09-11)
+
+
+### Features
+
+* **app-worker:** serve static posthog oauth client metadata ([#33481](https://github.com/vm0-ai/vm0/issues/33481)) ([324a367](https://github.com/vm0-ai/vm0/commit/324a367f792198a97a044d7386f87668cf51ebe9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/core bumped to 8.653.0
+
 ## [1.6.21](https://github.com/vm0-ai/vm0/compare/app-worker-v1.6.20...app-worker-v1.6.21) (2026-09-11)
 
 

@@ -1,13 +1,15 @@
 import {
   InMemoryCredentialStore,
-  registerSessionResourceCleanup,
   type ModelThinkingLevel,
 } from "@earendil-works/pi-ai";
 import {
   createAgentSessionFromServices,
   createAgentSessionServices,
   createBashTool,
-  ModelRuntime,
+  createBashToolDefinition,
+  createEditToolDefinition,
+  createReadToolDefinition,
+  createWriteToolDefinition,
   SettingsManager,
   type CreateAgentSessionFromServicesOptions,
   type SessionManager,
@@ -24,8 +26,16 @@ import {
   resolvePiApiMemoryRecall,
 } from "./memory-recall-node";
 import { createPiMemoryTools } from "./memory-tools-node";
-import { piAgentStreamForConfig, resolvePiAgentModel } from "./model";
+import { resolvePiAgentModel } from "./model";
+import {
+  buildOkouHarnessSystemPrompt,
+  type OkouHarnessToolPrompt,
+} from "./okou-harness-prompt";
 import { piPreheatedResourceLoaderOptions } from "./resources";
+import {
+  createPiModelRuntime,
+  initializePiSessionResourceRegistry,
+} from "./session-model";
 import type { PiAgentModelConfig } from "./types";
 
 const PI_INTERMEDIATE_COMMENTARY_PROMPT = `## Intermediate commentary
@@ -36,55 +46,35 @@ If the user's request requires calling tools, start with a brief intermediate me
 
 Do not put a final response, such as a blocking or clarifying question, in an intermediate message. Intermediate messages are only for partial updates, partial results, or non-blocking context that can provide value while you continue working. An intermediate update does not end the task; continue working when more work remains. The final answer must always be fully self-contained.`;
 
-function initializePiSessionResourceRegistry(): void {
-  // Vite's SSR bundle otherwise keeps Pi's registry behind only the lazy
-  // Codex adapter initializer, while AgentSession.dispose() remains eager.
-  // Registering and immediately removing a no-op makes the shared registry's
-  // initialization explicit without changing its cleanup policy.
-  const unregister = registerSessionResourceCleanup(() => {
-    return undefined;
-  });
-  unregister();
-}
+/**
+ * Shell options for the loop's Bash tool.
+ *
+ * `exposeSessionEnvironment` stays off so the child shell inherits no `PI_*`
+ * session variables and the tool contributes no guideline pointing at them.
+ * The guest injects its own run identifiers separately.
+ */
+const PI_BASH_TOOL_OPTIONS = {
+  shellPath: "/usr/local/bin/guest-tool-exec",
+  exposeSessionEnvironment: false,
+} as const;
 
-function registeredModelConfig(
-  model: NonNullable<ReturnType<typeof resolvePiAgentModel>>,
-  apiKey: string,
-  config: Pick<
-    PiAgentModelConfig,
-    | "accountId"
-    | "dialect"
-    | "requestHeaders"
-    | "serviceTier"
-    | "transport"
-    | "catalogModel"
-    | "region"
-    | "bedrockAuth"
-  >,
-) {
-  return {
-    name: model.provider,
-    baseUrl: model.baseUrl,
-    apiKey,
-    api: model.api,
-    streamSimple: piAgentStreamForConfig(config),
-    models: [
-      {
-        id: model.id,
-        name: model.name,
-        api: model.api,
-        baseUrl: model.baseUrl,
-        reasoning: model.reasoning,
-        thinkingLevelMap: model.thinkingLevelMap,
-        input: model.input,
-        cost: model.cost,
-        contextWindow: model.contextWindow,
-        maxTokens: model.maxTokens,
-        headers: model.headers,
-        compat: model.compat,
-      },
-    ],
-  };
+/**
+ * Tools the official session activates by default. Custom tools stay out of
+ * the base prompt's tool sections because they carry no prompt snippet.
+ */
+function okouHarnessToolPrompts(cwd: string): OkouHarnessToolPrompt[] {
+  return [
+    createReadToolDefinition(cwd),
+    createBashToolDefinition(cwd, PI_BASH_TOOL_OPTIONS),
+    createEditToolDefinition(cwd),
+    createWriteToolDefinition(cwd),
+  ].map((definition) => {
+    return {
+      name: definition.name,
+      snippet: definition.promptSnippet,
+      guidelines: definition.promptGuidelines,
+    };
+  });
 }
 
 function configuredThinkingLevel(
@@ -157,14 +147,18 @@ export async function createPiAgentSessionForRuntime(args: {
     ...(args.appendSystemPrompt === null ? [] : [args.appendSystemPrompt]),
     ...(memoryRecall.block === null ? [] : [memoryRecall.block]),
   ];
+  const systemPrompt = buildOkouHarnessSystemPrompt(
+    okouHarnessToolPrompts(args.cwd),
+  );
   const sandboxResourceLoaderOptions =
     args.appendSystemPrompt === null && memoryRecall.block === null
       ? {
+          systemPrompt,
           appendSystemPromptOverride(base: string[]) {
             return [PI_INTERMEDIATE_COMMENTARY_PROMPT, ...base];
           },
         }
-      : { appendSystemPrompt };
+      : { systemPrompt, appendSystemPrompt };
   const model = resolvePiAgentModel(args.model);
   if (!model) {
     throw new Error(
@@ -172,10 +166,9 @@ export async function createPiAgentSessionForRuntime(args: {
     );
   }
 
-  const modelRuntime = await ModelRuntime.create({
-    allowModelNetwork: false,
-    modelsPath: null,
-    refreshOnCreate: false,
+  const modelRuntime = await createPiModelRuntime({
+    model,
+    config: args.model,
     ...(args.resourceSnapshot ||
     ["anthropic-messages", "bedrock-converse-stream"].includes(
       args.model.dialect,
@@ -183,10 +176,6 @@ export async function createPiAgentSessionForRuntime(args: {
       ? { credentials: new InMemoryCredentialStore() }
       : {}),
   });
-  modelRuntime.registerProvider(
-    args.model.provider,
-    registeredModelConfig(model, args.model.apiKey, args.model),
-  );
   const services = await createAgentSessionServices({
     cwd: args.cwd,
     agentDir: args.agentDir,
@@ -203,6 +192,7 @@ export async function createPiAgentSessionForRuntime(args: {
       ? piPreheatedResourceLoaderOptions({
           snapshot: args.resourceSnapshot,
           appendSystemPrompt,
+          systemPrompt,
         })
       : sandboxResourceLoaderOptions,
   });
@@ -216,9 +206,7 @@ export async function createPiAgentSessionForRuntime(args: {
       args.model.thinkingLevel,
     ),
     customTools: [
-      createBashTool(args.cwd, {
-        shellPath: "/usr/local/bin/guest-tool-exec",
-      }),
+      createBashTool(args.cwd, PI_BASH_TOOL_OPTIONS),
       ...memoryTools,
     ],
   });

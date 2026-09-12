@@ -1,5 +1,60 @@
 # Changelog
 
+## [8.654.3](https://github.com/vm0-ai/vm0/compare/core-v8.654.2...core-v8.654.3) (2026-09-12)
+
+
+### Refactoring
+
+* remove expired deployment compatibility ([#33582](https://github.com/vm0-ai/vm0/issues/33582)) ([d5ae0e3](https://github.com/vm0-ai/vm0/commit/d5ae0e331d31465b7302bc63e1557420caf7358b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.429.1
+
+## [8.654.2](https://github.com/vm0-ai/vm0/compare/core-v8.654.1...core-v8.654.2) (2026-09-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.429.0
+
+## [8.654.1](https://github.com/vm0-ai/vm0/compare/core-v8.654.0...core-v8.654.1) (2026-09-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.428.2
+
+## [8.654.0](https://github.com/vm0-ai/vm0/compare/core-v8.653.0...core-v8.654.0) (2026-09-11)
+
+
+### Features
+
+* **core:** enable the welcome thread switch for the staff org ([#33502](https://github.com/vm0-ai/vm0/issues/33502)) ([fecc790](https://github.com/vm0-ai/vm0/commit/fecc790d2f023ecd5eef6f7e77cf56e988a2d2e1)), closes [#33495](https://github.com/vm0-ai/vm0/issues/33495)
+* **voice:** add gated google cloud routing ([#33462](https://github.com/vm0-ai/vm0/issues/33462)) ([4ee7737](https://github.com/vm0-ai/vm0/commit/4ee773741a7ddaed8063e8f49a76791665584f69))
+
+## [8.653.0](https://github.com/vm0-ai/vm0/compare/core-v8.652.1...core-v8.653.0) (2026-09-11)
+
+
+### Features
+
+* **app:** add the two-pane slash template panel behind a switch ([#33405](https://github.com/vm0-ai/vm0/issues/33405)) ([5a9d5e8](https://github.com/vm0-ai/vm0/commit/5a9d5e8022e17b4db5236c98e49e6ff7a8c7693a))
+* **platform:** split the connectors page into discover and your-connectors scopes ([#33435](https://github.com/vm0-ai/vm0/issues/33435)) ([ef3a544](https://github.com/vm0-ai/vm0/commit/ef3a544e2aae690cb2b724b42a46d39896b77e77))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @okouai/api-contracts bumped to 1.428.1
+
 ## [8.652.1](https://github.com/vm0-ai/vm0/compare/core-v8.652.0...core-v8.652.1) (2026-09-11)
 
 

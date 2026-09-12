@@ -30,8 +30,10 @@ surface; the index does not replace their detailed rules.
 
 ## Specialized Guidance
 
-- [Marketing privacy choices](./marketing-privacy-choices.md): canonical privacy
-  state, anonymous/account association, consent ordering, and rollout boundaries.
+- [Marketing privacy rollback](./marketing-privacy-choices.md): withdrawn runtime
+  behavior, retained database state, and rollout boundaries.
+- [Google Cloud LLM voice routing](./google-llm-voice.md): shared Vercel workload
+  identities, API configuration, Oregon-first model routing, and rollout gates.
 - [Google Ads browser routing](./google-ads-browser-routing.md): verified account
   ownership, conversion actions, rollout compatibility, and historical recovery.
 - [Connector inspection JSON](./connector-inspection-json.md): command output
@@ -47,6 +49,8 @@ surface; the index does not replace their detailed rules.
   thread-scoped card signals, and rendering rich interactive cards.
 - [Pi native provider preparation](./pi-native-provider-preparation.md): additive
   native readers, transport/auth ownership, accounting and activation gates.
+- [Pi runtime architecture](./pi-runtime-architecture.md): launch, SDK/session,
+  memory, accounting, retained compatibility, and patch ownership boundaries.
 - [Runner host configuration](./runner-host-configuration.md): configure and
   verify host-local concurrency and I/O capacity overrides.
 - [Runner multi-architecture rollout](./runner-multi-architecture.md): build,

@@ -243,6 +243,44 @@ copies, name normalization, and truncated-prefix matches. The shared failure
 reporting suite also verifies the same classification for usage and failure
 observers without timing or allocation thresholds.
 
+## Content-Encoding decoder inspection boundary
+
+Shared body decoders inspect at most 8,192 raw header fields and 8,192 total
+Content-Encoding value bytes per call, including comma-space separators for
+repeated fields. Field count is checked before traversal, and raw names are
+length-checked before case normalization. All matching values must fit the
+budget before any value is decoded, joined, stripped, or lowercased. Oversized
+unrelated names and values are skipped without copying or normalization.
+
+Within budget, decoding preserves mitmproxy's UTF-8/surrogateescape conversion,
+comma folding, and existing whitespace/case normalization. Missing and empty
+encoding remain identity; gzip, deflate, and br keep streaming support, while
+zstd keeps its bounded terminal JSON path. Repeated fields and coding lists
+retain their unsupported-encoding behavior.
+
+Budget exhaustion is uninspectable, not proof of identity encoding. Capability
+checks decline both streaming and terminal JSON fallback. Successful billable
+model responses and registered connector response parsers therefore use the
+existing empty 502 response and discard upstream body bytes. The fixed
+`content encoding header inspection limit exceeded` diagnostic contains no raw
+header data. Upstream errors, non-billable flows, and bodyless responses retain
+their existing pass-through policy; status-level provider failure reports remain
+available. Accepted and pass-through responses preserve wire headers and bytes.
+
+Direct terminal JSON decoding returns an error for exhaustion, strict capture
+decoders hide the body, and best-effort capture decompression retains wire bytes
+as it does for unsupported encoding. These local decoder limits do not bound
+mitmproxy's initial HTTP-head buffer, separate request-billing inspection, or
+other header consumers. Old runners retain their previous local behavior until
+updated; no wire protocol or persisted state changes.
+
+`test_response_content_encoding_budget.py` exercises guarded raw inputs through
+the real response hooks and verifies usage delivery, exact limits, and 502/body
+discard behavior. The provider failure suite covers the real 429 response hook
+with oversized unrelated names and excess fields while verifying HTTP reports
+and pass-through traffic. The regressions use structural work assertions, not
+wall-clock thresholds.
+
 ## Path normalization work boundary
 
 Path safety validation accepts at most 65,536 input characters and five percent

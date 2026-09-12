@@ -92,6 +92,7 @@ test.each([
 ])(
   "Recover committed PCM across a reload ($reloadAt) at $path",
   async ({ path, reloadAt }) => {
+    // eslint-disable-next-line ccstate/no-create-child-abort-controller -- migrate this lifetime to the ccstate signal hierarchy
     const firstPage = createChildAbortController(context.signal);
     const capture = context.mocks.deferred<(samples: Float32Array) => void>();
     context.mocks.browser.voiceInput({
@@ -232,6 +233,7 @@ test.each([
 ])(
   "Do not restore a completed silent recording at $path (empty: $empty)",
   async ({ path, empty }) => {
+    // eslint-disable-next-line ccstate/no-create-child-abort-controller -- migrate this lifetime to the ccstate signal hierarchy
     const firstPage = createChildAbortController(context.signal);
     context.mocks.browser.voiceInput({
       rms: 0,
@@ -319,6 +321,7 @@ test("Stop capture and expose a failed chunk write without discarding the saved 
 });
 
 test("Restore audio when voice input v2 enables after the composer mounts", async () => {
+  // eslint-disable-next-line ccstate/no-create-child-abort-controller -- migrate this lifetime to the ccstate signal hierarchy
   const firstPage = createChildAbortController(context.signal);
   context.mocks.browser.voiceInput({ rms: 0.12 });
   installVoiceBoundaries();

@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { privacyCaptureContextSchema } from "./marketing-privacy";
 import { impactAttributionSchema } from "./impact-attribution";
 
 const c = initContract();
@@ -65,11 +64,9 @@ const recordSignupAttributionRequestSchema = z.object({
   attribution: adAttributionMetadataSchema,
   // A sibling field keeps old strict first-touch readers compatible.
   impactAttribution: impactAttributionSchema.optional(),
-  privacyContext: privacyCaptureContextSchema.optional(),
 });
 
 const recordSignupAttributionResponseSchema = z.object({
-  privacyReceipt: z.uuid().nullable().optional(),
   recorded: z.boolean(),
   googleAdsAccountId: z.string().nullable().optional(),
 });

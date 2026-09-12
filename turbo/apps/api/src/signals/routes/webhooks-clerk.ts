@@ -21,6 +21,11 @@ import {
   cleanupClerkDeletedUser$,
 } from "../services/webhooks-clerk-cleanup.service";
 import { handleUsagePackInvitationAccepted } from "../services/usage-pack-invitation-purchase.service";
+import { recordMorningBriefMembership } from "../services/morning-brief-enrollment-data.service";
+import {
+  ensureMorningBriefDefaultEnabled$,
+  type EnsureMorningBriefDefaultEnabledResult,
+} from "../services/morning-brief-preference.service";
 
 const L = logger("WebhookClerkRoute");
 
@@ -63,6 +68,7 @@ function organizationMembershipIdentity(data: unknown):
   | {
       readonly orgId: string;
       readonly userId: string;
+      readonly membershipId?: string;
       readonly role?: string;
       readonly purchaseId?: string;
       readonly createdAt?: Date;
@@ -93,6 +99,7 @@ function organizationMembershipIdentity(data: unknown):
         orgId,
         userId,
         role,
+        membershipId: eventDataId(data),
         ...(purchaseId ? { purchaseId } : {}),
         ...(createdAt === undefined ? {} : { createdAt: new Date(createdAt) }),
       }
@@ -142,6 +149,46 @@ function enqueueOrgBootstrap(args: {
         error,
       });
     }),
+  );
+}
+
+async function observeNewMembershipMorningBriefProvisioning(
+  identity: NonNullable<ReturnType<typeof organizationMembershipIdentity>> & {
+    readonly createdAt: Date;
+  },
+  task: Promise<EnsureMorningBriefDefaultEnabledResult>,
+): Promise<void> {
+  const provisioning = await task;
+  const details = {
+    orgId: identity.orgId,
+    userId: identity.userId,
+    provisioning,
+  };
+  if (provisioning.outcome === "failed") {
+    L.warn("Morning Brief membership provisioning outcome", details);
+    return;
+  }
+  L.info("Morning Brief membership provisioning outcome", details);
+}
+
+function enqueueMorningBriefMembershipProvisioning(args: {
+  readonly identity: NonNullable<
+    ReturnType<typeof organizationMembershipIdentity>
+  > & { readonly createdAt: Date };
+  readonly task: Promise<EnsureMorningBriefDefaultEnabledResult>;
+}): void {
+  const identity = args.identity;
+  waitUntil(
+    tapError(
+      observeNewMembershipMorningBriefProvisioning(identity, args.task),
+      (error) => {
+        L.error("Morning Brief membership provisioning failed", {
+          orgId: identity.orgId,
+          userId: identity.userId,
+          error,
+        });
+      },
+    ),
   );
 }
 
@@ -259,14 +306,17 @@ function handleOrganizationInvitationAcceptedWebhook(
   return new Response("OK", { status: 200 });
 }
 
-function handleOrganizationMembershipCreatedWebhook(
+async function handleOrganizationMembershipCreatedWebhook(
   data: unknown,
   db: Db,
   signal: AbortSignal,
   bootstrap: (
     identity: NonNullable<ReturnType<typeof organizationMembershipIdentity>>,
   ) => void,
-): Response {
+  provisionMorningBrief: (
+    identity: NonNullable<ReturnType<typeof organizationMembershipIdentity>>,
+  ) => Promise<void>,
+): Promise<Response> {
   const identity = organizationMembershipIdentity(data);
   if (!identity) {
     L.error("organizationMembership.created event missing org/user ID", {
@@ -283,6 +333,8 @@ function handleOrganizationMembershipCreatedWebhook(
       signal,
     );
   }
+
+  await provisionMorningBrief(identity);
 
   if (!isAdminMembershipRole(identity.role)) {
     if (!identity.purchaseId) {
@@ -357,7 +409,6 @@ const handleOrganizationCreatedWebhook$ = command(
         {
           orgId: identity.orgId,
           ownerUserId: identity.userId,
-          morningBriefEligibilitySourceCreatedAt: identity.createdAt,
         },
         signal,
       ),
@@ -378,6 +429,51 @@ const handleOrganizationCreatedWebhook$ = command(
       signal.throwIfAborted();
     }
     return new Response("OK", { status: 200 });
+  },
+);
+
+const enrollMorningBriefMembership$ = command(
+  async (
+    { set },
+    identity: NonNullable<ReturnType<typeof organizationMembershipIdentity>>,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const createdAt = identity.createdAt;
+    if (
+      !identity.membershipId ||
+      !createdAt ||
+      !Number.isFinite(createdAt.getTime())
+    ) {
+      L.error(
+        "organizationMembership.created event missing valid creation time",
+        {
+          orgId: identity.orgId,
+          userId: identity.userId,
+        },
+      );
+      return;
+    }
+    await recordMorningBriefMembership(set(writeDb$), {
+      orgId: identity.orgId,
+      userId: identity.userId,
+      membershipId: identity.membershipId,
+      createdAt,
+    });
+    signal.throwIfAborted();
+    enqueueMorningBriefMembershipProvisioning({
+      identity: { ...identity, createdAt },
+      task: set(
+        ensureMorningBriefDefaultEnabled$,
+        {
+          orgId: identity.orgId,
+          member: {
+            userId: identity.userId,
+            role: identity.role ?? "member",
+          },
+        },
+        signal,
+      ),
+    });
   },
 );
 
@@ -418,6 +514,9 @@ const postClerkWebhook$ = command(
               signal,
             ),
           });
+        },
+        async (identity) => {
+          await set(enrollMorningBriefMembership$, identity, signal);
         },
       );
     }

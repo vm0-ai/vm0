@@ -4137,9 +4137,16 @@ function ChatThreadComposer({ thread }: { thread: ChatPanelSignals }) {
       }}
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-[21px] bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
+      {/* `overflow-y-auto` clips at this element's padding box. The composer's
+          focus veil is offset down and blurred well past the gap the footer
+          leaves, so it is still painting at that boundary and gets sliced off in
+          a hard line across the card's full width. Pad out far enough for
+          `--okou-composer-focus-veil` to finish and take the same amount back
+          with a negative margin, so the veil fades out instead of ending in a
+          seam while the footer keeps its height. */}
       <div
         className={cn(
-          "overflow-y-auto [scrollbar-gutter:stable] pb-2 pl-4 pr-4 pt-3 sm:pl-6 sm:pr-6",
+          "-mb-8 overflow-y-auto [scrollbar-gutter:stable] pb-10 pl-4 pr-4 pt-3 sm:pl-6 sm:pr-6",
           standalonePwa && "overscroll-contain",
         )}
       >
@@ -5652,7 +5659,7 @@ interface ResolvedMessageAttachment {
   readonly signals: ArtifactSignals;
 }
 
-type OpenMessageImagePreview = (url: string, filename?: string) => void;
+type OpenMessageImagePreview = (attachment: ResolvedMessageAttachment) => void;
 
 function userMessageRenderAttachments(
   document: UserMessageRenderDocument | undefined,
@@ -5737,10 +5744,11 @@ function MessageAttachment({
         imageClassName="block h-full w-full object-contain"
         linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
         onPreview={() => {
-          onImageClick(a.url, a.filename);
+          onImageClick(a);
         }}
         placeholderClassName="h-full w-full"
         resourceUrl$={a.signals.resourceUrl$}
+        thumbnailUrl$={a.signals.thumbnailUrl$}
         url={a.url}
       />
     );
@@ -6789,14 +6797,6 @@ function inputPromptRunAnchor(inputEvent: ChatInputEvent | undefined) {
     : undefined;
 }
 
-function messageImageLightboxTarget(
-  threadId: string,
-  url: string,
-  filename: string | undefined,
-) {
-  return { threadId, url, ...(filename ? { filename } : {}) };
-}
-
 function PagedUserMessage({
   event,
   thread,
@@ -6814,10 +6814,13 @@ function PagedUserMessage({
     });
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
-  const openLightbox: OpenMessageImagePreview = (url, filename) => {
-    openImageLightbox(
-      messageImageLightboxTarget(thread.threadId, url, filename),
-    );
+  const openLightbox: OpenMessageImagePreview = (attachment) => {
+    openImageLightbox({
+      threadId: thread.threadId,
+      url: attachment.url,
+      filename: attachment.filename,
+      preview: attachment.signals,
+    });
   };
   const copiedId = useGet(thread.copiedEventId$);
   const copied = copiedId === event.id;

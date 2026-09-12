@@ -576,20 +576,6 @@
       },
       {
         "atRules": [],
-        "selector": ".okou-app",
-        "property": "--okou-composer-focus-veil",
-        "value": " 0 10px 48px -8px hsl(30 8% 45% / 0.09)",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ":where([data-theme=\"dark\"]) .okou-app",
-        "property": "--okou-composer-focus-veil",
-        "value": " none",
-        "important": false
-      },
-      {
-        "atRules": [],
         "selector": ".okou-app[data-gradient-color-themes]",
         "property": "--okou-card-shadow",
         "value": "\n    0 2px 12px hsl(var(--state-layer) / 0.035),\n    0 0 0 0.5px hsl(var(--state-layer) / 0.018)",
@@ -600,20 +586,6 @@
         "selector": ".okou-app[data-gradient-color-themes]",
         "property": "--okou-chat-card-shadow",
         "value": " 0 1px 2px hsl(var(--state-layer) / 0.035)",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ".okou-app[data-gradient-color-themes]",
-        "property": "--okou-composer-focus-veil",
-        "value": " 0 10px 48px -8px hsl(var(--state-layer) / 0.07)",
-        "important": false
-      },
-      {
-        "atRules": [],
-        "selector": ":where([data-theme=\"dark\"]) .okou-app[data-gradient-color-themes]",
-        "property": "--okou-composer-focus-veil",
-        "value": " none",
         "important": false
       },
       {
@@ -3353,8 +3325,7 @@
         "value": " 38.8 38% 38%",
         "important": false
       }
-    ],
-    "packages/ui/src/styles/globals.css": []
+    ]
   },
   "classUsages": {
     "apps/platform/src/views/agents-page/agents-page-tabs.tsx": {
