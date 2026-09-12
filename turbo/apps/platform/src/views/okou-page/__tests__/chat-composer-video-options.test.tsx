@@ -220,6 +220,7 @@ test.each([false, true])(
   async (enabled) => {
     const submissions = installVideoSubmissionCapture();
     await setupPage({
+      locale: "en-US",
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: { [FeatureSwitchKey.ComposerCreateCommands]: enabled },
@@ -256,6 +257,7 @@ test.each([false, true])(
     const user = userEvent.setup({ delay: null });
     const submissions = installVideoSubmissionCapture();
     await setupPage({
+      locale: "en-US",
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: { [FeatureSwitchKey.ComposerCreateCommands]: enabled },
