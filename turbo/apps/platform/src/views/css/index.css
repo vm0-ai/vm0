@@ -568,9 +568,6 @@ body {
 .okou-border {
   border: 0.7px solid hsl(var(--gray-400));
 }
-.okou-border-t {
-  border-top: 0.7px solid hsl(var(--gray-400));
-}
 
 /* Avatar / logo thumbnails: a hairline lighter than okou-border, so the edge of
    a picture stays readable without the stroke reading as a frame. */
