@@ -88,9 +88,25 @@ async function submitClerkEmailCode(page: Page): Promise<void> {
     name: /use another method/i,
   });
 
-  await expect(
-    codeInput.or(emailCodeButton).or(useAnotherMethodLink),
-  ).toBeVisible({ timeout: 30_000 });
+  // Clerk keeps the alternate-method link visible beside the code input. Poll
+  // each candidate independently so multiple valid states do not violate
+  // Playwright's strict locator contract.
+  await expect
+    .poll(
+      async () => {
+        const [codeInputVisible, emailCodeButtonVisible, anotherMethodVisible] =
+          await Promise.all([
+            codeInput.isVisible(),
+            emailCodeButton.isVisible(),
+            useAnotherMethodLink.isVisible(),
+          ]);
+        return (
+          codeInputVisible || emailCodeButtonVisible || anotherMethodVisible
+        );
+      },
+      { timeout: 30_000 },
+    )
+    .toBe(true);
   if (!(await codeInput.isVisible())) {
     if (await useAnotherMethodLink.isVisible()) {
       await useAnotherMethodLink.click();
