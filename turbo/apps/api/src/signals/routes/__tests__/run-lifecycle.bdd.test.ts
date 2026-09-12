@@ -511,23 +511,8 @@ const API_DISPATCH_CUSTOM_CONNECTOR_SUBSTEP_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_custom_connector_value_rows",
   "api_dispatch_prepare_context_build_custom_connector_firewalls",
 ] as const;
-const API_DISPATCH_CUSTOM_CONNECTOR_BUILD_PHASE_ACTION_TYPES = [
-  "api_dispatch_prepare_context_render_custom_connector_auth_templates",
-  "api_dispatch_prepare_context_render_custom_connector_prefixes",
-  "api_dispatch_prepare_context_assemble_custom_connector_firewalls",
-] as const;
 const API_DISPATCH_CUSTOM_CONNECTOR_TIMING_ACTION_TYPES = [
   ...API_DISPATCH_CUSTOM_CONNECTOR_SUBSTEP_ACTION_TYPES,
-  ...API_DISPATCH_CUSTOM_CONNECTOR_BUILD_PHASE_ACTION_TYPES,
-] as const;
-const CUSTOM_CONNECTOR_RUNTIME_BUCKET_DIMENSION_KEYS = [
-  "custom_connector_runtime_connector_count_bucket",
-  "custom_connector_runtime_configured_value_count_bucket",
-  "custom_connector_runtime_prefix_template_count_bucket",
-  "custom_connector_runtime_rendered_api_count_bucket",
-  "custom_connector_runtime_missing_required_count_bucket",
-  "custom_connector_runtime_no_auth_injection_count_bucket",
-  "custom_connector_runtime_invalid_prefix_count_bucket",
 ] as const;
 const API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_builtin_permission_indexes",
@@ -1217,22 +1202,6 @@ function expectClaimNetworkPolicyRefreshPath(
       policy_refresh_path: path,
     }),
   );
-}
-
-function expectCustomConnectorRuntimePhaseTimingEvents(
-  events: readonly Record<string, unknown>[],
-): void {
-  expectApiDispatchSpanKind(
-    events,
-    API_DISPATCH_CUSTOM_CONNECTOR_BUILD_PHASE_ACTION_TYPES,
-    "nested",
-  );
-  for (const actionType of API_DISPATCH_CUSTOM_CONNECTOR_BUILD_PHASE_ACTION_TYPES) {
-    const event = singleApiDispatchEvent(events, actionType);
-    for (const key of CUSTOM_CONNECTOR_RUNTIME_BUCKET_DIMENSION_KEYS) {
-      expect(typeof event[key]).toBe("string");
-    }
-  }
 }
 
 function expectApiDispatchTimingEventsNotToLeak(
@@ -9779,7 +9748,6 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       expect.objectContaining({
         connector_scope_source: "explicit",
         stored_connector_count_bucket: "1",
-        stored_connector_secret_count_bucket: "0",
       }),
     );
     expect(buildStoredConnectorStateEvent).not.toHaveProperty(
@@ -11518,7 +11486,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       timingEvents,
       API_DISPATCH_CUSTOM_CONNECTOR_TIMING_ACTION_TYPES,
     );
-    expectCustomConnectorRuntimePhaseTimingEvents(timingEvents);
     expectApiDispatchActions(
       timingEvents,
       API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES,
@@ -13810,7 +13777,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       timingEvents,
       API_DISPATCH_CUSTOM_CONNECTOR_TIMING_ACTION_TYPES,
     );
-    expectCustomConnectorRuntimePhaseTimingEvents(timingEvents);
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [
       saved.connector.id,
       rand,

@@ -347,7 +347,6 @@ import {
   ApiDispatchPhaseCollector,
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
-  type ApiDispatchTimingActionType,
   type ApiDispatchTimingDimensions,
 } from "./api-dispatch-timing.service";
 import {
@@ -3420,8 +3419,7 @@ interface StoredConnectorMaterializationSnapshot {
   readonly variableValues: Record<string, string>;
 }
 
-interface ResolvedStoredConnectorState {
-  readonly secrets: Record<string, string>;
+interface ResolvedStoredConnectorMetadata {
   readonly vars: Record<string, string>;
   readonly secretConnectorMap: Record<string, string>;
   readonly secretConnectorMetadataMap: Record<string, SecretConnectorMetadata>;
@@ -3581,49 +3579,6 @@ function storedConnectorCredentialReadGroups(args: {
   });
 }
 
-function connectorSecretAliasesByStorageName(
-  bindingSets: readonly ConnectorEnvBindingSet[],
-): Map<string, Set<string>> {
-  const aliases = new Map<string, Set<string>>();
-  for (const { runtimeBindings } of bindingSets) {
-    for (const { envName, source } of runtimeBindings) {
-      if (source.kind !== "connector-secret") {
-        continue;
-      }
-      const existing = aliases.get(source.name);
-      if (existing) {
-        existing.add(envName);
-      } else {
-        aliases.set(source.name, new Set([envName]));
-      }
-    }
-  }
-  return aliases;
-}
-
-function filterOverriddenStoredConnectorSecretRows(args: {
-  readonly rows: readonly StoredConnectorSecretRow[];
-  readonly bindingSets: readonly ConnectorEnvBindingSet[];
-  readonly overriddenSecretAliases: ReadonlySet<string>;
-}): readonly StoredConnectorSecretRow[] {
-  if (args.overriddenSecretAliases.size === 0) {
-    return args.rows;
-  }
-
-  const aliasesByStorageName = connectorSecretAliasesByStorageName(
-    args.bindingSets,
-  );
-  return args.rows.filter((row) => {
-    const aliases = aliasesByStorageName.get(row.name);
-    if (!aliases || aliases.size === 0) {
-      return true;
-    }
-    return [...aliases].some((alias) => {
-      return !args.overriddenSecretAliases.has(alias);
-    });
-  });
-}
-
 async function mapWithBoundedConcurrency<TInput, TOutput>(
   values: readonly TInput[],
   concurrency: number,
@@ -3775,13 +3730,30 @@ function connectorSourceIdsBySlug(
   );
 }
 
-function resolveStoredConnectorState(
+function resolveStoredConnectorSecrets(
   bindingSets: readonly ConnectorEnvBindingSet[],
   connectorSecrets: Record<string, string>,
+): Record<string, string> {
+  const secrets: Record<string, string> = {};
+  for (const { runtimeBindings } of bindingSets) {
+    for (const { envName, source } of runtimeBindings) {
+      if (source.kind !== "connector-secret") {
+        continue;
+      }
+      const secretValue = connectorSecrets[source.name];
+      if (secretValue !== undefined) {
+        secrets[envName] = secretValue;
+      }
+    }
+  }
+  return secrets;
+}
+
+function resolveStoredConnectorMetadata(
+  bindingSets: readonly ConnectorEnvBindingSet[],
   connectorVariables: Record<string, string>,
   availableSecretNames: ReadonlySet<string>,
-): ResolvedStoredConnectorState {
-  const secrets: Record<string, string> = {};
+): ResolvedStoredConnectorMetadata {
   const vars: Record<string, string> = {};
   const secretConnectorMap: Record<string, string> = {};
   const secretConnectorMetadataMap: Record<string, SecretConnectorMetadata> =
@@ -3792,25 +3764,17 @@ function resolveStoredConnectorState(
     for (const { envName, valueRef, optional, source } of runtimeBindings) {
       switch (source.kind) {
         case "connector-secret": {
-          const secretName = source.name;
-          const secretValue = connectorSecrets[secretName];
-          if (secretValue !== undefined) {
-            secrets[envName] = secretValue;
-            addConnectorEnvironmentTemplate(environment, envName, valueRef);
-          } else if (availableSecretNames.has(secretName)) {
-            addConnectorEnvironmentTemplate(environment, envName, valueRef);
-          } else if (!optional) {
+          if (availableSecretNames.has(source.name) || !optional) {
             addConnectorEnvironmentTemplate(environment, envName, valueRef);
           }
           break;
         }
         case "connector-variable": {
-          const variableName = source.name;
-          const variableValue = connectorVariables[variableName];
+          const variableValue = connectorVariables[source.name];
           if (variableValue !== undefined) {
             vars[envName] = variableValue;
-            addConnectorEnvironmentTemplate(environment, envName, valueRef);
-          } else if (!optional) {
+          }
+          if (variableValue !== undefined || !optional) {
             addConnectorEnvironmentTemplate(environment, envName, valueRef);
           }
           break;
@@ -3839,7 +3803,6 @@ function resolveStoredConnectorState(
   }
 
   return {
-    secrets,
     vars,
     secretConnectorMap,
     secretConnectorMetadataMap,
@@ -3909,7 +3872,6 @@ function referencedEnvironmentSecretAliases(
 async function materializeStoredConnectorContext(
   snapshot: StoredConnectorMaterializationSnapshot | null,
   args: {
-    readonly overriddenSecretAliases: ReadonlySet<string>;
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
@@ -3918,11 +3880,6 @@ async function materializeStoredConnectorContext(
     return emptyConnectorRuntimeContext();
   }
 
-  const availableSecretRows = filterOverriddenStoredConnectorSecretRows({
-    rows: snapshot.secretRows,
-    bindingSets: snapshot.bindingSets,
-    overriddenSecretAliases: args.overriddenSecretAliases,
-  });
   const availableSecretNames = availableStoredConnectorSecretNames(
     snapshot.secretRows,
   );
@@ -3932,15 +3889,16 @@ async function materializeStoredConnectorContext(
     "api_dispatch_prepare_context_build_stored_connector_state",
     "nested",
     () => {
-      const resolved = resolveStoredConnectorState(
+      const resolved = resolveStoredConnectorMetadata(
         snapshot.bindingSets,
-        {},
         snapshot.variableValues,
         availableSecretNames,
       );
 
+      // Secrets are decrypted and merged later, by
+      // materializeEagerStoredConnectorSecrets.
       return Promise.resolve({
-        secrets: compactRecord(resolved.secrets),
+        secrets: undefined,
         vars: compactRecord(resolved.vars),
         secretConnectorMap: compactRecord(resolved.secretConnectorMap),
         secretConnectorMetadataMap: compactRecord(
@@ -3953,12 +3911,7 @@ async function materializeStoredConnectorContext(
         storedEnvironment: compactRecord(resolved.environment),
       });
     },
-    {
-      ...args.timingDimensions,
-      stored_connector_secret_count_bucket: countBucket(
-        availableSecretRows.length,
-      ),
-    },
+    args.timingDimensions,
   );
 }
 
@@ -4036,16 +3989,14 @@ async function materializeEagerStoredConnectorSecrets(
     },
     timing,
   );
-  const resolved = resolveStoredConnectorState(
+  const secrets = resolveStoredConnectorSecrets(
     snapshot.bindingSets,
     connectorSecrets,
-    snapshot.variableValues,
-    availableStoredConnectorSecretNames(snapshot.secretRows),
   );
 
   return {
     ...context,
-    secrets: mergeRecords(context.secrets, resolved.secrets),
+    secrets: mergeRecords(context.secrets, secrets),
   };
 }
 
@@ -4508,136 +4459,6 @@ export type CustomConnectorRuntimeDataRows = Awaited<
   ReturnType<typeof loadCustomConnectorRuntimeData>
 >;
 
-type CustomConnectorRuntimeBuildPhase =
-  | "renderAuthTemplates"
-  | "renderPrefixes"
-  | "assembleFirewalls";
-
-const CUSTOM_CONNECTOR_RUNTIME_BUILD_PHASE_TIMINGS = [
-  {
-    phase: "renderAuthTemplates",
-    actionType:
-      "api_dispatch_prepare_context_render_custom_connector_auth_templates",
-  },
-  {
-    phase: "renderPrefixes",
-    actionType: "api_dispatch_prepare_context_render_custom_connector_prefixes",
-  },
-  {
-    phase: "assembleFirewalls",
-    actionType:
-      "api_dispatch_prepare_context_assemble_custom_connector_firewalls",
-  },
-] as const satisfies readonly {
-  readonly phase: CustomConnectorRuntimeBuildPhase;
-  readonly actionType: ApiDispatchTimingActionType;
-}[];
-
-class CustomConnectorRuntimeBuildStats {
-  private readonly phaseDurationsMs: Record<
-    CustomConnectorRuntimeBuildPhase,
-    number
-  > = {
-    renderAuthTemplates: 0,
-    renderPrefixes: 0,
-    assembleFirewalls: 0,
-  };
-
-  private readonly connectorCount: number;
-  private readonly configuredValueCount: number;
-  private readonly prefixTemplateCount: number;
-  private renderedApiCount = 0;
-  private missingRequiredCount = 0;
-  private noAuthInjectionCount = 0;
-  private invalidPrefixCount = 0;
-
-  constructor(rows: CustomConnectorRuntimeDataRows) {
-    this.connectorCount = rows.length;
-    this.configuredValueCount = rows.reduce((total, row) => {
-      return total + row.values.length;
-    }, 0);
-    this.prefixTemplateCount = rows.reduce((total, row) => {
-      return (
-        total +
-        (row.connector.kind === "http"
-          ? row.connector.prefixTemplates.length
-          : 0)
-      );
-    }, 0);
-  }
-
-  recordPhaseDuration(
-    phase: CustomConnectorRuntimeBuildPhase,
-    startedAt: number,
-    finishedAt: number = now(),
-  ): void {
-    this.phaseDurationsMs[phase] += Math.max(0, finishedAt - startedAt);
-  }
-
-  recordRenderedApi(): void {
-    this.renderedApiCount += 1;
-  }
-
-  recordMissingRequiredConnector(): void {
-    this.missingRequiredCount += 1;
-  }
-
-  recordNoAuthInjectionConnector(): void {
-    this.noAuthInjectionCount += 1;
-  }
-
-  recordInvalidPrefix(): void {
-    this.invalidPrefixCount += 1;
-  }
-
-  flush(timing: ApiDispatchTimingCollector | undefined): void {
-    if (!timing) {
-      return;
-    }
-    const dimensions = this.dimensions();
-    const finishedAt = now();
-    for (const {
-      phase,
-      actionType,
-    } of CUSTOM_CONNECTOR_RUNTIME_BUILD_PHASE_TIMINGS) {
-      const durationMs = this.phaseDurationsMs[phase];
-      timing.recordElapsed(
-        actionType,
-        "nested",
-        finishedAt - durationMs,
-        finishedAt,
-        dimensions,
-      );
-    }
-  }
-
-  private dimensions(): ApiDispatchTimingDimensions {
-    return {
-      custom_connector_runtime_connector_count_bucket: countBucket(
-        this.connectorCount,
-      ),
-      custom_connector_runtime_configured_value_count_bucket: countBucket(
-        this.configuredValueCount,
-      ),
-      custom_connector_runtime_prefix_template_count_bucket: countBucket(
-        this.prefixTemplateCount,
-      ),
-      custom_connector_runtime_rendered_api_count_bucket: countBucket(
-        this.renderedApiCount,
-      ),
-      custom_connector_runtime_missing_required_count_bucket: countBucket(
-        this.missingRequiredCount,
-      ),
-      custom_connector_runtime_no_auth_injection_count_bucket: countBucket(
-        this.noAuthInjectionCount,
-      ),
-      custom_connector_runtime_invalid_prefix_count_bucket: countBucket(
-        this.invalidPrefixCount,
-      ),
-    };
-  }
-}
-
 function customConnectorRuntimeAuth(args: {
   readonly row: CustomConnectorRuntimeDataRows[number];
 }): {
@@ -4693,9 +4514,7 @@ function buildCustomConnectorRuntimeApis(args: {
   readonly query: Record<string, string>;
   readonly baseUrlVars: Readonly<Record<string, string>>;
   readonly permissionBundle: CustomConnectorPermissionBundle | null;
-  readonly stats: CustomConnectorRuntimeBuildStats;
 }): ExpandedFirewallConfig["apis"] {
-  const prefixStartedAt = now();
   const connector = args.row.connector;
   if (connector.kind === "mcp") {
     const endpointResult = safeSync(() => {
@@ -4715,13 +4534,9 @@ function buildCustomConnectorRuntimeApis(args: {
       return canonicalEndpoint;
     });
     if ("error" in endpointResult) {
-      args.stats.recordInvalidPrefix();
-      args.stats.recordPhaseDuration("renderPrefixes", prefixStartedAt);
       return [];
     }
     const endpoint = endpointResult.ok;
-    args.stats.recordRenderedApi();
-    args.stats.recordPhaseDuration("renderPrefixes", prefixStartedAt);
     return [
       {
         base: endpoint,
@@ -4744,10 +4559,8 @@ function buildCustomConnectorRuntimeApis(args: {
       connectorName: connector.displayName,
     });
     if (!renderedPrefix) {
-      args.stats.recordInvalidPrefix();
       continue;
     }
-    args.stats.recordRenderedApi();
     apis.push({
       base: renderedPrefix,
       auth: { headers: args.headers, query: args.query },
@@ -4756,7 +4569,6 @@ function buildCustomConnectorRuntimeApis(args: {
         : {}),
     });
   }
-  args.stats.recordPhaseDuration("renderPrefixes", prefixStartedAt);
   return apis;
 }
 
@@ -4833,7 +4645,6 @@ interface BuildCustomConnectorRuntimeContextArgs {
     string,
     Readonly<Record<string, string>>
   >;
-  readonly timing?: ApiDispatchTimingCollector;
 }
 
 type BuiltCustomConnectorRuntimeRow =
@@ -4940,7 +4751,6 @@ async function buildCustomConnectorRuntimeRow(args: {
   readonly row: CustomConnectorRuntimeDataRows[number];
   readonly context: BuildCustomConnectorRuntimeContextArgs;
   readonly selectedPermissionNames: readonly string[];
-  readonly stats: CustomConnectorRuntimeBuildStats;
 }): Promise<BuiltCustomConnectorRuntimeRow> {
   const hasProvidedBaseUrlVars =
     args.context.baseUrlVarsByConnectorId?.has(args.row.connector.id) ?? false;
@@ -4950,21 +4760,10 @@ async function buildCustomConnectorRuntimeRow(args: {
     hasProvided: hasProvidedBaseUrlVars,
   });
   const skill = customConnectorRuntimeSkill(args.row);
-  const missingRequiredStartedAt = now();
-  const missingRequired = !customConnectorRequiredMemberCredentialsAreComplete(
-    args.row,
-  );
-  args.stats.recordPhaseDuration("assembleFirewalls", missingRequiredStartedAt);
-  if (missingRequired) {
-    args.stats.recordMissingRequiredConnector();
-  }
-  const authTemplateStartedAt = now();
   const { headers, query } = customConnectorRuntimeAuth({
     row: args.row,
   });
-  args.stats.recordPhaseDuration("renderAuthTemplates", authTemplateStartedAt);
   if (Object.keys(headers).length === 0 && Object.keys(query).length === 0) {
-    args.stats.recordNoAuthInjectionConnector();
     if (
       args.row.connector.kind === "mcp" &&
       args.row.connector.authMode !== "none" &&
@@ -4994,14 +4793,12 @@ async function buildCustomConnectorRuntimeRow(args: {
       query,
       baseUrlVars,
       permissionBundle,
-      stats: args.stats,
     });
   });
   if ("error" in apisResult) {
     if (!(apisResult.error instanceof CustomConnectorRuntimePrefixError)) {
       throw apisResult.error;
     }
-    args.stats.recordInvalidPrefix();
     return unavailableCustomConnectorRuntimeRow(skill);
   }
   const apis = apisResult.ok;
@@ -5052,20 +4849,16 @@ export async function buildCustomConnectorRuntimeContext(
       return [grant.customConnectorId, grant.permissionNames] as const;
     }),
   );
-  const stats = new CustomConnectorRuntimeBuildStats(args.rows);
   for (const row of args.rows) {
     const built = await buildCustomConnectorRuntimeRow({
       row,
       context: args,
       selectedPermissionNames: grantByConnectorId.get(row.connector.id) ?? [],
-      stats,
     });
-    const assemblyStartedAt = now();
     if (built.skill) {
       skills.push(built.skill);
     }
     if (!built.registration) {
-      stats.recordPhaseDuration("assembleFirewalls", assemblyStartedAt);
       continue;
     }
     targets.push(built.registration);
@@ -5087,11 +4880,9 @@ export async function buildCustomConnectorRuntimeContext(
     for (const secretName of extractSecretNamesFromApis(built.firewall.apis)) {
       reservedSecretAliases[secretName] = true;
     }
-    stats.recordPhaseDuration("assembleFirewalls", assemblyStartedAt);
   }
 
-  const finalAssemblyStartedAt = now();
-  const result = {
+  return {
     firewalls,
     reservedSecretAliases: compactRecord(reservedSecretAliases),
     permissionPolicies: compactRecord(permissionPolicies),
@@ -5101,9 +4892,6 @@ export async function buildCustomConnectorRuntimeContext(
     mcpConnectorSlugs,
     skills,
   };
-  stats.recordPhaseDuration("assembleFirewalls", finalAssemblyStartedAt);
-  stats.flush(args.timing);
-  return result;
 }
 
 async function buildNewRunCustomConnectorRuntimeContext(
@@ -5297,7 +5085,6 @@ async function loadCustomConnectorContext(
         featureSwitchContext: args.featureSwitchContext,
         connectorCatalogSnapshot: args.connectorCatalogSnapshot,
         grants: args.customConnectorGrants,
-        timing,
       });
     },
   );
@@ -9943,7 +9730,7 @@ async function materializePreparedConnectorContext(args: {
   const [connectorContext, permissionManifest] = await Promise.all([
     materializeStoredConnectorContext(
       args.storedConnectorSnapshot,
-      { overriddenSecretAliases, timingDimensions },
+      { timingDimensions },
       args.timing,
     ),
     args.timing.measure(
