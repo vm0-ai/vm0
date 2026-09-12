@@ -624,7 +624,9 @@ export default [
   {
     // Keep finite persisted/state-machine contract matrices as narrow
     // exceptions. Route tests cover constructible behavior, while these exact
-    // transition inputs are not available through production APIs.
+    // transition inputs are not available through production APIs. Being an
+    // exception to the service-directory ban is not an exception to the
+    // diagnostics gate, so these files carry those selectors too.
     files: [
       // Content hashes are a byte-identical cryptographic contract shared with
       // guest-agent; route behavior cannot pin the serializer's full corpus.
@@ -665,7 +667,11 @@ export default [
       "src/signals/services/__tests__/welcome-chat-thread-id.test.ts",
     ],
     rules: {
-      "no-restricted-syntax": ["error", ...restrictedSyntax],
+      "no-restricted-syntax": [
+        "error",
+        ...restrictedSyntax,
+        ...apiTestDiagnosticsSyntax,
+      ],
     },
   },
   {
@@ -854,9 +860,9 @@ export default [
       // Bootstrap-only module: it owns the process.env and vi.stubEnv usage
       // that `restrictedSyntax` bans everywhere else.
       "src/__tests__/env-stub.ts",
-      // Service-directory tests are answered by their own blocks above, which
-      // either ban the file outright or restore the shared selectors for a
-      // named exception.
+      // Service-directory tests are answered by their own blocks above: the
+      // file is either banned outright or is a named exception that carries
+      // these selectors alongside the shared ones.
       "src/signals/services/**/*.test.ts",
       // The stub definition site installs the logger and telemetry mocks that
       // this rule stops tests from reading; it asserts nothing itself.
