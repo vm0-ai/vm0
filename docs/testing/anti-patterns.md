@@ -88,14 +88,15 @@ See [API testing](api-testing.md).
 
 ## AP-12: Pinning Diagnostics
 
-Do not build a `captureDiagnostics`-style harness that switches on the real
-telemetry transport, intercepts the ingest endpoint with MSW, and asserts a
-level, message, or field per outcome. Log records are internal implementation,
-so renaming one outcome breaks cases that protect nothing a caller can observe,
-and a log-noise report then gets answered with another classifier instead of a
-deleted record. Assert the HTTP response and the effect visible in the next
-request instead. The logger's own suite and one redaction check for a shared
-sanitizer are the only exceptions.
+In API tests, do not build a `captureDiagnostics`-style harness that switches on
+the real telemetry transport, intercepts the ingest endpoint with MSW, and
+asserts a level, message, or field per outcome. Those records are internal
+implementation, so renaming one outcome breaks cases that protect nothing a
+caller can observe, and a log-noise report gets answered with another classifier
+instead of a deleted record. Assert the HTTP response and the effect visible in
+the next request instead. The logger's own suite and one shared-sanitizer
+redaction check are the only exceptions. Where a log record is a surface's own
+contract, AP-9 applies. See [external behavior](testing-external-behavior.md).
 
 ## Review Checklist
 
