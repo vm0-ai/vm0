@@ -5821,7 +5821,6 @@
         "welcomeThread": {
           "create": "Criar conversa de boas-vindas",
           "creating": "Criando…",
-          "defaultAgentNotReady": "Configure o agente padrão do espaço de trabalho e tente novamente.",
           "description": "Crie uma conversa de boas-vindas com a introdução e os exemplos.",
           "failed": "Não foi possível criar a conversa de boas-vindas. Tente novamente.",
           "title": "Conversa de boas-vindas"

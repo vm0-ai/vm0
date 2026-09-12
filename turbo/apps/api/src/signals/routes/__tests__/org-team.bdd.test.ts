@@ -649,7 +649,6 @@ describe("ORG-02: membership admin matrix", () => {
 
   it("shares the 5xx retry deadline across organization member reads", async () => {
     const admin = api.user();
-    const orgId = orgIdOf(admin);
     api.mockClerkOrg(admin);
     context.mocks.signalTimers.delay.mockImplementation(() => {
       // Scheduling can resume later than the requested backoff.
@@ -667,9 +666,9 @@ describe("ORG-02: membership admin matrix", () => {
           },
         ],
       });
-    const requests = api.mockClerkMembershipRequestHandlers(orgId, {
-      listStatus: 521,
-    });
+    context.mocks.clerk.users.getUserList.mockRejectedValue(
+      new ClerkApiResponseTestError(1, 521),
+    );
 
     const exhausted = await api.requestListMembers(admin, [500]);
 
@@ -677,8 +676,14 @@ describe("ORG-02: membership admin matrix", () => {
     expect(
       context.mocks.clerk.organizations.getOrganizationMembershipList,
     ).toHaveBeenCalledTimes(2);
-    expect(requests.listCalls()).toBe(1);
+    expect(context.mocks.clerk.users.getUserList).toHaveBeenCalledTimes(1);
     expect(context.mocks.signalTimers.delay).toHaveBeenCalledTimes(1);
+    expect(context.mocks.sentry.captureException).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: "ClerkReadUnavailableError",
+        providerStatus: 521,
+      }),
+    );
   });
 
   it("rejects Clerk member records without required user identifiers", async () => {
