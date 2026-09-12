@@ -187,7 +187,13 @@ Slots cover admitted work through parsing, authority, DNS, authentication,
 execution and host cleanup, rather than only established connections. Aggregate
 socket, memory and network use can therefore grow with active Runs and outstanding
 cleanup from retired Runs. Expensive key decoding still uses 2 process-wide
-blocking slots; authority-cache and observation-report bounds remain separate.
+blocking slots. When both are occupied, private-key preparation waits
+asynchronously within the request's existing deadline and Run/sandbox cancellation
+scope, before submitting a blocking job. Waiting retains the Run request slot and
+credential input but occupies no blocking worker; timeout or cancellation removes
+the waiter before DNS, TCP connection, SSH authentication or command execution.
+Password authentication and valid prepared-credential cache hits bypass decoding.
+Authority-cache and observation-report bounds remain separate.
 Cancelled blocking work and system DNS retain their original Run's capacity
 permits until they really finish. The dispatcher owns the guest stream and its existing
 normal-operation/park reservation independently. Once request I/O closes and the

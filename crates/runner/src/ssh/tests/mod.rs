@@ -3,6 +3,7 @@ mod cache;
 mod credentials;
 mod framing;
 mod harness;
+mod key_wait;
 mod lifecycle;
 mod observations;
 mod passwords;
