@@ -1096,29 +1096,6 @@ async function claimChatRun(
   };
 }
 
-function holdOpenAiPiFirstTurnModelRequest() {
-  const entered = createDeferredPromise<void>(context.signal);
-  const release = createDeferredPromise<void>(context.signal);
-  onTestFinished(() => {
-    if (!release.settled()) {
-      release.resolve(undefined);
-    }
-  });
-  server.use(
-    http.post("https://api.openai.com/v1/responses", async () => {
-      if (!entered.settled()) {
-        entered.resolve(undefined);
-      }
-      await release.promise;
-      return HttpResponse.json(
-        { error: "released effort fallback fixture" },
-        { status: 522 },
-      );
-    }),
-  );
-  return { entered, release };
-}
-
 async function expectRunAppContext(args: {
   readonly actor: ApiTestUser;
   readonly runId: string;
@@ -4120,6 +4097,9 @@ describe("CHAT effort: thread configuration", () => {
         [FeatureSwitchKey.ChatReasoningEffort]: true,
         [FeatureSwitchKey.PiLoop]: pi,
       });
+      if (pi) {
+        mockPiCheckpointObjectStore();
+      }
       const thread = await chat.createThread(actor, {
         agentId,
         title: "Unsupported effort route",
@@ -4131,15 +4111,17 @@ describe("CHAT effort: thread configuration", () => {
             reasoningEffort: effort,
           });
         }
-        const heldPiFirstTurn = pi
-          ? holdOpenAiPiFirstTurnModelRequest()
-          : undefined;
         const sent = await sendChatRun(actor, {
           agentId,
           threadId: thread.id,
-          prompt: "Use the route fallback",
+          prompt: pi
+            ? "/unknown-command use the route fallback"
+            : "Use the route fallback",
           ...(saved ? {} : { runOptions: { reasoningEffort: effort } }),
         });
+        if (pi) {
+          await flushWaitUntilForTest();
+        }
         const claimed = await claimChatRun(runnerGroup, sent.runId);
         if (effectiveEffort === undefined) {
           expect(claimed.claim.platformEnvironment).not.toHaveProperty(
@@ -4155,16 +4137,7 @@ describe("CHAT effort: thread configuration", () => {
         ).resolves.toMatchObject({
           modelSettings: { [model]: { effort } },
         });
-        if (heldPiFirstTurn) {
-          await heldPiFirstTurn.entered.promise;
-          await cancelBeforeLatePiResult(actor, sent.runId, () => {
-            heldPiFirstTurn.release.resolve(undefined);
-          });
-          await waitForRunStatus(actor, sent.runId, "cancelled");
-          await flushWaitUntilForTest();
-        } else {
-          await cancelChatRun(actor, sent.runId, claimed.sandboxHeaders);
-        }
+        await cancelChatRun(actor, sent.runId, claimed.sandboxHeaders);
       }
     },
     90_000,
@@ -4546,9 +4519,9 @@ describe("CHAT effort: automation launches", () => {
       await chat.updateThreadModelSelection(actor, threadId, route.model, {
         reasoningEffort: route.effort,
       });
-      const heldPiFirstTurn = route.pi
-        ? holdOpenAiPiFirstTurnModelRequest()
-        : undefined;
+      if (route.pi) {
+        mockPiCheckpointObjectStore();
+      }
       const started = await accept(
         threadPiAutomationsClient().run({
           headers: sessionHeaders(actor),
@@ -4558,6 +4531,9 @@ describe("CHAT effort: automation launches", () => {
       );
       if (!started.body.runId) {
         throw new Error("Expected an automation run");
+      }
+      if (route.pi) {
+        await flushWaitUntilForTest();
       }
       const next = await claimChatRun(runnerGroup, started.body.runId);
       if (route.effectiveEffort === undefined) {
@@ -4574,16 +4550,7 @@ describe("CHAT effort: automation launches", () => {
       ).resolves.toMatchObject({
         modelSettings: { [route.model]: { effort: route.effort } },
       });
-      if (heldPiFirstTurn) {
-        await heldPiFirstTurn.entered.promise;
-        await cancelBeforeLatePiResult(actor, started.body.runId, () => {
-          heldPiFirstTurn.release.resolve(undefined);
-        });
-        await waitForRunStatus(actor, started.body.runId, "cancelled");
-        await flushWaitUntilForTest();
-      } else {
-        await cancelChatRun(actor, started.body.runId, next.sandboxHeaders);
-      }
+      await cancelChatRun(actor, started.body.runId, next.sandboxHeaders);
     }
   }, 90_000);
 });
