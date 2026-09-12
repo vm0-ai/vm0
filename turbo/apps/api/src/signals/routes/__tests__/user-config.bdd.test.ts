@@ -374,9 +374,9 @@ describe("AUTH-03 user model preference", () => {
     const unsupported = await cfg.requestUpdateModelPreference(
       admin,
       {
-        selectedModel: "deepseek-v4-pro",
+        selectedModel: "gpt-5.6-luna",
         serviceTier: null,
-        modelSettingsPatch: { model: "deepseek-v4-pro", effort: "high" },
+        modelSettingsPatch: { model: "gpt-5.6-luna", effort: "ultra" },
       },
       [400],
     );

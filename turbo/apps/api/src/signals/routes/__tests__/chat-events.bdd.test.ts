@@ -3963,23 +3963,25 @@ describe("CHAT effort: thread configuration", () => {
     });
     await cancelChatRun(actor, explicit.runId, explicitClaim.sandboxHeaders);
 
-    const reset = await sendChatRun(actor, {
+    const override = await sendChatRun(actor, {
       agentId,
       threadId: thread.id,
-      prompt: "Use the native default",
+      prompt: "Use another model's native default",
       model: "claude-opus-4-8",
     });
-    const resetClaim = await claimChatRun(runnerGroup, reset.runId);
-    expect(resetClaim.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
+    const overrideClaim = await claimChatRun(runnerGroup, override.runId);
+    expect(overrideClaim.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
       "high",
     );
+    // A run-level model override uses Opus's default without rewriting the
+    // thread's persisted Sonnet selection or its saved effort.
     await expect(
       chat.readThreadMetadata(actor, thread.id),
     ).resolves.toMatchObject({
-      selectedModel: "claude-opus-4-8",
+      selectedModel: "claude-sonnet-5",
       modelSettings: { "claude-sonnet-5": { effort: "high" } },
     });
-    await cancelChatRun(actor, reset.runId, resetClaim.sandboxHeaders);
+    await cancelChatRun(actor, override.runId, overrideClaim.sandboxHeaders);
   }, 90_000);
 
   it("merges concurrent explicit effort writes without dropping another model", async () => {
@@ -4167,6 +4169,12 @@ describe("CHAT effort: thread configuration", () => {
         prompt: "Active task",
       });
       const activeClaim = await claimChatRun(runnerGroup, active.runId);
+      await chat.updateThreadModelSelection(
+        actor,
+        active.threadId,
+        "claude-sonnet-5",
+        { reasoningEffort: "extra" },
+      );
       const clientEventId = randomUUID();
       const queued = await chat.requestSendEvent(
         actor,
@@ -4397,8 +4405,8 @@ describe("CHAT effort: automation launches", () => {
     const threadId = started.body.chatThreadId;
     const runId = await lastThreadPiAutomationRun(actor, threadId);
     const claimed = await claimChatRun(runnerGroup, runId);
-    expect(claimed.claim.platformEnvironment).not.toHaveProperty(
-      "OKOU_REASONING_EFFORT",
+    expect(claimed.claim.platformEnvironment.OKOU_REASONING_EFFORT).toBe(
+      "high",
     );
     return {
       ...scenario,
