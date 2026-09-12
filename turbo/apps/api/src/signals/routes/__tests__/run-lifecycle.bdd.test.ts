@@ -15679,7 +15679,7 @@ describe("RUN-01: agent runner context, queue promotion, and skills", () => {
     );
     const direct = await api.createDirectRun(actor, {
       agentId: directAgent.agentId,
-      prompt: "consume an application-owned Zero context",
+      prompt: "consume an application-owned Nova context",
       modelProviderType: "anthropic-api-key",
       vars: { CUSTOM_AGENT_ID: directAgent.agentId },
       secrets: { CUSTOM_API_TOKEN: directOkouToken },
