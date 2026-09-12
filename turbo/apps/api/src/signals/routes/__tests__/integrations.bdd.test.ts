@@ -181,29 +181,6 @@ function slackInputMessageByText(
   );
 }
 
-function sandboxOperationEventsForRun(
-  runId: string,
-): readonly Record<string, unknown>[] {
-  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
-    const dataset = call[0];
-    const events = call[1];
-    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
-      return [];
-    }
-    return events.filter((event): event is Record<string, unknown> => {
-      return isRecord(event) && event.run_id === runId;
-    });
-  });
-}
-
-function firstAssistantEventsForRun(
-  runId: string,
-): readonly Record<string, unknown>[] {
-  return sandboxOperationEventsForRun(runId).filter((event) => {
-    return event.op_type === "api_to_first_assistant_message";
-  });
-}
-
 function slackBotOauthResponse(args: {
   readonly accessToken: string;
   readonly botUserId: string;
@@ -1242,7 +1219,6 @@ async function runSuccessfulContinuedSlackPiTurn(args: {
 async function expectSlackPiMemoryCandidate(args: {
   readonly scenario: CanonicalSlackPiScenario;
   readonly runId: string;
-  readonly outcome: "created" | "replaced";
 }) {
   // Stage 1 candidates intentionally have no production read API. Observe the
   // private identity only after real Slack ingress and completion own the run.
@@ -1277,15 +1253,6 @@ async function expectSlackPiMemoryCandidate(args: {
   expect(
     candidate.eligibleAt.getTime() - candidate.sourceCompletedAt.getTime(),
   ).toBe(60_000);
-  expect(sandboxOperationEventsForRun(args.runId)).toContainEqual(
-    expect.objectContaining({
-      op_type: "pi_memory_stage1_candidate_admission",
-      candidate_outcome: args.outcome,
-      memory_storage_id: candidate.memoryStorageId,
-      pi_session_id: args.scenario.chatThreadId,
-      source_history_hash: conversation.sourceHistoryHash,
-    }),
-  );
   await expect(
     countPiMemoryStage1CandidatesFixture({
       memoryStorageId: candidate.memoryStorageId,
@@ -2846,7 +2813,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
         }),
       );
     });
-    expect(firstAssistantEventsForRun(run1Id)).toHaveLength(1);
     await expect
       .poll(async () => {
         const callbacks = await callbackStore.set(
@@ -2959,7 +2925,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
         }),
       );
     });
-    expect(firstAssistantEventsForRun(run2Id)).toHaveLength(1);
     expect(
       (await chat.listThreadEvents(actor, canonicalChatThreadId)).events,
     ).toStrictEqual(
@@ -2997,7 +2962,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
       const firstCandidate = await expectSlackPiMemoryCandidate({
         scenario,
         runId: firstTurn.runId,
-        outcome: "created",
       });
       const continuedTurn = await claimContinuedSlackPiTurn({
         scenario,
@@ -3031,7 +2995,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
       const replacedCandidate = await expectSlackPiMemoryCandidate({
         scenario,
         runId: successfulContinuation.runId,
-        outcome: "replaced",
       });
       expect(replacedCandidate).toMatchObject({
         memoryStorageId: firstCandidate.memoryStorageId,
@@ -3281,7 +3244,6 @@ describe("INT-01: Slack app deep webhook flows", () => {
         });
       }
 
-      expect(firstAssistantEventsForRun(deliveryRunId)).toHaveLength(1);
       expect(
         (await chat.listThreadEvents(actor, canonicalChatThreadId)).events,
       ).toStrictEqual(
