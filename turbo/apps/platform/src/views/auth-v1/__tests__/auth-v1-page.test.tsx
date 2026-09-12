@@ -96,7 +96,7 @@ test("Nested sign-in task paths stay on the hosted sign-in form", async () => {
   expect(document.title).toBe("Sign in | Okou");
 });
 
-test("Clerk path steps load a new document and keep every query value", async () => {
+test("Clerk sign-in steps use app history and keep every query value", async () => {
   const assigned = context.mocks.browser.locationAssign();
   await setupSignedOutPage("/sign-in?screen=identifier#start");
 
@@ -105,14 +105,25 @@ test("Clerk path steps load a new document and keep every query value", async ()
     clerkWindowNavigation(),
   );
 
-  expect(assigned.calls).toStrictEqual([
-    "https://app.okou.ai/sign-in/factor-one?strategy=password&strategy=passkey#challenge",
-  ]);
-  // The document survives until the browser commits the navigation.
-  expect(window.location.pathname).toBe("/sign-in");
+  await waitFor(() => {
+    expect(window.location.pathname).toBe("/sign-in/factor-one");
+  });
+  expect(
+    new URLSearchParams(window.location.search).getAll("strategy"),
+  ).toStrictEqual(["password", "passkey"]);
+  expect(window.location.hash).toBe("#challenge");
+  expect(assigned.calls).toStrictEqual([]);
+  expect(screen.getByTestId("clerk-sign-in")).toBeVisible();
+
+  window.history.back();
+  await waitFor(() => {
+    expect(window.location.pathname).toBe("/sign-in");
+  });
+  expect(window.location.search).toBe("?screen=identifier");
+  expect(window.location.hash).toBe("#start");
 });
 
-test("Clerk path replacements load a new document without a history entry", async () => {
+test("Clerk sign-in replacements keep the current app history entry", async () => {
   const assigned = context.mocks.browser.locationAssign();
   const replaced = context.mocks.browser.locationReplace();
   await setupSignedOutPage("/sign-in/factor-one?strategy=password#challenge");
@@ -122,10 +133,68 @@ test("Clerk path replacements load a new document without a history entry", asyn
     clerkWindowNavigation(),
   );
 
+  await waitFor(() => {
+    expect(window.location.pathname).toBe("/sign-in");
+  });
+  expect(window.location.search).toBe("?screen=identifier");
+  expect(window.location.hash).toBe("#start");
+  expect(assigned.calls).toStrictEqual([]);
+  expect(replaced.calls).toStrictEqual([]);
+
+  window.history.back();
+  expect(window.location.pathname).toBe("/sign-in");
+  expect(window.location.search).toBe("?screen=identifier");
+  expect(window.location.hash).toBe("#start");
+});
+
+test("Clerk sign-up steps stay on the hosted app page", async () => {
+  const assigned = context.mocks.browser.locationAssign();
+  await setupSignedOutPage("/sign-up?screen=identifier#start");
+
+  await registeredClerkRouter().push(
+    "/sign-up/verify?strategy=email_code#challenge",
+    clerkWindowNavigation(),
+  );
+
+  await waitFor(() => {
+    expect(window.location.pathname).toBe("/sign-up/verify");
+  });
+  expect(window.location.search).toBe("?strategy=email_code");
+  expect(window.location.hash).toBe("#challenge");
+  expect(assigned.calls).toStrictEqual([]);
+  expect(screen.getByTestId("clerk-sign-up")).toBeVisible();
+});
+
+test.each(["/", "/sign-in-token", "/sign-invader", "/v1/sign-in"])(
+  "Clerk navigation to non-Auth V1 path %s loads a new document",
+  async (destination) => {
+    const assigned = context.mocks.browser.locationAssign();
+    await setupSignedOutPage("/sign-in");
+
+    await registeredClerkRouter().push(destination, clerkWindowNavigation());
+
+    expect(assigned.calls).toStrictEqual([
+      new URL(destination, "https://app.okou.ai").href,
+    ]);
+    expect(window.location.pathname).toBe("/sign-in");
+  },
+);
+
+test("Clerk replacements outside Auth V1 load a new document", async () => {
+  const assigned = context.mocks.browser.locationAssign();
+  const replaced = context.mocks.browser.locationReplace();
+  await setupSignedOutPage("/sign-in/factor-one");
+
+  await registeredClerkRouter().replace(
+    "/onboarding?source=clerk#complete",
+    clerkWindowNavigation(),
+  );
+
   expect(replaced.calls).toStrictEqual([
-    "https://app.okou.ai/sign-in?screen=identifier#start",
+    "https://app.okou.ai/onboarding?source=clerk#complete",
   ]);
   expect(assigned.calls).toStrictEqual([]);
+  expect(window.location.pathname).toBe("/sign-in/factor-one");
 });
 
 test("Clerk cross-origin navigation stays browser-owned", async () => {
@@ -133,11 +202,13 @@ test("Clerk cross-origin navigation stays browser-owned", async () => {
   await setupSignedOutPage("/sign-in");
 
   await registeredClerkRouter().push(
-    "https://www.okou.ai/",
+    "https://www.okou.ai/sign-in?locale=ja-JP",
     clerkWindowNavigation(),
   );
 
-  expect(assigned.calls).toStrictEqual(["https://www.okou.ai/"]);
+  expect(assigned.calls).toStrictEqual([
+    "https://www.okou.ai/sign-in?locale=ja-JP",
+  ]);
   expect(window.location.pathname).toBe("/sign-in");
 });
 

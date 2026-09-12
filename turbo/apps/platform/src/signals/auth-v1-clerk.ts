@@ -4,30 +4,50 @@ import { command, computed, state } from "ccstate";
 import { registerClerkRouter } from "../lib/clerk-runtime.ts";
 import { onRef } from "./utils.ts";
 import { pageSignal$ } from "./page-signal.ts";
+import { detachedNavigateTo$ } from "./route.ts";
+import { ROUTES, type RoutePath } from "./route-paths.ts";
 
 type ClerkRouter = NonNullable<ClerkProviderProps["routerPush"]>;
 type ClerkRouterMetadata = Parameters<ClerkRouter>[1];
 
+function isAuthV1Pathname(pathname: string): boolean {
+  return (
+    pathname === ROUTES.signIn ||
+    pathname.startsWith(`${ROUTES.signIn}/`) ||
+    pathname === ROUTES.signUp ||
+    pathname.startsWith(`${ROUTES.signUp}/`)
+  );
+}
+
 /**
- * Hands every Clerk destination to the browser as a document navigation.
+ * Keeps Clerk's hosted auth steps in app history and reloads on auth exit.
  *
  * Authenticated startup is document-scoped: feature switches, the realtime
  * daemon, the shared database bridge and the onboarding guard all run once from
- * `bootstrap$` and return early while signed out. A same-document sign-in would
- * leave all of them in their signed-out state until the next load, so Clerk's
- * completion has to replace the document. Clerk has already resolved the URL
- * against the allowed protocols and kept cross-origin targets for itself by the
- * time it calls this.
+ * `bootstrap$` and return early while signed out. Leaving the hosted sign-in or
+ * sign-up routes therefore needs a new document, while their internal factor
+ * and task steps remain same-document navigations without a loading flash.
  */
 export function createAuthV1ClerkSignals(clerk: Pick<Clerk, "on" | "off">) {
   const navigateClerkUrl$ = command(
-    (_ctx, url: string, replace: boolean): void => {
-      const destination = new URL(url, window.location.href).href;
-      if (replace) {
-        window.location.replace(destination);
+    ({ set }, url: string, replace: boolean): void => {
+      const destination = new URL(url, window.location.href);
+      if (
+        destination.origin === window.location.origin &&
+        isAuthV1Pathname(destination.pathname)
+      ) {
+        set(detachedNavigateTo$, destination.pathname as RoutePath, {
+          hash: destination.hash,
+          replace,
+          searchParams: destination.searchParams,
+        });
         return;
       }
-      window.location.assign(destination);
+      if (replace) {
+        window.location.replace(destination.href);
+        return;
+      }
+      window.location.assign(destination.href);
     },
   );
   const clerkRouterPush$ = command(
