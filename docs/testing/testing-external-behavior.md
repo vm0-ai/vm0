@@ -71,9 +71,16 @@ case, or asserting on a service return value, bypasses the route, middleware,
 contract, auth, and request parsing. That test can pass while the real API is
 still broken.
 
+Log records are not the external interface either. Messages, levels, fields, and
+telemetry ingestion are internal implementation that any refactor may rename or
+drop. API tests must not enable the real Axiom transport, intercept the ingest
+endpoint, or assert on logger calls. The two exceptions, which must be stated as
+exceptions, are the logger's own suite and one redaction test proving a shared
+sanitizer keeps secrets out of records.
+
 For the API project, testing the DB, mutating the DB, asserting on the DB,
-calling services, or asserting on services all test internal implementation. The
-only trusted boundary is the API endpoint.
+calling services, asserting on services, or asserting on log records all test
+internal implementation. The only trusted boundary is the API endpoint.
 
 ## Exceptions
 
@@ -101,7 +108,7 @@ inherit internal coupling by default.
 
 ## Lint
 
-API test files should not import DB schema or API service files.
+API test files should not import DB schema, API service files, or the logger.
 
 This lint rule is not about making code look tidy. It is a reminder that the
 test is crossing the external behavior boundary and starting to control internal
