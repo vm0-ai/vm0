@@ -1,9 +1,15 @@
-import { inflateRawSync } from "node:zlib";
 import { createHash } from "node:crypto";
-import AdmZip from "adm-zip";
+import {
+  ZipReader,
+  Uint8ArrayReader,
+  type FileEntry,
+} from "@zip.js/zip.js/index-native.js";
 import { command } from "ccstate";
-import { MAX_INTRO_VIDEO_PROJECT_BYTES } from "@okouai/api-contracts/contracts/intro-video-render";
-import { safeSync } from "../utils";
+import {
+  MAX_INTRO_VIDEO_PROJECT_BYTES,
+  type IntroVideoRenderRequest,
+} from "@okouai/api-contracts/contracts/intro-video-render";
+import { settleIncludingAbort } from "../utils";
 import { env } from "../../lib/env";
 import {
   downloadS3BufferWithMaxBytes,
@@ -36,7 +42,73 @@ function unsafeArchivePath(path: string): boolean {
   );
 }
 
-function validateProject(bytes: Buffer, composition: string): void {
+async function validateArchive(
+  reader: ZipReader<Uint8Array>,
+  composition: string,
+  aspectRatio: IntroVideoRenderRequest["output"]["aspectRatio"],
+  signal: AbortSignal,
+): Promise<void> {
+  const names = new Set<string>();
+  let expandedSize = 0;
+  let selected: FileEntry | undefined;
+  for await (const entry of reader.getEntriesGenerator()) {
+    signal.throwIfAborted();
+    const path = entry.filename.replace(/\/$/, "");
+    if (
+      unsafeArchivePath(path) ||
+      names.has(path) ||
+      entry.encrypted ||
+      entry.symlink
+    ) {
+      throw new Error("Unsafe archive entry");
+    }
+    names.add(path);
+    expandedSize += entry.uncompressedSize;
+    if (names.size > 10_000 || expandedSize > 1024 * 1024 * 1024) {
+      throw new Error("Project exceeds 10,000 entries or 1 GiB expanded size");
+    }
+    if (entry.filename === composition && !entry.directory) {
+      selected = entry;
+    }
+  }
+  if (!selected || selected.uncompressedSize > 1024 * 1024) {
+    throw new Error("Missing or oversized HTML entry");
+  }
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  await selected.getData(
+    new WritableStream<Uint8Array>({
+      write(chunk) {
+        size += chunk.byteLength;
+        if (size > 1024 * 1024) {
+          throw new Error("HTML entry exceeds 1 MiB");
+        }
+        chunks.push(chunk);
+      },
+    }),
+    { signal, checkSignature: true },
+  );
+  const html = Buffer.concat(chunks).toString("utf8");
+  if (size !== selected.uncompressedSize || !html.trim()) {
+    throw new Error("Empty or invalid HTML entry");
+  }
+  const width = Number(/data-width\s*=\s*["']([0-9]+)["']/i.exec(html)?.[1]);
+  const height = Number(/data-height\s*=\s*["']([0-9]+)["']/i.exec(html)?.[1]);
+  const ratio = width / height;
+  const expected = aspectRatio === "16:9" ? 16 / 9 : 9 / 16;
+  if (!Number.isFinite(ratio) || Math.abs(ratio - expected) >= 0.01) {
+    throw new Error(
+      "Composition dimensions must match the output aspect ratio",
+    );
+  }
+}
+
+async function validateProject(
+  bytes: Buffer,
+  composition: string,
+  aspectRatio: IntroVideoRenderRequest["output"]["aspectRatio"],
+  signal: AbortSignal,
+): Promise<void> {
   if (bytes.byteLength > MAX_INTRO_VIDEO_PROJECT_BYTES) {
     throw new IntroVideoProjectError(
       "PROJECT_TOO_LARGE",
@@ -44,51 +116,17 @@ function validateProject(bytes: Buffer, composition: string): void {
       413,
     );
   }
-  const validated = safeSync(() => {
-    const entries = new AdmZip(bytes).getEntries();
-    if (!entries.length || entries.length > 10_000) {
-      throw new Error("Invalid archive entry count");
-    }
-    const names = new Set<string>();
-    let expandedSize = 0;
-    for (const entry of entries) {
-      const path = entry.entryName.replace(/\/$/, "");
-      if (
-        unsafeArchivePath(path) ||
-        names.has(path) ||
-        (entry.header.flags & 1) !== 0 ||
-        ((entry.header.attr >>> 16) & 0o17_0000) === 0o12_0000
-      ) {
-        throw new Error("Unsafe archive entry");
-      }
-      names.add(path);
-      expandedSize += entry.header.size;
-      if (expandedSize > 1024 * 1024 * 1024) {
-        throw new Error("Expanded project exceeds 1 GiB");
-      }
-    }
-    const entry = entries.find((item) => {
-      return item.entryName === composition && !item.isDirectory;
-    });
-    if (!entry || entry.header.size > 1024 * 1024) {
-      throw new Error("Missing or oversized HTML entry");
-    }
-    const compressed = entry.getCompressedData();
-    const decoded =
-      entry.header.method === 0
-        ? compressed
-        : entry.header.method === 8
-          ? inflateRawSync(compressed, { maxOutputLength: 1024 * 1024 })
-          : null;
-    if (
-      !decoded ||
-      decoded.length !== entry.header.size ||
-      !decoded.toString("utf8").trim()
-    ) {
-      throw new Error("Empty HTML entry");
-    }
+  const reader = new ZipReader(new Uint8ArrayReader(bytes), {
+    useWebWorkers: false,
+    useCompressionStream: true,
+    strictness: "strict",
   });
-  if ("error" in validated) {
+  const validated = await settleIncludingAbort(
+    validateArchive(reader, composition, aspectRatio, signal),
+  );
+  await reader.close();
+  signal.throwIfAborted();
+  if (!validated.ok) {
     throw new IntroVideoProjectError(
       "INVALID_RENDER_PROJECT",
       validated.error instanceof Error
@@ -107,6 +145,7 @@ export const prepareIntroVideoRenderProject$ = command(
       readonly projectFileId: string;
       readonly generationId: string;
       readonly composition: string;
+      readonly aspectRatio: IntroVideoRenderRequest["output"]["aspectRatio"];
     },
     signal: AbortSignal,
   ) => {
@@ -151,7 +190,7 @@ export const prepareIntroVideoRenderProject$ = command(
       ),
     );
     signal.throwIfAborted();
-    validateProject(bytes, args.composition);
+    await validateProject(bytes, args.composition, args.aspectRatio, signal);
     const digest = createHash("sha256").update(bytes).digest("hex");
     const bucket = env("R2_PRIVATE_ARTIFACTS_BUCKET_NAME");
     if (!bucket || bucket === env("R2_USER_ARTIFACTS_BUCKET_NAME")) {

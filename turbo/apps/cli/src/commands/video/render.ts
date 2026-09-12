@@ -87,7 +87,7 @@ async function render(project: string, options: RenderOptions): Promise<void> {
   const root = resolve(project);
   const composition = options.composition ?? "index.html";
   const started = performance.now();
-  const packed = packageRenderProject(root, composition);
+  const packed = await packageRenderProject(root, composition);
   const packMs = Math.round(performance.now() - started);
   if (options.dryRun) {
     const result = {

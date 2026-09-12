@@ -127,6 +127,7 @@ const postRender$ = command(async ({ get, set }, signal: AbortSignal) => {
           projectFileId: input.projectFileId,
           generationId: input.requestId,
           composition: input.composition,
+          aspectRatio: input.output.aspectRatio,
         },
         signal,
       ),

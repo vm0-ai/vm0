@@ -3,6 +3,11 @@ import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import AdmZip from "adm-zip";
 import {
+  ZipWriter,
+  Uint8ArrayWriter,
+  Uint8ArrayReader,
+} from "@zip.js/zip.js/index-native.js";
+import {
   GetObjectCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
@@ -403,6 +408,14 @@ describe("managed Intro Video cloud rendering", () => {
     const input = await upload(f);
     const cloud = provider();
     expect((await submit(other, input)).status).toBe(404);
+    expect(
+      (
+        await submit(f, {
+          ...input,
+          output: { ...input.output, aspectRatio: "9:16" },
+        })
+      ).status,
+    ).toBe(400);
     const invalid = await upload(f, Buffer.from("not a ZIP"));
     expect((await submit(f, invalid)).status).toBe(400);
     const unsafe = await app(f).request("/api/intro-video/renders", {
@@ -415,6 +428,40 @@ describe("managed Intro Video cloud rendering", () => {
       }),
     });
     expect(unsafe.status).toBe(400);
+    expect(cloud.requests).toHaveLength(0);
+  });
+
+  it("rejects symbolic links and oversized compressed HTML before provider submission", async () => {
+    const f = await fixture();
+    const cloud = provider();
+    const linked = new ZipWriter(new Uint8ArrayWriter(), {
+      useWebWorkers: false,
+      useCompressionStream: true,
+    });
+    await linked.add(
+      "index.html",
+      new Uint8ArrayReader(Buffer.from("<html>Original pages</html>")),
+    );
+    await linked.add(
+      "assets/link",
+      new Uint8ArrayReader(Buffer.from("../../outside")),
+      { unixMode: 0o12_0777 },
+    );
+    const linkedInput = await upload(f, Buffer.from(await linked.close()));
+    expect((await submit(f, linkedInput)).status).toBe(400);
+    const oversized = new ZipWriter(new Uint8ArrayWriter(), {
+      useWebWorkers: false,
+      useCompressionStream: true,
+    });
+    await oversized.add(
+      "index.html",
+      new Uint8ArrayReader(Buffer.alloc(2 * 1024 * 1024, 65)),
+    );
+    const oversizedInput = await upload(
+      f,
+      Buffer.from(await oversized.close()),
+    );
+    expect((await submit(f, oversizedInput)).status).toBe(400);
     expect(cloud.requests).toHaveLength(0);
   });
 

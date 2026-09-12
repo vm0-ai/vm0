@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import { lstatSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
-import AdmZip from "adm-zip";
+import {
+  ZipWriter,
+  Uint8ArrayWriter,
+  Uint8ArrayReader,
+} from "@zip.js/zip.js/index-native.js";
 import ignore from "ignore";
 import {
   MAX_INTRO_VIDEO_PROJECT_BYTES,
@@ -9,7 +13,10 @@ import {
 } from "@okouai/api-contracts/contracts/intro-video-render";
 
 /** Package source assets only; this path never resolves HeyGen credentials. */
-export function packageRenderProject(projectPath: string, composition: string) {
+export async function packageRenderProject(
+  projectPath: string,
+  composition: string,
+) {
   const root = resolve(projectPath);
   const entry = introVideoCompositionSchema.parse(composition);
   if (!lstatSync(root).isDirectory())
@@ -25,13 +32,16 @@ export function packageRenderProject(projectPath: string, composition: string) {
   const ignorePath = join(root, ".hyperframesignore");
   if (readdirSync(root).includes(".hyperframesignore"))
     ignored.add(readFileSync(ignorePath, "utf8"));
-  const zip = new AdmZip();
+  const zip = new ZipWriter(new Uint8ArrayWriter(), {
+    useWebWorkers: false,
+    useCompressionStream: true,
+  });
   const digest = createHash("sha256");
   let fileCount = 0;
   let sourceBytes = 0;
   let html: string | undefined;
   const largestFiles: { path: string; size: number }[] = [];
-  function visit(relative: string): void {
+  async function visit(relative: string): Promise<void> {
     for (const name of readdirSync(join(root, relative)).sort()) {
       if (name === ".env" || name.startsWith(".env.")) continue;
       const path = relative ? `${relative}/${name}` : name;
@@ -46,7 +56,7 @@ export function packageRenderProject(projectPath: string, composition: string) {
       if (stat.isSymbolicLink())
         throw new Error(`Project symlinks are not supported: ${path}`);
       if (stat.isDirectory()) {
-        visit(path);
+        await visit(path);
         continue;
       }
       if (!stat.isFile()) throw new Error(`Unsupported project entry: ${path}`);
@@ -63,7 +73,7 @@ export function packageRenderProject(projectPath: string, composition: string) {
         .update(String(bytes.length))
         .update("\0")
         .update(bytes);
-      zip.addFile(path, bytes);
+      await zip.add(path, new Uint8ArrayReader(bytes));
       if (path === entry) {
         if (bytes.length > 1024 * 1024)
           throw new Error("Project HTML entry exceeds 1 MiB");
@@ -72,12 +82,12 @@ export function packageRenderProject(projectPath: string, composition: string) {
       largestFiles.push({ path, size: bytes.length });
     }
   }
-  visit("");
+  await visit("");
   if (!html?.trim())
     throw new Error(
       `The packaged project is missing ${entry}; check .hyperframesignore`,
     );
-  const bytes = zip.toBuffer();
+  const bytes = Buffer.from(await zip.close());
   if (bytes.length > MAX_INTRO_VIDEO_PROJECT_BYTES)
     throw new Error(
       "Project ZIP exceeds 200 MiB. Remove unused generated outputs with .hyperframesignore.",

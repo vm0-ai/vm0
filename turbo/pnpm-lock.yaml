@@ -225,12 +225,12 @@ importers:
       '@vercel/otel':
         specifier: ^2.1.2
         version: 2.1.2(@opentelemetry/api-logs@0.215.0)(@opentelemetry/api@1.9.1)(@opentelemetry/instrumentation@0.215.0(@opentelemetry/api@1.9.1))(@opentelemetry/resources@2.7.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-logs@0.215.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.7.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.7.0(@opentelemetry/api@1.9.1))
+      '@zip.js/zip.js':
+        specifier: ^2.14.1
+        version: 2.14.1
       ably:
         specifier: ^2.21.0
         version: 2.21.0(react-dom@19.2.6(react@19.2.8))(react@19.2.8)
-      adm-zip:
-        specifier: ^0.6.0
-        version: 0.6.0
       archiver:
         specifier: ^8.0.0
         version: 8.0.0
@@ -337,6 +337,9 @@ importers:
       '@typescript/native':
         specifier: npm:typescript@7.0.2
         version: typescript@7.0.2
+      adm-zip:
+        specifier: ^0.6.0
+        version: 0.6.0
       clerk:
         specifier: ^3.0.1
         version: 3.0.1
@@ -443,12 +446,12 @@ importers:
       '@typescript/native':
         specifier: npm:typescript@7.0.2
         version: typescript@7.0.2
+      '@zip.js/zip.js':
+        specifier: ^2.14.1
+        version: 2.14.1
       ably:
         specifier: ^2.21.0
         version: 2.21.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
-      adm-zip:
-        specifier: ^0.6.0
-        version: 0.6.0
       chalk:
         specifier: ^5.6.2
         version: 5.6.2
@@ -5750,6 +5753,10 @@ packages:
 
   abbrev@1.1.1:
     resolution: {integrity: sha512-nne9/IiQ/hzIhY6pdDnbBtz7DjPTKrY00P/zvPSm5pOFkl6xuGrGnXn/VtTNNfNtAfZ9/1RtehkszU9qcTii0Q==}
+
+  '@zip.js/zip.js@2.14.1':
+    resolution: {integrity: sha512-ChDAOmIvj061bWlm6Zqy5llk3V2SSES893DT9CSeiLd+YGgm5l950F/HvUpKj5ED0nqfE+cgDgFuxqVQvTMatg==}
+    engines: {bun: '>=0.7.0', deno: '>=1.0.0', node: '>=18.0.0'}
 
   ably@2.21.0:
     resolution: {integrity: sha512-Zgs3O/hqhnTEoXeV1WxoQeLaww58JbnDVFbVeEDj2kCHeuLPeavTbyf2NQBkxAM3jooN5mILaP0PDm79NOcpKw==}
@@ -15406,6 +15413,8 @@ snapshots:
       through: 2.3.8
 
   abbrev@1.1.1: {}
+
+  '@zip.js/zip.js@2.14.1': {}
 
   ably@2.21.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6):
     dependencies:

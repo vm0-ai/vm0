@@ -42,6 +42,8 @@ request ID and input returns the same job; changed input returns 409. Other
 owners receive 404. Missing platform configuration returns 503 before paid
 submission. ZIPs are limited to 200 MiB, 10,000 entries, 1 GiB expanded size,
 and a 1 MiB selected HTML entry. Unsafe paths and symlinks are rejected.
+The composition's declared `data-width`/`data-height` must match the requested
+output ratio; both the API and CLI reject a mismatch instead of cropping it.
 
 `GET /api/intro-video/renders/:generationId` returns 200 with the latest job.
 GET can reconcile provider status, copy output, and settle completed usage;
