@@ -367,7 +367,9 @@ for (const device of [
       await page
         .getByLabel("Password", { exact: true })
         .fill("A-Strong-Password-For-OTP-Layout!2026");
-      await page.getByRole("checkbox").check();
+      const legalConsent = page.getByRole("checkbox");
+      await legalConsent.click();
+      await expect(legalConsent).toBeChecked();
       await expect(
         page.getByRole("button", { exact: true, name: "Continue" }),
       ).toBeEnabled();
