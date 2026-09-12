@@ -20,7 +20,16 @@ import {
   setLegacyGoalRunOriginFixture,
 } from "../../../test-fixtures/goal-queue";
 
-import { HeadObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import {
+  HeadObjectCommand,
+  ListObjectsV2Command,
+  PutObjectCommand,
+} from "@aws-sdk/client-s3";
+import { Header } from "tar";
+import { getInstructionsStorageName } from "@okouai/core/storage-names";
+import { readCanonicalAgentNameFixture } from "../../../test-fixtures/canonical-agent-authority";
+import { createStoragesBddApi } from "./helpers/api-bdd-storages";
+import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { isChatRunTerminalEventType } from "@okouai/api-contracts/contracts/chat-events";
 import {
   chatEventsContract,
@@ -7190,6 +7199,77 @@ function piS3Object(objectKey: string): Buffer {
   throw new Error(`Expected Pi S3 object ${objectKey}`);
 }
 
+// A generic Storage commit keeps this test-owned instruction version pending.
+// Shared official skill versions may already be indexed by another test.
+async function publishPendingPiInstructions(
+  actor: ApiTestUser,
+  agentId: string,
+): Promise<string> {
+  const storageName = getInstructionsStorageName(
+    await readCanonicalAgentNameFixture(agentId),
+  );
+  const content = `Pending resource fixture ${randomUUID()}`;
+  const bytes = Buffer.from(content);
+  const header = Buffer.alloc(512);
+  new Header({
+    path: "AGENTS.md",
+    size: bytes.length,
+    type: "File",
+    mode: 0o644,
+  }).encode(header);
+  const archive = gzipSync(
+    Buffer.concat([
+      header,
+      bytes,
+      Buffer.alloc((512 - (bytes.length % 512)) % 512),
+      Buffer.alloc(1024),
+    ]),
+  );
+  const storages = createStoragesBddApi(context);
+  const files = [storageTextFile("AGENTS.md", content)];
+  const prepared = await storages.prepareStorage(actor, {
+    storageName,
+    storageOwner: "organization",
+    files,
+  });
+  let upload: { Bucket: string; Key: string } | undefined;
+  const original = context.mocks.s3.send.getMockImplementation();
+  context.mocks.s3.send.mockImplementation((request: unknown) => {
+    if (request instanceof HeadObjectCommand) {
+      if (
+        request.input.Bucket &&
+        request.input.Key?.endsWith("/archive.tar.gz")
+      ) {
+        upload = { Bucket: request.input.Bucket, Key: request.input.Key };
+      }
+      return Promise.resolve({ ContentLength: archive.length });
+    }
+    if (!original) {
+      throw new Error("Expected the test object store");
+    }
+    return original(request);
+  });
+  await storages
+    .commitStorage(actor, {
+      storageName,
+      storageOwner: "organization",
+      files,
+      versionId: prepared.versionId,
+    })
+    .finally(() => {
+      if (original) {
+        context.mocks.s3.send.mockImplementation(original);
+      }
+    });
+  if (!upload) {
+    throw new Error("Expected the instruction fixture archive to be verified");
+  }
+  await context.mocks.s3.send(
+    new PutObjectCommand({ ...upload, Body: archive }),
+  );
+  return content;
+}
+
 function mockPiResourceArchiveDownloads(unavailable = false): void {
   server.use(
     http.get(PI_RESOURCE_ARCHIVE_DOWNLOAD_URL, ({ request }) => {
@@ -8110,6 +8190,7 @@ describe("CHAT-02: model-first provider policies", () => {
     "keeps captured Pi admission after PiLoop turns off for %s",
     async (selectedModel) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
+      await publishPendingPiInstructions(actor, agentId);
       const orgId = requireOrgId(actor);
       await configureBuiltInPiModel(actor, selectedModel);
       mockPiResourceArchiveDownloads(true);
@@ -8363,6 +8444,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
   it("keeps an empty recall-enabled Pi memory mount valid", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await publishPendingPiInstructions(actor, agentId);
     const orgId = requireOrgId(actor);
     await configureBuiltInPiModel(actor, "gpt-5.6-terra");
     await updateFeatureSwitchesForUser(
@@ -10329,6 +10411,7 @@ describe("CHAT-02: model-first provider policies", () => {
     "preserves captured custom %s Fast credentials after gateway removal without substitution",
     async (selectedModel) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
+      await publishPendingPiInstructions(actor, agentId);
       const gateway = await configureCustomPiModel(actor, selectedModel);
       const entered = createDeferredPromise<void>(context.signal);
       const release = createDeferredPromise<void>(context.signal);
@@ -12306,8 +12389,100 @@ describe("CHAT-02: model-first provider policies", () => {
     ]);
   }, 90_000);
 
+  it("uses newly published Pi instruction indexes with resource archives unavailable", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    mockPiCheckpointObjectStore();
+    mockPiResourceArchiveDownloads();
+    const requests: string[] = [];
+    server.use(
+      http.post("https://api.openai.com/v1/responses", async ({ request }) => {
+        requests.push(await request.text());
+        return nativeCodexSseResponse(
+          piResponsesTextSse("indexed response", requests.length),
+        );
+      }),
+    );
+    await bdd.updateAgentInstructions(
+      actor,
+      agentId,
+      "Initial indexed instruction",
+    );
+    const queued = await queueCapabilityProvenPiRun({
+      actor,
+      agentId,
+      runnerGroup,
+      prompt: "warm exact resource versions",
+    });
+    await completeChatRunOk(
+      queued.anchor.runId,
+      queued.anchorClaim.sandboxHeaders,
+      { usagePricingResolution: queued.usagePricingResolution },
+    );
+    await waitForRunStatus(actor, queued.run.runId, "completed", 10_000);
+    await flushWaitUntilForTest();
+
+    // A new instruction version forces a new full-snapshot key. Its synchronous
+    // index and the warmed shared versions must suffice without archive access.
+    await bdd.updateAgentInstructions(
+      actor,
+      agentId,
+      "Updated instruction available immediately",
+    );
+    mockPiResourceArchiveDownloads(true);
+    const next = await sendChatRun(
+      actor,
+      {
+        agentId,
+        prompt: "use the newly saved instructions",
+        model: "gpt-5.6-terra",
+      },
+      queued.usagePricingResolution,
+    );
+    await waitForRunStatus(actor, next.runId, "completed", 10_000);
+    const events = (await chat.listThreadEvents(actor, next.threadId)).events;
+    expect(eventBackedContents(events, next.runId)).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ content: "indexed response" }),
+      ]),
+    );
+    expect(piResponsesDeveloperPrompt(requests.at(-1))).toContain(
+      "Updated instruction available immediately",
+    );
+    await flushWaitUntilForTest();
+    const pendingInstructions = await publishPendingPiInstructions(
+      actor,
+      agentId,
+    );
+    let archiveReads = 0;
+    server.use(
+      http.get(PI_RESOURCE_ARCHIVE_DOWNLOAD_URL, ({ request }) => {
+        archiveReads++;
+        const objectKey = new URL(request.url).searchParams.get("object");
+        if (!objectKey) {
+          throw new Error("Expected a resource archive identity");
+        }
+        return new HttpResponse(piS3Object(objectKey));
+      }),
+    );
+    const pending = await sendChatRun(
+      actor,
+      {
+        agentId,
+        prompt: "load the one pending resource version",
+        model: "gpt-5.6-terra",
+      },
+      queued.usagePricingResolution,
+    );
+    await waitForRunStatus(actor, pending.runId, "completed", 10_000);
+    expect(archiveReads).toBe(1);
+    expect(piResponsesDeveloperPrompt(requests.at(-1))).toContain(
+      pendingInstructions,
+    );
+  }, 30_000);
+
   it("classifies old Pi citations across real request caps, retries, replay, and ordering", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await publishPendingPiInstructions(actor, agentId);
     const resourceEntered = createDeferredPromise<void>(context.signal);
     const releaseResource = createDeferredPromise<void>(context.signal);
     onTestFinished(() => {
@@ -12805,6 +12980,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
   it("transfers authoritative H0 when API ownership expires before provider transport", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await publishPendingPiInstructions(actor, agentId);
     const resourceEntered = createDeferredPromise<void>(context.signal);
     const releaseResource = createDeferredPromise<void>(context.signal);
     server.use(
@@ -13317,6 +13493,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
   it("transfers pre-provider active input through one stable sandbox-first delivery", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await publishPendingPiInstructions(actor, agentId);
     const resourceEntered = createDeferredPromise<void>(context.signal);
     const releaseResource = createDeferredPromise<void>(context.signal);
     server.use(
@@ -13829,6 +14006,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
   it("lets canonical cancellation win before provider ownership without API artifacts", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await publishPendingPiInstructions(actor, agentId);
     const resourceEntered = createDeferredPromise<void>(context.signal);
     const releaseResource = createDeferredPromise<void>(context.signal);
     server.use(
@@ -15348,6 +15526,7 @@ describe("CHAT-02: model-first provider policies", () => {
     "saves large Pi $encoding history without API history or resource IO (publication response lost: $responseLost)",
     async ({ encoding, responseLost }) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
+      await publishPendingPiInstructions(actor, agentId);
       const checkpointObjects = mockPiCheckpointObjectStore();
       let modelCalls = 0;
       let resourceDownloads = 0;
@@ -15658,6 +15837,7 @@ describe("CHAT-02: model-first provider policies", () => {
     "hands native input %j to Sandbox with exact fresh and resumed H0",
     async (prompt) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
+      await publishPendingPiInstructions(actor, agentId);
       const checkpointObjects = mockPiCheckpointObjectStore();
       let modelCalls = 0;
       let resourceDownloads = 0;
@@ -16070,6 +16250,7 @@ describe("CHAT-02: model-first provider policies", () => {
 
   it("hands a Terra resource failure to Sandbox without replaying a later credential failure", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
+    await publishPendingPiInstructions(actor, agentId);
     if (!actor.orgId) {
       throw new Error("Expected entitled chat actor to have an org");
     }
@@ -18404,6 +18585,7 @@ describe("CHAT-02: model-first provider policies", () => {
     "fails closed when the admitted $name Fast credential disappears before provider ownership",
     async (route) => {
       const { actor, agentId, runnerGroup } = await entitledChatActor();
+      await publishPendingPiInstructions(actor, agentId);
       const secret = `${route.type}-deleted-secret`;
       await configureApiKeyGptPiModel(actor, route, secret);
       const entered = createDeferredPromise<void>(context.signal);
@@ -20351,6 +20533,7 @@ describe("CHAT-02: run-level model overrides", () => {
 
   it("refreshes the captured subscription Fast account while another account becomes active", async () => {
     const { actor, agentId } = await entitledChatActor();
+    await publishPendingPiInstructions(actor, agentId);
     const other = await configureSubscriptionPiModel(actor, {
       accountId: "other-active-account",
     });

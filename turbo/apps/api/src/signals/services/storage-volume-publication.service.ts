@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { VOLUME_ORG_USER_ID } from "@okouai/core/storage-names";
+import type { PiResourceVersionIndex } from "@okouai/db/jsonb-contracts/pi-resource-version-index";
 import { storages, storageVersions } from "@okouai/db/schema/storage";
 import { command } from "ccstate";
 import { and, eq, isNull } from "drizzle-orm";
@@ -11,6 +12,11 @@ import { create } from "tar";
 
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
+import { preparePiResourceIndex } from "../../lib/pi-resource-index";
+import {
+  enqueuePiResourceVersionIndexes,
+  publishPiResourceVersionIndex,
+} from "./pi-resource-version-index.service";
 import { writeDb$, type Db } from "../external/db";
 import {
   putS3Object,
@@ -44,12 +50,16 @@ export interface PrepareVolumeServerSideInput {
   readonly orgId: string;
   readonly storageName: string;
   readonly files: readonly VolumeFileInput[];
+  readonly piResourceIndex?: true;
 }
 
 export interface PreparedServerSideVolume {
   readonly storageName: string;
   readonly version: PreparedStorageVersion;
   readonly updatedAt: Date;
+  readonly piResourceIndex?: {
+    readonly projection: PiResourceVersionIndex | undefined;
+  };
 }
 
 interface PrepareVolumeServerSideWithDbInput {
@@ -437,6 +447,15 @@ export const prepareVolumeServerSideWithDb$ = command(
       createdBy: SERVER_SIDE_STORAGE_VERSION_CREATOR,
     };
     const bucketName = env("R2_USER_STORAGES_BUCKET_NAME");
+    // Use the canonical archive encoder even on deduplicated writes so path
+    // normalization and duplicate entries have exactly the published semantics.
+    const preparedArchive = input.piResourceIndex
+      ? await createVolumeArchive(files, signal)
+      : undefined;
+    const piResourceIndex =
+      preparedArchive === undefined
+        ? undefined
+        : { projection: preparePiResourceIndex(preparedArchive) };
     const existing = await readStorageVersion(writeDb, versionId, signal);
     if (existing) {
       assertServerSideVersionIdentity(existing, expectedVersion);
@@ -467,11 +486,13 @@ export const prepareVolumeServerSideWithDb$ = command(
             archiveSize: objects.archiveSize,
           },
           updatedAt,
+          piResourceIndex,
         };
       }
     }
 
-    const archiveBuffer = await createVolumeArchive(files, signal);
+    const archiveBuffer =
+      preparedArchive ?? (await createVolumeArchive(files, signal));
     const manifest: S3StorageManifest = {
       version: versionId,
       createdAt: updatedAt.toISOString(),
@@ -508,6 +529,7 @@ export const prepareVolumeServerSideWithDb$ = command(
       storageName: input.storageName,
       version: version ?? uploadedVersion,
       updatedAt,
+      piResourceIndex,
     };
   },
 );
@@ -559,4 +581,23 @@ export async function commitPreparedVolumeServerSide(
     })
     .where(eq(storages.id, args.volume.version.storageId));
   signal.throwIfAborted();
+  // Keep Storage-before-index lock ordering across all publication paths. Both
+  // references become visible together when the caller commits its transaction.
+  if (args.volume.piResourceIndex) {
+    await publishPiResourceVersionIndex(
+      {
+        db: args.db,
+        versionId: args.volume.version.versionId,
+        projection: args.volume.piResourceIndex.projection,
+        archiveSize: args.volume.version.archiveSize,
+      },
+      signal,
+    );
+  } else {
+    await enqueuePiResourceVersionIndexes(
+      args.db,
+      [args.volume.version.versionId],
+      signal,
+    );
+  }
 }
