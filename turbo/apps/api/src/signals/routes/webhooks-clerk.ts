@@ -207,17 +207,12 @@ async function observeWelcomeThreadDelivery(
   args: WelcomeThreadDelivery,
 ): Promise<void> {
   const delivery = await args.task;
-  const details = {
+  L.debug("welcome thread delivery outcome", {
     trigger: args.trigger,
     orgId: args.orgId,
     userId: args.userId,
     delivery,
-  };
-  if (delivery.outcome === "skipped" && delivery.reason === "disabled") {
-    L.debug("welcome thread delivery outcome", details);
-    return;
-  }
-  L.info("welcome thread delivery outcome", details);
+  });
 }
 
 /**

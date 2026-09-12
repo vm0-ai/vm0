@@ -292,18 +292,10 @@ export default [
       // One record per organization-membership creation. Failures already
       // reach Axiom at warn; the succeeded and skipped outcomes must survive
       // the info default too, or a silent dataset is indistinguishable from a
-      // working one. Welcome delivery is the same shape and is one-shot: an
-      // abandoned invocation is never retried, so its only evidence is this
-      // record. The disabled outcome, which every non-staff workspace
-      // produces, stays at debug.
+      // working one.
       "api/no-logger-info": [
         "error",
-        {
-          allowedMessages: [
-            "Morning Brief membership provisioning outcome",
-            "welcome thread delivery outcome",
-          ],
-        },
+        { allowedMessages: ["Morning Brief membership provisioning outcome"] },
       ],
     },
   },
