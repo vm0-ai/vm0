@@ -1788,6 +1788,9 @@
       "upgradeToRun": "Passa a Pro per eseguire {{assistantName}}",
       "upgradeWorkspace": "Aggiorna l'area di lavoro"
     },
+    "cards": {
+      "viewDetails": "Visualizza dettagli"
+    },
     "composer": {
       "agentSuggestions": "Agenti",
       "configureModel": "Configura modello",
