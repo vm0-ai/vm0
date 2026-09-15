@@ -636,10 +636,6 @@ export default [
       "src/signals/services/__tests__/storage-write-phase2-reconciliation.service.test.ts",
       "src/signals/services/__tests__/connector-catalog-rejection-authority.test.ts",
       "src/signals/services/__tests__/connector-authorization-provider-state.test.ts",
-      // Preview job-ref aliases are process environment state, and both Stripe
-      // metadata entry points must share one value-free resolution matrix that
-      // cannot be observed completely through a single production API route.
-      "src/signals/services/__tests__/stripe-preview-metadata.service.test.ts",
       // A physical relation versus a compatibility view cannot be selected
       // through the production API. This focused PostgreSQL test proves the
       // exact Agent Draft writer through both rollout targets.
@@ -803,10 +799,6 @@ export default [
       // B2b1 races the dormant real projector with actual compute writers;
       // no HTTP route owns closure or can observe PostgreSQL lock ordering.
       "src/signals/services/__tests__/compute-erasure-admission.service.test.ts",
-      // Preview job-ref aliases are process environment state, and both Stripe
-      // metadata entry points must share one value-free resolution matrix that
-      // cannot be observed completely through a single production API route.
-      "src/signals/services/__tests__/stripe-preview-metadata.service.test.ts",
       // A physical relation versus a compatibility view cannot be selected
       // through the production API. This focused PostgreSQL test proves the
       // exact Agent Draft writer through both rollout targets.
