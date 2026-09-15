@@ -790,7 +790,7 @@ export const startCheckout$ = command(
       [200],
     );
     signal.throwIfAborted();
-    set(capturePaidOnboardingCheckoutCreated$, "paywall");
+    await set(capturePaidOnboardingCheckoutCreated$, "paywall", signal);
     if (!("url" in result.body) && result.body.status === "preview") {
       set(internalSubscriptionPurchasePreview$, {
         purchaseType: "plan",

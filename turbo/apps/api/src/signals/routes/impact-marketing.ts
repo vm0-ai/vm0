@@ -6,6 +6,9 @@ import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
+import { clerk$ } from "../external/clerk";
+import { nowDate } from "../../lib/time";
+import { settle } from "../utils";
 
 const handoff$ = command(async ({ get, set }, signal: AbortSignal) => {
   set(setResHeader$, "Cache-Control", "no-store");
@@ -15,11 +18,56 @@ const handoff$ = command(async ({ get, set }, signal: AbortSignal) => {
     return body.response;
   }
   const auth = get(authContext$);
+  const request = body.data.acquisition;
+  const now = nowDate().getTime();
+  let signupAt: number | undefined;
+  if (request?.checkSignup && auth.orgId) {
+    // A failed shadow lookup must not interrupt the existing Impact handoff.
+    const users = await settle(
+      get(clerk$).users.getUserList({ userId: [auth.userId], limit: 1 }),
+      signal,
+    );
+    signal.throwIfAborted();
+    const user = users.ok
+      ? users.value.data.find((candidate) => {
+          return candidate.id === auth.userId;
+        })
+      : undefined;
+    // Shadow signup observations include users already recorded by the legacy
+    // path so the two acquisition records can be compared by user ID.
+    if (
+      user &&
+      !user.banned &&
+      !user.locked &&
+      Number.isSafeInteger(user.createdAt) &&
+      user.createdAt <= now &&
+      now - user.createdAt <= 30 * 60_000
+    ) {
+      signupAt = user.createdAt;
+    }
+  }
   const handoff = auth.orgId
     ? createImpactHandoff({
         userId: auth.userId,
         orgId: auth.orgId,
         orgRole: auth.orgRole,
+        ...(request
+          ? {
+              acquisition: {
+                version: 2 as const,
+                ...(signupAt === undefined ? {} : { signupAt }),
+                events: request.events
+                  .filter((event) => {
+                    return (
+                      event.at <= now + 5000 && event.at >= now - 86_400_000
+                    );
+                  })
+                  .map((event) => {
+                    return { ...event, at: Math.min(event.at, now) };
+                  }),
+              },
+            }
+          : {}),
       })
     : null;
   return { status: 200 as const, body: { handoff } };
