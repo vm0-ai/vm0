@@ -65,6 +65,30 @@ const TASK_ICONS = {
   visualization: ChartNoAxesCombined,
 } as const;
 
+/**
+ * The selected type is composer state, not message content, so it lives in the
+ * footer beside the other controls the send does not clear. The footer is
+ * already the widest row, and Creative Video adds a ratio/resolution/duration
+ * group at 760px, so the label drops out below that width the same way the
+ * model picker drops its own below 600px.
+ *
+ * `leading-5` pairs the line height with the arbitrary font size: `text-[13px]`
+ * emits `font-size` alone and would otherwise inherit whatever the ancestor row
+ * happens to set.
+ */
+const MODE_CONTROL_SHAPE =
+  "h-8 min-w-0 gap-2 px-2.5 text-[13px] leading-5 font-normal @max-[760px]/composer:px-2";
+const MODE_CONTROL_LABEL = "@max-[760px]/composer:hidden";
+
+/**
+ * Both type controls are `neutral`, whose fill is opaque, so focus has to be an
+ * overlay: a translucent `bg-state-*` sets `background-color` and would replace
+ * `bg-control-surface` outright. The picker options are `quiet` and keep
+ * `CREATE_CONTROL_FOCUS`.
+ */
+const MODE_CONTROL_FOCUS =
+  "focus-visible:bg-state-hover-overlay focus-visible:text-foreground focus-visible:ring-0 focus-visible:ring-offset-0";
+
 export function ComposerSelectedTask({
   signals,
 }: {
@@ -80,53 +104,52 @@ export function ComposerSelectedTask({
     { returnObjects: true },
   );
   if (!task) {
-    return withChatScrollLayout(null);
+    return null;
   }
   const Icon = TASK_ICONS[task];
-  return withChatScrollLayout(
-    <div className="flex min-w-0 px-4 pt-4">
+  /*
+    One control, not a label plus a button. The chip is the exit: its leading
+    type icon becomes the cross on hover, so nothing operable is visible while
+    the selection is just a state, and the hit area is the whole chip rather
+    than a 28px square.
+  */
+  return (
+    <Button
+      type="button"
+      variant="neutral"
+      className={cn(
+        "group max-w-full shrink-0",
+        MODE_CONTROL_SHAPE,
+        MODE_CONTROL_FOCUS,
+      )}
+      aria-label={t(
+        ($) => {
+          return $.chat.taskChips.removeTask;
+        },
+        { task: labels[task] },
+      )}
+      onClick={() => {
+        selectTask(null);
+      }}
+    >
       {/*
-        One control, not a label plus a button. The chip is the exit: its
-        leading type icon becomes the cross on hover, so nothing operable is
-        visible while the selection is just a state, and the hit area is the
-        whole chip rather than a 28px square.
+        Both glyphs share one box and cross-fade, so the chip's width does not
+        change between rest and hover.
       */}
-      <Button
-        type="button"
-        variant="neutral"
-        className={cn(
-          "group h-8 max-w-full gap-2 px-2.5 text-[13px] font-normal",
-          CREATE_CONTROL_FOCUS,
-        )}
-        aria-label={t(
-          ($) => {
-            return $.chat.taskChips.removeTask;
-          },
-          { task: labels[task] },
-        )}
-        onClick={() => {
-          selectTask(null);
-        }}
-      >
-        {/*
-          Both glyphs share one box and cross-fade, so the chip's width does
-          not change between rest and hover.
-        */}
-        <span className="relative inline-flex size-4 shrink-0 items-center justify-center text-muted-foreground">
-          <Icon
-            size={16}
-            className="transition-opacity group-hover:opacity-0"
-            aria-hidden
-          />
-          <X
-            size={16}
-            className="absolute opacity-0 transition-opacity group-hover:opacity-100"
-            aria-hidden
-          />
-        </span>
-        <span className="truncate">{labels[task]}</span>
-      </Button>
-    </div>,
+      <span className="relative inline-flex size-4 shrink-0 items-center justify-center text-muted-foreground">
+        <Icon
+          size={16}
+          className="transition-opacity group-hover:opacity-0"
+          aria-hidden
+        />
+        <X
+          size={16}
+          className="absolute opacity-0 transition-opacity group-hover:opacity-100"
+          aria-hidden
+        />
+      </span>
+      <span className={cn("truncate", MODE_CONTROL_LABEL)}>{labels[task]}</span>
+    </Button>
   );
 }
 
@@ -194,12 +217,12 @@ export function ComposerCreateControls({
   const setPickerOpen = useSet(signals.create.setPickerOpen$);
   const setMode = useSet(signals.create.setMode$);
   if (task || (!choosing && !mode)) {
-    return withChatScrollLayout(null);
+    return null;
   }
   const Icon = COMPOSER_CREATE_ICONS[mode ?? "choose"];
-  return withChatScrollLayout(
+  return (
     <div
-      className="@container/create-controls flex shrink-0 items-center gap-1 px-4 pt-4 pb-1"
+      className="flex min-w-0 shrink-0 items-center gap-1"
       data-testid="composer-create-mode"
       onKeyDown={(event) => {
         if (event.key === "Escape" && pickerOpen) {
@@ -210,7 +233,7 @@ export function ComposerCreateControls({
     >
       <Button
         type="button"
-        variant="quiet"
+        variant="neutral"
         size="sm"
         role="combobox"
         aria-label={t(($) => {
@@ -220,8 +243,10 @@ export function ComposerCreateControls({
         aria-expanded={pickerOpen}
         aria-controls={pickerOpen ? signals.create.pickerId : undefined}
         className={cn(
-          "min-w-0 gap-2 bg-gray-50 px-2.5 font-normal text-foreground",
-          CREATE_CONTROL_FOCUS,
+          // The same shape as the selected-task chip: these are one control
+          // under two switches, and they now sit in the same row.
+          MODE_CONTROL_SHAPE,
+          MODE_CONTROL_FOCUS,
         )}
         onClick={() => {
           setPickerOpen(!pickerOpen);
@@ -242,7 +267,7 @@ export function ComposerCreateControls({
         }}
       >
         <Icon className={CREATE_MODE_ICON_CLASS} aria-hidden />
-        <span className="truncate">
+        <span className={cn("truncate", MODE_CONTROL_LABEL)}>
           {mode
             ? composerCreateModeLabel(mode)
             : t(($) => {
@@ -270,13 +295,13 @@ export function ComposerCreateControls({
         <X aria-hidden />
       </Button>
       {choosing && (
-        <span className="ml-1 min-w-0 truncate text-sm text-muted-foreground @max-[350px]/create-controls:hidden">
+        <span className="ml-1 min-w-0 truncate text-sm text-muted-foreground @max-[760px]/composer:hidden">
           {t(($) => {
             return $.chat.composer.create.chooseScene;
           })}
         </span>
       )}
-    </div>,
+    </div>
   );
 }
 

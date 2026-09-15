@@ -10851,6 +10851,7 @@ function ComposerFooter({
       : null;
   return withChatScrollLayout(
     <div
+      data-slot="chat-composer-footer"
       className={cn(
         "shrink-0 items-center justify-between gap-1 sm:gap-2",
         creativeVideo && !activeVoiceDraftStatus
@@ -10878,6 +10879,11 @@ function ComposerFooter({
                 narrowVideoGap,
               )}
             >
+              {/* The selected type leads the row it belongs to: everything
+                  from here right is composer state that a send does not
+                  clear, unlike the attachment lane above the input. */}
+              <ComposerCreateControls signals={signals} />
+              <ComposerSelectedTask signals={signals} />
               <ComposerAttachButton signals={signals} />
               <ComposerTemplatePickerSlot signals={signals} />
               <ComposerWorkflowPromptSlot signals={signals} />
@@ -10953,9 +10959,7 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
           ref={actions.bind}
           className={cn("flex flex-col", layoutHeightClassNames.shell)}
         >
-          <ComposerCreateControls signals={signals} />
           <ComposerAttachments signals={signals} />
-          <ComposerSelectedTask signals={signals} />
           <ComposerInputSlot
             signals={signals}
             actions={actions}
