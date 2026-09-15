@@ -1720,3 +1720,15 @@ requires the API's matching commit-addressed CLI for new admission and preserves
 old captured contexts. Existing Responses schemas and Runner claims are unchanged.
 Retain the V4.1 reader and API billing writer in serving/recovery and rollback
 targets while admitted V4.1 Pi work remains.
+
+## Durable Run stop intent (#34383)
+
+The [Run cancellation reconciliation contract](run-cancellation-reconciliation.md)
+adds nullable `agent_runs.runner_cancellation_mode` and an authenticated v1 read
+endpoint. Apply migration 1143 before promoting API code. Its CHECK remains
+`NOT VALID` because all existing rows receive NULL; new writes are constrained
+without a historical scan. Old writers remain valid with NULL. Rollback retains
+the additive column.
+Deploy the API across the serving fleet before enabling the Runner consumer in
+#34384. Unsupported endpoints and other inconclusive reads must not become
+disappearance decisions. This API slice alone adds no new stop-delay bound.
